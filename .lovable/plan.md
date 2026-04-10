@@ -1,59 +1,45 @@
 
-What I verified
-- `src/lib/report-naming.ts` is already correct: `formatReportFilename()` returns `Organization_MM_YYYY.ext`, and `sanitizeForFilename()` already replaces spaces with underscores.
-- Both `src/components/HtmlReportViewer.tsx` and `src/lib/html-report-viewer.ts` already try to inject the filename into the report HTML `<title>`.
 
-Root cause
-- The filename helper is not the problem. The real issue is that the browser is not consistently using the injected report HTML `<title>` when naming the PDF.
-- Right now the app only updates the inner report/new-window title. Some browsers/platforms use the top-level app document title instead, which explains why the save dialog still shows `Rope Works - Digital Inspection Platform.pdf`.
-- The forms also calculate filename variables during report generation but do not preserve that report-specific filename/context; the viewer re-derives it later in JSX.
-- Training’s direct PDF download uses a signed URL plus `a.download`, which browsers may ignore for cross-origin URLs.
-- Report HTML fallbacks are inconsistent: inspection/training use generic titles, and daily assessment uses `site` instead of `organization`.
+# Remove Grey Boxes from Training and Daily Assessment Reports
 
-Implementation plan
-1. Create one shared helper for report PDF naming/title injection
-   - Reuse `formatReportFilename()` for the canonical download name
-   - Add a small shared helper to derive the PDF title/base name and inject/replace `<title>` safely
+## Problem
+The Training and Daily Assessment HTML reports use a "card" aesthetic with bordered boxes, background fills, and rounded corners for info items and list items. The Inspection report uses a clean, professional document style with no backgrounds, dotted underlines, and a serif font. The user wants all reports to match the Inspection report's clean look.
 
-2. Fix the viewer path in `src/components/HtmlReportViewer.tsx`
-   - Stop relying only on the iframe/new-window HTML title
-   - Temporarily set the top-level `document.title` to the PDF title while the viewer is open, then restore it on close
-   - Use the same computed PDF title for the iframe, injected HTML, and Save PDF action
+Additionally, existing cached reports will continue showing the old grey-box style until regenerated with `forceRegenerate`.
 
-3. Harden `src/lib/html-report-viewer.ts`
-   - Explicitly set `printWindow.document.title = pdfTitle`
-   - Write HTML with the same injected `<title>`
-   - Trigger print only after the print window has fully loaded
+## What Changes
 
-4. Pass stable report context from each form
-   - Update `InspectionForm.tsx`, `TrainingForm.tsx`, and `DailyAssessmentForm.tsx` to pass a dedicated report filename/context into the viewer instead of recalculating inline only at render time
-   - Remove the currently unused local filename/title variables
+### 1. Training Report (`supabase/functions/generate-training-html/index.ts`)
 
-5. Fix direct PDF downloads so the filename is enforced
-   - Training: fetch the signed PDF URL as a Blob, then download via an object URL with `formatReportFilename(..., 'pdf')`
-   - Inspection: align the client with the actual PDF function response shape and keep the final downloaded filename standardized
+Restyle to match the inspection report's professional document aesthetic:
 
-6. Normalize report HTML fallback titles
-   - Update:
-     - `supabase/functions/generate-inspection-html/index.ts`
-     - `supabase/functions/generate-training-html/index.ts`
-     - `supabase/functions/generate-daily-assessment-html/index.ts`
-   - Make fallback titles organization-based so non-viewer/browser print flows are more consistent
-   - For daily assessments, switch from `assessment.site` to `assessment.organization`
+- **Font**: Switch from `Segoe UI` (sans-serif) to `Georgia, 'Times New Roman', serif`
+- **`.info-item`**: Remove `background`, `border`, `border-radius`. Use `padding: 0; border: none;` with flexbox baseline alignment and dotted underline on values — matching `.info-cell` in the inspection report
+- **`li`**: Remove `background: #ffffff; border: 1px solid #e2e8f0; border-radius: 4px`. Use transparent background
+- **`.info-label`**: Change color from `#1e40af` to `#000`, match inspection sizing
+- **`.info-value`**: Add `border-bottom: 1px dotted #666` underline style
+- **`.text-content`**: Change `background: #f8fafc` to `transparent`, use `border: 1px solid #000`
+- **`.standards-box`**: Remove blue tinted background, use transparent with solid border
+- **Section titles (h2)**: Keep blue background header bar (matches inspection `h2` style)
 
-7. Keep storage keys unique
-   - Do not force the backend storage object names to the standardized download name
-   - Only the user-facing saved/downloaded filename should be `[Organization]_[MM]_[YYYY].pdf`
+### 2. Daily Assessment Report (`supabase/functions/generate-daily-assessment-html/index.ts`)
 
-Validation after implementation
-- Confirm `formatReportFilename('Acme Corp', ..., 'pdf')` returns `Acme_Corp_04_2026.pdf`
-- Test Save PDF from the in-app viewer for:
-  - Inspection
-  - Training
-  - Daily Assessment
-- Test direct PDF download flows for inspection/training
-- Verify the suggested filename no longer falls back to the app title
-- Check desktop-width and mobile-width flows, plus cached report HTML paths
+Apply the same restyling:
 
-Expected result
-- All user-saved PDFs will consistently default to `[Organization]_[Current Month]_[Current Year].pdf` across report types and platforms, instead of using the app title or inconsistent storage filenames.
+- **Font**: Switch to `Georgia, 'Times New Roman', serif`
+- **`.info-item`**: Remove card styling, use clean layout with dotted underlines
+- **`li` / checklist items**: Remove background fills and card borders
+- **`.check-item`**: Remove `background: #ffffff; border: 1px solid #e2e8f0; border-left: 3px solid #22c55e`. Use cleaner styling
+- Keep the warning-yellow section notes as-is (they serve a distinct purpose)
+
+### 3. Cache Bust
+
+Both edge functions have server-side caching that returns `latest_report_html` if data hasn't changed. After deploying these style changes, users will need to click "Generate Report" (which triggers `forceRegenerate`) to see the new styling. No code change needed for this — it's the existing behavior.
+
+## Files to Edit
+- `supabase/functions/generate-training-html/index.ts` — CSS section (~lines 157-742)
+- `supabase/functions/generate-daily-assessment-html/index.ts` — CSS section
+
+## Result
+All three report types will share the same clean, professional document aesthetic: serif font, no grey/colored boxes around info fields, dotted underlines for values, transparent backgrounds, and solid thin borders where needed.
+
