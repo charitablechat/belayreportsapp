@@ -1336,9 +1336,11 @@ export default function DailyAssessmentForm() {
       const title = formatReportTitle(assessment?.organization, 'daily-assessment');
 
       // Always use in-app viewer for consistent Save PDF + Close buttons
+      toast.dismiss(progressToastId);
       setReportHtml(html);
       setViewerOpen(true);
     } catch (error: any) {
+      toast.dismiss(progressToastId);
       console.error('[Report Generation] Error:', error.message || error);
       
       if (error.message?.includes('TIMEOUT')) {
