@@ -59,6 +59,9 @@ export const ForceSyncButton = ({ variant = 'default', className, unsyncedCount 
     try {
       await forceSync();
       
+      // Small delay to let updateUnsyncedCounts() in the finally block settle
+      await new Promise(r => setTimeout(r, 300));
+      
       triggerHaptic('success');
       if (isMobileDevice) {
         addSyncNotification("Sync completed - data is up to date");
