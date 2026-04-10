@@ -1094,19 +1094,23 @@ export default function TrainingForm() {
     if (!id) return;
     
     setIsGeneratingHTML(true);
+    const progressToastId = toast.loading("Generating report...");
     
     // Safety timeout - NEVER get stuck in generating state (60 seconds max)
     const GENERATION_TIMEOUT = 120000;
     const safetyTimeoutHandle = setTimeout(() => {
       console.error('[HTML Generation] Safety timeout reached after 60 seconds - force resetting state');
       setIsGeneratingHTML(false);
+      toast.dismiss(progressToastId);
       toast.error("Report generation timed out", {
         description: "Please check your connection and try again.",
       });
     }, GENERATION_TIMEOUT);
     
     try {
+      toast.loading("Saving changes first...", { id: progressToastId });
       await saveTraining();
+      toast.loading("Generating report...", { id: progressToastId });
       
       // Wrap the edge function call in a Promise.race with timeout
       const generatePromise = supabase.functions.invoke('generate-training-html', {
@@ -1146,9 +1150,11 @@ export default function TrainingForm() {
       const title = formatReportTitle(training?.organization, 'training');
 
       // Always use in-app viewer for consistent Save PDF + Close buttons
+      toast.dismiss(progressToastId);
       setReportHtml(html);
       setHtmlViewerOpen(true);
     } catch (error: any) {
+      toast.dismiss(progressToastId);
       console.error('[HTML Generation] Error:', error.message || error);
       
       if (error.message?.includes('TIMEOUT')) {

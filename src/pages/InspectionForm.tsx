@@ -2318,18 +2318,34 @@ export default function InspectionForm() {
     }
 
     setGeneratingHtml(true);
+    const progressToastId = toast.loading("Generating report...");
     
     // Safety timeout - NEVER get stuck in generating state (60 seconds max)
     const GENERATION_TIMEOUT = 120000;
     const safetyTimeoutHandle = setTimeout(() => {
       console.error('[HTML Generation] Safety timeout reached after 60 seconds - force resetting state');
       setGeneratingHtml(false);
+      toast.dismiss(progressToastId);
       toast.error("Report generation timed out", {
         description: "Please check your connection and try again.",
       });
     }, GENERATION_TIMEOUT);
 
     try {
+      // Flush any pending changes to ensure edge function reads fresh data
+      if (hasUnsavedChanges) {
+        toast.loading("Saving changes first...", { id: progressToastId });
+        try {
+          await Promise.race([
+            saveProgress(),
+            new Promise((_, reject) => setTimeout(() => reject(new Error('Save timeout')), 5000)),
+          ]);
+        } catch (e) {
+          console.warn('[HTML Generation] Pre-save timed out, proceeding anyway:', e);
+        }
+        toast.loading("Generating report...", { id: progressToastId });
+      }
+
       // Wrap the edge function call in a Promise.race with timeout
       const generatePromise = supabase.functions.invoke(
         'generate-inspection-html',
@@ -2371,9 +2387,11 @@ export default function InspectionForm() {
       const title = formatReportTitle(inspection?.organization, 'inspection');
 
       // Always use in-app viewer for consistent Save PDF + Close buttons
+      toast.dismiss(progressToastId);
       setReportHtml(html);
       setHtmlViewerOpen(true);
     } catch (error: any) {
+      toast.dismiss(progressToastId);
       console.error('[HTML Generation] Error:', error.message || error);
       
       if (error.message?.includes('TIMEOUT')) {
