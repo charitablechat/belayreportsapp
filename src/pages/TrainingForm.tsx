@@ -1150,9 +1150,11 @@ export default function TrainingForm() {
       const title = formatReportTitle(training?.organization, 'training');
 
       // Always use in-app viewer for consistent Save PDF + Close buttons
+      toast.dismiss(progressToastId);
       setReportHtml(html);
       setHtmlViewerOpen(true);
     } catch (error: any) {
+      toast.dismiss(progressToastId);
       console.error('[HTML Generation] Error:', error.message || error);
       
       if (error.message?.includes('TIMEOUT')) {
