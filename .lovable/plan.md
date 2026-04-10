@@ -1,71 +1,100 @@
 
 
-# Fix: Syncing Lag and Persistent Spinning Indicator
+# Fix: Report Generation Lag and Performance Bottleneck
 
 ## Root Causes Identified
 
-### Issue 1: Stale Queued Operations Never Cleared (Primary Cause)
-The console logs show **49 inspection queued operations, 31 training operations, and 6 assessment operations** accumulating in IndexedDB. These are read every sync cycle (every 30s on desktop) but **never cleaned up** because cleanup only runs when `anySuccess` is true (line 294 of `useAutoSync.tsx`). Since there are 0 unsynced items, no sync "succeeds," so the stale queue grows forever. Each cycle reads all 86 entries, causing unnecessary IndexedDB churn and the recurring 8s timeout warnings.
+### Cause 1: Photo Downloads in Edge Functions (Primary — 10-25s)
+Every "Generate Report" call triggers `generate-inspection-html` (2772 lines), which downloads **every photo** from Supabase Storage and converts each to base64 inline. With a 25-second budget and sequential storage API calls, this dominates execution time. The same pattern exists in `generate-training-html`.
 
-### Issue 2: Redundant IndexedDB Reads Per Cycle
-Every 30-second sync cycle performs these reads even when `unsyncedCount === 0`:
-- `getQueuedOperations()` (49 entries)
-- `getQueuedTrainingOperations()` (31 entries)
-- `getQueuedAssessmentOperations()` (6 entries)
-- `getUnsyncedInspections()`, `getUnsyncedTrainings()`, `getUnsyncedDailyAssessments()`
-- Full atomic sync pipeline for all 3 report types
+### Cause 2: Logo Fetches on Every Generation (~1-2s)
+`getLogoBase64()` fetches two logo PNGs from storage and converts to base64 on every single report generation — these never change but are re-downloaded every time.
 
-This creates constant IndexedDB contention, triggering the `[Offline Storage] Operation timed out after 8000ms` warnings seen in the console.
+### Cause 3: IndexedDB Circuit Breaker Tripping During Generation
+The console logs show `removeQueuedAssessmentOperation` being called with `undefined` IDs (the queued operations lack an `id` field), causing `DataError: No key or key range specified`. This trips the circuit breaker, disabling IndexedDB for 60s and causing cascading timeout warnings that degrade the entire UI during report generation.
 
-### Issue 3: Sync Runs Even When Nothing to Sync
-When `unsyncedCount === 0`, the sync still runs the full pipeline (soft-delete processing, 3 atomic syncs, photo sync), wasting resources and creating the perception of constant activity.
+### Cause 4: No Auto-Save Flush Before Generation
+When the user clicks "Generate Report," any unsaved edits haven't been persisted to the server yet. The edge function reads stale data from the database, and there's no flush-and-wait step.
 
 ## Fix Plan
 
-### Step 1: Clear stale queued operations independently of sync success
+### Step 1: Fix undefined ID crashes in queue cleanup
 **File:** `src/hooks/useAutoSync.tsx`
 
-Move the queue cleanup **outside** the `if (anySuccess)` gate. When there are 0 unsynced items but queued operations exist, clean them up unconditionally. This immediately eliminates the 86 stale entries and the associated IndexedDB churn.
+Filter out operations with falsy `id` before calling `remove*` functions. This eliminates the `DataError` crashes and circuit breaker trips.
 
 ```typescript
-// BEFORE (line 294): cleanup only when anySuccess
-if (anySuccess) { /* cleanup queued ops */ }
+// Before removal, filter out entries without valid IDs
+const staleInsp = inspOps.filter(op => op.id && !op?.data?.deleted_at);
+const staleTrain = trainOps.filter(op => op.id && !op?.data?.deleted_at);
+const staleAssess = assessOps.filter(op => op.id && !op?.data?.deleted_at);
+```
 
-// AFTER: cleanup whenever sync completes (no unsynced items = stale queue)
-if (!allFetchesFailed) {
-  // Always clean stale queued ops (they accumulate when no items need syncing)
-  (async () => { /* cleanup logic - moved outside anySuccess gate */ })();
-  
-  if (anySuccess) {
-    // toast, notifications, emit sync complete, etc.
+### Step 2: Cache logos in edge functions
+**File:** `supabase/functions/_shared/report-layout.ts`
+
+Add module-level caching so logos are fetched once per cold start (edge functions persist across warm invocations):
+
+```typescript
+let cachedLogos: { ropeWorks: string; acct: string } | null = null;
+
+export async function getLogoBase64() {
+  if (cachedLogos) return cachedLogos;
+  // ...existing fetch logic...
+  cachedLogos = result;
+  return cachedLogos;
+}
+```
+
+### Step 3: Use signed URLs instead of base64 for photos
+**File:** `supabase/functions/generate-inspection-html/index.ts`
+
+Replace the expensive download-and-convert-to-base64 loop with `createSignedUrl()` calls (which return instantly without downloading file content). This eliminates the 10-25s photo processing budget entirely.
+
+- Gallery photos: use signed URLs (valid 24h) in `<img src="...">` tags
+- Item photos: same approach
+- Fallback: keep base64 conversion only for PDF generation (where signed URLs won't work)
+
+**Same change in:** `supabase/functions/generate-training-html/index.ts`
+
+### Step 4: Flush unsaved changes before generating
+**File:** `src/pages/InspectionForm.tsx`
+
+Add a save-flush step at the start of `handleGenerateHTML`:
+
+```typescript
+const handleGenerateHTML = async () => {
+  // Flush any pending changes to ensure edge function reads fresh data
+  if (hasUnsavedChanges) {
+    await saveProgress();
   }
-}
+  // ...existing generation logic...
+};
 ```
 
-### Step 2: Skip full sync pipeline when nothing to sync
-**File:** `src/hooks/useAutoSync.tsx`
+**Same pattern in:** `TrainingForm.tsx`, `DailyAssessmentForm.tsx`
 
-Add an early exit in `performSync` when `unsyncedCount === 0` AND there are no queued operations. This eliminates the 30-second cycle overhead entirely when there's nothing to do.
+### Step 5: Add progress feedback
+Show a more informative toast during generation so users know the system is working:
 
 ```typescript
-// After session validation, before starting the pipeline:
-if (unsyncedCountRef.current === 0) {
-  // Still process queued soft-deletes and clean stale queued ops
-  // but skip the full atomic sync + photo sync pipeline
-}
+const toastId = toast.loading("Generating report...");
+// ... after completion:
+toast.dismiss(toastId);
 ```
-
-### Step 3: Reduce periodic sync frequency when idle
-**File:** `src/hooks/useAutoSync.tsx`
-
-When there are 0 unsynced items and the last sync was successful, back off to a longer interval (e.g., 120s instead of 30s for desktop) to reduce background noise. Reset to normal interval when items appear.
 
 ## Files Changed
-1. `src/hooks/useAutoSync.tsx` — stale queue cleanup, early exit on empty, adaptive interval
+1. `src/hooks/useAutoSync.tsx` — guard against undefined IDs in queue cleanup
+2. `supabase/functions/_shared/report-layout.ts` — module-level logo cache
+3. `supabase/functions/generate-inspection-html/index.ts` — signed URLs for photos instead of base64
+4. `supabase/functions/generate-training-html/index.ts` — same signed URL optimization
+5. `src/pages/InspectionForm.tsx` — flush unsaved changes + progress toast
+6. `src/pages/TrainingForm.tsx` — flush unsaved changes + progress toast
+7. `src/pages/DailyAssessmentForm.tsx` — flush unsaved changes + progress toast
 
-## Impact
-- Eliminates the persistent 8s timeout warnings (no more unnecessary IndexedDB reads)
-- Removes the spinning indicator caused by constant sync activity
-- Reduces IndexedDB contention from ~6 transactions/cycle to near-zero when idle
-- Preserves all existing sync guarantees when items actually need syncing
+## Expected Impact
+- **Photo processing:** 10-25s → ~1-2s (signed URLs are near-instant vs downloading files)
+- **Logo fetching:** 1-2s → 0ms on warm invocations
+- **IndexedDB crashes:** Eliminated (no more undefined ID deletions)
+- **Data freshness:** Guaranteed by pre-generation flush
 
