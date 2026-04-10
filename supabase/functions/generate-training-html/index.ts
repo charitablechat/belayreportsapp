@@ -84,56 +84,31 @@ serve(async (req) => {
     const trainingData = await fetchTrainingData(trainingId, supabase);
     const content = formatTrainingContent(trainingData);
 
-    // Download photos and embed as data: URIs (persistent, no expiring signed URLs)
-    // Use parallel downloads with a 25-second time budget to prevent function timeout
-    const PHOTO_BUDGET_MS = 25000;
+    // Use signed URLs for photos instead of downloading and converting to base64
+    // This eliminates the 10-25s photo processing bottleneck entirely
+    const SIGNED_URL_EXPIRY = 86400; // 24 hours
     const photoStart = Date.now();
     const photoUrls: { url: string; caption: string }[] = [];
     
     if (trainingData.photos && trainingData.photos.length > 0) {
-      console.log(`[generate-training-html] Downloading ${trainingData.photos.length} photos in parallel (budget: ${PHOTO_BUDGET_MS}ms)`);
+      console.log(`[generate-training-html] Generating signed URLs for ${trainingData.photos.length} photos`);
+      const paths = trainingData.photos.map((p: any) => p.photo_url);
+      const { data: signedData, error: signedError } = await supabase
+        .storage.from('training-photos')
+        .createSignedUrls(paths, SIGNED_URL_EXPIRY);
       
-      const downloadPhoto = async (photo: any): Promise<{ url: string; caption: string } | null> => {
-        if (Date.now() - photoStart > PHOTO_BUDGET_MS) {
-          console.warn(`[generate-training-html] Photo budget exceeded, skipping photo ${photo.photo_url}`);
-          return null;
+      if (!signedError && signedData) {
+        for (let i = 0; i < signedData.length; i++) {
+          if (signedData[i].error || !signedData[i].signedUrl) continue;
+          photoUrls.push({
+            url: signedData[i].signedUrl,
+            caption: trainingData.photos[i].caption || '',
+          });
         }
-        try {
-          const { data: fileData, error: dlError } = await supabase.storage
-            .from('training-photos')
-            .download(photo.photo_url);
-
-          if (dlError || !fileData) {
-            console.error('Failed to download photo:', photo.photo_url, dlError);
-            return null;
-          }
-
-          const buffer = await fileData.arrayBuffer();
-          if (isHeicBytes(buffer)) {
-            console.warn(`[generate-training-html] Skipping HEIC-disguised photo: ${photo.photo_url}`);
-            return null;
-          }
-
-          const bytes = new Uint8Array(buffer);
-          let mime = 'image/jpeg';
-          if (bytes[0] === 0x89 && bytes[1] === 0x50 && bytes[2] === 0x4E && bytes[3] === 0x47) {
-            mime = 'image/png';
-          }
-
-          const base64 = arrayBufferToBase64(buffer);
-          console.log(`[generate-training-html] Photo ${photo.photo_url} converted (${Math.round(buffer.byteLength / 1024)}KB)`);
-          return { url: `data:${mime};base64,${base64}`, caption: photo.caption || '' };
-        } catch (e) {
-          console.error('Failed to process photo:', photo.photo_url, e);
-          return null;
-        }
-      };
-
-      const results = await Promise.allSettled(trainingData.photos.map((p: any) => downloadPhoto(p)));
-      for (const r of results) {
-        if (r.status === 'fulfilled' && r.value) photoUrls.push(r.value);
+      } else {
+        console.error('[generate-training-html] Failed to generate signed URLs:', signedError);
       }
-      console.log(`[generate-training-html] Photo processing complete in ${Date.now() - photoStart}ms: ${photoUrls.length}/${trainingData.photos.length} photos`);
+      console.log(`[generate-training-html] Photo processing complete in ${Date.now() - photoStart}ms: ${photoUrls.length}/${trainingData.photos.length} photos (signed URLs)`);
     }
 
     // Footer disclaimer text for training reports
