@@ -71,12 +71,14 @@ export function CameraCaptureDialog({
       startStream();
     } else {
       stopStream();
+      // Revoke any preview URL to prevent memory leaks
+      if (previewUrl) URL.revokeObjectURL(previewUrl);
       setPreviewUrl(null);
       setCapturedBlob(null);
       setState("initializing");
     }
     return () => stopStream();
-  }, [open, startStream, stopStream]);
+  }, [open, startStream, stopStream]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleShutter = useCallback(() => {
     const video = videoRef.current;

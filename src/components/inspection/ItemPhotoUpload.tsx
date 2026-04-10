@@ -86,11 +86,15 @@ function ItemPhotoUpload({
     return () => window.removeEventListener('popstate', onPopState);
   }, [lightboxOpen]);
 
+  // Track localPreview in a ref so unmount cleanup always revokes the latest URL
+  const localPreviewRef = useRef<string | null>(null);
+  useEffect(() => { localPreviewRef.current = localPreview; }, [localPreview]);
+
   // Cleanup object URLs on unmount
   useEffect(() => {
     return () => {
       if (prevObjectUrlRef.current) URL.revokeObjectURL(prevObjectUrlRef.current);
-      if (localPreview) URL.revokeObjectURL(localPreview);
+      if (localPreviewRef.current) URL.revokeObjectURL(localPreviewRef.current);
     };
   }, []);
 

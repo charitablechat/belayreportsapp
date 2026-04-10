@@ -512,7 +512,7 @@ export const useAutoSync = () => {
           setTimeout(() => resolve({ error: { message: 'Session refresh timeout' } }), 5000)
         ),
       ]);
-      if ('error' in refreshResult && refreshResult.error) {
+      if (refreshResult.error) {
         console.warn('[AutoSync] Session refresh failed:', refreshResult.error.message);
       } else if (import.meta.env.DEV) {
         console.log('[AutoSync] Session refreshed successfully');
@@ -530,8 +530,9 @@ export const useAutoSync = () => {
       }
     }
     
-    performSync(false);
-  }, [performSync]);
+    // Use debounced sync to prevent rapid re-syncs on network flicker
+    triggerDebouncedSync();
+  }, [triggerDebouncedSync]);
   
   /**
    * Handle visibility change - sync when app becomes visible

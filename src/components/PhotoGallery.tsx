@@ -123,7 +123,7 @@ export default function PhotoGallery({
     const isOpen = selectedPhotoIndex !== null;
     lightboxOpenRef.current = isOpen;
 
-    if (isOpen) {
+    if (isOpen && !lightboxHistoryPushedRef.current) {
       window.history.pushState({ lightbox: true }, '');
       lightboxHistoryPushedRef.current = true;
       setOverlayActive(true);
