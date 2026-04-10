@@ -172,7 +172,7 @@ serve(async (req) => {
     const supabaseKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
     const supabase = createClient(supabaseUrl, supabaseKey);
 
-    const { inspectionId } = await req.json();
+    const { inspectionId, forceRegenerate } = await req.json();
 
     if (!inspectionId) {
       throw new Error("Inspection ID is required");
@@ -180,29 +180,46 @@ serve(async (req) => {
 
     console.log(`Generating HTML for inspection: ${inspectionId}`);
 
-    // Fetch logos from storage
-    const logos = await getLogoBase64();
+    // OPTIMIZATION: Parallelize logo fetch with initial DB query
+    const [logos, inspectionResult] = await Promise.all([
+      getLogoBase64(),
+      supabase
+        .from("inspections")
+        .select(
+          `
+          *,
+          profiles!inspections_inspector_id_profiles_fkey (
+            first_name,
+            last_name,
+            acct_number
+          )
+        `,
+        )
+        .eq("id", inspectionId)
+        .single(),
+    ]);
+
     const ropeWorksLogo = logos.ropeWorks;
     const acctLogo = logos.acct;
 
-    // Fetch all inspection data
-    const { data: inspection, error: inspectionError } = await supabase
-      .from("inspections")
-      .select(
-        `
-        *,
-        profiles!inspections_inspector_id_profiles_fkey (
-          first_name,
-          last_name,
-          acct_number
-        )
-      `,
-      )
-      .eq("id", inspectionId)
-      .single();
-
+    const { data: inspection, error: inspectionError } = inspectionResult;
     if (inspectionError) throw inspectionError;
     if (!inspection) throw new Error("Inspection not found");
+
+    // OPTIMIZATION: Server-side cache check — skip regeneration if nothing changed
+    if (!forceRegenerate && inspection.latest_report_generated_at && inspection.updated_at) {
+      const generatedAt = new Date(inspection.latest_report_generated_at).getTime();
+      const updatedAt = new Date(inspection.updated_at).getTime();
+      
+      if (generatedAt >= updatedAt && inspection.latest_report_html) {
+        console.log(`[generate-inspection-html] Cache HIT — no changes since last generation. Returning cached report.`);
+        return new Response(
+          JSON.stringify({ html: inspection.latest_report_html, cached: true }),
+          { headers: { ...corsHeaders, "Content-Type": "application/json" }, status: 200 }
+        );
+      }
+      console.log(`[generate-inspection-html] Cache MISS — report data changed since last generation.`);
+    }
 
     // Fetch related data including photos
     const [equipmentRes, standardsRes, systemsRes, ziplinesRes, summaryRes, photosRes] = await Promise.all([
@@ -2687,8 +2704,20 @@ serve(async (req) => {
 </body>
 </html>`;
 
-    // Upload HTML to storage instead of returning directly (avoids response size limits)
-    console.log(`[generate-inspection-html] Uploading HTML to storage for inspection ${inspectionId}...`);
+    // OPTIMIZATION: Return HTML directly for reports under 1MB (eliminates storage upload + signed URL round trips)
+    const htmlSizeBytes = new TextEncoder().encode(html).length;
+    const ONE_MB = 1024 * 1024;
+    
+    if (htmlSizeBytes < ONE_MB) {
+      console.log(`[generate-inspection-html] Report size ${(htmlSizeBytes / 1024).toFixed(1)}KB < 1MB — returning directly (skipping storage upload).`);
+      return new Response(JSON.stringify({ html }), {
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+        status: 200,
+      });
+    }
+
+    // Large reports: upload to storage and return signed URL
+    console.log(`[generate-inspection-html] Report size ${(htmlSizeBytes / 1024).toFixed(1)}KB >= 1MB — uploading to storage...`);
     
     const timestamp = Date.now();
     const filePath = `html-reports/${inspectionId}-${timestamp}.html`;
@@ -2702,24 +2731,27 @@ serve(async (req) => {
       });
 
     if (uploadError) {
-      console.error(`[generate-inspection-html] Storage upload failed:`, uploadError);
-      throw new Error(`Failed to upload report: ${uploadError.message}`);
+      console.error(`[generate-inspection-html] Storage upload failed, falling back to direct return:`, uploadError);
+      return new Response(JSON.stringify({ html }), {
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+        status: 200,
+      });
     }
-
-    console.log(`[generate-inspection-html] Upload successful. Creating signed URL...`);
 
     const { data: signedUrlData, error: signedUrlError } = await supabase.storage
       .from('inspection-reports')
-      .createSignedUrl(filePath, 86400); // 24 hours
+      .createSignedUrl(filePath, 86400);
 
     if (signedUrlError || !signedUrlData?.signedUrl) {
-      console.error(`[generate-inspection-html] Signed URL creation failed:`, signedUrlError);
-      throw new Error(`Failed to create report URL: ${signedUrlError?.message || 'Unknown error'}`);
+      console.error(`[generate-inspection-html] Signed URL failed, falling back to direct return:`, signedUrlError);
+      return new Response(JSON.stringify({ html }), {
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+        status: 200,
+      });
     }
 
     console.log(`[generate-inspection-html] Complete. Returning signed URL.`);
-
-    return new Response(JSON.stringify({ htmlUrl: signedUrlData.signedUrl, fileName: filePath }), {
+    return new Response(JSON.stringify({ htmlUrl: signedUrlData.signedUrl, html }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
       status: 200,
     });

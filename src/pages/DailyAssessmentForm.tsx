@@ -84,7 +84,7 @@ export default function DailyAssessmentForm() {
   const { formConfig, isLoading: isLoadingConfig } = useFormConfiguration('en', 'daily_assessment');
   const { isOnline } = useNetworkStatus();
   const isMobileView = useIsMobile();
-  const { syncReport } = useReportSync(id, 'daily_assessment');
+  const { syncReport, getLatestReport } = useReportSync(id, 'daily_assessment');
   const { storageUnavailable, usingFallbackStorage } = useStorageHealthCheck();
   
   // Check edit permissions - Super Admins are view-only, only owners can edit
@@ -1295,6 +1295,27 @@ export default function DailyAssessmentForm() {
       }
 
       console.log('[Report] Generating report...');
+
+      // OPTIMIZATION: Client-side cache check
+      if (!hasUnsavedChanges && assessment?.latest_report_generated_at && assessment?.updated_at) {
+        const generatedAt = new Date(assessment.latest_report_generated_at).getTime();
+        const updatedAt = new Date(assessment.updated_at).getTime();
+        
+        if (generatedAt >= updatedAt) {
+          console.log('[Report] Client-side cache HIT — fetching cached report from DB');
+          toast.loading("Loading cached report...", { id: progressToastId });
+          const cachedHtml = await getLatestReport();
+          if (cachedHtml) {
+            clearTimeout(safetyTimeoutHandle);
+            toast.dismiss(progressToastId);
+            setReportHtml(cachedHtml);
+            setViewerOpen(true);
+            setGenerating(false);
+            return;
+          }
+          console.log('[Report] Cache returned empty, falling through to generation');
+        }
+      }
       
       // Wrap the edge function call in a Promise.race with timeout
       const generatePromise = supabase.functions.invoke('generate-daily-assessment-html', {

@@ -80,7 +80,7 @@ export default function TrainingForm() {
   const navigate = useNavigate();
   const { isOnline } = useNetworkStatus();
   const isMobile = useIsMobile();
-  const { syncReport } = useReportSync(id, 'training');
+  const { syncReport, getLatestReport } = useReportSync(id, 'training');
   const { storageUnavailable, usingFallbackStorage } = useStorageHealthCheck();
   
   // Check edit permissions - Super Admins are view-only, only owners can edit
@@ -1108,6 +1108,27 @@ export default function TrainingForm() {
     }, GENERATION_TIMEOUT);
     
     try {
+      // OPTIMIZATION: Client-side cache check — if report was already generated after last update
+      if (training?.latest_report_generated_at && training?.updated_at) {
+        const generatedAt = new Date(training.latest_report_generated_at).getTime();
+        const updatedAt = new Date(training.updated_at).getTime();
+        
+        if (generatedAt >= updatedAt) {
+          console.log('[HTML Generation] Client-side cache HIT — fetching cached report from DB');
+          toast.loading("Loading cached report...", { id: progressToastId });
+          const cachedHtml = await getLatestReport();
+          if (cachedHtml) {
+            clearTimeout(safetyTimeoutHandle);
+            toast.dismiss(progressToastId);
+            setReportHtml(cachedHtml);
+            setHtmlViewerOpen(true);
+            setIsGeneratingHTML(false);
+            return;
+          }
+          console.log('[HTML Generation] Cache returned empty, falling through to generation');
+        }
+      }
+
       toast.loading("Saving changes first...", { id: progressToastId });
       await saveTraining();
       toast.loading("Generating report...", { id: progressToastId });
