@@ -2498,17 +2498,16 @@ export async function evictSyncedReports(ageDays: number): Promise<number> {
         if (syncedAt > cutoff) continue;
 
         // Evict parent
-        const storeNames = [parentStoreName, ...childStores, 'photos'] as any[];
-        // Filter to only stores that exist
-        const availableStores = storeNames.filter(s => db.objectStoreNames.contains(s));
+        const allStoreNames = [parentStoreName, ...childStores, 'photos'] as const;
+        const availableStores = allStoreNames.filter(s => db.objectStoreNames.contains(s as string)) as unknown as (keyof InspectionDB)[];
         const deleteTx = db.transaction(availableStores, 'readwrite');
 
         await deleteTx.objectStore(parentStoreName).delete(id);
 
         // Evict child records
         for (const childStore of childStores) {
-          if (!db.objectStoreNames.contains(childStore)) continue;
-          const store = deleteTx.objectStore(childStore);
+          if (!db.objectStoreNames.contains(childStore as string)) continue;
+          const store = deleteTx.objectStore(childStore as any);
           const indexName = `by-${childIndexPrefix}`;
           if (store.indexNames.contains(indexName)) {
             const childKeys = await store.index(indexName).getAllKeys(id);
