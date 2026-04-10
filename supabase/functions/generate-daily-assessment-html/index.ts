@@ -530,7 +530,7 @@ serve(async (req) => {
       padding: 12px;
       margin-top: 16px;
       border: 1px solid #f59e0b;
-      font-family: 'Fira Code', 'Monaco', 'Consolas', monospace;
+      font-family: Georgia, 'Times New Roman', serif;
     }
 
     .notes-header {
