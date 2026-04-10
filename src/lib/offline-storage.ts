@@ -344,6 +344,19 @@ export function getCircuitBreakerStatus(): { open: boolean; failureCount: number
 }
 
 /**
+ * Manually reset the circuit breaker so that user-initiated force sync
+ * can proceed even after repeated failures.
+ */
+export function resetCircuitBreaker(): void {
+  indexedDBFailureCount = 0;
+  circuitBreakerTrippedAt = null;
+  circuitBreakerResetCount = 0;
+  dbPromise = null; // Force fresh connection
+  dbConnectionVerified = false;
+  console.log('[Offline Storage] Circuit breaker manually reset');
+}
+
+/**
  * Quick check if localStorage is functional (used to determine fallback status)
  */
 function isLocalStorageAvailable(): boolean {
@@ -984,7 +997,11 @@ export async function getQueuedOperations() {
   );
 }
 
-export async function removeQueuedOperation(id: number) {
+export async function removeQueuedOperation(id: number | undefined | null) {
+  if (id === undefined || id === null) {
+    console.warn('[Offline Storage] Cannot remove operation with undefined/null ID');
+    return;
+  }
   return withIndexedDBErrorBoundary(
     async () => {
       const db = await getDB();
