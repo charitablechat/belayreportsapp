@@ -1,64 +1,62 @@
 
 
-# Offline Functionality Audit — Complete Findings
+# Implement Automatic Report Naming Convention
 
-## Critical Gaps Found
+## Current State
+Report filenames are scattered across 3 form files with inconsistent patterns like:
+- `training-report-{org}-2024-03-15.html`
+- `inspection-{org}-1710500000.pdf`
+- `daily-assessment-{site}-2024-03-15.html`
 
-### Gap 1: TrainingForm Save Button DISABLED When Offline
-**File:** `src/pages/TrainingForm.tsx` line 1496
+## Target Convention
+**`{Organization} {MM-YYYY}`** — e.g., `"Acme Corp 03-2024"`
+
+Applied to both the filename (for downloads) and the viewer title.
+
+## Plan
+
+### Step 1: Create a shared utility function
+**File:** `src/lib/report-naming.ts` (new)
+
+```typescript
+export function formatReportFilename(
+  organization: string | undefined,
+  reportType: 'inspection' | 'training' | 'daily-assessment',
+  extension: 'pdf' | 'html' = 'html'
+): string {
+  const org = (organization || 'Report').trim();
+  const now = new Date();
+  const mm = String(now.getMonth() + 1).padStart(2, '0');
+  const yyyy = now.getFullYear();
+  return `${org} ${mm}-${yyyy}.${extension}`;
+}
 ```
-disabled={isSaving || !isOnline}
-```
-The "Save Progress" button is completely disabled when offline, even though the save function correctly writes to IndexedDB first and only attempts cloud sync if online. This means **users cannot manually save training reports while offline** — only auto-save (if triggered by a debounce) works.
 
-The "Complete" button (line 1559) is also disabled offline, which is more defensible but should at least queue the completion locally.
+### Step 2: Update all filename references across forms
 
-**Fix:** Change to `disabled={isSaving}` — same as InspectionForm (line 2617) and DailyAssessmentForm (line 1557), which already work correctly offline.
+**`src/pages/InspectionForm.tsx`** — 4 locations:
+- HTML viewer filename (line ~2369, ~3035)
+- PDF download filename (lines ~2204, ~2231)
 
-### Gap 2: InspectionForm "Complete" Button DISABLED When Offline
-**File:** `src/pages/InspectionForm.tsx` line 2688
-```
-disabled={saving || autoSaving || !isOnline}
-```
-Users cannot mark inspections as complete while offline. The completion should be saved locally and synced later.
+**`src/pages/TrainingForm.tsx`** — 3 locations:
+- HTML viewer filename (line ~1144, ~1841)
+- PDF download filename (line ~1030)
 
-**Fix:** Remove `!isOnline` from the disabled condition. The completion status change is just a field update that can be persisted locally.
+**`src/pages/DailyAssessmentForm.tsx`** — 2 locations:
+- HTML viewer filename (line ~1332, ~1830)
 
-### Gap 3: TrainingForm "Complete" Button DISABLED When Offline
-**File:** `src/pages/TrainingForm.tsx` line 1559
-```
-disabled={isSaving || !isOnline}
-```
-Same issue as Gap 2.
+All will import and use `formatReportFilename()`.
 
-**Fix:** Remove `!isOnline`.
+### Step 3: Update backup/recovery filenames (DataRecoveryTool)
+**`src/components/admin/DataRecoveryTool.tsx`** — 3 download locations will also use the new convention where an organization name is available.
 
-### Gap 4: DailyAssessmentForm "Complete/Submit" Button — Already OK
-Line 1620: `disabled={saving || submitting}` — no `!isOnline` check. This is correct.
+## Files Changed
+1. `src/lib/report-naming.ts` — new shared utility
+2. `src/pages/InspectionForm.tsx` — use new naming
+3. `src/pages/TrainingForm.tsx` — use new naming
+4. `src/pages/DailyAssessmentForm.tsx` — use new naming
+5. `src/components/admin/DataRecoveryTool.tsx` — use new naming
 
-### Gap 5: DOCX Import Requires Network (NewInspection)
-**File:** `src/pages/NewInspection.tsx` lines 192-210
-The "Import from DOCX" feature calls an edge function and requires network. This is inherently network-dependent and acceptable, but there's no offline guard — it will just fail with a network error.
-
-**Fix:** Minor — show a toast if offline when the user tries to import, instead of letting the fetch fail silently.
-
-## Non-Issues Confirmed
-- **InspectionForm Save button**: Already works offline (`disabled={saving || autoSaving}`, no `!isOnline`)
-- **DailyAssessmentForm Save button**: Already works offline (`disabled={saving || submitting}`, no `!isOnline`)
-- **Photo capture (PhotoCapture.tsx & ItemPhotoUpload.tsx)**: Fully offline-capable — saves to IndexedDB + device storage immediately
-- **New report creation (NewInspection, NewTraining, NewDailyAssessment)**: Already patched with `getOfflineUserId()` fallback
-- **Auto-save / Emergency save**: Works offline via IndexedDB + localStorage snapshots
-- **Auth**: Fully hardened with cached sessions, offline ID fallback, and token expiry bypass
-- **PDF/HTML generation buttons**: Correctly disabled offline (these require edge functions)
-
-## Summary of Changes
-
-| File | Change | Impact |
-|------|--------|--------|
-| `TrainingForm.tsx` line 1496 | Remove `\|\| !isOnline` from Save button | **Critical** — enables offline manual save |
-| `TrainingForm.tsx` line 1559 | Remove `!isOnline` from Complete button | Enables offline completion |
-| `InspectionForm.tsx` line 2688 | Remove `\|\| !isOnline` from Complete button | Enables offline completion |
-| `NewInspection.tsx` ~line 188 | Add offline guard before DOCX import fetch | Prevents confusing network error |
-
-All other offline paths (saves, photos, creation, auth) are confirmed working across mobile, tablet, and desktop.
+## Cross-Platform
+The naming uses only alphanumeric characters, spaces, and hyphens — safe on Windows, macOS, iOS, and Android. No special characters that would cause filesystem issues.
 
