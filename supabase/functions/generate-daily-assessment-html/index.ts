@@ -242,7 +242,7 @@ serve(async (req) => {
       padding: var(--page-padding);
       background: white;
       margin-bottom: 20px;
-      box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+      box-shadow: none;
       page-break-after: always;
       /* CRITICAL: No max-height, no overflow:hidden */
     }
@@ -503,33 +503,34 @@ serve(async (req) => {
     }
 
     .disclaimer {
-      background: #fef3c7;
-      padding: 10px;
-      border-radius: 4px;
-      border-left: 4px solid #f59e0b;
+      background: transparent;
+      padding: 10px 0;
+      border-radius: 0;
+      border-left: none;
       margin-top: 14px;
     }
 
     .disclaimer-title {
       font-weight: 700;
-      color: #92400e;
+      color: #000;
       margin-bottom: 6px;
-      font-size: 13px;
+      font-size: 10pt;
     }
 
     .disclaimer-text {
-      color: #78350f;
-      font-size: 12px;
+      color: #666;
+      font-size: 8.5pt;
       line-height: 1.5;
+      font-style: italic;
     }
 
-    /* Warning-yellow section notes */
+    /* Section notes - clean style */
     .section-notes {
-      background: #fffbeb;
-      border-radius: 6px;
+      background: transparent;
+      border-radius: 0;
       padding: 12px;
       margin-top: 16px;
-      border: 1px solid #f59e0b;
+      border: 1px solid #000;
       font-family: Georgia, 'Times New Roman', serif;
     }
 
@@ -541,12 +542,12 @@ serve(async (req) => {
     }
 
     .notes-icon {
-      color: #d97706;
+      color: #333;
       font-size: 12px;
     }
 
     .notes-title {
-      color: #92400e;
+      color: #000;
       font-size: 11px;
       text-transform: uppercase;
       letter-spacing: 0.5px;
@@ -561,9 +562,9 @@ serve(async (req) => {
       white-space: pre-wrap;
       word-wrap: break-word;
       padding: 8px;
-      background: #fef3c7;
-      border-radius: 4px;
-      border-left: 3px solid #f59e0b;
+      background: transparent;
+      border-radius: 0;
+      border-left: none;
     }
 
     /* 

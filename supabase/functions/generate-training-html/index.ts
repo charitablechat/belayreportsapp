@@ -197,7 +197,7 @@ serve(async (req) => {
       margin: 0 auto 20px auto;
       background: white;
       padding: var(--page-padding);
-      box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+      box-shadow: none;
       position: relative;
       /* CRITICAL: No max-height, no overflow:hidden */
     }
@@ -432,21 +432,23 @@ serve(async (req) => {
       font-size: 10pt;
     }
     .disclaimer {
-      background: #fef3c7;
-      padding: 10px;
-      border-radius: 4px;
-      border-left: 4px solid #f59e0b;
+      background: transparent;
+      padding: 10px 0;
+      border-radius: 0;
+      border-left: none;
       margin-bottom: 12px;
     }
     .disclaimer-title {
       font-weight: 700;
-      color: #92400e;
+      color: #000;
       margin-bottom: 8px;
+      font-size: 10pt;
     }
     .disclaimer-text {
-      color: #78350f;
-      font-size: 13px;
+      color: #666;
+      font-size: 8.5pt;
       line-height: 1.6;
+      font-style: italic;
     }
     .generated-timestamp {
       text-align: center;
@@ -833,7 +835,7 @@ serve(async (req) => {
         <div class="section-title" style="background: #dc2626;">Actions Requiring Immediate Attention</div>
         <p style="margin: 10px 0 15px 0; font-style: italic; color: #666;">This area lists requirements the trainer either noted as a deficiency at your site or a need to update procedures/policy during the operations of your aerial adventure training.</p>
         <ul>
-          ${content.immediateAttention.map(item => `<li style="border-left-color: #dc2626;">⚠ ${item}</li>`).join('')}
+          ${content.immediateAttention.map(item => `<li>⚠ ${item}</li>`).join('')}
         </ul>
       </div>
       ` : ''}
@@ -967,9 +969,9 @@ serve(async (req) => {
         <div class="section-title">Training Photos</div>
         <div class="photo-grid" style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-top: 8px;">
           ${photoUrls.map(photo => `
-            <div style="border: 1px solid #e2e8f0; border-radius: 8px; overflow: hidden;">
-              <img src="${photo.url}" style="width: 100%; max-height: 200px; object-fit: contain; background: #f1f5f9;" alt="${photo.caption || 'Training photo'}" />
-              ${photo.caption ? `<div style="padding: 6px 10px; font-size: 12px; color: #475569; background: #f8fafc;">${photo.caption}</div>` : ''}
+            <div style="border: 1px solid #000; overflow: hidden;">
+              <img src="${photo.url}" style="width: 100%; max-height: 200px; object-fit: contain;" alt="${photo.caption || 'Training photo'}" />
+              ${photo.caption ? `<div style="padding: 6px 10px; font-size: 10pt; color: #333;">${photo.caption}</div>` : ''}
             </div>
           `).join('')}
         </div>
