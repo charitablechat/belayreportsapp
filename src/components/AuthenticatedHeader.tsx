@@ -124,6 +124,7 @@ export function AuthenticatedHeader() {
       await supabase.auth.signOut();
     } catch (error) {
       console.error("Error signing out:", error);
+    } finally {
       setSigningOut(false);
     }
   };
