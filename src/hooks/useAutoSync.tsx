@@ -17,7 +17,9 @@ import { markSnapshotSynced } from '@/lib/local-backup-ledger';
 // Sync configuration with mobile optimization
 const DEBOUNCE_DELAY = 3000; // 3 seconds after local changes
 const DESKTOP_SYNC_INTERVAL = 30000; // 30 seconds for desktop
+const DESKTOP_IDLE_SYNC_INTERVAL = 120000; // 120 seconds when idle (no unsynced items)
 const MOBILE_SYNC_INTERVAL = 60000; // 60 seconds for mobile (reduced from 5min for faster sync)
+const MOBILE_IDLE_SYNC_INTERVAL = 180000; // 180 seconds when idle on mobile
 const MIN_SYNC_INTERVAL = 5000; // Minimum 5 seconds between syncs
 const INITIAL_SYNC_DELAY = 2000; // 2 seconds delay for initial sync to not block UI
 const BASE_SYNC_TIMEOUT = 30000; // Base 30 second timeout
