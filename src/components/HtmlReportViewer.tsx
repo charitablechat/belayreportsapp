@@ -7,7 +7,7 @@ import { useEffect, useRef } from 'react';
 import { X, Download } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent } from '@/components/ui/dialog';
-import { printFromIframe } from '@/lib/html-report-viewer';
+import { downloadHtmlReport } from '@/lib/html-report-viewer';
 
 interface HtmlReportViewerProps {
   html: string;
@@ -27,9 +27,7 @@ export function HtmlReportViewer({
   const iframeRef = useRef<HTMLIFrameElement>(null);
 
   const handleSavePdf = () => {
-    if (iframeRef.current) {
-      printFromIframe(iframeRef.current);
-    }
+    downloadHtmlReport(enhancedHtml, filename);
   };
 
   // Comprehensive mobile styles to ensure viewport consistency and prevent overlap/clipping
