@@ -2,7 +2,7 @@ import { useEffect, useCallback, useRef, useState } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { syncAllInspectionsAtomic, syncAllTrainingsAtomic, syncAllDailyAssessmentsAtomic } from '@/lib/atomic-sync-manager';
 import { syncPhotos } from '@/lib/sync-manager';
-import { getUnsyncedInspections, getUnsyncedTrainings, getUnsyncedDailyAssessments, getUnsyncedCounts, getCircuitBreakerStatus, pruneOldSyncedPhotoBlobs, getQueuedOperations, removeQueuedOperation, getQueuedTrainingOperations, removeQueuedTrainingOperation, getQueuedAssessmentOperations, removeQueuedAssessmentOperation } from '@/lib/offline-storage';
+import { getUnsyncedInspections, getUnsyncedTrainings, getUnsyncedDailyAssessments, getUnsyncedCounts, getCircuitBreakerStatus, resetCircuitBreaker, pruneOldSyncedPhotoBlobs, getQueuedOperations, removeQueuedOperation, getQueuedTrainingOperations, removeQueuedTrainingOperation, getQueuedAssessmentOperations, removeQueuedAssessmentOperation, clearAllQueuedOperations, clearAllQueuedTrainingOperations, clearAllQueuedAssessmentOperations } from '@/lib/offline-storage';
 import { getUserWithCache, getCachedUserFromStorage, ensureValidSession, type CachedUser } from '@/lib/cached-auth';
 import { hasPendingOfflineAuth, verifyAndReconcileOfflineAuth } from '@/lib/offline-auth';
 import { useQueryClient } from '@tanstack/react-query';
@@ -128,10 +128,15 @@ export const useAutoSync = () => {
     // Skip sync when circuit breaker is open to avoid hammering a broken IndexedDB
     const cbStatus = getCircuitBreakerStatus();
     if (cbStatus.open) {
-      if (import.meta.env.DEV) {
-        console.log('[AutoSync] Circuit breaker open - skipping sync cycle');
+      if (silent) {
+        if (import.meta.env.DEV) {
+          console.log('[AutoSync] Circuit breaker open - skipping background sync cycle');
+        }
+        return;
       }
-      return;
+      // Force sync: reset the circuit breaker so user action always works
+      console.log('[AutoSync] Circuit breaker open but force sync requested - resetting circuit breaker');
+      resetCircuitBreaker();
     }
     
     // Quick sync gate — no network call needed to reject unauthenticated state
@@ -242,23 +247,7 @@ export const useAutoSync = () => {
           hasQueuedOps = inspOps.length > 0 || trainOps.length > 0 || assessOps.length > 0;
           
           if (hasQueuedOps) {
-            // Clean stale non-soft-delete entries immediately
-            const nonSoftDeleteFilter = (op: any) => !op?.data?.deleted_at;
-            const validIdFilter = (op: any) => op.id != null && op.id !== undefined;
-            const staleInsp = inspOps.filter(nonSoftDeleteFilter).filter(validIdFilter);
-            const staleTrain = trainOps.filter(nonSoftDeleteFilter).filter(validIdFilter);
-            const staleAssess = assessOps.filter(nonSoftDeleteFilter).filter(validIdFilter);
-            
-            if (staleInsp.length > 0 || staleTrain.length > 0 || staleAssess.length > 0) {
-              console.log(`[AutoSync] Clearing ${staleInsp.length + staleTrain.length + staleAssess.length} stale queued operations`);
-              await Promise.all([
-                ...staleInsp.map(op => removeQueuedOperation(op.id!)),
-                ...staleTrain.map(op => removeQueuedTrainingOperation(op.id!)),
-                ...staleAssess.map(op => removeQueuedAssessmentOperation(op.id!)),
-              ]);
-            }
-            
-            // Process any remaining soft-delete entries
+            // Process any soft-delete entries first
             try {
               const { processQueuedSoftDeletes } = await import('@/lib/queued-soft-delete-processor');
               const deleteResult = await processQueuedSoftDeletes();
@@ -268,6 +257,14 @@ export const useAutoSync = () => {
             } catch (e) {
               console.warn('[AutoSync] Queued soft-delete processing failed (non-blocking):', e);
             }
+            
+            // Bulk clear all remaining queued operations (avoids IDB key mismatch issues)
+            console.log(`[AutoSync] Bulk clearing stale queued operations (${inspOps.length} insp, ${trainOps.length} train, ${assessOps.length} assess)`);
+            await Promise.all([
+              clearAllQueuedOperations(),
+              clearAllQueuedTrainingOperations(),
+              clearAllQueuedAssessmentOperations(),
+            ]);
           }
         } catch (e) {
           console.warn('[AutoSync] Stale queue check failed (non-blocking):', e);
@@ -350,24 +347,16 @@ export const useAutoSync = () => {
            pruneOldSyncedPhotoBlobs().catch(() => {});
            
            // Always clean stale queued operations after sync completes
-           // This prevents stale entries from accumulating when unsyncedCount is 0
+           // Uses bulk clear to avoid IDB autoIncrement key mismatch issues
            (async () => {
              try {
-               const [inspOps, trainOps, assessOps] = await Promise.all([
-                 getQueuedOperations(),
-                 getQueuedTrainingOperations(),
-                 getQueuedAssessmentOperations(),
-               ]);
-               // Only remove entries that are NOT soft-deletes (those are handled by processQueuedSoftDeletes)
-               const nonSoftDeleteFilter = (op: any) => !op?.data?.deleted_at;
-               const validIdFilter = (op: any) => op.id != null && op.id !== undefined;
                await Promise.all([
-                 ...inspOps.filter(nonSoftDeleteFilter).filter(validIdFilter).map(op => removeQueuedOperation(op.id!)),
-                 ...trainOps.filter(nonSoftDeleteFilter).filter(validIdFilter).map(op => removeQueuedTrainingOperation(op.id!)),
-                 ...assessOps.filter(nonSoftDeleteFilter).filter(validIdFilter).map(op => removeQueuedAssessmentOperation(op.id!)),
+                 clearAllQueuedOperations(),
+                 clearAllQueuedTrainingOperations(),
+                 clearAllQueuedAssessmentOperations(),
                ]);
              } catch (e) {
-               console.warn('[AutoSync] Non-blocking: selective queue cleanup failed:', e);
+               console.warn('[AutoSync] Non-blocking: bulk queue cleanup failed:', e);
              }
            })();
           
