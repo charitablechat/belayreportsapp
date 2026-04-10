@@ -2500,7 +2500,7 @@ export async function evictSyncedReports(ageDays: number): Promise<number> {
         // Evict parent + children in a single transaction
         // Use 'as any' to bypass strict store name typing for dynamic store list
         const allStoreNames = [parentStoreName, ...childStores, 'photos'];
-        const availableStores = allStoreNames.filter(s => db.objectStoreNames.contains(s));
+        const availableStores = allStoreNames.filter(s => db.objectStoreNames.contains(s as any));
         const deleteTx = db.transaction(availableStores as any, 'readwrite');
 
         (deleteTx as any).objectStore(parentStoreName).delete(id);
