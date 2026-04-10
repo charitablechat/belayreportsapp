@@ -8,6 +8,7 @@ import { X, Download } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent } from '@/components/ui/dialog';
 import { downloadHtmlReport } from '@/lib/html-report-viewer';
+import { pdfTitleFromFilename, injectHtmlTitle } from '@/lib/report-naming';
 
 interface HtmlReportViewerProps {
   html: string;
@@ -26,137 +27,26 @@ export function HtmlReportViewer({
 }: HtmlReportViewerProps) {
   const iframeRef = useRef<HTMLIFrameElement>(null);
 
+  const pdfTitle = pdfTitleFromFilename(filename);
+
+  // Build enhanced HTML once — inject title + mobile styles
+  const enhancedHtml = injectHtmlTitle(html, pdfTitle).replace('</head>', `${mobileBaseStyles}</head>`);
+
   const handleSavePdf = () => {
     downloadHtmlReport(enhancedHtml, filename);
   };
 
-  // Comprehensive mobile styles to ensure viewport consistency and prevent overlap/clipping
-  const mobileBaseStyles = `
-    <style>
-      /* Base reset — viewer-specific overrides only */
-      html, body {
-        max-width: 100vw !important;
-        overflow-x: hidden !important;
-      }
-      * {
-        box-sizing: border-box !important;
-      }
-      
-      @media screen and (max-width: 768px) {
-        /* Viewport overflow prevention */
-        html, body, .page, .page-content {
-          max-width: 100vw !important;
-          overflow-x: hidden !important;
-        }
-        
-        /* Thumbnail scaling for viewer context */
-        .item-thumbnail {
-          width: 40px !important;
-          height: 40px !important;
-        }
-        
-        /* Photo gallery full width in viewer */
-        .photo-gallery {
-          max-width: 100% !important;
-          padding: 0 !important;
-          grid-template-columns: 1fr !important;
-          margin: 16px 0 !important;
-        }
-        
-        .inspection-photo {
-          max-height: 220px !important;
-          object-fit: contain !important;
-          max-width: 100% !important;
-        }
-
-        .photo-item {
-          padding: 8px !important;
-        }
-        
-        /* Report-agnostic: collapse grids to single column */
-        .info-grid, .systems-grid {
-          grid-template-columns: 1fr !important;
-        }
-        
-        /* Prevent full-width span overflow on single-column grids */
-        .info-item, .info-cell {
-          grid-column: span 1 !important;
-        }
-
-        /* Inspection info-cell block display */
-        .info-cell {
-          display: block !important;
-        }
-
-        .info-value {
-          display: block !important;
-          word-break: break-word !important;
-          overflow-wrap: anywhere !important;
-        }
-
-        /* Header center: reset absolute positioning */
-        .header-center {
-          position: static !important;
-          transform: none !important;
-          width: 100% !important;
-        }
-        
-        /* Training photo grid: single column */
-        [style*="grid-template-columns: 1fr 1fr"],
-        .photo-grid {
-          grid-template-columns: 1fr !important;
-        }
-
-        /* Per-table minimum widths for horizontal scroll readability */
-        .systems-table { min-width: 600px !important; }
-        .equipment-table { min-width: 550px !important; }
-        .ziplines-table { min-width: 900px !important; }
-        .standards-table { min-width: 500px !important; }
-
-        /* Force table cell wrapping */
-        th, td {
-          white-space: normal !important;
-          word-break: break-word !important;
-          overflow-wrap: anywhere !important;
-        }
-
-        /* Table scroll container */
-        .table-wrapper {
-          overflow-x: auto !important;
-          -webkit-overflow-scrolling: touch !important;
-          max-width: 100% !important;
-        }
-        
-        /* Text wrapping safety */
-        .notes-content, .item-label, .info-label,
-        .comment-bullets, .comment-bullets li,
-        .summary-list, .summary-list li,
-        .text-content, .text-block {
-          word-break: break-word !important;
-          overflow-wrap: anywhere !important;
-        }
-      }
-
-      @media screen and (max-width: 480px) {
-        .item-thumbnail {
-          width: 30px !important;
-          height: 30px !important;
-        }
-        table {
-          font-size: 7pt !important;
-        }
-      }
-    </style>
-  `;
-
-  // Inject filename as <title> so browser print dialog uses it as the PDF name
-  const pdfTitle = filename.replace(/\.\w+$/, '');
-  let enhancedHtml = html.replace(/<title>[^<]*<\/title>/, `<title>${pdfTitle}</title>`);
-  if (!/<title>/.test(enhancedHtml)) {
-    enhancedHtml = enhancedHtml.replace('</head>', `<title>${pdfTitle}</title></head>`);
-  }
-  // Inject mobile styles before </head>
-  enhancedHtml = enhancedHtml.replace('</head>', `${mobileBaseStyles}</head>`);
+  // Override the top-level document.title while the viewer is open so that
+  // browsers that read from the parent window (e.g. Safari) suggest the
+  // correct filename in their "Save as PDF" dialog.
+  useEffect(() => {
+    if (!isOpen) return;
+    const originalTitle = document.title;
+    document.title = pdfTitle;
+    return () => {
+      document.title = originalTitle;
+    };
+  }, [isOpen, pdfTitle]);
 
   // Handle escape key
   useEffect(() => {
@@ -216,3 +106,122 @@ export function HtmlReportViewer({
     </Dialog>
   );
 }
+
+// ── Mobile viewport styles injected into report HTML ──────────────────
+const mobileBaseStyles = `
+  <style>
+    /* Base reset — viewer-specific overrides only */
+    html, body {
+      max-width: 100vw !important;
+      overflow-x: hidden !important;
+    }
+    * {
+      box-sizing: border-box !important;
+    }
+    
+    @media screen and (max-width: 768px) {
+      /* Viewport overflow prevention */
+      html, body, .page, .page-content {
+        max-width: 100vw !important;
+        overflow-x: hidden !important;
+      }
+      
+      /* Thumbnail scaling for viewer context */
+      .item-thumbnail {
+        width: 40px !important;
+        height: 40px !important;
+      }
+      
+      /* Photo gallery full width in viewer */
+      .photo-gallery {
+        max-width: 100% !important;
+        padding: 0 !important;
+        grid-template-columns: 1fr !important;
+        margin: 16px 0 !important;
+      }
+      
+      .inspection-photo {
+        max-height: 220px !important;
+        object-fit: contain !important;
+        max-width: 100% !important;
+      }
+
+      .photo-item {
+        padding: 8px !important;
+      }
+      
+      /* Report-agnostic: collapse grids to single column */
+      .info-grid, .systems-grid {
+        grid-template-columns: 1fr !important;
+      }
+      
+      /* Prevent full-width span overflow on single-column grids */
+      .info-item, .info-cell {
+        grid-column: span 1 !important;
+      }
+
+      /* Inspection info-cell block display */
+      .info-cell {
+        display: block !important;
+      }
+
+      .info-value {
+        display: block !important;
+        word-break: break-word !important;
+        overflow-wrap: anywhere !important;
+      }
+
+      /* Header center: reset absolute positioning */
+      .header-center {
+        position: static !important;
+        transform: none !important;
+        width: 100% !important;
+      }
+      
+      /* Training photo grid: single column */
+      [style*="grid-template-columns: 1fr 1fr"],
+      .photo-grid {
+        grid-template-columns: 1fr !important;
+      }
+
+      /* Per-table minimum widths for horizontal scroll readability */
+      .systems-table { min-width: 600px !important; }
+      .equipment-table { min-width: 550px !important; }
+      .ziplines-table { min-width: 900px !important; }
+      .standards-table { min-width: 500px !important; }
+
+      /* Force table cell wrapping */
+      th, td {
+        white-space: normal !important;
+        word-break: break-word !important;
+        overflow-wrap: anywhere !important;
+      }
+
+      /* Table scroll container */
+      .table-wrapper {
+        overflow-x: auto !important;
+        -webkit-overflow-scrolling: touch !important;
+        max-width: 100% !important;
+      }
+      
+      /* Text wrapping safety */
+      .notes-content, .item-label, .info-label,
+      .comment-bullets, .comment-bullets li,
+      .summary-list, .summary-list li,
+      .text-content, .text-block {
+        word-break: break-word !important;
+        overflow-wrap: anywhere !important;
+      }
+    }
+
+    @media screen and (max-width: 480px) {
+      .item-thumbnail {
+        width: 30px !important;
+        height: 30px !important;
+      }
+      table {
+        font-size: 7pt !important;
+      }
+    }
+  </style>
+`;
