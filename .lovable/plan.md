@@ -1,32 +1,28 @@
 
 
-# Fix PDF Save Filename Across All Platforms
+# Update PDF Filename Convention to Use Underscores
 
-## Problem
-When clicking "Save PDF" in the report viewer, the browser's print-to-PDF dialog uses the iframe's `<title>` tag as the default filename. The edge functions set titles like "Inspection Report - Acme Corp" instead of the desired convention: **"Acme Corp 03-2024.pdf"**.
+## What's Changing
 
-The `HtmlReportViewer` component already receives a correctly formatted `filename` prop (from `formatReportFilename`), but it never injects that into the iframe's HTML `<title>`. The browser ignores the `filename` prop entirely.
-
-## Fix
-
-### 1. `src/components/HtmlReportViewer.tsx` — Inject filename as `<title>`
-In the `enhancedHtml` processing (where mobile styles are already injected before `</head>`), also replace the existing `<title>...</title>` with the `filename` prop (minus the extension). This ensures the browser print dialog pre-populates with the correct name on all platforms.
-
-```typescript
-// Strip extension for the PDF save dialog title
-const pdfTitle = filename.replace(/\.\w+$/, '');
-// Replace existing <title> or inject before </head>
-let enhancedHtml = html.replace(/<title>[^<]*<\/title>/, `<title>${pdfTitle}</title>`);
-// Then inject mobile styles as before
-enhancedHtml = enhancedHtml.replace('</head>', `${mobileBaseStyles}</head>`);
+The naming convention in `formatReportFilename` currently produces:
+```
+Acme Corp 04-2026.pdf
 ```
 
-This single change ensures that when the user clicks "Save PDF" on **any platform** (Web, iOS, Android, Windows, macOS), the print dialog suggests **"Acme Corp 03-2024"** as the filename.
+The requested convention produces:
+```
+Acme_Corp_04_2026.pdf
+```
 
-### 2. `src/lib/html-report-viewer.ts` — Same fix for `downloadHtmlReport`
-The fallback `downloadHtmlReport` function (used when popup-based printing is triggered) also opens a new window. Apply the same `<title>` replacement using the `_filename` parameter (currently unused — hence the underscore prefix).
+This is a **single-line change** in `src/lib/report-naming.ts`. The function is already used consistently across all report types (Inspection, Training, Daily Assessment) and all output paths (HTML viewer iframe title, PDF downloads, JSON exports). The `HtmlReportViewer` and `html-report-viewer.ts` already inject the filename into the `<title>` tag, so the browser's Save PDF dialog will automatically pick up the new format on all platforms.
 
-## Files Changed
-1. `src/components/HtmlReportViewer.tsx` — Replace `<title>` with filename before rendering in iframe
-2. `src/lib/html-report-viewer.ts` — Use the `filename` parameter to set `<title>` in the print window
+## Change
+
+**`src/lib/report-naming.ts`**
+
+1. Update the return format from `${org} ${MM}-${YYYY}` to `${org}_${MM}_${YYYY}`
+2. Update `sanitizeForFilename` to also replace spaces with underscores (so "Acme Corp" becomes "Acme_Corp")
+3. Update the JSDoc comments to reflect the new convention
+
+No other files need changes — all call sites already use `formatReportFilename`.
 
