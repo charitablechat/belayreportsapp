@@ -24,7 +24,7 @@ export interface ReportVersion {
   fieldCount: number;
 }
 
-const MAX_VERSIONS_PER_REPORT = 10;
+const MAX_VERSIONS_PER_REPORT = 5;
 
 // In-memory monotonic counter per report — eliminates async read-before-write race
 const versionCounters = new Map<string, number>();
@@ -109,6 +109,10 @@ export async function appendVersion(
     }
     versionCounters.set(reportId, nextVersion);
 
+    // Strip large HTML fields from snapshots to save storage space
+    const strippedParentData = { ...parentData };
+    delete strippedParentData.latest_report_html;
+
     const version: ReportVersion = {
       id: crypto.randomUUID(),
       reportType,
@@ -116,7 +120,7 @@ export async function appendVersion(
       versionNumber: nextVersion,
       timestamp: Date.now(),
       device: isMobile() ? 'mobile' : 'desktop',
-      parentData,
+      parentData: strippedParentData,
       childrenData,
       trigger,
       fieldCount: calculateFieldCount(parentData, childrenData),
@@ -322,4 +326,57 @@ async function pruneVersions(reportId: string): Promise<void> {
   } catch {
     // Pruning failure is non-critical
   }
+}
+
+/**
+ * Prune ALL reports' version history to a given max.
+ * Used by storage pressure manager under high pressure tiers.
+ * Returns total number of pruned versions.
+ */
+export async function pruneAllVersionsToMax(maxVersions: number): Promise<number> {
+  let totalPruned = 0;
+  try {
+    const { getDB } = await import('./offline-storage');
+    const db = await getDB();
+    
+    if (!db.objectStoreNames.contains('report_versions')) return 0;
+
+    const tx = db.transaction('report_versions', 'readonly');
+    const allVersions = await tx.objectStore('report_versions').getAll() as unknown as ReportVersion[];
+    await tx.done;
+
+    // Group by reportId
+    const grouped = new Map<string, ReportVersion[]>();
+    for (const v of allVersions) {
+      const existing = grouped.get(v.reportId) || [];
+      existing.push(v);
+      grouped.set(v.reportId, existing);
+    }
+
+    const toDeleteIds: string[] = [];
+    for (const [, versions] of grouped) {
+      if (versions.length <= maxVersions) continue;
+      const sorted = versions.sort((a, b) => a.versionNumber - b.versionNumber);
+      const excess = sorted.slice(0, sorted.length - maxVersions);
+      for (const v of excess) {
+        toDeleteIds.push(v.id);
+      }
+    }
+
+    if (toDeleteIds.length > 0) {
+      const deleteTx = db.transaction('report_versions', 'readwrite');
+      for (const id of toDeleteIds) {
+        await deleteTx.objectStore('report_versions').delete(id);
+      }
+      await deleteTx.done;
+      totalPruned = toDeleteIds.length;
+    }
+
+    if (totalPruned > 0 && import.meta.env.DEV) {
+      console.log(`[Version Manager] Pressure-pruned ${totalPruned} versions (max=${maxVersions})`);
+    }
+  } catch {
+    // Non-critical
+  }
+  return totalPruned;
 }
