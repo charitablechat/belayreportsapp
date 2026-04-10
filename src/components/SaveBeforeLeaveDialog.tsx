@@ -52,7 +52,6 @@ export function SaveBeforeLeaveDialog({
           <Button
             variant="destructive"
             onClick={onLeave}
-            disabled={isSaving}
             className="w-full rounded-none font-semibold"
           >
             <LogOut className="w-4 h-4 mr-2" />
@@ -61,7 +60,6 @@ export function SaveBeforeLeaveDialog({
           <Button
             variant="outline"
             onClick={onCancel}
-            disabled={isSaving}
             className="w-full rounded-none border-white/20 text-slate-300 hover:bg-white/10 hover:text-white"
           >
             <X className="w-4 h-4 mr-2" />
