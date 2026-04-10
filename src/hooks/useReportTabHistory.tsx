@@ -1,5 +1,5 @@
 import { useEffect, useRef, useCallback, useState } from "react";
-import { setReportTabActive } from "@/lib/navigation";
+import { setReportTabActive, isOverlayActive } from "@/lib/navigation";
 import { isMobile } from "@/lib/mobile-detection";
 
 const TABLET_BREAKPOINT = 1024;
@@ -71,6 +71,9 @@ export function useReportTabHistory(
     if (!enabled) return;
 
     const handlePopState = (event: PopStateEvent) => {
+      // Don't interfere when a lightbox/overlay is handling the back button
+      if (isOverlayActive()) return;
+
       // Only handle if this is a report tab entry
       if (!event.state?.reportTab && tabHistoryRef.current.length <= 1) {
         // We've exhausted tab history — show the leave dialog
