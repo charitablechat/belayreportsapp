@@ -30,8 +30,16 @@ export function arrayBufferToBase64(buffer: ArrayBuffer): string {
   return btoa(binary);
 }
 
+// Module-level cache: logos are fetched once per cold start and reused across warm invocations
+let cachedLogos: { ropeWorks: string; acct: string } | null = null;
+
 // Fetch logos from Supabase storage and convert to base64 data URIs
 export async function getLogoBase64(): Promise<{ropeWorks: string, acct: string}> {
+  if (cachedLogos) {
+    console.log('[Report Layout] Using cached logos');
+    return cachedLogos;
+  }
+
   const storageBaseUrl = 'https://ssgzcgvygnsrqalisshx.supabase.co/storage/v1/object/public/pdf-templates';
   const ropeWorksUrl = `${storageBaseUrl}/rope-works-logo-embedded.png`;
   const acctUrl = `${storageBaseUrl}/acct-logo-embedded.png`;
@@ -57,13 +65,12 @@ export async function getLogoBase64(): Promise<{ropeWorks: string, acct: string}
       const acctMime = acctResponse.headers.get('content-type') || 'image/png';
       
       console.log('[Report Layout] Successfully loaded logos from storage');
-      console.log('[Report Layout] Rope Works base64 length:', ropeWorksBase64.length);
-      console.log('[Report Layout] ACCT base64 length:', acctBase64.length);
       
-      return {
+      cachedLogos = {
         ropeWorks: `data:${ropeWorksMime};base64,${ropeWorksBase64}`,
         acct: `data:${acctMime};base64,${acctBase64}`
       };
+      return cachedLogos;
     } else {
       console.error('[Report Layout] Failed to fetch logos:', ropeWorksResponse.status, acctResponse.status);
     }

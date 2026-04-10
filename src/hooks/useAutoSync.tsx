@@ -244,9 +244,10 @@ export const useAutoSync = () => {
           if (hasQueuedOps) {
             // Clean stale non-soft-delete entries immediately
             const nonSoftDeleteFilter = (op: any) => !op?.data?.deleted_at;
-            const staleInsp = inspOps.filter(nonSoftDeleteFilter);
-            const staleTrain = trainOps.filter(nonSoftDeleteFilter);
-            const staleAssess = assessOps.filter(nonSoftDeleteFilter);
+            const validIdFilter = (op: any) => op.id != null && op.id !== undefined;
+            const staleInsp = inspOps.filter(nonSoftDeleteFilter).filter(validIdFilter);
+            const staleTrain = trainOps.filter(nonSoftDeleteFilter).filter(validIdFilter);
+            const staleAssess = assessOps.filter(nonSoftDeleteFilter).filter(validIdFilter);
             
             if (staleInsp.length > 0 || staleTrain.length > 0 || staleAssess.length > 0) {
               console.log(`[AutoSync] Clearing ${staleInsp.length + staleTrain.length + staleAssess.length} stale queued operations`);
@@ -359,10 +360,11 @@ export const useAutoSync = () => {
                ]);
                // Only remove entries that are NOT soft-deletes (those are handled by processQueuedSoftDeletes)
                const nonSoftDeleteFilter = (op: any) => !op?.data?.deleted_at;
+               const validIdFilter = (op: any) => op.id != null && op.id !== undefined;
                await Promise.all([
-                 ...inspOps.filter(nonSoftDeleteFilter).map(op => removeQueuedOperation(op.id!)),
-                 ...trainOps.filter(nonSoftDeleteFilter).map(op => removeQueuedTrainingOperation(op.id!)),
-                 ...assessOps.filter(nonSoftDeleteFilter).map(op => removeQueuedAssessmentOperation(op.id!)),
+                 ...inspOps.filter(nonSoftDeleteFilter).filter(validIdFilter).map(op => removeQueuedOperation(op.id!)),
+                 ...trainOps.filter(nonSoftDeleteFilter).filter(validIdFilter).map(op => removeQueuedTrainingOperation(op.id!)),
+                 ...assessOps.filter(nonSoftDeleteFilter).filter(validIdFilter).map(op => removeQueuedAssessmentOperation(op.id!)),
                ]);
              } catch (e) {
                console.warn('[AutoSync] Non-blocking: selective queue cleanup failed:', e);
