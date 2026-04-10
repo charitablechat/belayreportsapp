@@ -143,8 +143,7 @@ serve(async (req) => {
     const systemsInPlaceHtml = ALL_SYSTEMS_IN_PLACE.map(item => {
       const isChecked = content.systemsInPlace.includes(item);
       const checkmark = isChecked ? '☑' : '☐';
-      const style = isChecked ? '' : 'style="border-left-color: #94a3b8; background: #f8fafc;"';
-      return `<li ${style}>${checkmark} ${item}</li>`;
+      return `<li>${checkmark} ${item}</li>`;
     }).join('');
 
     // Generate HTML with page-based structure
