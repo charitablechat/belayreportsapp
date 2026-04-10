@@ -346,12 +346,12 @@ export function sanitizeFilename(name: string): string {
 function buildBackupFilename(org: string | undefined, ext: 'zip' | 'json'): string {
   const name = sanitizeFilename(org || 'report');
   const now = new Date();
-  const month = now.getMonth() + 1;
-  const day = now.getDate();
-  const year = now.getFullYear();
-  const hour = now.getHours();
+  const yyyy = now.getFullYear();
+  const mm = String(now.getMonth() + 1).padStart(2, '0');
+  const dd = String(now.getDate()).padStart(2, '0');
+  const hh = String(now.getHours()).padStart(2, '0');
   const min = String(now.getMinutes()).padStart(2, '0');
-  return `${name}_${month}_${day}_${year}_${hour}_${min}.${ext}`;
+  return `${name}_${yyyy}-${mm}-${dd}_${hh}-${min}.${ext}`;
 }
 
 export async function downloadReportBackup(
