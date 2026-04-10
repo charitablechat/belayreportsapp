@@ -1,119 +1,124 @@
 
 
-# Back Button Navigation Audit Report & Fix Plan
-
-## Architecture Overview
-
-The app has **four competing `popstate` listeners** that coordinate via global flags:
-
-1. **App.tsx root listener** — exit guard + depth tracking
-2. **useReportTabHistory** — tab-level back navigation in report forms
-3. **PhotoGallery lightbox** — close lightbox on back
-4. **ItemPhotoUpload lightbox** — close lightbox on back
-
-Coordination relies on two global booleans: `overlayActive` and `reportTabActive`.
-
----
+# Comprehensive Application Bug Audit & Fix Plan
 
 ## Audit Findings
 
-### BUG 1: Tablet devices get NO tab-back navigation (HIGH)
+### BUG 1: Unused imports in App.tsx (LOW — dead code / bundle size)
 
-**Root cause:** `useReportTabHistory` gates everything on `isMobile()` from `mobile-detection.ts`, which checks user-agent strings only. iPads with iPadOS 13+ report a **desktop** user-agent (`Macintosh`), and many Android tablets also fail this check. The `isMobile()` function does NOT check screen width.
+**File:** `src/App.tsx` lines 35-36
 
-**Impact:** On tablets, pressing the browser/hardware back button inside a report form navigates away from the report entirely (falls through to App.tsx root handler) instead of going to the previous tab. This is the most critical issue.
+`NetworkStatusIndicator` and `SyncStatusIndicator` are imported but never used in the JSX template. These are dead imports that add unnecessary bytes to the bundle.
 
-**Affected pages:** InspectionForm, TrainingForm, DailyAssessmentForm
-
-### BUG 2: `navigationDepth` counter drifts out of sync (MEDIUM)
-
-**Root cause:** Multiple history entries are pushed by different systems (lovableGuard, reportTab entries, lightbox entries) but `navigationDepth` only tracks React Router location changes. When the App.tsx popstate handler fires and calls `decrementNavigation()`, it may decrement for history pops that were pushed by lightbox/tab code — entries that were never counted by `trackNavigation()`.
-
-**Impact:** After opening/closing lightboxes or switching tabs, `navigationDepth` can reach 0 prematurely. The next back press redirects to `/dashboard` instead of the actual previous page.
-
-### BUG 3: Competing popstate listeners — no guaranteed execution order (MEDIUM)
-
-**Root cause:** Four `addEventListener('popstate', ...)` calls are active simultaneously inside report forms. When back is pressed:
-- App.tsx handler fires — checks `isOverlayActive()` / `isReportTabActive()` and bails
-- Report tab handler fires — handles tab navigation
-- Lightbox handler fires — may also run
-
-The order depends on registration timing, and React effect cleanup/re-registration can change it. If the App.tsx handler runs before the overlay flag is set (race on effect mount timing), it will process the event AND the overlay handler will also process it — double-handling.
-
-**Specific scenario:** Open report → open lightbox → press back. Both the lightbox `onPopState` and App.tsx `handlePopState` fire. App.tsx checks `isOverlayActive()` which is `true`, so it returns early — this works. But if the lightbox effect cleanup runs slightly before and sets `overlayActive = false`, the App.tsx handler will process the pop and decrement the depth counter incorrectly.
-
-### BUG 4: PhotoGallery effect dependency uses boolean expression (LOW)
-
-**Root cause:** `useEffect` dependency is `[selectedPhotoIndex !== null]` — a computed boolean. This means the effect re-runs only on `null ↔ non-null` transitions, which is correct for open/close. However, it re-registers the popstate listener on every open, pushing a new history entry each time. If the lightbox is closed via the X button (which calls `window.history.back()`), AND a new photo is immediately selected, there's a brief window where two history entries exist for the lightbox.
-
-### BUG 5: Desktop browser back button bypasses `useBlocker` on report forms (LOW-MEDIUM)
-
-**Root cause:** The App.tsx root popstate handler intercepts the browser back button. When `navigationDepth > 0`, it calls `decrementNavigation()` but does NOT call `navigate(-1)` — it lets the browser's native popstate proceed. React Router's `useBlocker` should intercept this, but the depth counter is now out of sync with the actual history stack. On the NEXT back press, the depth may be 0, causing a redirect to `/dashboard` that bypasses the unsaved-changes dialog.
+**Fix:** Remove the two unused import lines.
 
 ---
 
-## Fix Plan
+### BUG 2: Stale closure in ItemPhotoUpload cleanup effect (MEDIUM — memory leak)
 
-### 1. Fix tablet detection in `useReportTabHistory` (critical)
+**File:** `src/components/inspection/ItemPhotoUpload.tsx` lines 90-95
 
-**File:** `src/hooks/useReportTabHistory.tsx`
+The cleanup `useEffect` has an empty dependency array `[]` but captures `localPreview` from the initial render (always `null`). When `localPreview` changes later, the cleanup function still references the stale initial value and never revokes the real object URL.
 
-Replace `isMobile()` (user-agent only) with a check that also considers screen width, matching the `useIsMobile()` hook logic. Specifically, treat devices with `window.innerWidth < 1024` OR touch-capable devices as needing tab-back navigation. This covers:
-- Phones (< 768px)
-- Tablets in portrait (768–1024px)
-- Tablets in landscape with touch
-
+**Fix:** Use a ref to track `localPreview` so the cleanup always revokes the latest URL:
 ```typescript
-// Replace: const isMobileDevice = isMobile();
-// With a function that checks touch capability + screen width
-const isMobileOrTablet = isMobile() || 
-  (window.innerWidth < 1024 && navigator.maxTouchPoints > 0);
+const localPreviewRef = useRef<string | null>(null);
+useEffect(() => { localPreviewRef.current = localPreview; }, [localPreview]);
+
+useEffect(() => {
+  return () => {
+    if (prevObjectUrlRef.current) URL.revokeObjectURL(prevObjectUrlRef.current);
+    if (localPreviewRef.current) URL.revokeObjectURL(localPreviewRef.current);
+  };
+}, []);
 ```
-
-### 2. Prevent depth counter drift from non-router history entries
-
-**File:** `src/App.tsx`
-
-When the root popstate handler fires and neither overlay nor report-tab is active, check if the popped state belongs to a known non-router entry (lightbox, reportTab, lovableGuard) before decrementing. Only decrement for genuine router-level pops.
-
-```typescript
-const handlePopState = (event: PopStateEvent) => {
-  if (isOverlayActive()) return;
-  if (isReportTabActive()) return;
-  
-  // Don't decrement for non-router history entries
-  const state = event.state;
-  if (state?.lightbox || state?.reportTab) return;
-  
-  if (isMobileDevice) triggerNavigationHaptic();
-  
-  if (state?.lovableGuard && getNavigationDepth() === 0) {
-    window.history.pushState({ lovableGuard: true }, "");
-    navigate("/dashboard");
-  } else if (getNavigationDepth() > 0) {
-    decrementNavigation();
-  }
-};
-```
-
-### 3. Guard lightbox popstate handler against stale closures
-
-**File:** `src/components/PhotoGallery.tsx`
-
-Use a ref for `selectedPhotoIndex` in the popstate handler to avoid stale closure issues, and ensure `overlayActive` is cleared synchronously before the handler returns.
-
-### 4. Add viewport resize listener in `useReportTabHistory`
-
-**File:** `src/hooks/useReportTabHistory.tsx`
-
-If the user rotates a tablet from landscape (> 1024) to portrait (< 1024), the hook should dynamically enable/disable tab history tracking. Add a resize listener or use `useIsMobile()` pattern.
 
 ---
+
+### BUG 3: Multiple `onAuthStateChange` listeners accumulate (MEDIUM — performance)
+
+**File:** `src/lib/cached-auth.ts` line 42
+
+The `initAuthListener()` function in `cached-auth.ts` registers an `onAuthStateChange` callback that is **never unsubscribed**. It uses a boolean gate (`authListenerInitialized`) so it only fires once, which is correct — but this is in addition to per-component listeners registered in:
+- `AuthenticatedHeader.tsx` (properly cleaned up)
+- `Dashboard.tsx` (properly cleaned up)
+- `InspectionForm.tsx` (properly cleaned up)
+- `useReportEditPermission.tsx` (properly cleaned up)
+
+With 5 total listeners, every auth event (token refresh every ~60 mins, tab focus, etc.) fires 5 handlers. This is acceptable but worth noting. The cached-auth one cannot be unsubscribed by design (singleton pattern). **No fix needed** — this is by design.
+
+---
+
+### BUG 4: `handleOnline` triggers non-silent sync bypassing debounce (LOW-MEDIUM)
+
+**File:** `src/hooks/useAutoSync.tsx` line 533
+
+When the device goes online, `performSync(false)` is called (non-silent), which bypasses the `MIN_SYNC_INTERVAL` debounce. If the network flickers repeatedly (common on mobile), this can trigger rapid consecutive sync attempts. The `syncInProgressRef` guard prevents true duplicates, but the waiting promise (lines 174-186) queues up, potentially stacking multiple 15-second timeout promises.
+
+**Fix:** Add a debounce to `handleOnline` — use `triggerDebouncedSync()` instead of `performSync(false)`, or add a minimum gap check before the session refresh + sync.
+
+---
+
+### BUG 5: `refreshSession` result type mismatch in `handleOnline` (LOW)
+
+**File:** `src/hooks/useAutoSync.tsx` lines 509-514
+
+The `Promise.race` resolves with either `supabase.auth.refreshSession()` (which returns `{ data, error }`) or a timeout that returns `{ error: { message } }`. The check `if ('error' in refreshResult && refreshResult.error)` will be true for both the timeout AND a successful result where `error` is `null`. The code works because it only logs a warning, but the type handling is imprecise.
+
+**Fix:** Check `refreshResult.error` more explicitly — the current behavior is safe but could log spurious warnings if `refreshSession` succeeds with `error: null`.
+
+---
+
+### BUG 6: `useReportTabHistory` popstate handler doesn't check `isOverlayActive` (MEDIUM)
+
+**File:** `src/hooks/useReportTabHistory.tsx` lines 73-96
+
+When a lightbox is open inside a report form (overlay active), the tab history popstate handler can still fire and process the back-button press as a tab navigation. The App.tsx handler checks `isOverlayActive()` and `isReportTabActive()` to bail, but the tab history handler itself doesn't check `isOverlayActive()`. Both handlers run because `addEventListener` fires all registered listeners.
+
+**Scenario:** Open lightbox inside report → press back → lightbox handler closes lightbox AND tab handler also pops a tab from history, causing an unexpected tab change.
+
+**Fix:** Add `if (isOverlayActive()) return;` at the top of the `handlePopState` in `useReportTabHistory.tsx`.
+
+---
+
+### BUG 7: PhotoGallery lightbox pushes duplicate history entries on rapid open/close (LOW)
+
+**File:** `src/components/PhotoGallery.tsx` lines 122-143
+
+When a user rapidly opens photo A, closes it (via X button which calls `window.history.back()`), then immediately opens photo B, the effect cleanup for A may not have run yet. The new effect for B pushes another `{ lightbox: true }` entry. This leaves an orphaned history entry in the stack.
+
+**Fix:** Guard the `pushState` with a check: only push if `lightboxHistoryPushedRef.current` is false. Currently the ref is reset to false when the lightbox closes, but there's a race window.
+
+---
+
+### BUG 8: `camera-capture-dialog.tsx` doesn't revoke preview URL on dialog close (LOW — memory leak)
+
+**File:** `src/components/ui/camera-capture-dialog.tsx` line 99
+
+When the dialog closes without the user clicking "Retake" or "Use Photo", the `previewUrl` object URL created at line 99 is never revoked. The `handleRetake` function properly revokes it, but closing the dialog via the X button or overlay click doesn't.
+
+**Fix:** Add a cleanup effect that revokes `previewUrl` when the dialog's `open` prop changes to `false`.
+
+---
+
+## Fix Plan Summary
+
+| # | Severity | File | Fix |
+|---|----------|------|-----|
+| 1 | LOW | `App.tsx` | Remove unused `NetworkStatusIndicator` and `SyncStatusIndicator` imports |
+| 2 | MEDIUM | `ItemPhotoUpload.tsx` | Use ref for `localPreview` in cleanup effect |
+| 3 | — | `cached-auth.ts` | No fix needed (by design) |
+| 4 | LOW-MED | `useAutoSync.tsx` | Debounce `handleOnline` with min interval check |
+| 5 | LOW | `useAutoSync.tsx` | Tighten `refreshResult.error` check |
+| 6 | MEDIUM | `useReportTabHistory.tsx` | Add `isOverlayActive()` guard to popstate handler |
+| 7 | LOW | `PhotoGallery.tsx` | Guard duplicate `pushState` with ref check |
+| 8 | LOW | `camera-capture-dialog.tsx` | Revoke preview URL on dialog close |
 
 ## Files Changed
-
-1. **`src/hooks/useReportTabHistory.tsx`** — Use touch + screen-width detection instead of UA-only; add resize listener for orientation changes
-2. **`src/App.tsx`** — Filter popstate events by state type to prevent depth drift; skip non-router pops
-3. **`src/components/PhotoGallery.tsx`** — Use ref for popstate handler to prevent stale closures
-4. **`src/components/inspection/ItemPhotoUpload.tsx`** — Same stale-closure fix as PhotoGallery
+1. `src/App.tsx` — remove 2 unused imports
+2. `src/components/inspection/ItemPhotoUpload.tsx` — ref-based cleanup for localPreview
+3. `src/hooks/useAutoSync.tsx` — debounce handleOnline, tighten error check
+4. `src/hooks/useReportTabHistory.tsx` — add overlay guard to popstate handler
+5. `src/components/PhotoGallery.tsx` — guard duplicate lightbox history push
+6. `src/components/ui/camera-capture-dialog.tsx` — revoke preview URL on close
 
