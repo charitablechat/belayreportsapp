@@ -1395,7 +1395,7 @@ export default function TrainingForm() {
               handleSaveAndLeave(),
               new Promise(resolve => setTimeout(resolve, 8000)),
             ]);
-            emitSyncComplete();
+            // emitSyncComplete removed — save-before-leave is not a real sync
             markPendingDashboardRefresh();
             markDashboardStaleTimestamp();
           } catch (e) {
