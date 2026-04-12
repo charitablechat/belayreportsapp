@@ -264,9 +264,17 @@ export function DashboardReportsSection({
     const total = fullData.length;
     const drafts = fullData.filter(r => r.status === 'draft').length;
     const completed = fullData.filter(r => r.status === 'completed').length;
-    const overdue = criticalCount + warningCount;
+    // Compute overdue from full data, not from the sliced filter hook
+    const now = new Date();
+    const overdue = fullData.filter(r => {
+      if (r.status === 'completed') return false;
+      const createdAt = r.created_at ? new Date(r.created_at) : null;
+      if (!createdAt || isNaN(createdAt.getTime())) return true; // treat missing date as overdue
+      const age = Math.floor((now.getTime() - createdAt.getTime()) / (1000 * 60 * 60 * 24));
+      return age > 3; // matches tierOf: >3 days = warning, >5 = critical
+    }).length;
     return { total, drafts, overdue, completed };
-  }, [activeReportTab, allInspections, allTrainings, allDailyAssessments, inspections, trainings, dailyAssessments, currentReports, criticalCount, warningCount]);
+  }, [activeReportTab, allInspections, allTrainings, allDailyAssessments, inspections, trainings, dailyAssessments, currentReports]);
 
   // Handle stats bar filter clicks
   const handleStatsFilter = (filter: 'all' | 'drafts' | 'overdue' | 'completed') => {
@@ -469,7 +477,12 @@ export function DashboardReportsSection({
           completed={statsData.completed}
           onFilterClick={handleStatsFilter}
           activeFilter={statsFilter}
-          dataValidated={dataValidated}
+          dataValidated={
+            activeReportTab === 'inspections' ? inspectionsValidated
+            : activeReportTab === 'training' ? trainingsValidated
+            : activeReportTab === 'daily' ? dailyValidated
+            : (inspectionsValidated && trainingsValidated && dailyValidated)
+          }
         />
       )}
 
