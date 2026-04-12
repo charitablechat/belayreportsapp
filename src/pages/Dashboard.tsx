@@ -764,7 +764,7 @@ export default function Dashboard() {
     }
   };
 
-  const loadTrainingReports = async (cachedUserId?: string, cachedIsSuperAdmin?: boolean, sessionValid: boolean = true): Promise<{ networkSuccess: boolean }> => {
+  const loadTrainingReports = async (cachedUserId?: string, cachedIsSuperAdmin?: boolean, sessionValid: boolean = true): Promise<{ networkSuccess: boolean; definitive: boolean }> => {
     try {
       // Use passed userId or fetch from cache
       const userId = cachedUserId || (await getUserWithCache())?.id;
