@@ -1,38 +1,55 @@
 
 
-# Remove Auth Gate from InspectionForm Save
+# Offline Profile Autopopulation for New Reports
 
 ## Problem
-`InspectionForm.performSave` is the **only** form that checks authentication before saving locally. Lines 1354–1371 run a 4-layer auth check and throw `"User not authenticated"` if all layers fail — which aborts the entire save, including the local IndexedDB write.
+When creating a new report offline, the user's name and ACCT number fields are blank because the profile fetch (`supabase.from('profiles').select(...)`) requires network access.
 
-`TrainingForm.saveTraining` and `DailyAssessmentForm.handleSaveProgress` both skip auth entirely and write directly to IndexedDB/localStorage. This is the correct pattern — local saves should never depend on authentication.
+## Solution
+Cache the user's profile in `localStorage` on every successful fetch, then use that cache as a fallback when offline or when the fetch fails.
 
-## Why the Auth Check Exists (and Why It's Wrong Here)
-The auth check was originally added to stamp `last_modified_by` on the inspection. But this is a nice-to-have metadata field — it should never block data persistence. The other two forms handle this identically (`currentUser?.id`) without an auth gate.
+## Changes
 
-## Fix
+### 1. `src/lib/profile-cache.ts` — Add localStorage persistence
 
-**File: `src/pages/InspectionForm.tsx`** (~lines 1354–1371)
+Add two helper functions alongside the existing in-memory cache:
+- `persistProfileToLocalStorage(userId, profile)` — saves `{first_name, last_name, avatar_url, acct_number}` to `localStorage` under a key like `cached_profile_<userId>`
+- `getPersistedProfile(userId)` — reads the localStorage entry (no TTL — this is a "last known good" fallback)
 
-Remove the auth verification block and replace it with a soft, non-blocking approach that matches TrainingForm/DailyAssessmentForm:
+Update the existing `getCachedProfile()` function to:
+1. Include `acct_number` in the select query (currently missing)
+2. Call `persistProfileToLocalStorage()` on successful DB fetch
+3. Fall back to `getPersistedProfile()` when the DB fetch returns null or times out
+
+### 2. `src/pages/NewInspection.tsx` — Use cached profile offline
+
+Update the `fetchUserProfile` useEffect (lines 103–131):
+- Import and use `getCachedProfile()` instead of a raw Supabase query
+- If `getUserWithCache()` returns null (offline, no cached user), use `getOfflineUserId()` to get the userId and call `getCachedProfile()` which will return the localStorage fallback
+- This ensures name + ACCT number are populated from the last successful login
+
+### 3. `src/pages/NewTraining.tsx` — Use cached profile offline
+
+Same pattern as NewInspection (lines 35–59): replace raw Supabase query with `getCachedProfile()` + offline userId fallback.
+
+### 4. `src/pages/NewDailyAssessment.tsx` — Use cached profile offline
+
+Same pattern (lines 35–59): replace raw Supabase query with `getCachedProfile()` + offline userId fallback.
+
+## How It Works
 
 ```text
-Before (throws & aborts save):
-  let user = await getUserWithCache();
-  ... 4-layer fallback ...
-  if (!user) throw new Error('User not authenticated');
+Online login → profile fetched from DB → saved to localStorage
+                                        → saved to in-memory cache
 
-After (never blocks save):
-  // Best-effort user lookup for last_modified_by — never blocks save
-  const user = await getUserWithCache().catch(() => null);
+Later, offline → getUserWithCache() → null
+              → getOfflineUserId() → userId from localStorage session
+              → getCachedProfile(userId) → reads localStorage fallback
+              → name + ACCT number populated ✓
 ```
 
-The `last_modified_by` field already has a conditional guard (`currentUser?.id && currentUser.id !== inspection.inspector_id`), so it gracefully handles a missing user by simply not setting the field.
-
-### Specific Changes
-1. Remove lines 1354–1371 (the 4-layer auth check + throw)
-2. The `currentUser` variable (already available from the hook) continues to handle `last_modified_by` — no change needed there
-3. Remove the now-unused `ensureValidSession` import if it's only used here
-
-This makes InspectionForm consistent with TrainingForm and DailyAssessmentForm: **data is always saved locally first, authentication is only relevant for cloud sync**.
+## No Risk of Stale Data
+- localStorage profile is refreshed on every successful online profile fetch
+- The data (name, ACCT number) rarely changes — staleness is not a practical concern
+- No sensitive tokens or secrets are stored — only display name and account number
 
