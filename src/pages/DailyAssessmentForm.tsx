@@ -1446,14 +1446,12 @@ export default function DailyAssessmentForm() {
             setIsSavingBeforeLeave(false);
           }
           setShowLeaveDialog(false);
-          bypassAndProceed();
           navigate('/dashboard');
         }}
         onLeave={() => {
           markPendingDashboardRefresh();
           markDashboardStaleTimestamp();
           setShowLeaveDialog(false);
-          bypassAndProceed();
           navigate('/dashboard');
         }}
         onCancel={() => setShowLeaveDialog(false)}

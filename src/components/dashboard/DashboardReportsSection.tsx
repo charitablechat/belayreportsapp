@@ -130,6 +130,7 @@ interface DashboardReportsSectionProps {
   totalInspections?: number;
   totalTrainings?: number;
   totalDailyAssessments?: number;
+  dataValidated?: boolean;
   activeReportTab: string;
   setActiveReportTab: (tab: string) => void;
   loading: boolean;
@@ -158,6 +159,7 @@ export function DashboardReportsSection({
   totalInspections,
   totalTrainings,
   totalDailyAssessments,
+  dataValidated,
   activeReportTab,
   setActiveReportTab,
   loading,
@@ -457,6 +459,7 @@ export function DashboardReportsSection({
           completed={statsData.completed}
           onFilterClick={handleStatsFilter}
           activeFilter={statsFilter}
+          dataValidated={dataValidated}
         />
       )}
 

@@ -629,7 +629,7 @@ export default function Dashboard() {
       // Show offline/cached data immediately (stale-while-revalidate)
       const offlineData = await offlineWithTimeout;
       if (offlineData.length > 0) {
-        setInspections(prev => prev.length === 0 ? offlineData : prev);
+        setInspections(offlineData);
         writeDashboardCache('dashboard-cache-inspections', offlineData);
         if (import.meta.env.DEV) {
           console.log('[Dashboard] Stale-while-revalidate inspections from cache:', offlineData.length);
@@ -800,7 +800,7 @@ export default function Dashboard() {
       
       const offlineData = await offlineWithTimeout;
       if (offlineData.length > 0) {
-        setTrainings(prev => prev.length === 0 ? offlineData : prev);
+        setTrainings(offlineData);
         writeDashboardCache('dashboard-cache-trainings', offlineData);
         if (import.meta.env.DEV) {
           console.log('[Dashboard] Stale-while-revalidate trainings from cache:', offlineData.length);
@@ -958,7 +958,7 @@ export default function Dashboard() {
       
       const offlineData = await offlineWithTimeout;
       if (offlineData.length > 0) {
-        setDailyAssessments(prev => prev.length === 0 ? offlineData : prev);
+        setDailyAssessments(offlineData);
         writeDashboardCache('dashboard-cache-daily', offlineData);
         if (import.meta.env.DEV) {
           console.log('[Dashboard] Stale-while-revalidate assessments from cache:', offlineData.length);
@@ -1553,6 +1553,7 @@ export default function Dashboard() {
                   totalInspections={dataValidated ? inspections.length : undefined}
                   totalTrainings={dataValidated ? trainings.length : undefined}
                   totalDailyAssessments={dataValidated ? dailyAssessments.length : undefined}
+                  dataValidated={dataValidated}
                   invoicedCount={invoicedCount}
                   activeReportTab={activeReportTab}
                   setActiveReportTab={setActiveReportTab}

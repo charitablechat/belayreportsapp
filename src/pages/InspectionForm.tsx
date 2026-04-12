@@ -466,12 +466,9 @@ export default function InspectionForm() {
     // Fetch current user - works offline with cache + offline fallback
     const fetchUser = async () => {
       let user = await getUserWithCache();
-      if (!user && !navigator.onLine) {
+      if (!user) {
         const offlineId = getOfflineUserId();
         if (offlineId) user = { id: offlineId } as any;
-      }
-      if (!user && navigator.onLine) {
-        user = await ensureValidSession();
       }
       setCurrentUser(user);
     };
@@ -2471,14 +2468,12 @@ export default function InspectionForm() {
             setIsSavingBeforeLeave(false);
           }
           setShowLeaveDialog(false);
-          bypassAndProceed();
           navigate('/dashboard');
         }}
         onLeave={() => {
           markPendingDashboardRefresh();
           markDashboardStaleTimestamp();
           setShowLeaveDialog(false);
-          bypassAndProceed();
           navigate('/dashboard');
         }}
         onCancel={() => setShowLeaveDialog(false)}
