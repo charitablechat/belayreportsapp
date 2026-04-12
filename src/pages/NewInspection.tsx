@@ -103,23 +103,18 @@ export default function NewInspection() {
   useEffect(() => {
     const fetchUserProfile = async () => {
       try {
-        const user = await getUserWithCache();
-        if (user) {
-          const { data: profile } = await supabase
-            .from('profiles')
-            .select('first_name, last_name, acct_number')
-            .eq('id', user.id)
-            .single();
-          
-          if (profile) {
-            const fullName = [profile.first_name, profile.last_name].filter(Boolean).join(' ').trim();
-            if (fullName) {
-              setFormData(prev => ({
-                ...prev,
-                previous_inspector: prev.previous_inspector || fullName,
-                acct_number: prev.acct_number || profile.acct_number || "",
-              }));
-            }
+        const userId = (await getUserWithCache())?.id || getOfflineUserId();
+        if (!userId) return;
+
+        const profile = await getCachedProfile(userId);
+        if (profile) {
+          const fullName = [profile.first_name, profile.last_name].filter(Boolean).join(' ').trim();
+          if (fullName) {
+            setFormData(prev => ({
+              ...prev,
+              previous_inspector: prev.previous_inspector || fullName,
+              acct_number: prev.acct_number || profile.acct_number || "",
+            }));
           }
         }
       } catch (error) {

@@ -35,19 +35,14 @@ export default function NewDailyAssessment() {
   useEffect(() => {
     const fetchUserProfile = async () => {
       try {
-        const user = await getUserWithCache();
-        if (user) {
-          const { data: profile } = await supabase
-            .from('profiles')
-            .select('first_name, last_name')
-            .eq('id', user.id)
-            .single();
-          
-          if (profile) {
-            const fullName = [profile.first_name, profile.last_name].filter(Boolean).join(' ').trim();
-            if (fullName) {
-              setTrainerName(fullName);
-            }
+        const userId = (await getUserWithCache())?.id || getOfflineUserId();
+        if (!userId) return;
+
+        const profile = await getCachedProfile(userId);
+        if (profile) {
+          const fullName = [profile.first_name, profile.last_name].filter(Boolean).join(' ').trim();
+          if (fullName) {
+            setTrainerName(fullName);
           }
         }
       } catch (error) {
