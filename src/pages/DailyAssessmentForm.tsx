@@ -4,9 +4,9 @@ import { useReportTabHistory } from "@/hooks/useReportTabHistory";
 import { isLocalDataNewer } from "@/lib/local-data-guards";
 import { useParams, useNavigate } from "react-router-dom";
 import { goBack } from "@/lib/navigation";
-import { emitSyncComplete, markPendingDashboardRefresh, markDashboardStaleTimestamp } from "@/lib/sync-events";
+import { markPendingDashboardRefresh, markDashboardStaleTimestamp } from "@/lib/sync-events";
 import { supabase } from "@/integrations/supabase/client";
-import { getUserWithCache, getOfflineUserId, ensureValidSession } from "@/lib/cached-auth";
+import { getUserWithCache, getOfflineUserId } from "@/lib/cached-auth";
 import { useFormConfiguration } from "@/hooks/useFormConfiguration";
 import { Button } from "@/components/ui/button";
 import { ArrowLeft, Save, FileText, Loader2, WifiOff, Check, Sunrise, Sunset, Settings, Package, Building, Cloud, LogOut, User, CloudOff, CheckCircle, Camera, RefreshCw, AlertTriangle, HardDrive } from "lucide-react";
@@ -287,18 +287,10 @@ export default function DailyAssessmentForm() {
 
   // Auto-retry on network reconnect is now handled by useAutoSync hook
 
-  // Fetch current user with offline fallback
+  // Fetch current user with offline fallback (non-blocking, matches InspectionForm)
   useEffect(() => {
     const fetchUser = async () => {
       let user = await getUserWithCache();
-      if (!user && !navigator.onLine) {
-        const offlineId = getOfflineUserId();
-        if (offlineId) user = { id: offlineId } as any;
-      }
-      if (!user && navigator.onLine) {
-        user = await ensureValidSession();
-      }
-      // Last resort: network may have flickered — try offline ID
       if (!user) {
         const offlineId = getOfflineUserId();
         if (offlineId) user = { id: offlineId } as any;
@@ -1437,7 +1429,7 @@ export default function DailyAssessmentForm() {
               handleSaveAndLeave(),
               new Promise(resolve => setTimeout(resolve, 8000)),
             ]);
-            emitSyncComplete();
+            // emitSyncComplete removed — save-before-leave is not a real sync
             markPendingDashboardRefresh();
             markDashboardStaleTimestamp();
           } catch (e) {

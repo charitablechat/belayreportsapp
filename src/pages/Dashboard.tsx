@@ -119,7 +119,11 @@ export default function Dashboard() {
   const [dailyAssessments, setDailyAssessments] = useState<any[]>(() => readDashboardCache('dashboard-cache-daily'));
   const [loading, setLoading] = useState(true);
   // Track whether we've received at least one definitive result per category
-  const [dataValidated, setDataValidated] = useState(false);
+  // Per-dataset validation: tracks whether each dataset has received a definitive result
+  const [inspectionsValidated, setInspectionsValidated] = useState(false);
+  const [trainingsValidated, setTrainingsValidated] = useState(false);
+  const [dailyValidated, setDailyValidated] = useState(false);
+  const dataValidated = inspectionsValidated && trainingsValidated && dailyValidated;
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [inspectionToDelete, setInspectionToDelete] = useState<any>(null);
   const [reportToDelete, setReportToDelete] = useState<any>(null);
@@ -360,8 +364,12 @@ export default function Dashboard() {
         loadDailyAssessments(userId, superAdminStatus, sessionValid),
       ]);
 
+      // Mark per-dataset validation based on whether each got a definitive result
+      if (results[0].definitive) setInspectionsValidated(true);
+      if (results[1].definitive) setTrainingsValidated(true);
+      if (results[2].definitive) setDailyValidated(true);
+
       // Track network failures for stale-data banner
-      // Fix: detect query-level timeouts even when session is valid
       const anyNetworkSuccess = results.some(r => r.networkSuccess);
       if (effectiveOnline && !anyNetworkSuccess) {
         networkFailCountRef.current++;
@@ -373,7 +381,6 @@ export default function Dashboard() {
         setShowStaleDataBanner(false);
       }
     } finally {
-      setDataValidated(true);
       refreshInFlightRef.current = false;
       // If a refresh was queued while we were busy, trigger it now
       if (pendingRefreshRef.current) {
@@ -385,7 +392,9 @@ export default function Dashboard() {
 
   useEffect(() => {
     setLoading(true);
-    setDataValidated(false);
+    setInspectionsValidated(false);
+    setTrainingsValidated(false);
+    setDailyValidated(false);
 
     const LOAD_TIMEOUT = 20000;
     let loadCompleted = false;
@@ -577,7 +586,7 @@ export default function Dashboard() {
     ]);
   };
 
-  const loadInspections = async (cachedUserId?: string, cachedIsSuperAdmin?: boolean, sessionValid: boolean = true): Promise<{ networkSuccess: boolean }> => {
+  const loadInspections = async (cachedUserId?: string, cachedIsSuperAdmin?: boolean, sessionValid: boolean = true): Promise<{ networkSuccess: boolean; definitive: boolean }> => {
     try {
       // Use passed userId or fetch from cache
       const userId = cachedUserId || (await getUserWithCache())?.id;
@@ -733,27 +742,29 @@ export default function Dashboard() {
           if (import.meta.env.DEV) {
             console.log('[Dashboard] Loaded from Supabase:', networkData.length);
           }
-          return { networkSuccess: true };
-        } else if (networkData !== null && offlineData.length === 0 && sessionValid) {
-          // Only clear when session is VERIFIED valid and server confirmed zero
-          setInspections(prev => prev.length > 0 ? prev : []);
-          return { networkSuccess: true };
+          return { networkSuccess: true, definitive: true };
+        } else if (networkData !== null && sessionValid) {
+          // Server confirmed zero reports — this is a definitive empty result
+          setInspections([]);
+          writeDashboardCache('dashboard-cache-inspections', []);
+          return { networkSuccess: true, definitive: true };
         } else if (networkData === null && offlineData.length > 0) {
-          // Network failed -- fall back to offline data
+          // Network failed -- fall back to offline data (definitive from offline)
           setInspections(offlineData);
-          return { networkSuccess: false };
+          return { networkSuccess: false, definitive: true };
         }
-        // networkData === null and no offline data
-        return { networkSuccess: networkData !== null };
+        // networkData === null and no offline data — not definitive
+        return { networkSuccess: false, definitive: offlineData.length > 0 };
       }
-      return { networkSuccess: false };
+      // Offline-only: definitive if we got offline data or cache had data
+      return { networkSuccess: false, definitive: true };
     } catch (error: any) {
       console.error("Error loading inspections:", error);
-      return { networkSuccess: false };
+      return { networkSuccess: false, definitive: false };
     }
   };
 
-  const loadTrainingReports = async (cachedUserId?: string, cachedIsSuperAdmin?: boolean, sessionValid: boolean = true): Promise<{ networkSuccess: boolean }> => {
+  const loadTrainingReports = async (cachedUserId?: string, cachedIsSuperAdmin?: boolean, sessionValid: boolean = true): Promise<{ networkSuccess: boolean; definitive: boolean }> => {
     try {
       // Use passed userId or fetch from cache
       const userId = cachedUserId || (await getUserWithCache())?.id;
@@ -892,26 +903,25 @@ export default function Dashboard() {
           if (import.meta.env.DEV) {
             console.log('[Dashboard] Loaded training reports from Supabase:', networkData.length);
           }
-          return { networkSuccess: true };
-        } else if (networkData !== null && offlineData.length === 0 && sessionValid) {
-          // Only clear when session is VERIFIED valid and server confirmed zero
-          setTrainings(prev => prev.length > 0 ? prev : []);
-          return { networkSuccess: true };
+          return { networkSuccess: true, definitive: true };
+        } else if (networkData !== null && sessionValid) {
+          setTrainings([]);
+          writeDashboardCache('dashboard-cache-trainings', []);
+          return { networkSuccess: true, definitive: true };
         } else if (networkData === null && offlineData.length > 0) {
-          // Network failed -- fall back to offline data
           setTrainings(offlineData);
-          return { networkSuccess: false };
+          return { networkSuccess: false, definitive: true };
         }
-        return { networkSuccess: networkData !== null };
+        return { networkSuccess: false, definitive: offlineData.length > 0 };
       }
-      return { networkSuccess: false };
+      return { networkSuccess: false, definitive: true };
     } catch (error: any) {
       console.error("Error loading training reports:", error);
-      return { networkSuccess: false };
+      return { networkSuccess: false, definitive: false };
     }
   };
 
-  const loadDailyAssessments = async (cachedUserId?: string, cachedIsSuperAdmin?: boolean, sessionValid: boolean = true): Promise<{ networkSuccess: boolean }> => {
+  const loadDailyAssessments = async (cachedUserId?: string, cachedIsSuperAdmin?: boolean, sessionValid: boolean = true): Promise<{ networkSuccess: boolean; definitive: boolean }> => {
     try {
       // Use passed userId or fetch from cache
       const userId = cachedUserId || (await getUserWithCache())?.id;
@@ -1050,22 +1060,21 @@ export default function Dashboard() {
           if (import.meta.env.DEV) {
             console.log('[Dashboard] Loaded daily assessments from Supabase:', networkData.length);
           }
-          return { networkSuccess: true };
-        } else if (networkData !== null && offlineData.length === 0 && sessionValid) {
-          // Only clear when session is VERIFIED valid and server confirmed zero
-          setDailyAssessments(prev => prev.length > 0 ? prev : []);
-          return { networkSuccess: true };
+          return { networkSuccess: true, definitive: true };
+        } else if (networkData !== null && sessionValid) {
+          setDailyAssessments([]);
+          writeDashboardCache('dashboard-cache-daily', []);
+          return { networkSuccess: true, definitive: true };
         } else if (networkData === null && offlineData.length > 0) {
-          // Network failed -- fall back to offline data
           setDailyAssessments(offlineData);
-          return { networkSuccess: false };
+          return { networkSuccess: false, definitive: true };
         }
-        return { networkSuccess: networkData !== null };
+        return { networkSuccess: false, definitive: offlineData.length > 0 };
       }
-      return { networkSuccess: false };
+      return { networkSuccess: false, definitive: true };
     } catch (error: any) {
       console.error("Error loading daily assessments:", error);
-      return { networkSuccess: false };
+      return { networkSuccess: false, definitive: false };
     }
   };
 

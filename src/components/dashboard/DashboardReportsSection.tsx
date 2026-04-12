@@ -249,14 +249,18 @@ export function DashboardReportsSection({
     warningCount,
   } = useDashboardFilters(currentReports, currentType, currentUserId, isSuperAdmin);
 
-  // Compute stats for the stats bar
+  // Compute stats from full datasets (not sliced "Recent" arrays)
   const statsData = useMemo(() => {
-    const total = currentReports.length;
-    const drafts = currentReports.filter(r => r.status === 'draft').length;
-    const completed = currentReports.filter(r => r.status === 'completed').length;
+    const fullData = activeReportTab === 'inspections' ? (allInspections ?? inspections)
+      : activeReportTab === 'training' ? (allTrainings ?? trainings)
+      : activeReportTab === 'invoiced' ? currentReports
+      : (allDailyAssessments ?? dailyAssessments);
+    const total = fullData.length;
+    const drafts = fullData.filter(r => r.status === 'draft').length;
+    const completed = fullData.filter(r => r.status === 'completed').length;
     const overdue = criticalCount + warningCount;
     return { total, drafts, overdue, completed };
-  }, [currentReports, criticalCount, warningCount]);
+  }, [activeReportTab, allInspections, allTrainings, allDailyAssessments, inspections, trainings, dailyAssessments, currentReports, criticalCount, warningCount]);
 
   // Handle stats bar filter clicks
   const handleStatsFilter = (filter: 'all' | 'drafts' | 'overdue' | 'completed') => {
@@ -528,15 +532,15 @@ export function DashboardReportsSection({
           <TabsList className="grid grid-cols-2 sm:inline-flex w-full sm:w-auto mb-4 h-auto">
             <TabsTrigger value="inspections" className="flex items-center gap-2">
               <FileText className="w-4 h-4 hidden sm:inline" />
-              Inspections ({loading || (!totalInspections && inspections.length === 0) ? '…' : (totalInspections ?? inspections.length)})
+              Inspections ({loading ? '…' : (totalInspections ?? inspections.length)})
             </TabsTrigger>
             <TabsTrigger value="training" className="flex items-center gap-2">
               <GraduationCap className="w-4 h-4 hidden sm:inline" />
-              Training ({loading || (!totalTrainings && trainings.length === 0) ? '…' : (totalTrainings ?? trainings.length)})
+              Training ({loading ? '…' : (totalTrainings ?? trainings.length)})
             </TabsTrigger>
             <TabsTrigger value="daily" className="flex items-center gap-2">
               <FileText className="w-4 h-4 hidden sm:inline" />
-              Daily ({loading || (!totalDailyAssessments && dailyAssessments.length === 0) ? '…' : (totalDailyAssessments ?? dailyAssessments.length)})
+              Daily ({loading ? '…' : (totalDailyAssessments ?? dailyAssessments.length)})
             </TabsTrigger>
             {isSuperAdmin && (
               <TabsTrigger value="invoiced" className="flex items-center gap-2">
