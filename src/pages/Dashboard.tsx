@@ -921,7 +921,7 @@ export default function Dashboard() {
     }
   };
 
-  const loadDailyAssessments = async (cachedUserId?: string, cachedIsSuperAdmin?: boolean, sessionValid: boolean = true): Promise<{ networkSuccess: boolean }> => {
+  const loadDailyAssessments = async (cachedUserId?: string, cachedIsSuperAdmin?: boolean, sessionValid: boolean = true): Promise<{ networkSuccess: boolean; definitive: boolean }> => {
     try {
       // Use passed userId or fetch from cache
       const userId = cachedUserId || (await getUserWithCache())?.id;
@@ -1060,22 +1060,21 @@ export default function Dashboard() {
           if (import.meta.env.DEV) {
             console.log('[Dashboard] Loaded daily assessments from Supabase:', networkData.length);
           }
-          return { networkSuccess: true };
-        } else if (networkData !== null && offlineData.length === 0 && sessionValid) {
-          // Only clear when session is VERIFIED valid and server confirmed zero
-          setDailyAssessments(prev => prev.length > 0 ? prev : []);
-          return { networkSuccess: true };
+          return { networkSuccess: true, definitive: true };
+        } else if (networkData !== null && sessionValid) {
+          setDailyAssessments([]);
+          writeDashboardCache('dashboard-cache-daily', []);
+          return { networkSuccess: true, definitive: true };
         } else if (networkData === null && offlineData.length > 0) {
-          // Network failed -- fall back to offline data
           setDailyAssessments(offlineData);
-          return { networkSuccess: false };
+          return { networkSuccess: false, definitive: true };
         }
-        return { networkSuccess: networkData !== null };
+        return { networkSuccess: false, definitive: offlineData.length > 0 };
       }
-      return { networkSuccess: false };
+      return { networkSuccess: false, definitive: true };
     } catch (error: any) {
       console.error("Error loading daily assessments:", error);
-      return { networkSuccess: false };
+      return { networkSuccess: false, definitive: false };
     }
   };
 
