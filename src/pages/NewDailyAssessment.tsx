@@ -3,6 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { goBack } from "@/lib/navigation";
 import { DiscardDraftDialog } from "@/components/DiscardDraftDialog";
 import { supabase } from "@/integrations/supabase/client";
+import { getCachedProfile } from "@/lib/profile-cache";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -35,19 +36,14 @@ export default function NewDailyAssessment() {
   useEffect(() => {
     const fetchUserProfile = async () => {
       try {
-        const user = await getUserWithCache();
-        if (user) {
-          const { data: profile } = await supabase
-            .from('profiles')
-            .select('first_name, last_name')
-            .eq('id', user.id)
-            .single();
-          
-          if (profile) {
-            const fullName = [profile.first_name, profile.last_name].filter(Boolean).join(' ').trim();
-            if (fullName) {
-              setTrainerName(fullName);
-            }
+        const userId = (await getUserWithCache())?.id || getOfflineUserId();
+        if (!userId) return;
+
+        const profile = await getCachedProfile(userId);
+        if (profile) {
+          const fullName = [profile.first_name, profile.last_name].filter(Boolean).join(' ').trim();
+          if (fullName) {
+            setTrainerName(fullName);
           }
         }
       } catch (error) {
