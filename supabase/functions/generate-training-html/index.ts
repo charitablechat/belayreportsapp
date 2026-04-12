@@ -271,10 +271,7 @@ serve(async (req) => {
     }
     
     .page-footer .page-number {
-      text-align: right;
-      font-size: 9pt;
-      color: #333;
-      margin-bottom: 4px;
+      display: none;
     }
     
     .page-footer .footer-line {

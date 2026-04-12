@@ -119,7 +119,6 @@ export function createPageFooter(
 ): string {
   return `
     <div class="page-footer">
-      <div class="page-number">Page ${pageNum}</div>
       <div class="footer-line"></div>
       <div class="footer-disclaimer">${disclaimerText}</div>
     </div>
@@ -191,11 +190,7 @@ export const SHARED_HEADER_FOOTER_CSS = `
     }
 
     .page-number {
-      text-align: right;
-      font-weight: normal;
-      font-size: 9pt;
-      color: #333;
-      margin-bottom: 3px;
+      display: none;
     }
 
     .footer-line {
@@ -316,8 +311,7 @@ export const SHARED_PRINT_CSS = `
     }
     
     .page-number {
-      display: block !important;
-      visibility: visible !important;
+      display: none !important;
     }
     
     .footer-line {
