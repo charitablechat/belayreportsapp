@@ -10,6 +10,7 @@ interface DashboardStatsBarProps {
   completed: number;
   onFilterClick?: (filter: 'all' | 'drafts' | 'overdue' | 'completed') => void;
   activeFilter?: string | null;
+  dataValidated?: boolean;
 }
 
 const stats = [
@@ -19,9 +20,10 @@ const stats = [
   { key: 'completed' as const, label: 'Complete', icon: CheckCircle2, colorClass: 'text-green-600 dark:text-green-400' },
 ];
 
-export function DashboardStatsBar({ total, drafts, overdue, completed, onFilterClick, activeFilter }: DashboardStatsBarProps) {
+export function DashboardStatsBar({ total, drafts, overdue, completed, onFilterClick, activeFilter, dataValidated = true }: DashboardStatsBarProps) {
   const values = { all: total, drafts, overdue, completed };
   const { estimate, tierColor, formattedUsage, formattedQuota } = useStoragePressure();
+  const showSkeleton = !dataValidated;
 
   return (
     <div className="space-y-1 mb-4">
@@ -41,9 +43,13 @@ export function DashboardStatsBar({ total, drafts, overdue, completed, onFilterC
             >
               <div className="flex items-center gap-1.5">
                 <Icon className={cn("w-3.5 h-3.5", colorClass)} />
-                <span className={cn("text-lg font-bold tabular-nums leading-none", colorClass)}>
-                  {values[key]}
-                </span>
+                {showSkeleton ? (
+                  <span className="inline-block w-5 h-5 rounded bg-muted animate-pulse" />
+                ) : (
+                  <span className={cn("text-lg font-bold tabular-nums leading-none", colorClass)}>
+                    {values[key]}
+                  </span>
+                )}
               </div>
               <span className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider">
                 {label}
