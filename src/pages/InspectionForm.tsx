@@ -49,7 +49,7 @@ import { useStorageHealthCheck } from "@/hooks/useStorageHealthCheck";
 import { usePWA } from "@/hooks/usePWA";
 import { ForceSyncButton } from "@/components/pwa/ForceSyncButton";
 import { convertCircleBulletsToHtml } from "@/lib/bullet-converter";
-import { getUserWithCache, getOfflineUserId, ensureValidSession } from "@/lib/cached-auth";
+import { getUserWithCache, getOfflineUserId } from "@/lib/cached-auth";
 import { HtmlReportViewer } from "@/components/HtmlReportViewer";
 
 import { useKeyboardAvoidance } from "@/hooks/useKeyboardAvoidance";
