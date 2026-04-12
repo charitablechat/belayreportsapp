@@ -551,15 +551,15 @@ export function DashboardReportsSection({
           <TabsList className="grid grid-cols-2 sm:inline-flex w-full sm:w-auto mb-4 h-auto">
             <TabsTrigger value="inspections" className="flex items-center gap-2">
               <FileText className="w-4 h-4 hidden sm:inline" />
-              Inspections ({loading ? '…' : (totalInspections ?? inspections.length)})
+              Inspections ({totalInspections !== undefined ? totalInspections : '…'})
             </TabsTrigger>
             <TabsTrigger value="training" className="flex items-center gap-2">
               <GraduationCap className="w-4 h-4 hidden sm:inline" />
-              Training ({loading ? '…' : (totalTrainings ?? trainings.length)})
+              Training ({totalTrainings !== undefined ? totalTrainings : '…'})
             </TabsTrigger>
             <TabsTrigger value="daily" className="flex items-center gap-2">
               <FileText className="w-4 h-4 hidden sm:inline" />
-              Daily ({loading ? '…' : (totalDailyAssessments ?? dailyAssessments.length)})
+              Daily ({totalDailyAssessments !== undefined ? totalDailyAssessments : '…'})
             </TabsTrigger>
             {isSuperAdmin && (
               <TabsTrigger value="invoiced" className="flex items-center gap-2">
