@@ -288,18 +288,10 @@ export default function TrainingForm() {
 
   // Auto-retry on network reconnect is now handled by useAutoSync hook
 
-  // Fetch current user with offline fallback
+  // Fetch current user with offline fallback (non-blocking, matches InspectionForm)
   useEffect(() => {
     const fetchUser = async () => {
       let user = await getUserWithCache();
-      if (!user && !navigator.onLine) {
-        const offlineId = getOfflineUserId();
-        if (offlineId) user = { id: offlineId } as any;
-      }
-      if (!user && navigator.onLine) {
-        user = await ensureValidSession();
-      }
-      // Last resort: network may have flickered — try offline ID
       if (!user) {
         const offlineId = getOfflineUserId();
         if (offlineId) user = { id: offlineId } as any;
