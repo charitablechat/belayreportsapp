@@ -131,6 +131,9 @@ interface DashboardReportsSectionProps {
   totalTrainings?: number;
   totalDailyAssessments?: number;
   dataValidated?: boolean;
+  inspectionsValidated?: boolean;
+  trainingsValidated?: boolean;
+  dailyValidated?: boolean;
   activeReportTab: string;
   setActiveReportTab: (tab: string) => void;
   loading: boolean;
