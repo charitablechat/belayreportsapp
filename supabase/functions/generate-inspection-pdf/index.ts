@@ -192,10 +192,9 @@ serve(async (req) => {
       
       doc.setFontSize(9);
       doc.setTextColor(100, 116, 139);
-      doc.text('Rope Works Inc. - ACCT Accredited Vendor', pageWidth / 2, pageHeight - 15, { align: 'center' });
-      doc.text(`Page ${currentPage} of ${totalPages}`, pageWidth / 2, pageHeight - 10, { align: 'center' });
+      doc.text('Rope Works Inc. - ACCT Accredited Vendor', pageWidth / 2, pageHeight - 12, { align: 'center' });
       if (inspectorProfile?.acct_number) {
-        doc.text(`ACCT #: ${inspectorProfile.acct_number}`, pageWidth / 2, pageHeight - 5, { align: 'center' });
+        doc.text(`ACCT #: ${inspectorProfile.acct_number}`, pageWidth / 2, pageHeight - 7, { align: 'center' });
       }
     };
 
