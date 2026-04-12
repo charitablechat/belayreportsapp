@@ -1,99 +1,99 @@
 
+Goal: fix the real root causes of stale report state and incorrect dashboard counts, then clean up the related state-handling gaps that can still produce misleading UI.
 
-# Comprehensive Application Audit and Fix Plan
+What I found
+1. The earlier dashboard fix is only partial.
+   - `DashboardStatsBar` already supports `dataValidated`, but `Dashboard.tsx` still does `setDataValidated(true)` unconditionally in `refreshReports(...).finally`.
+   - That means a failed/timed-out/non-definitive refresh is still marked “validated”, so the UI can stop showing placeholders and render zeros/empty state too early.
 
-## Issues Found
+2. The loaders still cannot distinguish “real empty” from “timeout/failure”.
+   - Each `load*` function races IndexedDB against a timeout and falls back to `[]`.
+   - Right now `[]` can mean either:
+     - there are truly zero reports, or
+     - IndexedDB timed out / never returned in time.
+   - That ambiguity is a major reason stale state and false zero states persist.
 
-### CRITICAL: Dashboard Zeros on Report Exit (P0)
+3. Real zero results are handled incorrectly in more than one place.
+   - Tab labels use truthy checks like `!totalInspections`, so a legitimate `0` is treated like “not loaded”.
+   - The network-empty branches still preserve previous state with patterns like `setInspections(prev => prev.length > 0 ? prev : [])`, which prevents a true server-confirmed empty result from clearing stale data.
 
-**Root Cause**: When navigating from a report back to the dashboard, the stats bar briefly (or persistently) shows all zeros. Two interacting problems:
+4. Dashboard stats are not truly aggregated in “Recent” mode.
+   - `DashboardReportsSection` computes stats from `currentReports`, but in “9 Most Recent Reports” mode those arrays are sliced before being passed in.
+   - So the stats bar can describe only the recent slice instead of the full dataset.
 
-1. **Stats bar lacks a `dataValidated` guard.** The tab badge counts (line 528) correctly show `…` while data loads by checking `totalInspections` (which is `undefined` until `dataValidated = true`). But the `DashboardStatsBar` at line 251-257 computes stats directly from `currentReports.length`, which can be `0` during the loading/revalidation window.
+5. Report exit flows still send a misleading sync signal.
+   - `InspectionForm`, `TrainingForm`, and `DailyAssessmentForm` call `emitSyncComplete()` during “Save & Exit”.
+   - That event is supposed to mean background sync actually finished, but here it fires after local save-before-leave.
+   - This can trigger premature dashboard refreshes and extra refresh races.
 
-2. **Stale-while-revalidate guard drops data.** In `loadInspections` (line 632): `setInspections(prev => prev.length === 0 ? offlineData : prev)`. When the dashboard *remounts* after exiting a report, `readDashboardCache` may return `[]` (expired 30-min TTL or first visit), so initial state is `[]`. If IndexedDB times out (4s), the state stays `[]`. Then `loading` goes `false` and the stats bar renders zeros. The subsequent 500ms background refresh (line 408) eventually populates data, causing a flash of zeros.
+6. There are still form consistency gaps.
+   - `InspectionForm` mount auth is now simpler, but `TrainingForm` and `DailyAssessmentForm` still use the stricter `ensureValidSession()` path when fetching the current user on mount.
+   - Not the main dashboard bug, but it keeps behavior inconsistent across report types.
 
-3. **Network data path can also produce zeros.** When `networkData` is a non-null empty array (user has zero reports of a type — rare but valid), the logic at line 737-739 does `setInspections(prev => prev.length > 0 ? prev : [])` which is a no-op. But the stats bar still reads the empty array.
+Implementation plan
 
-**Fix**: Propagate the `dataValidated` flag into `DashboardReportsSection` and gate the stats bar on it, matching the tab badge pattern. While `dataValidated` is false, show skeleton/placeholder stats instead of zeros.
+Phase 1 — Fix dashboard load-state correctness
+- Replace the single boolean `dataValidated` with per-dataset validation state in `Dashboard.tsx`, e.g. inspections/training/daily each track:
+  - pending
+  - validated
+  - stale/unverified
+- Make each `load*` function return structured status, not just `networkSuccess`, so the dashboard knows whether the result was:
+  - offline definitive
+  - network definitive
+  - timeout
+  - failed
+  - confirmed empty
+- Only mark a dataset validated when the result is truly definitive.
+- Stop setting dashboard validation state blindly in `finally`.
 
-### Issue 2: `fetchUser` in InspectionForm Still Uses 4-Layer Auth (P2)
+Phase 2 — Fix zero/empty semantics
+- Change the IndexedDB timeout handling so `[]` from a timeout is not treated the same as a true empty result.
+- Update the “server returned zero rows” branches to explicitly clear state when the server response is definitive and session is valid.
+- Fix tab label rendering so legitimate zero counts render `0` instead of `…`.
+- Update cache read/write logic so a validated empty result can be cached as a real state, not discarded as “no cache”.
 
-The `performSave` auth gate was removed (previous approved plan), but `fetchUser` on mount (lines 467-476) still uses the same multi-layer pattern with `ensureValidSession`. This is inconsistent and can cause the `currentUser` state to be null if the session refresh times out, meaning `last_modified_by` never gets stamped even when a cached user exists.
+Phase 3 — Fix aggregated dashboard numbers
+- In `DashboardReportsSection.tsx`, compute stats from the full dataset for the active tab (`allInspections`, `allTrainings`, `allDailyAssessments`), not from the recent sliced arrays.
+- Keep the cards/list sliced for “Recent”, but keep counts/stats based on full data.
+- Gate stats visibility on the active tab’s validation status so placeholders stay visible until that tab is definitively loaded.
 
-**Fix**: Simplify `fetchUser` to use `getUserWithCache()` with `getOfflineUserId()` fallback only — remove the `ensureValidSession()` call. This matches the save path and the other form patterns.
+Phase 4 — Remove stale refresh races from report exit
+- In all 3 report forms:
+  - remove manual `emitSyncComplete()` from Save-before-leave
+  - keep `markPendingDashboardRefresh()` / `markDashboardStaleTimestamp()` as the single source of truth for dashboard refresh-on-return
+- This prevents false “sync complete” signals and reduces duplicate refreshes while navigating back.
 
-### Issue 3: Dashboard `loadInspections` Stale Guard Drops Cached Data (P1)
+Phase 5 — Harden save-before-leave state handoff
+- Refine the save-before-leave flow so “Save & Exit” guarantees local persistence before navigation, without waiting on the full remote sync path.
+- Preserve the current escape hatch so users can still leave even if sync is slow/hanging.
+- This keeps report edits available immediately when the dashboard reloads.
 
-The line `setInspections(prev => prev.length === 0 ? offlineData : prev)` is too conservative. If the component just remounted (state initialized from cache), `prev` may already have stale cached data from `readDashboardCache`. But if IndexedDB returns fresher data, it gets dropped because `prev.length > 0`. Conversely, if cache was empty, IndexedDB data that arrives later than the 4s timeout is also lost.
+Phase 6 — Consistency cleanup
+- Align `TrainingForm` and `DailyAssessmentForm` mount auth/user-fetch behavior with the simplified non-blocking pattern already used in `InspectionForm`.
+- Remove unused `bypassAndProceed` imports/usages if they are no longer part of the exit flow.
 
-**Fix**: Always set offline data when it arrives (remove the `prev.length === 0` guard), then let network data overwrite it. The stale-while-revalidate pattern should be: show whatever arrives first, then replace with network data.
+Files to update
+- `src/pages/Dashboard.tsx`
+- `src/components/dashboard/DashboardReportsSection.tsx`
+- `src/components/dashboard/DashboardStatsBar.tsx`
+- `src/pages/InspectionForm.tsx`
+- `src/pages/TrainingForm.tsx`
+- `src/pages/DailyAssessmentForm.tsx`
+- possibly `src/lib/sync-events.ts` if I centralize the dashboard-refresh handoff semantics
 
-### Issue 4: `handleSaveAndLeave` Race in InspectionForm (P2)
+Expected outcome
+- No more false zero counts after leaving reports
+- Real zero results display correctly as `0`
+- Dashboard stats remain accurate in both “Recent” and “All Reports”
+- Stale data is only replaced when the refresh result is actually definitive
+- Returning from a report produces one clean refresh path instead of overlapping signals
+- All three report forms behave consistently around auth, local save, and exit
 
-At lines 2461-2474, the save-before-leave wraps `handleSaveAndLeave()` in a `Promise.race` with an 8s timeout, then calls `bypassAndProceed()` + `navigate('/dashboard')`. But `bypassAndProceed` calls `blocker.proceed()` which may navigate to a stale history entry, and then `navigate('/dashboard')` fires again — potentially causing a double navigation.
-
-**Fix**: Remove `bypassAndProceed()` from both the `onSave` and `onLeave` callbacks since `navigate('/dashboard')` already handles the navigation. The `bypassRef` should be set directly instead.
-
-### Issue 5: Duplicate `navigate('/dashboard')` Calls (P2)
-
-All three form `SaveBeforeLeaveDialog` handlers call both `bypassAndProceed()` and `navigate('/dashboard')`. The `useUnsavedChanges.confirmNavigation` already does `blocker.reset() + navigate(fallbackPath)`. Having both creates a race.
-
-**Fix**: Use the same pattern as `confirmNavigation` — set `bypassRef.current = true`, call `blocker.reset()`, then `navigate('/dashboard')`. Remove the redundant `bypassAndProceed()`.
-
-### Issue 6: Profile Cache Missing `acct_number` in Type Export (P3)
-
-The `ProfileData` interface and `getCachedProfile` were updated to include `acct_number`, but the `persistProfileToLocalStorage` and `getPersistedProfile` functions need to be verified as working correctly with the new field.
-
-**Status**: Already fixed in previous plan implementation. Verified correct.
-
----
-
-## Implementation Plan
-
-### File 1: `src/components/dashboard/DashboardReportsSection.tsx`
-
-**Gate stats bar on `dataValidated`:**
-- Add `dataValidated?: boolean` to props interface
-- Change stats bar render condition from `!loading && !isSearchActive` to `!loading && !isSearchActive && dataValidated !== false`
-- When `dataValidated` is false and not loading, show a subtle skeleton placeholder for stats
-
-### File 2: `src/pages/Dashboard.tsx`
-
-**Pass `dataValidated` to `DashboardReportsSection`:**
-- Add `dataValidated={dataValidated}` prop at line ~1553
-
-**Fix stale-while-revalidate guard:**
-- In `loadInspections`, `loadTrainingReports`, `loadDailyAssessments`: change `setX(prev => prev.length === 0 ? offlineData : prev)` to always set when offline data is more recent or prev is from expired cache
-- Simpler fix: always `setX(offlineData)` when offline data arrives (network data will overwrite shortly after)
-
-### File 3: `src/pages/InspectionForm.tsx`
-
-**Simplify `fetchUser` (lines 467-476):**
-- Remove `ensureValidSession()` call
-- Use `getUserWithCache()` with `getOfflineUserId()` fallback only
-
-**Fix `SaveBeforeLeaveDialog` handlers (lines 2454-2486):**
-- Remove `bypassAndProceed()` calls
-- Use direct `bypassRef` pattern before `navigate('/dashboard')`
-
-### File 4: `src/pages/TrainingForm.tsx`
-
-**Fix `SaveBeforeLeaveDialog` handlers** — same pattern as InspectionForm
-
-### File 5: `src/pages/DailyAssessmentForm.tsx`
-
-**Fix `SaveBeforeLeaveDialog` handlers** — same pattern as InspectionForm
-
-### File 6: `src/components/dashboard/DashboardStatsBar.tsx`
-
-**Add loading/skeleton state:**
-- Accept optional `dataValidated` prop
-- When false, show animated placeholder values instead of zeros
-
-## Summary
-
-The primary fix addresses the zeros problem by:
-1. Gating stats display on `dataValidated` (matching existing tab badge pattern)
-2. Fixing the stale-while-revalidate guard that drops offline data when cache is populated
-3. Cleaning up navigation race conditions in all three form exit flows
-
+Validation after implementation
+- Edit each report type, Save & Exit, and confirm dashboard updates immediately
+- Test Exit without save
+- Test offline with existing cached reports
+- Test offline with no cached reports
+- Test true zero-report users
+- Test Recent vs All counts
+- Test queued/offline save followed by later sync completion
