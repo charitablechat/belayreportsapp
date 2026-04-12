@@ -119,7 +119,11 @@ export default function Dashboard() {
   const [dailyAssessments, setDailyAssessments] = useState<any[]>(() => readDashboardCache('dashboard-cache-daily'));
   const [loading, setLoading] = useState(true);
   // Track whether we've received at least one definitive result per category
-  const [dataValidated, setDataValidated] = useState(false);
+  // Per-dataset validation: tracks whether each dataset has received a definitive result
+  const [inspectionsValidated, setInspectionsValidated] = useState(false);
+  const [trainingsValidated, setTrainingsValidated] = useState(false);
+  const [dailyValidated, setDailyValidated] = useState(false);
+  const dataValidated = inspectionsValidated && trainingsValidated && dailyValidated;
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [inspectionToDelete, setInspectionToDelete] = useState<any>(null);
   const [reportToDelete, setReportToDelete] = useState<any>(null);
@@ -360,8 +364,12 @@ export default function Dashboard() {
         loadDailyAssessments(userId, superAdminStatus, sessionValid),
       ]);
 
+      // Mark per-dataset validation based on whether each got a definitive result
+      if (results[0].definitive) setInspectionsValidated(true);
+      if (results[1].definitive) setTrainingsValidated(true);
+      if (results[2].definitive) setDailyValidated(true);
+
       // Track network failures for stale-data banner
-      // Fix: detect query-level timeouts even when session is valid
       const anyNetworkSuccess = results.some(r => r.networkSuccess);
       if (effectiveOnline && !anyNetworkSuccess) {
         networkFailCountRef.current++;
@@ -373,7 +381,6 @@ export default function Dashboard() {
         setShowStaleDataBanner(false);
       }
     } finally {
-      setDataValidated(true);
       refreshInFlightRef.current = false;
       // If a refresh was queued while we were busy, trigger it now
       if (pendingRefreshRef.current) {
@@ -385,7 +392,9 @@ export default function Dashboard() {
 
   useEffect(() => {
     setLoading(true);
-    setDataValidated(false);
+    setInspectionsValidated(false);
+    setTrainingsValidated(false);
+    setDailyValidated(false);
 
     const LOAD_TIMEOUT = 20000;
     let loadCompleted = false;
