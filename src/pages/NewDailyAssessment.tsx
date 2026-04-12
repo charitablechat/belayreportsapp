@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import { goBack } from "@/lib/navigation";
 import { DiscardDraftDialog } from "@/components/DiscardDraftDialog";
-import { supabase } from "@/integrations/supabase/client";
+import { getCachedProfile } from "@/lib/profile-cache";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
