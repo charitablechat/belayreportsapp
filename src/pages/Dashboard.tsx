@@ -903,22 +903,21 @@ export default function Dashboard() {
           if (import.meta.env.DEV) {
             console.log('[Dashboard] Loaded training reports from Supabase:', networkData.length);
           }
-          return { networkSuccess: true };
-        } else if (networkData !== null && offlineData.length === 0 && sessionValid) {
-          // Only clear when session is VERIFIED valid and server confirmed zero
-          setTrainings(prev => prev.length > 0 ? prev : []);
-          return { networkSuccess: true };
+          return { networkSuccess: true, definitive: true };
+        } else if (networkData !== null && sessionValid) {
+          setTrainings([]);
+          writeDashboardCache('dashboard-cache-trainings', []);
+          return { networkSuccess: true, definitive: true };
         } else if (networkData === null && offlineData.length > 0) {
-          // Network failed -- fall back to offline data
           setTrainings(offlineData);
-          return { networkSuccess: false };
+          return { networkSuccess: false, definitive: true };
         }
-        return { networkSuccess: networkData !== null };
+        return { networkSuccess: false, definitive: offlineData.length > 0 };
       }
-      return { networkSuccess: false };
+      return { networkSuccess: false, definitive: true };
     } catch (error: any) {
       console.error("Error loading training reports:", error);
-      return { networkSuccess: false };
+      return { networkSuccess: false, definitive: false };
     }
   };
 
