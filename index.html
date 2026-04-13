@@ -41,7 +41,15 @@
           sessionStorage.setItem('sw-cleanup-done', '1');
           navigator.serviceWorker.getRegistrations().then(function(regs) {
             var hadSW = regs.length > 0;
-            regs.forEach(function(r) { r.unregister(); });
+            regs.forEach(function(r) {
+              r.unregister();
+              // Force the stale SW to fetch our self-destroying sw.js
+              r.update().catch(function() {});
+            });
+            // Also explicitly register the self-destroying SW to replace any stale one
+            if (hadSW) {
+              navigator.serviceWorker.register('/sw.js', { scope: '/' }).catch(function() {});
+            }
             if (typeof caches !== 'undefined') {
               caches.keys().then(function(keys) {
                 Promise.all(keys.map(function(k) { return caches.delete(k); })).then(function() {
