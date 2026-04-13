@@ -1,19 +1,10 @@
 import { createRoot } from "react-dom/client";
 import App from "./App.tsx";
 import "./index.css";
+import { isPreviewOrIframeEnvironment, isServiceWorkerAllowed } from "@/lib/environment";
 
-// Guard: prevent service workers in Lovable preview/iframe contexts
-const isInIframe = (() => {
-  try { return window.self !== window.top; } catch { return true; }
-})();
-
-const isPreviewHost =
-  window.location.hostname.includes("id-preview--") ||
-  window.location.hostname.includes("lovableproject.com") ||
-  window.location.hostname.includes("lovable.app");
-
-if (isPreviewHost || isInIframe) {
-  // Unregister any existing service workers that may be serving stale offline pages
+// Guard: unregister stale service workers in preview/iframe contexts
+if (isPreviewOrIframeEnvironment()) {
   navigator.serviceWorker?.getRegistrations().then((registrations) => {
     registrations.forEach((r) => r.unregister());
   });
@@ -44,15 +35,13 @@ function sendAuthTokenToSW() {
   }
 }
 
-// Service Worker initialization and auth token forwarding
-// Only register in production (non-preview, non-iframe) contexts
-if ('serviceWorker' in navigator && !isPreviewHost && !isInIframe) {
+// Service Worker initialization — only in production (non-preview, non-iframe)
+if (isServiceWorkerAllowed()) {
   window.addEventListener('load', () => {
     navigator.serviceWorker.ready.then((registration) => {
       if (import.meta.env.DEV) {
         console.log('[SW] Service Worker ready:', registration.scope);
       }
-      // Send current auth token to SW on startup
       sendAuthTokenToSW();
     }).catch((error) => {
       if (import.meta.env.DEV) {
@@ -61,14 +50,12 @@ if ('serviceWorker' in navigator && !isPreviewHost && !isInIframe) {
     });
   });
   
-  // Listen for SW requesting a fresh auth token
   navigator.serviceWorker.addEventListener('message', (event) => {
     if (event.data?.type === 'REQUEST_AUTH_TOKEN') {
       sendAuthTokenToSW();
     }
   });
   
-  // Forward token to SW whenever the Supabase session changes in localStorage
   window.addEventListener('storage', (event) => {
     if (event.key?.startsWith('sb-') && event.key?.endsWith('-auth-token') && event.newValue) {
       sendAuthTokenToSW();

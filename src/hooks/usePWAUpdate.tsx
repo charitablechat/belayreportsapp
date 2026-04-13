@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { isLovablePreview } from '@/lib/environment';
+import { isPreviewOrIframeEnvironment } from '@/lib/environment';
 
 export type UpdateCheckResult = 'update_found' | 'up_to_date' | 'no_sw' | 'error';
 
@@ -23,18 +23,6 @@ const withTimeout = <T,>(promise: Promise<T>, ms: number, label: string): Promis
       setTimeout(() => reject(new Error(`${label} timeout after ${ms}ms`)), ms)
     ),
   ]);
-
-const isPreviewOrIframeEnvironment = (): boolean => {
-  try {
-    return (
-      isLovablePreview() ||
-      window.location.hostname.includes('lovableproject.com') ||
-      window.self !== window.top
-    );
-  } catch {
-    return true;
-  }
-};
 
 const getAvailableServiceWorkerRegistration = async (): Promise<ServiceWorkerRegistration | null> => {
   if (!('serviceWorker' in navigator) || isPreviewOrIframeEnvironment()) {
@@ -79,7 +67,7 @@ export const usePWAUpdate = (): PWAUpdateStatus => {
   }, []);
 
   useEffect(() => {
-    if (!('serviceWorker' in navigator)) return;
+    if (!('serviceWorker' in navigator) || isPreviewOrIframeEnvironment()) return;
 
     let intervalId: ReturnType<typeof setInterval> | undefined;
 
@@ -162,7 +150,7 @@ export const usePWAUpdate = (): PWAUpdateStatus => {
   }, [registration]);
 
   const checkForUpdates = useCallback(async (): Promise<UpdateCheckResult> => {
-    if (!('serviceWorker' in navigator)) return 'no_sw';
+    if (!('serviceWorker' in navigator) || isPreviewOrIframeEnvironment()) return 'no_sw';
     setIsChecking(true);
 
     try {
@@ -172,7 +160,6 @@ export const usePWAUpdate = (): PWAUpdateStatus => {
         if (import.meta.env.DEV) {
           console.info('[PWA Update] Update check skipped — no service worker registration available');
         }
-
         return 'no_sw';
       }
 
@@ -180,15 +167,11 @@ export const usePWAUpdate = (): PWAUpdateStatus => {
         setRegistration(reg);
       }
 
-      // Already waiting? Done.
       if (reg.waiting) {
         setNeedRefresh(true);
         return 'update_found';
       }
 
-      // Race: listen for updatefound while calling reg.update().
-      // If reg.update() resolves without triggering updatefound, we're up to date
-      // — no need to wait a fixed timeout.
       let updateFound = false;
       const onUpdateFound = () => { updateFound = true; };
       reg.addEventListener('updatefound', onUpdateFound);
@@ -202,10 +185,8 @@ export const usePWAUpdate = (): PWAUpdateStatus => {
           console.error('[PWA Update] Check failed:', error);
           return 'error';
         }
-        // Timeout is acceptable on slow connections — treat as up_to_date
       }
 
-      // Give the browser a micro-tick to fire updatefound after update() resolves
       await new Promise(r => setTimeout(r, 100));
 
       reg.removeEventListener('updatefound', onUpdateFound);
