@@ -2,7 +2,7 @@ import { VitePWA } from 'vite-plugin-pwa';
 
 export const pwaConfig = VitePWA({
   registerType: 'prompt',
-  injectRegister: 'script-defer',
+  injectRegister: null,
   devOptions: {
     enabled: false,
   },
@@ -49,7 +49,6 @@ export const pwaConfig = VitePWA({
     globPatterns: ['**/*.{js,css,html,ico,png,svg,woff,woff2}'],
     navigateFallback: '/',
     navigateFallbackDenylist: [/^\/api/, /offline\.html$/],
-    // sw-sync.js re-enabled: now uses user JWT from main thread via postMessage (F2 fix)
     importScripts: ['/sw-push.js', '/sw-sync.js'],
     runtimeCaching: [
       {
