@@ -168,29 +168,37 @@ Deno.serve(async (req) => {
     const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
     const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 
-    // Auth check — only backup admin
+    // Auth check — service-role or backup admin
     const authHeader = req.headers.get("Authorization");
-    if (authHeader?.startsWith("Bearer ")) {
+    const token = authHeader?.replace("Bearer ", "");
+
+    if (token === serviceRoleKey) {
+      // Authenticated as service role (from scheduled-backup-notify) — proceed
+      console.log("[sync-offsite] Authenticated via service role key");
+    } else if (authHeader?.startsWith("Bearer ")) {
+      // User-triggered: verify backup admin
       const sourceClient = createClient(supabaseUrl, Deno.env.get("SUPABASE_ANON_KEY")!, {
         global: { headers: { Authorization: authHeader } },
       });
-      const token = authHeader.replace("Bearer ", "");
-      const { data: claims, error: claimsErr } = await sourceClient.auth.getClaims(token);
+      const { data: claims, error: claimsErr } = await sourceClient.auth.getClaims(token!);
       if (claimsErr || !claims?.claims) {
         return new Response(JSON.stringify({ error: "Unauthorized" }), {
           status: 401,
           headers: { ...corsHeaders, "Content-Type": "application/json" },
         });
       }
-      const userId = claims.claims.sub;
-      if (userId !== "759e973e-2484-4db3-862a-0cb2ec6d6ea3") {
+      if (claims.claims.sub !== "759e973e-2484-4db3-862a-0cb2ec6d6ea3") {
         return new Response(JSON.stringify({ error: "Forbidden: backup admin only" }), {
           status: 403,
           headers: { ...corsHeaders, "Content-Type": "application/json" },
         });
       }
+    } else {
+      return new Response(JSON.stringify({ error: "Unauthorized" }), {
+        status: 401,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
     }
-    // Also allow service-role calls (from scheduled-backup-notify)
 
     const body = await req.json();
     const backupPath = body.backup_path || body.file_path;
