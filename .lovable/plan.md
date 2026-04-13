@@ -1,68 +1,37 @@
 
 
-# Fix: Stale Service Worker Still Blocking Preview (Root Cause Found)
+# Trigger Off-Site Backup Sync
 
-## The Real Problem
+## Problem
+The `sync-offsite-backup` edge function times out when called via the internal tool because it transfers many files between storage buckets and needs several minutes to complete. The tool's request timeout is shorter than the function's execution time.
 
-The previous fixes added cleanup logic to `index.html` and `src/main.tsx`, but **those files never load**. Here is why:
+## Solution
+There are two approaches to get this done right now:
 
-```text
-1. Browser requests /  (preview iframe)
-2. Stale SW intercepts via navigateFallback: '/'
-3. SW serves OLD cached index.html (with the "You're Offline" page)
-4. NEW index.html (with cleanup script) never reaches the browser
-```
-
-The stale service worker was registered from a previous production build on the `id-preview--*.lovable.app` origin. It owns all navigation requests and serves cached content before the dev server can respond. The cleanup script we added to `index.html` is useless because the SW prevents that file from ever loading.
-
-The strings "Available Offline Features", "No internet connection detected", "Capture GPS coordinates" do not exist anywhere in the current codebase, confirming this is entirely served from an old SW cache.
-
-## Solution: Self-Destroying Service Worker
-
-Create a `public/sw.js` file that acts as a **self-destroying service worker**. When the stale SW performs its periodic update check (or when the browser fetches `/sw.js`), it will find this new file, install it, and the new SW will immediately unregister itself and clear all caches.
-
-## Changes
-
-### 1. Create `public/sw.js` — Self-destroying service worker
-
-A minimal SW that, upon installation, skips waiting and immediately unregisters itself and clears all caches:
+### Option A — Call the function from your browser console (fastest, no code change)
+Open the **published app** at `https://ropeworks.lovable.app` and run this in the browser developer console (F12 → Console):
 
 ```javascript
-// Self-destroying service worker — clears stale caches from previous builds
-self.addEventListener('install', function() { self.skipWaiting(); });
-self.addEventListener('activate', function(event) {
-  event.waitUntil(
-    Promise.all([
-      self.registration.unregister(),
-      caches.keys().then(function(keys) {
-        return Promise.all(keys.map(function(k) { return caches.delete(k); }));
-      })
-    ]).then(function() {
-      return self.clients.matchAll();
-    }).then(function(clients) {
-      clients.forEach(function(c) { c.navigate(c.url); });
-    })
-  );
+const { data, error } = await window.__supabase.functions.invoke('sync-offsite-backup', {
+  body: { backup_path: 'daily/2026-04-13T00-00-03-366Z' }
 });
+console.log(data, error);
 ```
 
-### 2. Update `index.html` cleanup script — Force SW update check
+If `window.__supabase` is not exposed, use:
+```javascript
+const { createClient } = await import('https://esm.sh/@supabase/supabase-js@2');
+const sb = createClient('https://ssgzcgvygnsrqalisshx.supabase.co', 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InNzZ3pjZ3Z5Z25zcnFhbGlzc2h4Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjIyMzM5NjksImV4cCI6MjA3NzgwOTk2OX0.buTFy44tZdRIlRSFIm5BqeOGb4nX3ARuHawWA9hZN54');
+// You must be logged in as the backup admin for this to work
+const { data, error } = await sb.functions.invoke('sync-offsite-backup', {
+  body: { backup_path: 'daily/2026-04-13T00-00-03-366Z' }
+});
+console.log(data, error);
+```
 
-Enhance the existing cleanup script to also explicitly fetch `/sw.js` to trigger the stale SW to update to the self-destroying version, as a belt-and-suspenders approach alongside the existing unregister logic.
+### Option B — Add a "Sync Now" button to the Admin Backups panel
+I would add a button in the `DatabaseBackupsPanel` component that calls the `sync-offsite-backup` function for the latest backup entry. This gives you a permanent UI control.
 
-### 3. No other file changes needed
-
-The `vite-pwa-config.ts`, `src/main.tsx`, and `src/lib/environment.ts` changes from the previous fix remain correct and do not need modification.
-
-## Why This Works
-
-- The stale SW periodically checks for updates to its script URL (`/sw.js`)
-- The dev server will serve our new `public/sw.js` instead of the old cached one
-- The byte-difference triggers the browser to install the new SW
-- The new SW immediately kills itself and clears all caches
-- The next navigation loads the real app from the dev server
-
-## After Preview Is Fixed
-
-Once the preview is working again, the `public/sw.js` file should remain in place as a permanent safety net. In production builds, `vite-plugin-pwa` generates its own `sw.js` which will overwrite this file in the build output, so it will not interfere with production PWA functionality.
+### Recommendation
+Option A gets you the sync right now with zero code changes. Option B adds the capability permanently. I can implement Option B after you confirm the sync worked.
 
