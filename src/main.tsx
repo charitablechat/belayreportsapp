@@ -2,6 +2,23 @@ import { createRoot } from "react-dom/client";
 import App from "./App.tsx";
 import "./index.css";
 
+// Guard: prevent service workers in Lovable preview/iframe contexts
+const isInIframe = (() => {
+  try { return window.self !== window.top; } catch { return true; }
+})();
+
+const isPreviewHost =
+  window.location.hostname.includes("id-preview--") ||
+  window.location.hostname.includes("lovableproject.com") ||
+  window.location.hostname.includes("lovable.app");
+
+if (isPreviewHost || isInIframe) {
+  // Unregister any existing service workers that may be serving stale offline pages
+  navigator.serviceWorker?.getRegistrations().then((registrations) => {
+    registrations.forEach((r) => r.unregister());
+  });
+}
+
 /**
  * Send the current user's JWT access token to all service workers.
  * This enables sw-sync.js to authenticate as the user for RLS-protected operations.
@@ -28,7 +45,8 @@ function sendAuthTokenToSW() {
 }
 
 // Service Worker initialization and auth token forwarding
-if ('serviceWorker' in navigator) {
+// Only register in production (non-preview, non-iframe) contexts
+if ('serviceWorker' in navigator && !isPreviewHost && !isInIframe) {
   window.addEventListener('load', () => {
     navigator.serviceWorker.ready.then((registration) => {
       if (import.meta.env.DEV) {

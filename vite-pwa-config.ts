@@ -3,6 +3,9 @@ import { VitePWA } from 'vite-plugin-pwa';
 export const pwaConfig = VitePWA({
   registerType: 'prompt',
   injectRegister: 'script-defer',
+  devOptions: {
+    enabled: false,
+  },
   includeAssets: ['favicon.ico', 'sw-push.js', 'sw-sync.js'],
   manifest: {
     name: 'Rope Works Inspection',
