@@ -1,63 +1,52 @@
 
 
-# Fix: Off-Site Backup Sync Not Running
+# Fix: Service Worker Blocking Lovable Preview
 
-## Root Cause
+## Problem
 
-The `sync-offsite-backup` edge function has an authentication bug that silently rejects calls from `scheduled-backup-notify`.
+The "You're Offline" page you see is a **service worker cached fallback page**. The PWA config uses `injectRegister: 'script-defer'` which auto-registers a service worker in ALL environments — including the Lovable editor preview iframe. Once registered, the service worker intercepts all navigation requests and serves cached/offline content, blocking access to the live app.
 
-**The problem** (lines 172-193 of `sync-offsite-backup/index.ts`):
+## Solution
 
-When `scheduled-backup-notify` calls `sync-offsite-backup`, it passes `Authorization: Bearer ${serviceRoleKey}`. The sync function sees a Bearer token and tries to validate it as a **user JWT** via `getClaims()`. The service role key is not a user JWT — `getClaims` fails — and the function returns **401 Unauthorized**. The caller logs the error as a non-fatal warning and continues, so the backup email still sends but off-site sync silently fails every night.
+Add an **iframe and preview host guard** in `src/main.tsx` that:
+1. Detects when the app is running inside the Lovable preview iframe or on a preview domain
+2. **Unregisters any existing service workers** so the cached offline page is removed
+3. Prevents the auto-injected SW from taking effect
 
-The comment on line 193 says "Also allow service-role calls (from scheduled-backup-notify)" but the code never actually implements that bypass — it only falls through if there's **no** Bearer token at all.
+## Changes
 
-## Evidence
+### 1. `src/main.tsx` — Add SW unregistration guard (top of file, before anything else)
 
-- `backup_history` shows daily backups running successfully (most recent: 2026-04-13)
-- Edge function logs for `sync-offsite-backup` are **completely empty** — the function is being called but returning 401 before doing any real work
-- The `scheduled-backup-notify` function catches the error at line 587 and continues
-
-## Fix
-
-Update `sync-offsite-backup/index.ts` to detect when the Authorization header contains the service role key and skip user JWT validation in that case:
+Add this block before the existing service worker code:
 
 ```typescript
-// Lines 172-193 — replace auth block
-const authHeader = req.headers.get("Authorization");
-const token = authHeader?.replace("Bearer ", "");
+// Guard: prevent service workers in Lovable preview/iframe contexts
+const isInIframe = (() => {
+  try { return window.self !== window.top; } catch { return true; }
+})();
 
-// Allow service-role calls (from scheduled-backup-notify orchestrator)
-if (token === serviceRoleKey) {
-  // Authenticated as service role — proceed
-} else if (authHeader?.startsWith("Bearer ")) {
-  // User-triggered: verify backup admin
-  const sourceClient = createClient(supabaseUrl, Deno.env.get("SUPABASE_ANON_KEY")!, {
-    global: { headers: { Authorization: authHeader } },
-  });
-  const { data: claims, error: claimsErr } = await sourceClient.auth.getClaims(token!);
-  if (claimsErr || !claims?.claims) {
-    return new Response(JSON.stringify({ error: "Unauthorized" }), {
-      status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" },
-    });
-  }
-  if (claims.claims.sub !== "759e973e-2484-4db3-862a-0cb2ec6d6ea3") {
-    return new Response(JSON.stringify({ error: "Forbidden: backup admin only" }), {
-      status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" },
-    });
-  }
-} else {
-  return new Response(JSON.stringify({ error: "Unauthorized" }), {
-    status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" },
+const isPreviewHost =
+  window.location.hostname.includes("id-preview--") ||
+  window.location.hostname.includes("lovableproject.com") ||
+  window.location.hostname.includes("lovable.app");
+
+if (isPreviewHost || isInIframe) {
+  // Unregister any existing service workers that may be serving stale offline pages
+  navigator.serviceWorker?.getRegistrations().then((registrations) => {
+    registrations.forEach((r) => r.unregister());
   });
 }
 ```
 
-## Files to Update
+Then wrap the existing SW initialization block (lines 31-58) so it only runs when NOT in a preview/iframe context.
 
-1. **`supabase/functions/sync-offsite-backup/index.ts`** — Fix auth bypass for service role key
+### 2. `vite-pwa-config.ts` — Disable SW in dev mode
 
-## Deployment
+Add `devOptions: { enabled: false }` to prevent SW registration during development.
 
-Deploy `sync-offsite-backup` after the fix. The next nightly run (midnight UTC) will automatically pick it up.
+## What This Fixes
+
+- Immediately clears the stuck offline page from the preview
+- Prevents the service worker from re-registering in preview contexts
+- Production (published) PWA continues to work normally
 
