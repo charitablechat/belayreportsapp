@@ -104,6 +104,8 @@ export const useAutoSync = () => {
   const staleWarningShownRef = useRef(false);
   const lastSyncCompletedAtRef = useRef<number>(0);
   const realtimeErrorCountRef = useRef<number>(0);
+  const realtimeReconnectTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const realtimeBackoffRef = useRef<number>(60000); // Start at 60s, doubles up to 300s cap
   
   /**
    * Perform the actual sync operation
@@ -671,43 +673,69 @@ export const useAutoSync = () => {
       console.log('[AutoSync] Initialized with interval:', currentInterval / 1000, 's (mobile viewport:', isMobileViewport, ', idle:', unsyncedCountRef.current === 0, ')');
     }
     
-    // Realtime subscriptions for multi-device sync
-    channelRef.current = supabase
-      .channel('global-auto-sync')
-      .on(
-        'postgres_changes',
-        { event: '*', schema: 'public', table: 'inspections' },
-        handleRemoteChange
-      )
-      .on(
-        'postgres_changes',
-        { event: '*', schema: 'public', table: 'trainings' },
-        handleRemoteChange
-      )
-      .on(
-        'postgres_changes',
-        { event: '*', schema: 'public', table: 'daily_assessments' },
-        handleRemoteChange
-      )
-      .subscribe((status) => {
-        if (import.meta.env.DEV) {
-          console.log('[AutoSync] Realtime subscription status:', status);
-        }
-        // RC-6: Backoff on repeated channel errors — unsubscribe after 3 consecutive errors
-        if (status === 'CHANNEL_ERROR') {
-          realtimeErrorCountRef.current++;
-          if (realtimeErrorCountRef.current >= 3 && channelRef.current) {
-            console.warn('[AutoSync] 3+ consecutive CHANNEL_ERRORs — unsubscribing to prevent reconnect storms. Relying on periodic polling.');
-            supabase.removeChannel(channelRef.current);
-            channelRef.current = null;
+    // Realtime subscriptions for multi-device sync — extracted for auto-recovery
+    const setupRealtimeChannel = () => {
+      if (channelRef.current) {
+        supabase.removeChannel(channelRef.current);
+        channelRef.current = null;
+      }
+      
+      channelRef.current = supabase
+        .channel('global-auto-sync')
+        .on(
+          'postgres_changes',
+          { event: '*', schema: 'public', table: 'inspections' },
+          handleRemoteChange
+        )
+        .on(
+          'postgres_changes',
+          { event: '*', schema: 'public', table: 'trainings' },
+          handleRemoteChange
+        )
+        .on(
+          'postgres_changes',
+          { event: '*', schema: 'public', table: 'daily_assessments' },
+          handleRemoteChange
+        )
+        .subscribe((status) => {
+          if (import.meta.env.DEV) {
+            console.log('[AutoSync] Realtime subscription status:', status);
           }
-        } else if (status === 'SUBSCRIBED') {
-          realtimeErrorCountRef.current = 0;
-        }
-      });
+          if (status === 'CHANNEL_ERROR') {
+            realtimeErrorCountRef.current++;
+            if (realtimeErrorCountRef.current >= 3 && channelRef.current) {
+              const backoff = realtimeBackoffRef.current;
+              console.warn(`[AutoSync] 3+ consecutive CHANNEL_ERRORs — unsubscribing. Auto-reconnect in ${backoff / 1000}s.`);
+              supabase.removeChannel(channelRef.current);
+              channelRef.current = null;
+              realtimeErrorCountRef.current = 0;
+              
+              // Schedule auto-reconnect with exponential backoff
+              if (realtimeReconnectTimerRef.current) {
+                clearTimeout(realtimeReconnectTimerRef.current);
+              }
+              realtimeReconnectTimerRef.current = setTimeout(() => {
+                console.log('[AutoSync] Attempting Realtime channel reconnect...');
+                setupRealtimeChannel();
+              }, backoff);
+              
+              // Double backoff for next trip, cap at 5 minutes
+              realtimeBackoffRef.current = Math.min(backoff * 2, 300000);
+            }
+          } else if (status === 'SUBSCRIBED') {
+            realtimeErrorCountRef.current = 0;
+            realtimeBackoffRef.current = 60000;
+            if (realtimeReconnectTimerRef.current) {
+              clearTimeout(realtimeReconnectTimerRef.current);
+              realtimeReconnectTimerRef.current = null;
+            }
+          }
+        });
+    };
+    
+    setupRealtimeChannel();
     
     return () => {
-      // Cleanup
       clearTimeout(initialSyncTimer);
       window.removeEventListener('online', handleOnline);
       window.removeEventListener('sync-photos-updated', handleSyncPhotosUpdated);
@@ -724,6 +752,10 @@ export const useAutoSync = () => {
       
       if (periodicSyncIntervalRef.current) {
         clearInterval(periodicSyncIntervalRef.current);
+      }
+      
+      if (realtimeReconnectTimerRef.current) {
+        clearTimeout(realtimeReconnectTimerRef.current);
       }
       
       if (channelRef.current) {
