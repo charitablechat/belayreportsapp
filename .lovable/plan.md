@@ -1,68 +1,38 @@
 
 
-# Sync Audit Report: Findings and Recommendations
+# Realtime Channel Auto-Recovery
 
-## Executive Summary
+## Problem
+When the Realtime channel hits 3 consecutive errors, the circuit breaker permanently kills the channel for the rest of the session. There is no recovery mechanism — even if the network stabilizes, the app stays on slow polling (30-180s) until the user refreshes the page.
 
-The synchronization system is **in good health** following the Realtime enablement migration performed earlier today. The three core report tables (`inspections`, `trainings`, `daily_assessments`) are now confirmed active in the `supabase_realtime` publication, enabling sub-second cross-device sync.
+## Solution
+Add a timed auto-reconnect after the circuit breaker trips. After unsubscribing, wait 60 seconds, then attempt to re-establish the Realtime channel. If it fails again (3 more errors), back off to 2 minutes, then 5 minutes (exponential backoff, capped). This ensures Realtime self-heals without requiring a page refresh, while still protecting against reconnect storms.
 
-## Detailed Findings
+## Changes
 
-### 1. Realtime Publication — FIXED (previously critical)
-**Status**: Resolved  
-All three tables are now in the `supabase_realtime` publication. The existing Realtime subscription code in `useAutoSync.tsx` (lines 675-707) is now receiving live events, with proper cooldown guards (10s post-sync cooldown, 5s min-interval) to prevent self-triggered loops, and a 3-error circuit breaker to prevent reconnect storms.
+### File: `src/hooks/useAutoSync.tsx`
 
-### 2. Sync Drift (stale records) — HEALTHY
-**Active (non-deleted) records with drift:**
-- Inspections: 1 record, drift < 1 second (negligible)
-- Daily Assessments: 2 records, drift < 1 second (negligible)
-- Trainings: 0 records
+1. **Add a reconnect timer ref** alongside the existing `realtimeErrorCountRef` and `channelRef`:
+   - `realtimeReconnectTimerRef` (NodeJS.Timeout)
+   - `realtimeBackoffRef` (number, starts at 60000, doubles on each trip, caps at 300000)
 
-All records with large drift (days/weeks) are **soft-deleted**, which is expected — the soft-delete operation bumps `updated_at` but the sync pipeline correctly skips deleted records. No action needed.
+2. **Modify the circuit breaker block** (lines 697-703): After unsubscribing, schedule a reconnect attempt using `setTimeout` with the current backoff value, then double the backoff.
 
-### 3. Trigger Architecture — CORRECT
-The `update_updated_at_column` trigger properly excludes `updated_at`, `synced_at`, `last_opened_at`, `last_modified_by`, `latest_report_generated_at`, `latest_report_html`, `report_version`, and `last_sync_source` from its comparison. This means setting `synced_at` alone does NOT re-bump `updated_at`, preventing infinite sync loops.
+3. **Extract channel setup into a reusable function** (`setupRealtimeChannel`) so it can be called both on mount and during reconnect. This function will contain the current `.channel()...subscribe()` logic from lines 675-707.
 
-### 4. Sync Pipeline Architecture — WELL-DESIGNED
-The system has multiple layers of protection:
-- **Batch processing**: MAX_BATCH_SIZE = 5, with accelerated re-sync (5s delay) for queued items
-- **Field count regression guard**: Blocks sync if data drops >50%, with 3-skip override
-- **Empty local guard**: Prevents data loss from IndexedDB corruption
-- **Dedup guard**: Prevents duplicate records from race conditions
-- **Conflict detection**: Automatic conflict recording and resolution
-- **Sequential processing with UI yields**: `setTimeout(r, 0)` between sync phases prevents UI blocking
+4. **On successful SUBSCRIBED**: Reset both `realtimeErrorCountRef` and `realtimeBackoffRef` back to initial values (0 and 60000).
 
-### 5. Polling Intervals — APPROPRIATE (with Realtime now active)
+5. **Cleanup**: Clear the reconnect timer in the effect cleanup (lines 709-732).
+
+### Behavior Summary
+
 ```text
-                  Active (items pending)    Idle (nothing pending)
-Desktop:          30s                       120s
-Mobile:           60s                       180s
+Error 1-2:  Logged, no action
+Error 3:    Unsubscribe channel, schedule reconnect in 60s
+Reconnect → Error 3 again: Schedule reconnect in 120s
+Reconnect → Error 3 again: Schedule reconnect in 300s (cap)
+Reconnect → SUBSCRIBED:    Reset all counters, back to normal
 ```
-With Realtime now enabled, polling is a fallback safety net. These intervals are appropriate.
 
-### 6. Error Handling — COMPREHENSIVE
-- 8s auth timeout prevents session hangs
-- Dynamic sync timeout: 30s base + 8s per item (max 5 min)
-- Safety timeout 2s after main timeout as final reset
-- Circuit breaker on IndexedDB (3 failures, 60s-5min exponential backoff)
-- Stale upload warning after 5 minutes of no sync while online
-- Realtime channel auto-unsubscribe after 3 consecutive errors
-
-### 7. Photo Sync — WORKING
-Photo sync runs after data sync, with 10-photo batch size, 5 max retries, and proper retry counting.
-
-## One Minor Issue Found — Potential Optimization
-
-### Redundant `synced_at` alignment for soft-deleted records
-When a record is soft-deleted, the `update_updated_at_column` trigger bumps `updated_at`, but `synced_at` is not updated. This creates permanent drift on deleted records that shows up in diagnostics but causes no functional harm (sync correctly skips deleted records via `checkRemoteRecordStatus`). No fix needed, but a future migration could align timestamps on soft-delete to clean up diagnostics.
-
-## Recommendations
-
-1. **No immediate code changes needed** — The Realtime migration already applied is the highest-impact fix. Cross-device sync should now be near-instant.
-2. **Monitor Realtime stability** — Watch for `CHANNEL_ERROR` logs in production. The 3-error circuit breaker will fall back to polling if Realtime becomes unstable.
-3. **Test cross-device sync** — Open the app on two devices, edit a report on one, and verify it appears on the other within 1-3 seconds.
-
-## Conclusion
-
-The sync system is well-engineered with multiple safety layers. The only critical issue (Realtime being disabled) has been resolved. All active records are within sub-second sync drift. No code changes are recommended at this time.
+No database changes needed. Polling continues as fallback during reconnect waits.
 
