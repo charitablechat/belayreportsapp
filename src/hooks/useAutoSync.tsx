@@ -563,6 +563,33 @@ export const useAutoSync = () => {
       console.log('[AutoSync] Realtime change detected:', payload.eventType, payload.table);
     }
     
+    // Persist the remote record into IndexedDB so offline data stays fresh.
+    // Skip if the local copy has unsynced edits (shouldPreserveLocalRecord).
+    if (payload.eventType === 'INSERT' || payload.eventType === 'UPDATE') {
+      const record = payload.new;
+      if (record && record.id) {
+        const persistToIDB = async () => {
+          try {
+            if (shouldPreserveLocalRecord(record)) return; // don't overwrite richer local data
+            const enriched = { ...record, synced_at: new Date().toISOString() };
+            if (payload.table === 'inspections') {
+              await saveInspectionOffline(enriched);
+            } else if (payload.table === 'trainings') {
+              await saveTrainingOffline(enriched);
+            } else if (payload.table === 'daily_assessments') {
+              await saveDailyAssessmentOffline(enriched);
+            }
+          } catch (e) {
+            // Non-critical — IndexedDB will catch up on next sync cycle
+            if (import.meta.env.DEV) {
+              console.warn('[AutoSync] Failed to persist Realtime payload to IndexedDB:', e);
+            }
+          }
+        };
+        persistToIDB();
+      }
+    }
+    
     // Invalidate relevant queries to refresh UI with remote data
     if (payload.table === 'inspections') {
       queryClient.invalidateQueries({ queryKey: ['inspections'] });
