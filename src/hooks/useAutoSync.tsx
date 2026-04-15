@@ -104,6 +104,8 @@ export const useAutoSync = () => {
   const staleWarningShownRef = useRef(false);
   const lastSyncCompletedAtRef = useRef<number>(0);
   const realtimeErrorCountRef = useRef<number>(0);
+  const realtimeReconnectTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const realtimeBackoffRef = useRef<number>(60000); // Start at 60s, doubles up to 300s cap
   
   /**
    * Perform the actual sync operation
