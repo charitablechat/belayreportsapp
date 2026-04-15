@@ -2,6 +2,8 @@ import { useEffect, useCallback, useRef, useState } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { syncAllInspectionsAtomic, syncAllTrainingsAtomic, syncAllDailyAssessmentsAtomic } from '@/lib/atomic-sync-manager';
 import { syncPhotos } from '@/lib/sync-manager';
+import { saveInspectionOffline, saveTrainingOffline, saveDailyAssessmentOffline } from '@/lib/offline-storage';
+import { shouldPreserveLocalRecord } from '@/lib/local-data-guards';
 import { getUnsyncedInspections, getUnsyncedTrainings, getUnsyncedDailyAssessments, getUnsyncedCounts, getCircuitBreakerStatus, resetCircuitBreaker, pruneOldSyncedPhotoBlobs, getQueuedOperations, removeQueuedOperation, getQueuedTrainingOperations, removeQueuedTrainingOperation, getQueuedAssessmentOperations, removeQueuedAssessmentOperation, clearAllQueuedOperations, clearAllQueuedTrainingOperations, clearAllQueuedAssessmentOperations } from '@/lib/offline-storage';
 import { getUserWithCache, getCachedUserFromStorage, ensureValidSession, type CachedUser } from '@/lib/cached-auth';
 import { hasPendingOfflineAuth, verifyAndReconcileOfflineAuth } from '@/lib/offline-auth';
@@ -559,6 +561,33 @@ export const useAutoSync = () => {
   const handleRemoteChange = useCallback((payload: any) => {
     if (import.meta.env.DEV) {
       console.log('[AutoSync] Realtime change detected:', payload.eventType, payload.table);
+    }
+    
+    // Persist the remote record into IndexedDB so offline data stays fresh.
+    // Skip if the local copy has unsynced edits (shouldPreserveLocalRecord).
+    if (payload.eventType === 'INSERT' || payload.eventType === 'UPDATE') {
+      const record = payload.new;
+      if (record && record.id) {
+        const persistToIDB = async () => {
+          try {
+            if (shouldPreserveLocalRecord(record)) return; // don't overwrite richer local data
+            const enriched = { ...record, synced_at: new Date().toISOString() };
+            if (payload.table === 'inspections') {
+              await saveInspectionOffline(enriched);
+            } else if (payload.table === 'trainings') {
+              await saveTrainingOffline(enriched);
+            } else if (payload.table === 'daily_assessments') {
+              await saveDailyAssessmentOffline(enriched);
+            }
+          } catch (e) {
+            // Non-critical — IndexedDB will catch up on next sync cycle
+            if (import.meta.env.DEV) {
+              console.warn('[AutoSync] Failed to persist Realtime payload to IndexedDB:', e);
+            }
+          }
+        };
+        persistToIDB();
+      }
     }
     
     // Invalidate relevant queries to refresh UI with remote data
