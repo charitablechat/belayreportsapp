@@ -1,37 +1,41 @@
 
 
-# Trigger Off-Site Backup Sync
+# Sync Audit: Findings and Fix Plan
 
-## Problem
-The `sync-offsite-backup` edge function times out when called via the internal tool because it transfers many files between storage buckets and needs several minutes to complete. The tool's request timeout is shorter than the function's execution time.
+## Critical Finding: Realtime is Completely Disabled
 
-## Solution
-There are two approaches to get this done right now:
+The `useAutoSync` hook subscribes to Realtime channels on `inspections`, `trainings`, and `daily_assessments` (lines 675-707), but **zero tables are in the `supabase_realtime` publication**. This means:
 
-### Option A — Call the function from your browser console (fastest, no code change)
-Open the **published app** at `https://ropeworks.lovable.app` and run this in the browser developer console (F12 → Console):
+- Cross-device sync relies **entirely on polling** (30s desktop / 60s mobile when active, 120-180s when idle)
+- The Realtime subscription code runs but receives **no events** -- it's dead code consuming a WebSocket connection for nothing
+- When you edit a report on one device, the other device won't see it for 30-180 seconds at best
 
-```javascript
-const { data, error } = await window.__supabase.functions.invoke('sync-offsite-backup', {
-  body: { backup_path: 'daily/2026-04-13T00-00-03-366Z' }
-});
-console.log(data, error);
+## Secondary Finding: 4 Stale Training Records
+
+4 training records have `updated_at` ahead of `synced_at` by up to 4 days, meaning edits on those records never synced back. This suggests the sync pipeline is silently skipping them (possibly due to field-count regression guards or ownership checks).
+
+## Fix Plan
+
+### Step 1: Enable Realtime for Report Tables
+Run a migration to add the three report tables to the Realtime publication:
+
+```sql
+ALTER PUBLICATION supabase_realtime ADD TABLE public.inspections;
+ALTER PUBLICATION supabase_realtime ADD TABLE public.trainings;
+ALTER PUBLICATION supabase_realtime ADD TABLE public.daily_assessments;
 ```
 
-If `window.__supabase` is not exposed, use:
-```javascript
-const { createClient } = await import('https://esm.sh/@supabase/supabase-js@2');
-const sb = createClient('https://ssgzcgvygnsrqalisshx.supabase.co', 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InNzZ3pjZ3Z5Z25zcnFhbGlzc2h4Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjIyMzM5NjksImV4cCI6MjA3NzgwOTk2OX0.buTFy44tZdRIlRSFIm5BqeOGb4nX3ARuHawWA9hZN54');
-// You must be logged in as the backup admin for this to work
-const { data, error } = await sb.functions.invoke('sync-offsite-backup', {
-  body: { backup_path: 'daily/2026-04-13T00-00-03-366Z' }
-});
-console.log(data, error);
-```
+This is safe because RLS policies are enforced on Realtime -- users will only receive change events for rows they have SELECT access to. This alone will make cross-device sync near-instant (sub-second) instead of 30-180 seconds.
 
-### Option B — Add a "Sync Now" button to the Admin Backups panel
-I would add a button in the `DatabaseBackupsPanel` component that calls the `sync-offsite-backup` function for the latest backup entry. This gives you a permanent UI control.
+### Step 2: Investigate and Fix Stale Training Records
+Query the specific stale records and attempt to re-align their `synced_at` timestamps using the existing `align_synced_at` RPC function, which will mark them as synced and stop the system from repeatedly trying (and failing) to sync them.
 
-### Recommendation
-Option A gets you the sync right now with zero code changes. Option B adds the capability permanently. I can implement Option B after you confirm the sync worked.
+### Step 3: Reduce Idle Polling Interval (Optional)
+The current idle interval (120s desktop, 180s mobile) is conservative. With Realtime enabled, polling becomes a fallback only, so these intervals could stay as-is. No code change needed.
+
+## Technical Details
+
+- **Files modified**: None (database migration only for Step 1)
+- **Risk**: Low -- Realtime + RLS is a standard Supabase pattern, and RLS is confirmed active on all tables
+- **Impact**: Cross-device sync goes from 30-180 second delay to sub-second
 
