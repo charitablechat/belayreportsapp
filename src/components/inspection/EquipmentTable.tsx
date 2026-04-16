@@ -5,8 +5,7 @@ import { LazyRichTextEditor } from "@/components/ui/lazy-rich-text-editor";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
 import ResultSelect from "@/components/ResultSelect";
-import { GlobalAutocomplete } from "@/components/GlobalAutocomplete";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { EquipmentTypeCombobox } from "./EquipmentTypeCombobox";
 import { Plus, Trash2, X, Minus } from "lucide-react";
 import ItemPhotoUpload from "./ItemPhotoUpload";
 import { cn } from "@/lib/utils";
@@ -31,7 +30,8 @@ interface EquipmentTableProps {
   equipment: any[];
   onUpdate: (equipmentOrUpdater: any[] | ((prev: any[]) => any[])) => void;
   onImmediateSave?: () => void;
-  typeOptions?: string[];
+  categoryOptions?: string[];
+  onAddCategoryOption?: (label: string) => void;
   inspectionId?: string;
   onGalleryRefresh?: () => void;
 }
