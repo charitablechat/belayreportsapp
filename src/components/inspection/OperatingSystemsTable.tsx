@@ -204,12 +204,15 @@ function OperatingSystemsTable({ systems, onUpdate, onImmediateSave, inspectionI
                         fieldType="operating_system_element"
                         placeholder="Enter or select name"
                         className="border-0 bg-transparent"
+                        existingValues={existingElementNames}
                       />
                     </div>
                     <div className="p-2 border-r border-border">
                       <SystemTypeSelect
                         value={system.system_name}
                         onChange={(value) => updateSystem(system, "system_name", value)}
+                        options={systemTypeOptions}
+                        onAddOption={addSystemTypeOption}
                       />
                     </div>
                     <div className="p-2 border-r border-border">
@@ -296,6 +299,7 @@ function OperatingSystemsTable({ systems, onUpdate, onImmediateSave, inspectionI
                             onBlur={onImmediateSave}
                             fieldType="operating_system_element"
                             placeholder="Enter or select name"
+                            existingValues={existingElementNames}
                           />
                         </div>
                       </div>
@@ -305,6 +309,8 @@ function OperatingSystemsTable({ systems, onUpdate, onImmediateSave, inspectionI
                       <SystemTypeSelect
                         value={system.system_name}
                         onChange={(value) => updateSystem(system, "system_name", value)}
+                        options={systemTypeOptions}
+                        onAddOption={addSystemTypeOption}
                       />
                     </div>
                     <div>
