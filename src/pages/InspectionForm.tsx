@@ -157,6 +157,16 @@ export default function InspectionForm() {
     reportType: 'inspection',
     enabled: isAdmin && inspection?.status === 'completed',
   });
+  // Equipment type options per category
+  const harnessesOpts = useEquipmentTypeOptions("harnesses");
+  const helmetsOpts = useEquipmentTypeOptions("helmets");
+  const lanyardsOpts = useEquipmentTypeOptions("lanyards");
+  const connectorsOpts = useEquipmentTypeOptions("connectors");
+  const ropeOpts = useEquipmentTypeOptions("rope");
+  const belayOpts = useEquipmentTypeOptions("belay");
+  const trolleysOpts = useEquipmentTypeOptions("trolleys");
+  const otherOpts = useEquipmentTypeOptions("other");
+
   const [systems, setSystems] = useState<any[]>([]);
   const [ziplines, setZiplines] = useState<any[]>([]);
   const [equipment, setEquipment] = useState<any[]>([]);
