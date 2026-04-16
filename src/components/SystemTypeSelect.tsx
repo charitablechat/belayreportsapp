@@ -1,7 +1,6 @@
-import { useState, useRef, useCallback } from "react";
-import { Check, Plus } from "lucide-react";
+import { useState, useCallback, useRef, useEffect } from "react";
+import { Check, Plus, ChevronsUpDown } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { Input } from "@/components/ui/input";
 import {
   Command,
   CommandEmpty,
@@ -37,8 +36,7 @@ export default function SystemTypeSelect({
 }: SystemTypeSelectProps) {
   const [open, setOpen] = useState(false);
   const [searchValue, setSearchValue] = useState("");
-  const [isEditing, setIsEditing] = useState(false);
-  const triggerInputRef = useRef<HTMLInputElement>(null);
+  const commandInputRef = useRef<HTMLInputElement>(null);
 
   const filteredOptions = options.filter((opt) =>
     opt.toLowerCase().includes(searchValue.toLowerCase())
@@ -50,168 +48,89 @@ export default function SystemTypeSelect({
       (opt) => opt.toLowerCase() === searchValue.trim().toLowerCase()
     );
 
+  const commitValue = useCallback(
+    (next: string) => {
+      const trimmed = next.trim();
+      if (!trimmed) return;
+      if (trimmed !== value) {
+        const isNew = !options.some(
+          (opt) => opt.toLowerCase() === trimmed.toLowerCase()
+        );
+        if (isNew) onAddOption(trimmed);
+        onChange(trimmed);
+      }
+    },
+    [value, options, onChange, onAddOption]
+  );
+
   const handleSelect = useCallback(
     (selectedValue: string) => {
-      onChange(selectedValue);
-      setOpen(false);
+      commitValue(selectedValue);
       setSearchValue("");
-      setIsEditing(false);
-      onBlur?.();
+      setOpen(false);
     },
-    [onChange, onBlur]
+    [commitValue]
   );
 
   const handleCreateNew = useCallback(() => {
     const newValue = searchValue.trim();
-    if (newValue) {
-      onAddOption(newValue);
-      handleSelect(newValue);
-    }
-  }, [searchValue, onAddOption, handleSelect]);
-
-  const placeCursorAtEnd = useCallback(() => {
-    const input = triggerInputRef.current;
-    if (!input) return;
-    const setCaret = () => {
-      const len = input.value.length;
-      input.setSelectionRange(len, len);
-    };
-    setCaret();
-    requestAnimationFrame(setCaret);
-    setTimeout(setCaret, 0);
-  }, []);
-
-  const normalizeTriggerSelection = useCallback(() => {
-    const input = triggerInputRef.current;
-    if (!input) return;
-    if (
-      input.value.length > 0 &&
-      input.selectionStart === 0 &&
-      input.selectionEnd === input.value.length
-    ) {
-      placeCursorAtEnd();
-    }
-  }, [placeCursorAtEnd]);
-
-  const handleTriggerFocus = useCallback(() => {
-    setIsEditing(true);
-    setSearchValue("");
-    if (!open) setOpen(true);
-  }, [open]);
-
-  const handleTriggerBlur = useCallback(() => {
-    setTimeout(() => {
-      if (!open) {
-        if (searchValue.trim()) {
-          const trimmed = searchValue.trim();
-          if (trimmed !== value) {
-            const isNew = !options.some(
-              (opt) => opt.toLowerCase() === trimmed.toLowerCase()
-            );
-            if (isNew) {
-              onAddOption(trimmed);
-            }
-            onChange(trimmed);
-          }
-        }
-        setIsEditing(false);
-        onBlur?.();
-      }
-    }, 200);
-  }, [open, searchValue, value, options, onChange, onAddOption, onBlur]);
+    if (newValue) handleSelect(newValue);
+  }, [searchValue, handleSelect]);
 
   const handleOpenChange = useCallback(
     (isOpen: boolean) => {
       if (!isOpen) {
-        if (isEditing && searchValue.trim()) {
-          const trimmed = searchValue.trim();
-          if (trimmed !== value) {
-            const isNew = !options.some(
-              (opt) => opt.toLowerCase() === trimmed.toLowerCase()
-            );
-            if (isNew) {
-              onAddOption(trimmed);
-            }
-            onChange(trimmed);
-          }
-        }
-        setIsEditing(false);
+        if (searchValue.trim()) commitValue(searchValue);
+        setSearchValue("");
         onBlur?.();
       }
       setOpen(isOpen);
     },
-    [isEditing, searchValue, value, options, onChange, onAddOption, onBlur]
+    [searchValue, commitValue, onBlur]
   );
+
+  useEffect(() => {
+    if (open) {
+      const t = setTimeout(() => commandInputRef.current?.focus(), 50);
+      return () => clearTimeout(t);
+    }
+  }, [open]);
 
   return (
     <Popover open={open} onOpenChange={handleOpenChange}>
       <PopoverTrigger asChild>
-        <div className="relative w-full">
-          <Input
-            ref={triggerInputRef}
-            role="combobox"
-            aria-expanded={open}
-            value={isEditing ? searchValue : value}
-            onChange={(e) => {
-              setSearchValue(e.target.value);
-              if (!isEditing) setIsEditing(true);
-              if (!open) setOpen(true);
-            }}
-            onFocus={handleTriggerFocus}
-            onMouseUp={normalizeTriggerSelection}
-            onTouchEnd={normalizeTriggerSelection}
-            onBlur={handleTriggerBlur}
-            onKeyDown={(e) => {
-              if (e.key === "Enter" && searchValue.trim()) {
-                e.preventDefault();
-                const trimmed = searchValue.trim();
-                const isNew = !options.some(
-                  (opt) => opt.toLowerCase() === trimmed.toLowerCase()
-                );
-                if (isNew) {
-                  onAddOption(trimmed);
-                }
-                handleSelect(trimmed);
-                triggerInputRef.current?.blur();
-              } else if (e.key === "Escape") {
-                e.preventDefault();
-                setSearchValue(value);
-                setIsEditing(false);
-                setOpen(false);
-                triggerInputRef.current?.blur();
-              }
-            }}
-            placeholder={placeholder}
-            className={cn(
-              "w-full font-normal transition-none",
-              isEditing &&
-                "border-2 border-foreground ring-0 ring-offset-0 focus-visible:ring-0 focus-visible:ring-offset-0 shadow-[2px_2px_0px_0px_hsl(var(--foreground))]",
-              !value && !isEditing && "text-muted-foreground",
-              className
-            )}
-          />
-        </div>
+        <button
+          type="button"
+          role="combobox"
+          aria-expanded={open}
+          className={cn(
+            "flex h-10 w-full items-center justify-between rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 font-normal text-left",
+            !value && "text-muted-foreground",
+            className
+          )}
+        >
+          <span className="truncate">{value || placeholder}</span>
+          <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+        </button>
       </PopoverTrigger>
       <PopoverContent
         className="w-[--radix-popover-trigger-width] p-0"
         align="start"
+        onOpenAutoFocus={(e) => {
+          e.preventDefault();
+          commandInputRef.current?.focus();
+        }}
       >
         <Command shouldFilter={false}>
           <CommandInput
+            ref={commandInputRef}
             placeholder="Search or type new..."
             value={searchValue}
             onValueChange={setSearchValue}
             onKeyDown={(e) => {
               if (e.key === "Enter" && searchValue.trim()) {
                 e.preventDefault();
-                const trimmed = searchValue.trim();
-                const isNew = !options.some(
-                  (opt) => opt.toLowerCase() === trimmed.toLowerCase()
-                );
-                if (isNew) {
-                  onAddOption(trimmed);
-                }
-                handleSelect(trimmed);
+                handleSelect(searchValue.trim());
               }
             }}
           />
