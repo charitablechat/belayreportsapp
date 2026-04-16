@@ -17,7 +17,7 @@ interface EquipmentTypeOption {
   is_active: boolean;
 }
 
-export function useEquipmentTypeOptions(category: string) {
+export function useEquipmentTypeOptions(category: string, existingValues: string[] = []) {
   const queryClient = useQueryClient();
   const { isOnline } = useNetworkStatus();
 
