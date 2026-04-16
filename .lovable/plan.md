@@ -1,61 +1,87 @@
 
 
-# Sync System Edge Case Audit: Findings
+# Category-Specific Equipment Type Dropdowns with Auto-Growing Lists
 
-## System Health: Robust with 3 Notable Gaps
+## Overview
+Replace the current flat `equipment_type` GlobalAutocomplete with category-scoped dropdown lists (e.g., harnesses only show harness types). Custom entries automatically become permanent options. Everything works offline.
 
-After reviewing `useAutoSync.tsx` (803 lines), `atomic-sync-manager.ts` (2353 lines), `sync-reconciliation.ts`, `transaction-manager.ts`, and `useConflicts.tsx`, the sync architecture is well-engineered. Three gaps warrant attention:
+## Database
 
----
+### New table: `equipment_type_options`
+| Column | Type | Default |
+|--------|------|---------|
+| id | uuid | gen_random_uuid() |
+| equipment_category | text NOT NULL | |
+| label | text NOT NULL | |
+| display_order | int | 0 |
+| is_active | boolean | true |
+| created_by | uuid (nullable) | |
+| created_at | timestamptz | now() |
 
-### Gap 1: No Conflict Detection for Trainings and Daily Assessments (Medium Priority)
+Unique constraint on `(equipment_category, LOWER(label))` to prevent duplicates.
 
-**Problem**: The `sync_conflicts` table and `useConflicts` hook only handle inspections. When two devices concurrently edit the same training or assessment, the system silently applies Last-Write-Wins without any conflict record. This is fine for most cases, but means there's zero visibility into concurrent training/assessment edits.
+RLS: All authenticated users can SELECT and INSERT. Only admins (via `has_role`) can UPDATE/DELETE.
 
-**Evidence**: `sync_conflicts` table has an `inspection_id` column. `useConflicts.tsx` only queries inspections. Searching for `sync_conflicts.*training` returns zero results.
+### Seed migration
+One-time SQL that extracts `DISTINCT TRIM(equipment_type)` from `inspection_equipment` grouped by `equipment_category`, deduplicates by `LOWER()`, picks the most common casing as the canonical label, and inserts into `equipment_type_options`. Normalizes stale categories like `"Belay Device"` → `"belay"`, `"Bags"` → `"other"`.
 
-**Recommendation**: No code change needed unless you want parity. The LWW strategy already prevents data loss — conflicts are auto-resolved. This is a monitoring gap, not a data-loss gap.
+## Offline Storage
 
----
+### New IndexedDB object store: `equipment_type_cache`
+- Added in a version bump (v10) in `offline-storage.ts`
+- KeyPath: `id` (compound `${category}::${label}`)
+- Index: `by-category`
+- Helper functions: `getEquipmentTypeOptions(category)`, `putEquipmentTypeOption(entry)`, `bulkPutEquipmentTypeOptions(entries)`
 
-### Gap 2: Realtime Events Don't Pull Data into IndexedDB (Low Priority)
+This cache is populated on first fetch and refreshed on each sync cycle, ensuring full offline availability.
 
-**Problem**: When `handleRemoteChange` fires (lines 559-593), it only invalidates React Query caches (`queryClient.invalidateQueries`). It does **not** pull the updated data into IndexedDB. This means:
-- The dashboard refreshes correctly (React Query re-fetches from Supabase)
-- But if the user goes offline immediately after, the IndexedDB copy is stale
-- The next sync cycle will reconcile this, but there's a brief window where offline data lags
+## New Hook: `src/hooks/useEquipmentTypeOptions.ts`
 
-**Impact**: Only affects the narrow scenario where Device A edits → Device B receives Realtime event → Device B immediately goes offline before the next sync cycle (5-30s).
+- Accepts `category: string`
+- On mount: reads from IndexedDB cache first (instant offline), then fetches from Supabase and merges
+- React Query with 5-minute stale time
+- Exposes `options: string[]` and `addOption(label: string)` mutation
+- `addOption`: inserts into both Supabase table AND IndexedDB immediately (optimistic), so the new entry appears in the dropdown instantly and persists offline
+- If offline, writes to IndexedDB only; a flag marks it unsynced for later push
 
-**Recommendation**: Optionally enhance `handleRemoteChange` to also save the `payload.new` data into IndexedDB. This is a minor improvement — the current behavior is acceptable for most use cases.
+## Frontend Changes
 
----
+### `EquipmentTable.tsx`
+- Add new prop: `categoryOptions: string[]` and `onAddCategoryOption: (label: string) => void`
+- Replace the `GlobalAutocomplete` for `equipment_type` with a combobox (Popover + Command pattern, matching the existing `DatabaseAutocomplete` style):
+  - Shows category-specific options as a searchable dropdown
+  - Allows free-text entry — if the typed value doesn't match an existing option, a "Create [value]" item appears
+  - On selecting "Create", calls `onAddCategoryOption(value)` which adds it to the persistent list immediately
+  - The existing `typeOptions` prop for Rope is replaced by the database-driven list
+- Mobile card view gets the same combobox treatment
 
-### Gap 3: Transaction Manager Is Not Truly Atomic (Known Limitation)
+### `InspectionForm.tsx`
+- Call `useEquipmentTypeOptions` for each category (harnesses, helmets, lanyards, connectors, rope, belay, trolleys, other)
+- Pass `categoryOptions` and `onAddCategoryOption` to each `EquipmentTable`
+- Remove the hardcoded `typeOptions` for Rope
 
-**Problem**: `executeTransaction()` in `transaction-manager.ts` executes steps sequentially with rollback on failure. But each step is a separate Supabase API call — not a database transaction. If the network drops mid-sync (e.g., after upserting the inspection but before child records), the data is partially committed.
+### Admin UI (Super Admin Dashboard)
+- New "Equipment Types" tab/section
+- Table per category showing options with: edit label, toggle active/inactive, drag-to-reorder, add new, delete
+- Follows existing `FormCMSManager` pattern
 
-**Mitigation already in place**: The `synced_at` field is only set in the **final** step, so the system knows the record needs re-syncing. The pre-sync version snapshot also provides recovery data.
+## Behavior Summary
 
-**Impact**: Partial commits are self-healing — the next sync cycle will complete the remaining steps. No data loss occurs, just temporary inconsistency.
+```text
+User types "Petzl GriGri" in Belay section:
+  → Dropdown shows existing matches (if any)
+  → If no match: "Create Petzl GriGri" option appears
+  → User selects it → saved to DB + IndexedDB immediately
+  → Next time any user opens Belay section, "Petzl GriGri" is in the dropdown
+  → Works offline via IndexedDB cache
 
-**Recommendation**: No change needed. The deferred `synced_at` pattern already handles this correctly.
+Admin manages lists:
+  → Can rename, reorder, deactivate, or delete options
+  → Deactivated options stop appearing but don't affect existing reports
+```
 
----
-
-## Confirmed Robust Areas (No Issues Found)
-
-- **Concurrent edits on same device**: `syncInProgressRef` lock prevents duplicate sync calls
-- **Rapid network toggling**: `MIN_SYNC_INTERVAL` (5s) debounce + `handleOnline` session refresh
-- **Large data volumes**: `MAX_BATCH_SIZE=5` with accelerated re-sync (5s) drains queues efficiently
-- **iOS bfcache**: `pageshow` event handler refreshes session before syncing
-- **IndexedDB corruption**: Circuit breaker (3 failures → exponential backoff 60s-5min)
-- **Self-triggered Realtime loops**: 10s post-sync cooldown prevents echo events
-- **Field count regression**: >50% data drop blocks sync (3-skip override for legitimate deletions)
-- **Soft-deleted record handling**: `checkRemoteRecordStatus` RPC bypasses RLS to detect deletions
-- **Deduplication**: Temp-ID records checked against server by `(inspector_id, organization, created_at)` before insert
-
-## Summary
-
-The sync system is production-ready. The three gaps identified are edge cases with existing mitigations. No code changes are strictly necessary. If you want to address any of the gaps, Gap 2 (pulling Realtime data into IndexedDB) would provide the most tangible improvement for offline-heavy users.
+## Files Changed
+- **Migration**: 1 SQL file (create table + seed from historical data)
+- **New**: `src/hooks/useEquipmentTypeOptions.ts`
+- **Modified**: `src/lib/offline-storage.ts` (v10 upgrade + helpers), `EquipmentTable.tsx`, `InspectionForm.tsx`, `SuperAdminDashboard.tsx`
 
