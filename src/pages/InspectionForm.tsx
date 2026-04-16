@@ -2916,6 +2916,8 @@ export default function InspectionForm() {
                       equipment={equipment}
                       onUpdate={setEquipment}
                       onImmediateSave={stableTriggerImmediateSave}
+                      categoryOptions={harnessesOpts.options}
+                      onAddCategoryOption={harnessesOpts.addOption}
                       inspectionId={id}
                       onGalleryRefresh={() => setPhotoRefreshKey(prev => prev + 1)}
                     />
@@ -2925,6 +2927,8 @@ export default function InspectionForm() {
                       equipment={equipment}
                       onUpdate={setEquipment}
                       onImmediateSave={stableTriggerImmediateSave}
+                      categoryOptions={helmetsOpts.options}
+                      onAddCategoryOption={helmetsOpts.addOption}
                       inspectionId={id}
                       onGalleryRefresh={() => setPhotoRefreshKey(prev => prev + 1)}
                     />
@@ -2934,6 +2938,8 @@ export default function InspectionForm() {
                       equipment={equipment}
                       onUpdate={setEquipment}
                       onImmediateSave={stableTriggerImmediateSave}
+                      categoryOptions={lanyardsOpts.options}
+                      onAddCategoryOption={lanyardsOpts.addOption}
                       inspectionId={id}
                       onGalleryRefresh={() => setPhotoRefreshKey(prev => prev + 1)}
                     />
@@ -2943,16 +2949,19 @@ export default function InspectionForm() {
                       equipment={equipment}
                       onUpdate={setEquipment}
                       onImmediateSave={stableTriggerImmediateSave}
+                      categoryOptions={connectorsOpts.options}
+                      onAddCategoryOption={connectorsOpts.addOption}
                       inspectionId={id}
                       onGalleryRefresh={() => setPhotoRefreshKey(prev => prev + 1)}
                     />
                     <EquipmentTable
                       category="rope"
                       displayName="Rope"
-                      typeOptions={["Dynamic Kernmantle", "Low-elongation Kernmantle", "Static Kernmantle", "Multi-Line"]}
                       equipment={equipment}
                       onUpdate={setEquipment}
                       onImmediateSave={stableTriggerImmediateSave}
+                      categoryOptions={ropeOpts.options}
+                      onAddCategoryOption={ropeOpts.addOption}
                       inspectionId={id}
                       onGalleryRefresh={() => setPhotoRefreshKey(prev => prev + 1)}
                     />
@@ -2962,6 +2971,8 @@ export default function InspectionForm() {
                       equipment={equipment}
                       onUpdate={setEquipment}
                       onImmediateSave={stableTriggerImmediateSave}
+                      categoryOptions={belayOpts.options}
+                      onAddCategoryOption={belayOpts.addOption}
                       inspectionId={id}
                       onGalleryRefresh={() => setPhotoRefreshKey(prev => prev + 1)}
                     />
@@ -2971,6 +2982,8 @@ export default function InspectionForm() {
                       equipment={equipment}
                       onUpdate={setEquipment}
                       onImmediateSave={stableTriggerImmediateSave}
+                      categoryOptions={trolleysOpts.options}
+                      onAddCategoryOption={trolleysOpts.addOption}
                       inspectionId={id}
                       onGalleryRefresh={() => setPhotoRefreshKey(prev => prev + 1)}
                     />
@@ -2980,6 +2993,8 @@ export default function InspectionForm() {
                       equipment={equipment}
                       onUpdate={setEquipment}
                       onImmediateSave={stableTriggerImmediateSave}
+                      categoryOptions={otherOpts.options}
+                      onAddCategoryOption={otherOpts.addOption}
                       inspectionId={id}
                       onGalleryRefresh={() => setPhotoRefreshKey(prev => prev + 1)}
                     />
