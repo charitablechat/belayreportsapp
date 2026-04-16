@@ -336,8 +336,23 @@ export function GlobalAutocomplete({
       });
   };
 
+  // Merge existingValues into history options (deduped, case-insensitive)
+  const mergedOptions = (() => {
+    if (existingValues.length === 0) return historyOptions;
+    const lowerSet = new Set(historyOptions.map(o => o.value.toLowerCase()));
+    const extras: HistoryItem[] = [];
+    for (const val of existingValues) {
+      const trimmed = val?.trim();
+      if (trimmed && !lowerSet.has(trimmed.toLowerCase())) {
+        extras.push({ id: `existing::${trimmed}`, value: trimmed, usage_count: 0 });
+        lowerSet.add(trimmed.toLowerCase());
+      }
+    }
+    return [...historyOptions, ...extras];
+  })();
+
   // Filter options based on search
-  const filteredOptions = historyOptions.filter(opt =>
+  const filteredOptions = mergedOptions.filter(opt =>
     opt.value.toLowerCase().includes(inputValue.toLowerCase())
   );
 
