@@ -2669,11 +2669,3 @@ export async function bulkPutEquipmentTypeOptions(entries: EquipmentTypeCacheEnt
     await tx.done;
   }, undefined, 'bulkPutEquipmentTypeOptions');
 }
-
-export async function deleteEquipmentTypeOption(category: string, label: string): Promise<void> {
-  return withIndexedDBErrorBoundary(async () => {
-    const db = await getDB();
-    const id = `${category}::${label}`;
-    await db.delete('equipment_type_cache', id);
-  }, undefined, 'deleteEquipmentTypeOption');
-}

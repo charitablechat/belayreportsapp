@@ -5,7 +5,6 @@ import {
   getEquipmentTypeOptions,
   putEquipmentTypeOption,
   bulkPutEquipmentTypeOptions,
-  deleteEquipmentTypeOption,
 } from "@/lib/offline-storage";
 import { useNetworkStatus } from "@/hooks/useNetworkStatus";
 import { useCallback } from "react";
@@ -116,45 +115,10 @@ export function useEquipmentTypeOptions(category: string) {
     },
   });
 
-  const deleteOptionMutation = useMutation({
-    mutationFn: async (label: string) => {
-      const trimmed = label.trim();
-      if (!trimmed) return;
-
-      // 1. Remove from IndexedDB immediately (optimistic)
-      await deleteEquipmentTypeOption(category, trimmed);
-
-      // 2. If online, soft-delete in Supabase (set is_active = false)
-      if (isOnline) {
-        try {
-          const { error } = await supabase
-            .from("equipment_type_options")
-            .update({ is_active: false })
-            .eq("equipment_category", category)
-            .ilike("label", trimmed);
-
-          if (error) {
-            console.error("[useEquipmentTypeOptions] Delete error:", error);
-          }
-        } catch (e) {
-          console.warn("[useEquipmentTypeOptions] Delete failed, removed locally:", e);
-        }
-      }
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["equipment-type-options", category] });
-    },
-  });
-
   const addOption = useCallback(
     (label: string) => addOptionMutation.mutate(label),
     [addOptionMutation]
   );
 
-  const deleteOption = useCallback(
-    (label: string) => deleteOptionMutation.mutate(label),
-    [deleteOptionMutation]
-  );
-
-  return { options, isLoading, addOption, deleteOption };
+  return { options, isLoading, addOption };
 }

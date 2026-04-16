@@ -1,5 +1,5 @@
 import { useState, useRef, useCallback } from "react";
-import { Check, Plus, Trash2, X } from "lucide-react";
+import { Check, Plus } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Input } from "@/components/ui/input";
 import {
@@ -22,7 +22,6 @@ interface EquipmentTypeComboboxProps {
   onBlur?: () => void;
   options: string[];
   onAddOption: (label: string) => void;
-  onDeleteOption?: (label: string) => void;
   placeholder?: string;
   className?: string;
 }
@@ -33,14 +32,12 @@ export function EquipmentTypeCombobox({
   onBlur,
   options,
   onAddOption,
-  onDeleteOption,
   placeholder = "Enter or select type",
   className,
 }: EquipmentTypeComboboxProps) {
   const [open, setOpen] = useState(false);
   const [searchValue, setSearchValue] = useState("");
   const [isEditing, setIsEditing] = useState(false);
-  const [confirmingDelete, setConfirmingDelete] = useState<string | null>(null);
   const triggerInputRef = useRef<HTMLInputElement>(null);
 
   const filteredOptions = options.filter((opt) =>
@@ -59,7 +56,6 @@ export function EquipmentTypeCombobox({
       setOpen(false);
       setSearchValue("");
       setIsEditing(false);
-      setConfirmingDelete(null);
       onBlur?.();
     },
     [onChange, onBlur]
@@ -72,22 +68,6 @@ export function EquipmentTypeCombobox({
       handleSelect(newValue);
     }
   }, [searchValue, onAddOption, handleSelect]);
-
-  const handleDeleteConfirm = useCallback(
-    (label: string, e: React.MouseEvent) => {
-      e.stopPropagation();
-      e.preventDefault();
-      onDeleteOption?.(label);
-      setConfirmingDelete(null);
-    },
-    [onDeleteOption]
-  );
-
-  const handleDeleteCancel = useCallback((e: React.MouseEvent) => {
-    e.stopPropagation();
-    e.preventDefault();
-    setConfirmingDelete(null);
-  }, []);
 
   const placeCursorAtEnd = useCallback(() => {
     const input = triggerInputRef.current;
@@ -116,7 +96,6 @@ export function EquipmentTypeCombobox({
   const handleTriggerFocus = useCallback(() => {
     setIsEditing(true);
     setSearchValue(value);
-    setConfirmingDelete(null);
     placeCursorAtEnd();
     if (!open) setOpen(true);
   }, [value, open, placeCursorAtEnd]);
@@ -127,6 +106,7 @@ export function EquipmentTypeCombobox({
         if (searchValue.trim()) {
           const trimmed = searchValue.trim();
           if (trimmed !== value) {
+            // Check if it's a new entry
             const isNew = !options.some(
               (opt) => opt.toLowerCase() === trimmed.toLowerCase()
             );
@@ -137,7 +117,6 @@ export function EquipmentTypeCombobox({
           }
         }
         setIsEditing(false);
-        setConfirmingDelete(null);
         onBlur?.();
       }
     }, 200);
@@ -159,7 +138,6 @@ export function EquipmentTypeCombobox({
           }
         }
         setIsEditing(false);
-        setConfirmingDelete(null);
         onBlur?.();
       }
       setOpen(isOpen);
@@ -255,74 +233,23 @@ export function EquipmentTypeCombobox({
 
             {filteredOptions.length > 0 && (
               <CommandGroup heading="Equipment types">
-                {filteredOptions.map((opt) => (
+                {filteredOptions.map((opt, index) => (
                   <CommandItem
                     key={opt}
                     value={opt}
-                    onSelect={() => {
-                      if (confirmingDelete !== opt) {
-                        handleSelect(opt);
-                      }
-                    }}
-                    className="cursor-pointer flex items-center justify-between gap-2"
-                  >
-                    {confirmingDelete === opt ? (
-                      <div className="flex items-center justify-between w-full gap-2">
-                        <span className="text-sm text-destructive font-medium whitespace-normal break-words">
-                          Delete "{opt}"?
-                        </span>
-                        <div className="flex items-center gap-1 shrink-0">
-                          <button
-                            type="button"
-                            onClick={(e) => handleDeleteConfirm(opt, e)}
-                            className="p-1 rounded-sm bg-destructive text-destructive-foreground hover:bg-destructive/90 transition-colors"
-                            aria-label="Confirm delete"
-                          >
-                            <Check className="h-3.5 w-3.5" />
-                          </button>
-                          <button
-                            type="button"
-                            onClick={handleDeleteCancel}
-                            className="p-1 rounded-sm hover:bg-accent text-muted-foreground hover:text-foreground transition-colors"
-                            aria-label="Cancel delete"
-                          >
-                            <X className="h-3.5 w-3.5" />
-                          </button>
-                        </div>
-                      </div>
-                    ) : (
-                      <>
-                        <div className="flex items-center gap-2 min-w-0 flex-1">
-                          <Check
-                            className={cn(
-                              "h-4 w-4 shrink-0",
-                              value === opt ? "opacity-100" : "opacity-0"
-                            )}
-                          />
-                          <span
-                            className="whitespace-normal break-words text-sm"
-                            title={opt}
-                          >
-                            {opt}
-                          </span>
-                        </div>
-                        {onDeleteOption && (
-                          <button
-                            type="button"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              e.preventDefault();
-                              setConfirmingDelete(opt);
-                            }}
-                            className="shrink-0 p-1 rounded-sm text-muted-foreground/50 hover:text-destructive hover:bg-destructive/10 transition-colors opacity-0 group-hover:opacity-100 focus:opacity-100"
-                            aria-label={`Delete ${opt}`}
-                            tabIndex={-1}
-                          >
-                            <Trash2 className="h-3.5 w-3.5" />
-                          </button>
-                        )}
-                      </>
+                    onSelect={() => handleSelect(opt)}
+                    className={cn(
+                      "cursor-pointer",
+                      index % 2 === 0 ? "bg-blue-50" : "bg-gray-50"
                     )}
+                  >
+                    <Check
+                      className={cn(
+                        "mr-2 h-4 w-4",
+                        value === opt ? "opacity-100" : "opacity-0"
+                      )}
+                    />
+                    <span className="whitespace-normal break-words">{opt}</span>
                   </CommandItem>
                 ))}
               </CommandGroup>

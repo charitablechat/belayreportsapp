@@ -2918,7 +2918,6 @@ export default function InspectionForm() {
                       onImmediateSave={stableTriggerImmediateSave}
                       categoryOptions={harnessesOpts.options}
                       onAddCategoryOption={harnessesOpts.addOption}
-                      onDeleteCategoryOption={harnessesOpts.deleteOption}
                       inspectionId={id}
                       onGalleryRefresh={() => setPhotoRefreshKey(prev => prev + 1)}
                     />
@@ -2930,7 +2929,6 @@ export default function InspectionForm() {
                       onImmediateSave={stableTriggerImmediateSave}
                       categoryOptions={helmetsOpts.options}
                       onAddCategoryOption={helmetsOpts.addOption}
-                      onDeleteCategoryOption={helmetsOpts.deleteOption}
                       inspectionId={id}
                       onGalleryRefresh={() => setPhotoRefreshKey(prev => prev + 1)}
                     />
@@ -2942,7 +2940,6 @@ export default function InspectionForm() {
                       onImmediateSave={stableTriggerImmediateSave}
                       categoryOptions={lanyardsOpts.options}
                       onAddCategoryOption={lanyardsOpts.addOption}
-                      onDeleteCategoryOption={lanyardsOpts.deleteOption}
                       inspectionId={id}
                       onGalleryRefresh={() => setPhotoRefreshKey(prev => prev + 1)}
                     />
@@ -2954,7 +2951,6 @@ export default function InspectionForm() {
                       onImmediateSave={stableTriggerImmediateSave}
                       categoryOptions={connectorsOpts.options}
                       onAddCategoryOption={connectorsOpts.addOption}
-                      onDeleteCategoryOption={connectorsOpts.deleteOption}
                       inspectionId={id}
                       onGalleryRefresh={() => setPhotoRefreshKey(prev => prev + 1)}
                     />
@@ -2966,7 +2962,6 @@ export default function InspectionForm() {
                       onImmediateSave={stableTriggerImmediateSave}
                       categoryOptions={ropeOpts.options}
                       onAddCategoryOption={ropeOpts.addOption}
-                      onDeleteCategoryOption={ropeOpts.deleteOption}
                       inspectionId={id}
                       onGalleryRefresh={() => setPhotoRefreshKey(prev => prev + 1)}
                     />
@@ -2978,7 +2973,6 @@ export default function InspectionForm() {
                       onImmediateSave={stableTriggerImmediateSave}
                       categoryOptions={belayOpts.options}
                       onAddCategoryOption={belayOpts.addOption}
-                      onDeleteCategoryOption={belayOpts.deleteOption}
                       inspectionId={id}
                       onGalleryRefresh={() => setPhotoRefreshKey(prev => prev + 1)}
                     />
@@ -2990,7 +2984,6 @@ export default function InspectionForm() {
                       onImmediateSave={stableTriggerImmediateSave}
                       categoryOptions={trolleysOpts.options}
                       onAddCategoryOption={trolleysOpts.addOption}
-                      onDeleteCategoryOption={trolleysOpts.deleteOption}
                       inspectionId={id}
                       onGalleryRefresh={() => setPhotoRefreshKey(prev => prev + 1)}
                     />
@@ -3002,7 +2995,6 @@ export default function InspectionForm() {
                       onImmediateSave={stableTriggerImmediateSave}
                       categoryOptions={otherOpts.options}
                       onAddCategoryOption={otherOpts.addOption}
-                      onDeleteCategoryOption={otherOpts.deleteOption}
                       inspectionId={id}
                       onGalleryRefresh={() => setPhotoRefreshKey(prev => prev + 1)}
                     />
