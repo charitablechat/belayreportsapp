@@ -57,7 +57,19 @@ export function useEquipmentTypeOptions(category: string, existingValues: string
       }
 
       // Return cached labels
-      return cached.map((c) => c.label);
+      const cachedLabels = cached.map((c) => c.label);
+      
+      // Merge in any existing values from the current report that aren't in the list
+      const lowerSet = new Set(cachedLabels.map((l) => l.toLowerCase()));
+      for (const val of existingValues) {
+        const trimmed = val.trim();
+        if (trimmed && !lowerSet.has(trimmed.toLowerCase())) {
+          cachedLabels.push(trimmed);
+          lowerSet.add(trimmed.toLowerCase());
+        }
+      }
+      
+      return cachedLabels;
     },
     staleTime: 5 * 60 * 1000, // 5 minutes
   });
