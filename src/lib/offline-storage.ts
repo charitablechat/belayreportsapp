@@ -811,6 +811,14 @@ export async function getDB() {
               console.log('[Offline Storage] Created autocomplete_history store (v9 upgrade)');
             }
           }
+          // === NEW in v10: equipment_type_cache store ===
+          if (!db.objectStoreNames.contains('equipment_type_cache')) {
+            const etStore = db.createObjectStore('equipment_type_cache', { keyPath: 'id' });
+            etStore.createIndex('by-category', 'equipment_category');
+            if (import.meta.env.DEV) {
+              console.log('[Offline Storage] Created equipment_type_cache store (v10 upgrade)');
+            }
+          }
         },
       });
     };
