@@ -95,10 +95,9 @@ export function EquipmentTypeCombobox({
 
   const handleTriggerFocus = useCallback(() => {
     setIsEditing(true);
-    setSearchValue(value);
-    placeCursorAtEnd();
+    setSearchValue("");
     if (!open) setOpen(true);
-  }, [value, open, placeCursorAtEnd]);
+  }, [open]);
 
   const handleTriggerBlur = useCallback(() => {
     setTimeout(() => {

@@ -17,7 +17,7 @@ interface EquipmentTypeOption {
   is_active: boolean;
 }
 
-export function useEquipmentTypeOptions(category: string) {
+export function useEquipmentTypeOptions(category: string, existingValues: string[] = []) {
   const queryClient = useQueryClient();
   const { isOnline } = useNetworkStatus();
 
@@ -49,7 +49,19 @@ export function useEquipmentTypeOptions(category: string) {
             }));
             await bulkPutEquipmentTypeOptions(entries);
 
-            return data.map((d: EquipmentTypeOption) => d.label);
+            const labels = data.map((d: EquipmentTypeOption) => d.label);
+            
+            // Merge in any existing values from the current report
+            const lowerSet = new Set(labels.map((l: string) => l.toLowerCase()));
+            for (const val of existingValues) {
+              const trimmed = val.trim();
+              if (trimmed && !lowerSet.has(trimmed.toLowerCase())) {
+                labels.push(trimmed);
+                lowerSet.add(trimmed.toLowerCase());
+              }
+            }
+            
+            return labels;
           }
         } catch (e) {
           console.warn("[useEquipmentTypeOptions] Fetch failed, using cache:", e);
@@ -57,7 +69,19 @@ export function useEquipmentTypeOptions(category: string) {
       }
 
       // Return cached labels
-      return cached.map((c) => c.label);
+      const cachedLabels = cached.map((c) => c.label);
+      
+      // Merge in any existing values from the current report that aren't in the list
+      const lowerSet = new Set(cachedLabels.map((l) => l.toLowerCase()));
+      for (const val of existingValues) {
+        const trimmed = val.trim();
+        if (trimmed && !lowerSet.has(trimmed.toLowerCase())) {
+          cachedLabels.push(trimmed);
+          lowerSet.add(trimmed.toLowerCase());
+        }
+      }
+      
+      return cachedLabels;
     },
     staleTime: 5 * 60 * 1000, // 5 minutes
   });

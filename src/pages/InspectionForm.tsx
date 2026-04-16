@@ -157,19 +157,21 @@ export default function InspectionForm() {
     reportType: 'inspection',
     enabled: isAdmin && inspection?.status === 'completed',
   });
-  // Equipment type options per category
-  const harnessesOpts = useEquipmentTypeOptions("harnesses");
-  const helmetsOpts = useEquipmentTypeOptions("helmets");
-  const lanyardsOpts = useEquipmentTypeOptions("lanyards");
-  const connectorsOpts = useEquipmentTypeOptions("connectors");
-  const ropeOpts = useEquipmentTypeOptions("rope");
-  const belayOpts = useEquipmentTypeOptions("belay");
-  const trolleysOpts = useEquipmentTypeOptions("trolleys");
-  const otherOpts = useEquipmentTypeOptions("other");
-
   const [systems, setSystems] = useState<any[]>([]);
   const [ziplines, setZiplines] = useState<any[]>([]);
   const [equipment, setEquipment] = useState<any[]>([]);
+
+  // Equipment type options per category — pass existing values so custom entries persist in dropdown
+  const getExistingTypes = (cat: string) =>
+    equipment.filter((e: any) => e.equipment_category === cat && e.equipment_type?.trim()).map((e: any) => e.equipment_type);
+  const harnessesOpts = useEquipmentTypeOptions("harnesses", getExistingTypes("harnesses"));
+  const helmetsOpts = useEquipmentTypeOptions("helmets", getExistingTypes("helmets"));
+  const lanyardsOpts = useEquipmentTypeOptions("lanyards", getExistingTypes("lanyards"));
+  const connectorsOpts = useEquipmentTypeOptions("connectors", getExistingTypes("connectors"));
+  const ropeOpts = useEquipmentTypeOptions("rope", getExistingTypes("rope"));
+  const belayOpts = useEquipmentTypeOptions("belay", getExistingTypes("belay"));
+  const trolleysOpts = useEquipmentTypeOptions("trolleys", getExistingTypes("trolleys"));
+  const otherOpts = useEquipmentTypeOptions("other", getExistingTypes("other"));
   const [modifiedByProfile, setModifiedByProfile] = useState<any>(null);
   const [standards, setStandards] = useState<any[]>([
     { id: crypto.randomUUID(), standard_name: "Local Written Operations Procedures", has_documentation: null },
