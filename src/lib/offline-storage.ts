@@ -197,6 +197,18 @@ interface InspectionDB extends DBSchema {
     };
     indexes: { 'by-field-type': string; 'by-synced': number };
   };
+  equipment_type_cache: {
+    key: string; // compound: `${category}::${label}`
+    value: {
+      id: string;
+      equipment_category: string;
+      label: string;
+      display_order: number;
+      is_active: boolean;
+      synced: boolean;
+    };
+    indexes: { 'by-category': string };
+  };
 }
 
 let dbPromise: Promise<IDBPDatabase<InspectionDB>> | null = null;
@@ -658,7 +670,7 @@ export async function getDB() {
     // Version 8: Add report_versions store for append-only versioning
     // DB_NAME and DB_VERSION shared with public/db-config.js for SW consistency
     const DB_NAME = 'rope-works-inspections';
-    const DB_VERSION = 9;
+    const DB_VERSION = 10;
     const openDBV8WithTimeout = async () => {
       return openDB<InspectionDB>(DB_NAME, DB_VERSION, {
         upgrade(db, oldVersion, newVersion, transaction) {
@@ -797,6 +809,14 @@ export async function getDB() {
             acStore.createIndex('by-synced', 'synced');
             if (import.meta.env.DEV) {
               console.log('[Offline Storage] Created autocomplete_history store (v9 upgrade)');
+            }
+          }
+          // === NEW in v10: equipment_type_cache store ===
+          if (!db.objectStoreNames.contains('equipment_type_cache')) {
+            const etStore = db.createObjectStore('equipment_type_cache', { keyPath: 'id' });
+            etStore.createIndex('by-category', 'equipment_category');
+            if (import.meta.env.DEV) {
+              console.log('[Offline Storage] Created equipment_type_cache store (v10 upgrade)');
             }
           }
         },
@@ -2611,4 +2631,41 @@ export async function evictSyncedPhotoMetadata(ageDays: number): Promise<number>
     console.warn('[Eviction] evictSyncedPhotoMetadata failed:', error);
   }
   return evictedCount;
+}
+
+// ============= EQUIPMENT TYPE CACHE =============
+
+interface EquipmentTypeCacheEntry {
+  id: string;
+  equipment_category: string;
+  label: string;
+  display_order: number;
+  is_active: boolean;
+  synced: boolean;
+}
+
+export async function getEquipmentTypeOptions(category: string): Promise<EquipmentTypeCacheEntry[]> {
+  return withIndexedDBErrorBoundary(async () => {
+    const db = await getDB();
+    const all = await db.getAllFromIndex('equipment_type_cache', 'by-category', category);
+    return all.filter(e => e.is_active).sort((a, b) => a.display_order - b.display_order);
+  }, [], 'getEquipmentTypeOptions');
+}
+
+export async function putEquipmentTypeOption(entry: EquipmentTypeCacheEntry): Promise<void> {
+  return withIndexedDBErrorBoundary(async () => {
+    const db = await getDB();
+    await db.put('equipment_type_cache', entry);
+  }, undefined, 'putEquipmentTypeOption');
+}
+
+export async function bulkPutEquipmentTypeOptions(entries: EquipmentTypeCacheEntry[]): Promise<void> {
+  return withIndexedDBErrorBoundary(async () => {
+    const db = await getDB();
+    const tx = db.transaction('equipment_type_cache', 'readwrite');
+    for (const entry of entries) {
+      await tx.store.put(entry);
+    }
+    await tx.done;
+  }, undefined, 'bulkPutEquipmentTypeOptions');
 }

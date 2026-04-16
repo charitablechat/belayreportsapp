@@ -5,8 +5,7 @@ import { LazyRichTextEditor } from "@/components/ui/lazy-rich-text-editor";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
 import ResultSelect from "@/components/ResultSelect";
-import { GlobalAutocomplete } from "@/components/GlobalAutocomplete";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { EquipmentTypeCombobox } from "./EquipmentTypeCombobox";
 import { Plus, Trash2, X, Minus } from "lucide-react";
 import ItemPhotoUpload from "./ItemPhotoUpload";
 import { cn } from "@/lib/utils";
@@ -31,14 +30,15 @@ interface EquipmentTableProps {
   equipment: any[];
   onUpdate: (equipmentOrUpdater: any[] | ((prev: any[]) => any[])) => void;
   onImmediateSave?: () => void;
-  typeOptions?: string[];
+  categoryOptions?: string[];
+  onAddCategoryOption?: (label: string) => void;
   inspectionId?: string;
   onGalleryRefresh?: () => void;
 }
 
 const EQ_GRID_COLS = "grid-cols-[40px_88px_minmax(120px,1fr)_128px_96px_160px_minmax(150px,1fr)_64px]";
 
-function EquipmentTable({ category, displayName, equipment, onUpdate, onImmediateSave, typeOptions, inspectionId, onGalleryRefresh }: EquipmentTableProps) {
+function EquipmentTable({ category, displayName, equipment, onUpdate, onImmediateSave, categoryOptions = [], onAddCategoryOption, inspectionId, onGalleryRefresh }: EquipmentTableProps) {
   const isMobile = useIsMobile();
   const effectiveInspectionId = inspectionId || window.location.pathname.split('/').pop() || '';
   
@@ -429,42 +429,15 @@ function EquipmentTable({ category, displayName, equipment, onUpdate, onImmediat
                   />
                 </div>
                 <div className="p-2 border-r border-border">
-                  {typeOptions ? (
-                    (() => {
-                      const currentVal = item.equipment_type || "";
-                      return currentVal.trim() !== "" ? (
-                        <div className="flex items-center gap-1">
-                          <DebouncedInput
-                            value={currentVal}
-                            onChange={(value) => updateEquipment(item, "equipment_type", value)}
-                            onBlur={onImmediateSave}
-                            onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); onImmediateSave?.(); focusNextCell(e.currentTarget as HTMLElement); } }}
-                            placeholder="Edit type..."
-                            className="border-0 bg-transparent flex-1"
-                          />
-                          <Button variant="ghost" size="sm" className="h-7 w-7 p-0 shrink-0" onClick={() => { updateEquipment(item, "equipment_type", ""); onImmediateSave?.(); }} title="Re-select type">
-                            <X className="h-3 w-3" />
-                          </Button>
-                        </div>
-                      ) : (
-                        <Select onValueChange={(v) => { updateEquipment(item, "equipment_type", v); onImmediateSave?.(); }}>
-                          <SelectTrigger className={cn("border-0 bg-transparent", "ring-2 ring-destructive")}><SelectValue placeholder="Select type" /></SelectTrigger>
-                          <SelectContent>
-                            {typeOptions.map((opt) => (<SelectItem key={opt} value={opt}>{opt}</SelectItem>))}
-                          </SelectContent>
-                        </Select>
-                      );
-                    })()
-                  ) : (
-                    <GlobalAutocomplete
-                      value={item.equipment_type}
-                      onChange={(value) => updateEquipment(item, "equipment_type", value)}
-                      onBlur={onImmediateSave}
-                      fieldType="equipment_type"
-                      placeholder="Enter or select type"
-                      className={cn("border-0 bg-transparent", !item.equipment_type || item.equipment_type.trim() === "" ? "ring-2 ring-destructive" : "")}
-                    />
-                  )}
+                  <EquipmentTypeCombobox
+                    value={item.equipment_type || ""}
+                    onChange={(value) => updateEquipment(item, "equipment_type", value)}
+                    onBlur={onImmediateSave}
+                    options={categoryOptions}
+                    onAddOption={onAddCategoryOption || (() => {})}
+                    placeholder="Enter or select type"
+                    className={cn("border-0 bg-transparent", !item.equipment_type || item.equipment_type.trim() === "" ? "ring-2 ring-destructive" : "")}
+                  />
                 </div>
                 <div className="p-2 border-r border-border">
                   <div className="flex flex-col gap-1">
@@ -587,35 +560,15 @@ function EquipmentTable({ category, displayName, equipment, onUpdate, onImmediat
                     />
                     <div className="flex-1">
                       <Label className="text-xs text-muted-foreground">Type *</Label>
-                    {typeOptions ? (
-                      (() => {
-                        const currentVal = item.equipment_type || "";
-                        return currentVal.trim() !== "" ? (
-                          <div className="flex items-center gap-1">
-                            <DebouncedInput value={currentVal} onChange={(value) => updateEquipment(item, "equipment_type", value)} onBlur={onImmediateSave} onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); onImmediateSave?.(); focusNextCell(e.currentTarget as HTMLElement); } }} placeholder="Edit type..." />
-                            <Button variant="ghost" size="sm" className="h-7 w-7 p-0 shrink-0" onClick={() => { updateEquipment(item, "equipment_type", ""); onImmediateSave?.(); }} title="Re-select type">
-                              <X className="h-3 w-3" />
-                            </Button>
-                          </div>
-                        ) : (
-                          <Select onValueChange={(v) => { updateEquipment(item, "equipment_type", v); onImmediateSave?.(); }}>
-                            <SelectTrigger className="ring-2 ring-destructive"><SelectValue placeholder="Select type" /></SelectTrigger>
-                            <SelectContent>
-                              {typeOptions.map((opt) => (<SelectItem key={opt} value={opt}>{opt}</SelectItem>))}
-                            </SelectContent>
-                          </Select>
-                        );
-                      })()
-                    ) : (
-                      <GlobalAutocomplete
-                        value={item.equipment_type}
-                        onChange={(value) => updateEquipment(item, "equipment_type", value)}
-                        onBlur={onImmediateSave}
-                        fieldType="equipment_type"
-                        placeholder="Enter or select type"
-                        className={cn(!item.equipment_type || item.equipment_type.trim() === "" ? "ring-2 ring-destructive" : "")}
-                      />
-                    )}
+                    <EquipmentTypeCombobox
+                      value={item.equipment_type || ""}
+                      onChange={(value) => updateEquipment(item, "equipment_type", value)}
+                      onBlur={onImmediateSave}
+                      options={categoryOptions}
+                      onAddOption={onAddCategoryOption || (() => {})}
+                      placeholder="Enter or select type"
+                      className={cn(!item.equipment_type || item.equipment_type.trim() === "" ? "ring-2 ring-destructive" : "")}
+                    />
                     </div>
                   </div>
                   
