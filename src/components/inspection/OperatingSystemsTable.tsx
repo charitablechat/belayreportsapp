@@ -23,6 +23,8 @@ import {
 } from "@/components/ui/alert-dialog";
 import { DraggableTableRow, DraggableMobileCard } from "./DraggableTableRow";
 import { useNativeDrag } from "@/hooks/useNativeDrag";
+import { useSystemTypeOptions } from "@/hooks/useSystemTypeOptions";
+import { useMemo } from "react";
 
 interface OperatingSystemsTableProps {
   systems: any[];
@@ -40,6 +42,18 @@ function OperatingSystemsTable({ systems, onUpdate, onImmediateSave, inspectionI
   const effectiveInspectionId = inspectionId || window.location.pathname.split('/').pop() || '';
 
   const { getDragProps } = useNativeDrag(systems, (reordered) => onUpdate(reordered));
+
+  // Collect existing system_name values for persistent auto-populate
+  const existingSystemNames = useMemo(() => {
+    return [...new Set(systems.filter(s => !s.is_divider && s.system_name?.trim()).map(s => s.system_name.trim()))];
+  }, [systems]);
+
+  // Collect existing element name values for persistent auto-populate
+  const existingElementNames = useMemo(() => {
+    return [...new Set(systems.filter(s => !s.is_divider && s.name?.trim()).map(s => s.name.trim()))];
+  }, [systems]);
+
+  const { options: systemTypeOptions, addOption: addSystemTypeOption } = useSystemTypeOptions(existingSystemNames);
 
   useEffect(() => {
     if (!newItemId) return;
@@ -190,12 +204,15 @@ function OperatingSystemsTable({ systems, onUpdate, onImmediateSave, inspectionI
                         fieldType="operating_system_element"
                         placeholder="Enter or select name"
                         className="border-0 bg-transparent"
+                        existingValues={existingElementNames}
                       />
                     </div>
                     <div className="p-2 border-r border-border">
                       <SystemTypeSelect
                         value={system.system_name}
                         onChange={(value) => updateSystem(system, "system_name", value)}
+                        options={systemTypeOptions}
+                        onAddOption={addSystemTypeOption}
                       />
                     </div>
                     <div className="p-2 border-r border-border">
@@ -282,6 +299,7 @@ function OperatingSystemsTable({ systems, onUpdate, onImmediateSave, inspectionI
                             onBlur={onImmediateSave}
                             fieldType="operating_system_element"
                             placeholder="Enter or select name"
+                            existingValues={existingElementNames}
                           />
                         </div>
                       </div>
@@ -291,6 +309,8 @@ function OperatingSystemsTable({ systems, onUpdate, onImmediateSave, inspectionI
                       <SystemTypeSelect
                         value={system.system_name}
                         onChange={(value) => updateSystem(system, "system_name", value)}
+                        options={systemTypeOptions}
+                        onAddOption={addSystemTypeOption}
                       />
                     </div>
                     <div>
