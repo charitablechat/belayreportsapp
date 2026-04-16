@@ -303,35 +303,51 @@ function EquipmentTable({ category, displayName, equipment, onUpdate, onImmediat
   const addEquipment = useCallback(() => {
     const id = `temp-${crypto.randomUUID()}`;
     setNewItemId(id);
-    onUpdate(prev => [
-      {
-        id,
-        inspection_id: window.location.pathname.split('/').pop(),
-        equipment_category: category,
-        equipment_type: "",
-        production_year: null,
-        quantity: null,
-        result: "pass",
-        comments: "",
-        is_divider: false,
-      },
-      ...prev,
-    ]);
+    onUpdate(prev => {
+      // Assign display_order lower than any existing row so new rows stay at the top
+      // and have a STABLE, distinct value (prevents jumping when sort runs after autosave).
+      const minOrder = prev.reduce(
+        (m, p) => Math.min(m, typeof p.display_order === 'number' ? p.display_order : 0),
+        0
+      );
+      return [
+        {
+          id,
+          inspection_id: window.location.pathname.split('/').pop(),
+          equipment_category: category,
+          equipment_type: "",
+          production_year: null,
+          quantity: null,
+          result: "pass",
+          comments: "",
+          is_divider: false,
+          display_order: minOrder - 1,
+        },
+        ...prev,
+      ];
+    });
   }, [category, onUpdate]);
 
   const addDivider = useCallback(() => {
-    onUpdate(prev => [
-      {
-        id: `temp-${crypto.randomUUID()}`,
-        inspection_id: window.location.pathname.split('/').pop(),
-        equipment_category: category,
-        equipment_type: "",
-        result: "pass",
-        is_divider: true,
-        divider_text: "",
-      },
-      ...prev,
-    ]);
+    onUpdate(prev => {
+      const minOrder = prev.reduce(
+        (m, p) => Math.min(m, typeof p.display_order === 'number' ? p.display_order : 0),
+        0
+      );
+      return [
+        {
+          id: `temp-${crypto.randomUUID()}`,
+          inspection_id: window.location.pathname.split('/').pop(),
+          equipment_category: category,
+          equipment_type: "",
+          result: "pass",
+          is_divider: true,
+          divider_text: "",
+          display_order: minOrder - 1,
+        },
+        ...prev,
+      ];
+    });
   }, [category, onUpdate]);
 
   const updateEquipment = useCallback((item: any, field: string, value: any) => {
