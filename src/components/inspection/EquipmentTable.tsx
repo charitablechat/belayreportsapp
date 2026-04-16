@@ -32,13 +32,14 @@ interface EquipmentTableProps {
   onImmediateSave?: () => void;
   categoryOptions?: string[];
   onAddCategoryOption?: (label: string) => void;
+  onDeleteCategoryOption?: (label: string) => void;
   inspectionId?: string;
   onGalleryRefresh?: () => void;
 }
 
 const EQ_GRID_COLS = "grid-cols-[40px_88px_minmax(120px,1fr)_128px_96px_160px_minmax(150px,1fr)_64px]";
 
-function EquipmentTable({ category, displayName, equipment, onUpdate, onImmediateSave, categoryOptions = [], onAddCategoryOption, inspectionId, onGalleryRefresh }: EquipmentTableProps) {
+function EquipmentTable({ category, displayName, equipment, onUpdate, onImmediateSave, categoryOptions = [], onAddCategoryOption, onDeleteCategoryOption, inspectionId, onGalleryRefresh }: EquipmentTableProps) {
   const isMobile = useIsMobile();
   const effectiveInspectionId = inspectionId || window.location.pathname.split('/').pop() || '';
   
@@ -435,6 +436,7 @@ function EquipmentTable({ category, displayName, equipment, onUpdate, onImmediat
                     onBlur={onImmediateSave}
                     options={categoryOptions}
                     onAddOption={onAddCategoryOption || (() => {})}
+                    onDeleteOption={onDeleteCategoryOption}
                     placeholder="Enter or select type"
                     className={cn("border-0 bg-transparent", !item.equipment_type || item.equipment_type.trim() === "" ? "ring-2 ring-destructive" : "")}
                   />
@@ -567,6 +569,7 @@ function EquipmentTable({ category, displayName, equipment, onUpdate, onImmediat
                           onBlur={onImmediateSave}
                           options={categoryOptions}
                           onAddOption={onAddCategoryOption || (() => {})}
+                          onDeleteOption={onDeleteCategoryOption}
                           placeholder="Enter or select type"
                           className={cn(!item.equipment_type || item.equipment_type.trim() === "" ? "ring-2 ring-destructive" : "")}
                         />
