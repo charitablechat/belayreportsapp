@@ -80,6 +80,7 @@ import { DataIntegrityBadge, type IntegrityStatus } from "@/components/ui/data-i
 import { VersionHistoryPanel } from "@/components/admin/VersionHistoryPanel";
 import { Shield as ShieldIcon, Receipt } from "lucide-react";
 import { useInvoicedStatus } from "@/hooks/useInvoicedStatus";
+import { useEquipmentTypeOptions } from "@/hooks/useEquipmentTypeOptions";
 
 const STANDARDS_TEMPLATE = [
   { standard_name: "Local Written Operations Procedures", has_documentation: null },
