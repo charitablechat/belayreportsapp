@@ -622,6 +622,39 @@ export type Database = {
         }
         Relationships: []
       }
+      equipment_type_options: {
+        Row: {
+          created_at: string
+          created_by: string | null
+          display_order: number
+          equipment_category: string
+          id: string
+          is_active: boolean
+          label: string
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          created_by?: string | null
+          display_order?: number
+          equipment_category: string
+          id?: string
+          is_active?: boolean
+          label: string
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          created_by?: string | null
+          display_order?: number
+          equipment_category?: string
+          id?: string
+          is_active?: boolean
+          label?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
       form_field_options: {
         Row: {
           created_at: string | null
