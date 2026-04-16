@@ -240,7 +240,7 @@ export function EquipmentTypeCombobox({
                     onSelect={() => handleSelect(opt)}
                     className={cn(
                       "cursor-pointer",
-                      index % 2 === 0 ? "bg-blue-50" : "bg-gray-50"
+                      index % 2 === 0 ? "bg-blue-100" : "bg-gray-50"
                     )}
                   >
                     <Check
