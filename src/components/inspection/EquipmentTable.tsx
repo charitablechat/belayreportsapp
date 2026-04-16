@@ -436,6 +436,7 @@ function EquipmentTable({ category, displayName, equipment, onUpdate, onImmediat
                     onBlur={onImmediateSave}
                     options={categoryOptions}
                     onAddOption={onAddCategoryOption || (() => {})}
+                    onDeleteOption={onDeleteCategoryOption}
                     placeholder="Enter or select type"
                     className={cn("border-0 bg-transparent", !item.equipment_type || item.equipment_type.trim() === "" ? "ring-2 ring-destructive" : "")}
                   />
@@ -568,6 +569,7 @@ function EquipmentTable({ category, displayName, equipment, onUpdate, onImmediat
                           onBlur={onImmediateSave}
                           options={categoryOptions}
                           onAddOption={onAddCategoryOption || (() => {})}
+                          onDeleteOption={onDeleteCategoryOption}
                           placeholder="Enter or select type"
                           className={cn(!item.equipment_type || item.equipment_type.trim() === "" ? "ring-2 ring-destructive" : "")}
                         />
