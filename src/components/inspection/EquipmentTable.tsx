@@ -38,7 +38,7 @@ interface EquipmentTableProps {
 
 const EQ_GRID_COLS = "grid-cols-[40px_88px_minmax(120px,1fr)_128px_96px_160px_minmax(150px,1fr)_64px]";
 
-function EquipmentTable({ category, displayName, equipment, onUpdate, onImmediateSave, typeOptions, inspectionId, onGalleryRefresh }: EquipmentTableProps) {
+function EquipmentTable({ category, displayName, equipment, onUpdate, onImmediateSave, categoryOptions = [], onAddCategoryOption, inspectionId, onGalleryRefresh }: EquipmentTableProps) {
   const isMobile = useIsMobile();
   const effectiveInspectionId = inspectionId || window.location.pathname.split('/').pop() || '';
   
