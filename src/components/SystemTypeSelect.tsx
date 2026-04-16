@@ -1,199 +1,260 @@
-import { useState, useEffect } from "react";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
-import { Button } from "@/components/ui/button";
+import { useState, useRef, useCallback } from "react";
+import { Check, Plus } from "lucide-react";
+import { cn } from "@/lib/utils";
 import { Input } from "@/components/ui/input";
-import { Pencil, Plus, Trash2 } from "lucide-react";
-import { triggerHaptic } from "@/lib/haptics";
+import {
+  Command,
+  CommandEmpty,
+  CommandGroup,
+  CommandInput,
+  CommandItem,
+  CommandList,
+} from "@/components/ui/command";
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
 
 interface SystemTypeSelectProps {
   value: string;
   onChange: (value: string) => void;
+  onBlur?: () => void;
+  options: string[];
+  onAddOption: (label: string) => void;
+  placeholder?: string;
+  className?: string;
 }
 
-const DEFAULT_OPTIONS = [
-  "Top Rope",
-  "Tensioned Rope",
-  "Automated Safety",
-  "Limited Fall",
-  "Collective Safety",
-  "Spotted/Low"
-];
+export default function SystemTypeSelect({
+  value,
+  onChange,
+  onBlur,
+  options,
+  onAddOption,
+  placeholder = "Select system type",
+  className,
+}: SystemTypeSelectProps) {
+  const [open, setOpen] = useState(false);
+  const [searchValue, setSearchValue] = useState("");
+  const [isEditing, setIsEditing] = useState(false);
+  const triggerInputRef = useRef<HTMLInputElement>(null);
 
-const STORAGE_KEY = "rope-works-custom-system-types";
+  const filteredOptions = options.filter((opt) =>
+    opt.toLowerCase().includes(searchValue.toLowerCase())
+  );
 
-export default function SystemTypeSelect({ value, onChange }: SystemTypeSelectProps) {
-  const [customOptions, setCustomOptions] = useState<string[]>([]);
-  const [dialogOpen, setDialogOpen] = useState(false);
-  const [editingOption, setEditingOption] = useState<string | null>(null);
-  const [inputValue, setInputValue] = useState("");
-
-  // Load custom options from localStorage
-  useEffect(() => {
-    const saved = localStorage.getItem(STORAGE_KEY);
-    if (saved) {
-      try {
-        setCustomOptions(JSON.parse(saved));
-      } catch (e) {
-        console.error("Failed to load custom options", e);
-      }
-    }
-  }, []);
-
-  // Save custom options to localStorage
-  const saveCustomOptions = (options: string[]) => {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(options));
-    setCustomOptions(options);
-  };
-
-  const handleAddNew = () => {
-    setEditingOption(null);
-    setInputValue("");
-    setDialogOpen(true);
-  };
-
-  const handleEdit = (option: string, e: React.MouseEvent) => {
-    e.stopPropagation();
-    setEditingOption(option);
-    setInputValue(option);
-    setDialogOpen(true);
-  };
-
-  const handleSave = () => {
-    const trimmed = inputValue.trim();
-    
-    if (!trimmed) {
-      return;
-    }
-
-    // Check for duplicates (case-insensitive)
-    const allOptions = [...DEFAULT_OPTIONS, ...customOptions];
-    const isDuplicate = allOptions.some(
-      opt => opt.toLowerCase() === trimmed.toLowerCase() && opt !== editingOption
+  const isNewEntry =
+    searchValue.trim() &&
+    !options.some(
+      (opt) => opt.toLowerCase() === searchValue.trim().toLowerCase()
     );
 
-    if (isDuplicate) {
-      return;
-    }
+  const handleSelect = useCallback(
+    (selectedValue: string) => {
+      onChange(selectedValue);
+      setOpen(false);
+      setSearchValue("");
+      setIsEditing(false);
+      onBlur?.();
+    },
+    [onChange, onBlur]
+  );
 
-    if (editingOption) {
-      // Edit existing
-      const updated = customOptions.map(opt => opt === editingOption ? trimmed : opt);
-      saveCustomOptions(updated);
-      // Update current value if it was the edited one
-      if (value === editingOption) {
-        onChange(trimmed);
+  const handleCreateNew = useCallback(() => {
+    const newValue = searchValue.trim();
+    if (newValue) {
+      onAddOption(newValue);
+      handleSelect(newValue);
+    }
+  }, [searchValue, onAddOption, handleSelect]);
+
+  const placeCursorAtEnd = useCallback(() => {
+    const input = triggerInputRef.current;
+    if (!input) return;
+    const setCaret = () => {
+      const len = input.value.length;
+      input.setSelectionRange(len, len);
+    };
+    setCaret();
+    requestAnimationFrame(setCaret);
+    setTimeout(setCaret, 0);
+  }, []);
+
+  const normalizeTriggerSelection = useCallback(() => {
+    const input = triggerInputRef.current;
+    if (!input) return;
+    if (
+      input.value.length > 0 &&
+      input.selectionStart === 0 &&
+      input.selectionEnd === input.value.length
+    ) {
+      placeCursorAtEnd();
+    }
+  }, [placeCursorAtEnd]);
+
+  const handleTriggerFocus = useCallback(() => {
+    setIsEditing(true);
+    setSearchValue("");
+    if (!open) setOpen(true);
+  }, [open]);
+
+  const handleTriggerBlur = useCallback(() => {
+    setTimeout(() => {
+      if (!open) {
+        if (searchValue.trim()) {
+          const trimmed = searchValue.trim();
+          if (trimmed !== value) {
+            const isNew = !options.some(
+              (opt) => opt.toLowerCase() === trimmed.toLowerCase()
+            );
+            if (isNew) {
+              onAddOption(trimmed);
+            }
+            onChange(trimmed);
+          }
+        }
+        setIsEditing(false);
+        onBlur?.();
       }
-    } else {
-      // Add new
-      saveCustomOptions([...customOptions, trimmed]);
-      onChange(trimmed);
-    }
+    }, 200);
+  }, [open, searchValue, value, options, onChange, onAddOption, onBlur]);
 
-    setDialogOpen(false);
-    setInputValue("");
-    setEditingOption(null);
-  };
-
-  const handleDelete = () => {
-    if (editingOption) {
-      const updated = customOptions.filter(opt => opt !== editingOption);
-      saveCustomOptions(updated);
-      setDialogOpen(false);
-      setInputValue("");
-      setEditingOption(null);
-    }
-  };
+  const handleOpenChange = useCallback(
+    (isOpen: boolean) => {
+      if (!isOpen) {
+        if (isEditing && searchValue.trim()) {
+          const trimmed = searchValue.trim();
+          if (trimmed !== value) {
+            const isNew = !options.some(
+              (opt) => opt.toLowerCase() === trimmed.toLowerCase()
+            );
+            if (isNew) {
+              onAddOption(trimmed);
+            }
+            onChange(trimmed);
+          }
+        }
+        setIsEditing(false);
+        onBlur?.();
+      }
+      setOpen(isOpen);
+    },
+    [isEditing, searchValue, value, options, onChange, onAddOption, onBlur]
+  );
 
   return (
-    <>
-      <Select value={value} onValueChange={(val) => {
-        triggerHaptic('light');
-        onChange(val);
-      }}>
-        <SelectTrigger className="w-full bg-card">
-          <SelectValue placeholder="Select system type" />
-        </SelectTrigger>
-        <SelectContent className="bg-card z-50">
-          {DEFAULT_OPTIONS.map(option => (
-            <SelectItem key={option} value={option}>
-              {option}
-            </SelectItem>
-          ))}
-          
-          {customOptions.length > 0 && (
-            <div className="border-t my-1 pt-1">
-              {customOptions.map(option => (
-                <div key={option} className="relative group">
-                  <SelectItem value={option} className="pr-8">
-                    {option}
-                  </SelectItem>
-                  <button
-                    onClick={(e) => handleEdit(option, e)}
-                    className="absolute right-2 top-1/2 -translate-y-1/2 opacity-0 group-hover:opacity-100 transition-opacity p-1 hover:bg-accent rounded"
-                  >
-                    <Pencil className="w-3 h-3" />
-                  </button>
-                </div>
-              ))}
-            </div>
-          )}
-          
-          <div className="border-t mt-1 pt-1">
-            <button
-              onClick={handleAddNew}
-              className="w-full flex items-center gap-2 px-2 py-1.5 text-sm hover:bg-accent rounded cursor-pointer"
-            >
-              <Plus className="w-4 h-4" />
-              Add Custom Option...
-            </button>
-          </div>
-        </SelectContent>
-      </Select>
-
-      <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
-        <DialogContent className="max-w-md w-[calc(100vw-2rem)]">
-          <DialogHeader>
-            <DialogTitle>
-              {editingOption ? "Edit System Type" : "Add Custom System Type"}
-            </DialogTitle>
-          </DialogHeader>
-          
-          <div className="py-4">
-            <Input
-              value={inputValue}
-              onChange={(e) => setInputValue(e.target.value)}
-              placeholder="Enter system type name"
-              onKeyDown={(e) => {
-                if (e.key === "Enter") {
-                  handleSave();
+    <Popover open={open} onOpenChange={handleOpenChange}>
+      <PopoverTrigger asChild>
+        <div className="relative w-full">
+          <Input
+            ref={triggerInputRef}
+            role="combobox"
+            aria-expanded={open}
+            value={isEditing ? searchValue : value}
+            onChange={(e) => {
+              setSearchValue(e.target.value);
+              if (!isEditing) setIsEditing(true);
+              if (!open) setOpen(true);
+            }}
+            onFocus={handleTriggerFocus}
+            onMouseUp={normalizeTriggerSelection}
+            onTouchEnd={normalizeTriggerSelection}
+            onBlur={handleTriggerBlur}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" && searchValue.trim()) {
+                e.preventDefault();
+                const trimmed = searchValue.trim();
+                const isNew = !options.some(
+                  (opt) => opt.toLowerCase() === trimmed.toLowerCase()
+                );
+                if (isNew) {
+                  onAddOption(trimmed);
                 }
-              }}
-              autoFocus
-            />
-          </div>
-
-          <DialogFooter className="gap-2">
-            {editingOption && (
-              <Button
-                onClick={handleDelete}
-                variant="destructive"
-                size="sm"
-                className="mr-auto"
-              >
-                <Trash2 className="w-4 h-4 mr-2" />
-                Delete
-              </Button>
+                handleSelect(trimmed);
+                triggerInputRef.current?.blur();
+              } else if (e.key === "Escape") {
+                e.preventDefault();
+                setSearchValue(value);
+                setIsEditing(false);
+                setOpen(false);
+                triggerInputRef.current?.blur();
+              }
+            }}
+            placeholder={placeholder}
+            className={cn(
+              "w-full font-normal transition-none",
+              isEditing &&
+                "border-2 border-foreground ring-0 ring-offset-0 focus-visible:ring-0 focus-visible:ring-offset-0 shadow-[2px_2px_0px_0px_hsl(var(--foreground))]",
+              !value && !isEditing && "text-muted-foreground",
+              className
             )}
-            <Button onClick={() => setDialogOpen(false)} variant="outline" size="sm">
-              Cancel
-            </Button>
-            <Button onClick={handleSave} size="sm">
-              Save
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-    </>
+          />
+        </div>
+      </PopoverTrigger>
+      <PopoverContent
+        className="w-[--radix-popover-trigger-width] p-0"
+        align="start"
+      >
+        <Command shouldFilter={false}>
+          <CommandInput
+            placeholder="Search or type new..."
+            value={searchValue}
+            onValueChange={setSearchValue}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" && searchValue.trim()) {
+                e.preventDefault();
+                const trimmed = searchValue.trim();
+                const isNew = !options.some(
+                  (opt) => opt.toLowerCase() === trimmed.toLowerCase()
+                );
+                if (isNew) {
+                  onAddOption(trimmed);
+                }
+                handleSelect(trimmed);
+              }
+            }}
+          />
+          <CommandList>
+            {filteredOptions.length === 0 && !isNewEntry && (
+              <CommandEmpty>No entries found. Start typing to create one.</CommandEmpty>
+            )}
+
+            {isNewEntry && (
+              <CommandGroup heading="Create new">
+                <CommandItem onSelect={handleCreateNew} className="cursor-pointer">
+                  <Plus className="mr-2 h-4 w-4 text-primary" />
+                  <span>Create "{searchValue.trim()}"</span>
+                </CommandItem>
+              </CommandGroup>
+            )}
+
+            {filteredOptions.length > 0 && (
+              <CommandGroup heading="System types">
+                {filteredOptions.map((opt, index) => (
+                  <CommandItem
+                    key={opt}
+                    value={opt}
+                    onSelect={() => handleSelect(opt)}
+                    className={cn(
+                      "cursor-pointer",
+                      index % 2 === 0 ? "bg-blue-100" : "bg-gray-50"
+                    )}
+                  >
+                    <Check
+                      className={cn(
+                        "mr-2 h-4 w-4",
+                        value === opt ? "opacity-100" : "opacity-0"
+                      )}
+                    />
+                    <span className="whitespace-normal break-words">{opt}</span>
+                  </CommandItem>
+                ))}
+              </CommandGroup>
+            )}
+          </CommandList>
+        </Command>
+      </PopoverContent>
+    </Popover>
   );
 }
