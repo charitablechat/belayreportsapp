@@ -2632,3 +2632,40 @@ export async function evictSyncedPhotoMetadata(ageDays: number): Promise<number>
   }
   return evictedCount;
 }
+
+// ============= EQUIPMENT TYPE CACHE =============
+
+interface EquipmentTypeCacheEntry {
+  id: string;
+  equipment_category: string;
+  label: string;
+  display_order: number;
+  is_active: boolean;
+  synced: boolean;
+}
+
+export async function getEquipmentTypeOptions(category: string): Promise<EquipmentTypeCacheEntry[]> {
+  return withIndexedDBErrorBoundary(async () => {
+    const db = await getDB();
+    const all = await db.getAllFromIndex('equipment_type_cache', 'by-category', category);
+    return all.filter(e => e.is_active).sort((a, b) => a.display_order - b.display_order);
+  }, [], 'getEquipmentTypeOptions');
+}
+
+export async function putEquipmentTypeOption(entry: EquipmentTypeCacheEntry): Promise<void> {
+  return withIndexedDBErrorBoundary(async () => {
+    const db = await getDB();
+    await db.put('equipment_type_cache', entry);
+  }, undefined, 'putEquipmentTypeOption');
+}
+
+export async function bulkPutEquipmentTypeOptions(entries: EquipmentTypeCacheEntry[]): Promise<void> {
+  return withIndexedDBErrorBoundary(async () => {
+    const db = await getDB();
+    const tx = db.transaction('equipment_type_cache', 'readwrite');
+    for (const entry of entries) {
+      await tx.store.put(entry);
+    }
+    await tx.done;
+  }, undefined, 'bulkPutEquipmentTypeOptions');
+}
