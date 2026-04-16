@@ -259,7 +259,7 @@ function ZiplinesTable({ ziplines, onUpdate, onImmediateSave, inspectionId, onGa
                       photoSection="systems"
                       onGalleryRefresh={onGalleryRefresh}
                     />
-                    <div className="flex-1">
+                    <div className="flex-1 min-w-0">
                       <Label className="text-xs text-muted-foreground">Line Name</Label>
                       <GlobalAutocomplete
                       value={zipline.zipline_name}
