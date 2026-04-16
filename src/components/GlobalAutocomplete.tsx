@@ -358,7 +358,7 @@ export function GlobalAutocomplete({
 
   // Check if input is a new entry
   const isNewEntry = inputValue.trim() && 
-    !historyOptions.some(opt => opt.value.toLowerCase() === inputValue.toLowerCase().trim());
+    !mergedOptions.some(opt => opt.value.toLowerCase() === inputValue.toLowerCase().trim());
 
   const handleSelect = (selectedValue: string) => {
     onChange(selectedValue);
