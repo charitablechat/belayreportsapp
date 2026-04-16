@@ -64,25 +64,32 @@ function ZiplinesTable({ ziplines, onUpdate, onImmediateSave, inspectionId, onGa
   const addZipline = useCallback(() => {
     const id = `temp-${crypto.randomUUID()}`;
     setNewItemId(id);
-    onUpdate(prev => [
-      {
-        id,
-        inspection_id: window.location.pathname.split('/').pop(),
-        zipline_name: "",
-        cable_type: "",
-        cable_length: null,
-        unload_tension: null,
-        load_tension: null,
-        cable_result: "pass",
-        braking_system: "",
-        braking_result: "pass",
-        ead_system: "",
-        ead_result: "pass",
-        result: "pass",
-        comments: "",
-      },
-      ...prev,
-    ]);
+    onUpdate(prev => {
+      const minOrder = prev.reduce(
+        (m, p) => Math.min(m, typeof p.display_order === 'number' ? p.display_order : 0),
+        0
+      );
+      return [
+        {
+          id,
+          inspection_id: window.location.pathname.split('/').pop(),
+          zipline_name: "",
+          cable_type: "",
+          cable_length: null,
+          unload_tension: null,
+          load_tension: null,
+          cable_result: "pass",
+          braking_system: "",
+          braking_result: "pass",
+          ead_system: "",
+          ead_result: "pass",
+          result: "pass",
+          comments: "",
+          display_order: minOrder - 1,
+        },
+        ...prev,
+      ];
+    });
   }, [onUpdate]);
 
   const updateZipline = useCallback((item: any, field: string, value: any) => {
