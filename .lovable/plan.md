@@ -1,44 +1,26 @@
 
 
-# Upgrade Operating Systems Dropdown + Persistent Auto-Populate
+## Problem
+User adds 3 empty harness rows, types in row 1 → row 1 jumps to the bottom. Same happens for rows 2 and 3. Caused by sort order: empty rows likely sort before filled rows (or filled rows resort by `equipment_type` alphabetically / by `updated_at`), so the moment a row gets a value it gets reordered.
 
-## What
-Apply the same enhancements from Equipment Type dropdowns to Operating Systems, with **strict data isolation** — operating system element names and system types are stored/queried under their own scoped keys, never mixing with equipment data.
+## Investigation needed
+Read these to confirm the exact sort logic:
+- `src/components/inspection/EquipmentTable.tsx` — how rows are rendered/sorted
+- `src/pages/InspectionForm.tsx` — `equipment` state, add handler, and any sort applied before rendering
+- Possibly `src/lib/report-utils.ts` for sort helpers
 
-## Data Isolation (Key Clarification)
-- **System Type dropdown**: New hook queries `equipment_type_options` table with `equipment_category = "operating_systems"` — completely separate from equipment categories like `harnesses`, `helmets`, etc.
-- **Element Name autocomplete**: Already uses `fieldType="operating_system_element"` in `GlobalAutocomplete`, which is a distinct scope from `equipment_type`. No change needed here for scoping.
-- **`existingValues`** passed to each component come only from the current report's `systems` array — never from equipment items.
+Most likely culprit: rows sorted by `display_order` where new rows get `display_order = items.length` at add time, but a stale/missing `display_order` on the just-typed row triggers a reorder. Or rows sorted by `equipment_type` / `updated_at desc` causing typed rows to fall to the end.
 
-## Files
+## Fix
+Ensure equipment rows render in **stable insertion order**:
+1. When `addEquipment` runs, assign `display_order = max(existing) + 1` (or `Date.now()` index) immediately so all 3 new rows have distinct, ascending values.
+2. Render strictly by `display_order` ascending (then `created_at` as tiebreaker). Do NOT re-sort on `equipment_type`, `updated_at`, or "empty rows last".
+3. Never mutate `display_order` on type/edit — only on explicit drag-reorder.
 
-### 1. `src/hooks/useSystemTypeOptions.ts` — NEW
-Mirror `useEquipmentTypeOptions` but hardcoded to category `"operating_systems"`:
-- Seeds default options ("Top Rope", "Tensioned Rope", etc.) on first load
-- Accepts `existingValues: string[]` from current report's `system_name` values
-- Merges existing values so they always appear in dropdown
-- Exposes `options`, `addOption`, `deleteOption`
-- IndexedDB cache for offline
+This matches the existing memory `mem://features/reports/item-ordering-integrity` (deterministic ordering via `display_order` or `created_at`).
 
-### 2. `src/components/SystemTypeSelect.tsx` — REWRITE
-Replace `<Select>` with `Popover + Command` combobox (matching `EquipmentTypeCombobox`):
-- Searchable, clears search on focus so all options show
-- Alternating rows: `bg-blue-100` / `bg-gray-50`
-- Text wrapping: `whitespace-normal break-words`
-- Inline delete with confirmation for custom entries
-- "Create new" option for unmatched input
-- Props: `options`, `onAddOption`, `onDeleteOption` (from hook)
-
-### 3. `src/components/inspection/OperatingSystemsTable.tsx` — UPDATE
-- Import and call `useSystemTypeOptions("operating_systems", existingSystemNames)` where `existingSystemNames` = unique `system_name` values from `systems` array only
-- Pass hook outputs to each `SystemTypeSelect`
-- Collect unique `name` values from `systems` array, pass as `existingValues` to `GlobalAutocomplete` for element names
-
-### 4. `src/components/GlobalAutocomplete.tsx` — UPDATE
-- Add optional `existingValues?: string[]` prop
-- After loading suggestions, merge any `existingValues` not already present (case-insensitive dedup)
-- This ensures element names typed in the current report always appear as suggestions
-
-### No database changes needed
-Reuses existing `equipment_type_options` table with a new category value `"operating_systems"`.
+## Files to modify
+- `src/pages/InspectionForm.tsx` — fix `addEquipment` to stamp incrementing `display_order`; ensure no sort-on-update
+- `src/components/inspection/EquipmentTable.tsx` — verify sort uses `display_order` ascending only
+- Same pattern likely needed for `OperatingSystemsTable` and `ZiplinesTable` (apply if same bug exists)
 
