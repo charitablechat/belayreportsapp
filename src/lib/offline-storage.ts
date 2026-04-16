@@ -197,6 +197,18 @@ interface InspectionDB extends DBSchema {
     };
     indexes: { 'by-field-type': string; 'by-synced': number };
   };
+  equipment_type_cache: {
+    key: string; // compound: `${category}::${label}`
+    value: {
+      id: string;
+      equipment_category: string;
+      label: string;
+      display_order: number;
+      is_active: boolean;
+      synced: boolean;
+    };
+    indexes: { 'by-category': string };
+  };
 }
 
 let dbPromise: Promise<IDBPDatabase<InspectionDB>> | null = null;
@@ -658,7 +670,7 @@ export async function getDB() {
     // Version 8: Add report_versions store for append-only versioning
     // DB_NAME and DB_VERSION shared with public/db-config.js for SW consistency
     const DB_NAME = 'rope-works-inspections';
-    const DB_VERSION = 9;
+    const DB_VERSION = 10;
     const openDBV8WithTimeout = async () => {
       return openDB<InspectionDB>(DB_NAME, DB_VERSION, {
         upgrade(db, oldVersion, newVersion, transaction) {
