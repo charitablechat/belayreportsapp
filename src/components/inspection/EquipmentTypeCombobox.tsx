@@ -233,12 +233,15 @@ export function EquipmentTypeCombobox({
 
             {filteredOptions.length > 0 && (
               <CommandGroup heading="Equipment types">
-                {filteredOptions.map((opt) => (
+                {filteredOptions.map((opt, index) => (
                   <CommandItem
                     key={opt}
                     value={opt}
                     onSelect={() => handleSelect(opt)}
-                    className="cursor-pointer"
+                    className={cn(
+                      "cursor-pointer",
+                      index % 2 === 0 ? "bg-blue-50" : "bg-gray-50"
+                    )}
                   >
                     <Check
                       className={cn(
