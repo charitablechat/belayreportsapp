@@ -57,6 +57,7 @@ interface GlobalAutocompleteProps {
   placeholder?: string;
   className?: string;
   disabled?: boolean;
+  existingValues?: string[];
 }
 
 interface HistoryItem {
@@ -131,6 +132,7 @@ export function GlobalAutocomplete({
   placeholder = "Select or type...",
   className,
   disabled = false,
+  existingValues = [],
 }: GlobalAutocompleteProps) {
   const [open, setOpen] = useState(false);
   const [historyOptions, setHistoryOptions] = useState<HistoryItem[]>([]);
