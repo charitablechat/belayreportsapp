@@ -246,7 +246,7 @@ export function EquipmentTypeCombobox({
                         value === opt ? "opacity-100" : "opacity-0"
                       )}
                     />
-                    <span className="truncate">{opt}</span>
+                    <span className="whitespace-normal break-words">{opt}</span>
                   </CommandItem>
                 ))}
               </CommandGroup>

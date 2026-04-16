@@ -262,26 +262,28 @@ function OperatingSystemsTable({ systems, onUpdate, onImmediateSave, inspectionI
                     <Trash2 className="h-4 w-4" />
                   </Button>
                   <div className="space-y-3 pr-10">
-                    <div className="flex items-center gap-3">
-                      <ItemPhotoUpload
-                        itemId={system.id}
-                        inspectionId={effectiveInspectionId}
-                        photoUrl={system.photo_url || null}
-                        onPhotoChange={(url) => updateSystem(system, "photo_url", url)}
-                        onImmediateSave={onImmediateSave}
-                        itemName={system.name || system.system_name || 'Operating System'}
-                        photoSection="systems"
-                        onGalleryRefresh={onGalleryRefresh}
-                      />
-                      <div className="flex-1">
-                        <Label className="text-xs text-muted-foreground">Element Name</Label>
-                        <GlobalAutocomplete
-                        value={system.name || ""}
-                        onChange={(value) => updateSystem(system, "name", value)}
-                        onBlur={onImmediateSave}
-                        fieldType="operating_system_element"
-                        placeholder="Enter or select name"
+                    <div className="flex flex-col gap-3">
+                      <div className="flex items-center gap-3">
+                        <ItemPhotoUpload
+                          itemId={system.id}
+                          inspectionId={effectiveInspectionId}
+                          photoUrl={system.photo_url || null}
+                          onPhotoChange={(url) => updateSystem(system, "photo_url", url)}
+                          onImmediateSave={onImmediateSave}
+                          itemName={system.name || system.system_name || 'Operating System'}
+                          photoSection="systems"
+                          onGalleryRefresh={onGalleryRefresh}
                         />
+                        <div className="flex-1 min-w-0">
+                          <Label className="text-xs text-muted-foreground">Element Name</Label>
+                          <GlobalAutocomplete
+                            value={system.name || ""}
+                            onChange={(value) => updateSystem(system, "name", value)}
+                            onBlur={onImmediateSave}
+                            fieldType="operating_system_element"
+                            placeholder="Enter or select name"
+                          />
+                        </div>
                       </div>
                     </div>
                     <div>

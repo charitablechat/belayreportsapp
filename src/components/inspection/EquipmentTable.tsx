@@ -547,28 +547,30 @@ function EquipmentTable({ category, displayName, equipment, onUpdate, onImmediat
                   <Trash2 className="h-4 w-4" />
                 </Button>
                 <div className="space-y-3 pr-10">
-                  <div className="flex items-center gap-3">
-                    <ItemPhotoUpload
-                      itemId={item.id}
-                      inspectionId={effectiveInspectionId}
-                      photoUrl={item.photo_url || null}
-                      onPhotoChange={(url) => updateEquipment(item, "photo_url", url)}
-                      onImmediateSave={onImmediateSave}
-                      itemName={item.equipment_type || displayName}
-                      photoSection="equipment"
-                      onGalleryRefresh={onGalleryRefresh}
-                    />
-                    <div className="flex-1">
-                      <Label className="text-xs text-muted-foreground">Type *</Label>
-                    <EquipmentTypeCombobox
-                      value={item.equipment_type || ""}
-                      onChange={(value) => updateEquipment(item, "equipment_type", value)}
-                      onBlur={onImmediateSave}
-                      options={categoryOptions}
-                      onAddOption={onAddCategoryOption || (() => {})}
-                      placeholder="Enter or select type"
-                      className={cn(!item.equipment_type || item.equipment_type.trim() === "" ? "ring-2 ring-destructive" : "")}
-                    />
+                  <div className="flex flex-col gap-3">
+                    <div className="flex items-center gap-3">
+                      <ItemPhotoUpload
+                        itemId={item.id}
+                        inspectionId={effectiveInspectionId}
+                        photoUrl={item.photo_url || null}
+                        onPhotoChange={(url) => updateEquipment(item, "photo_url", url)}
+                        onImmediateSave={onImmediateSave}
+                        itemName={item.equipment_type || displayName}
+                        photoSection="equipment"
+                        onGalleryRefresh={onGalleryRefresh}
+                      />
+                      <div className="flex-1 min-w-0">
+                        <Label className="text-xs text-muted-foreground">Type *</Label>
+                        <EquipmentTypeCombobox
+                          value={item.equipment_type || ""}
+                          onChange={(value) => updateEquipment(item, "equipment_type", value)}
+                          onBlur={onImmediateSave}
+                          options={categoryOptions}
+                          onAddOption={onAddCategoryOption || (() => {})}
+                          placeholder="Enter or select type"
+                          className={cn(!item.equipment_type || item.equipment_type.trim() === "" ? "ring-2 ring-destructive" : "")}
+                        />
+                      </div>
                     </div>
                   </div>
                   
