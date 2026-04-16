@@ -49,7 +49,19 @@ export function useEquipmentTypeOptions(category: string, existingValues: string
             }));
             await bulkPutEquipmentTypeOptions(entries);
 
-            return data.map((d: EquipmentTypeOption) => d.label);
+            const labels = data.map((d: EquipmentTypeOption) => d.label);
+            
+            // Merge in any existing values from the current report
+            const lowerSet = new Set(labels.map((l: string) => l.toLowerCase()));
+            for (const val of existingValues) {
+              const trimmed = val.trim();
+              if (trimmed && !lowerSet.has(trimmed.toLowerCase())) {
+                labels.push(trimmed);
+                lowerSet.add(trimmed.toLowerCase());
+              }
+            }
+            
+            return labels;
           }
         } catch (e) {
           console.warn("[useEquipmentTypeOptions] Fetch failed, using cache:", e);
