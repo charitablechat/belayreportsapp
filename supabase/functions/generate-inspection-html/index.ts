@@ -244,6 +244,15 @@ serve(async (req) => {
     const summary = summaryRes.data;
     const photos = photosRes.data || [];
 
+    // Fetch any post-completion edits for the admin-edit banner
+    const postEdits = await fetchPostCompletionEdits(
+      supabase,
+      'inspections',
+      inspectionId,
+      (inspection as any).attestation_signed_at,
+    );
+    const adminEditBannerHtml = buildAdminEditBanner(postEdits);
+
     console.log(`[Inspection HTML] Found ${photos.length} photos for inspection ${inspectionId}`);
 
     // Use signed URLs for photos instead of downloading and converting to base64
@@ -1656,6 +1665,7 @@ serve(async (req) => {
   </style>
 </head>
 <body>
+  ${adminEditBannerHtml}
 
   <!-- Fixed header for print - repeats on every printed page -->
   <div class="print-header">
