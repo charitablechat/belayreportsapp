@@ -7,6 +7,7 @@ import { Label } from '@/components/ui/label';
 import { usePushNotifications } from '@/hooks/usePushNotifications';
 import { supabase } from '@/integrations/supabase/client';
 import { getUserWithCache } from '@/lib/cached-auth';
+import { isIOS, isPWA } from '@/lib/mobile-detection';
 import { toast } from 'sonner';
 
 export const PushNotificationManager = () => {
@@ -129,7 +130,16 @@ export const PushNotificationManager = () => {
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-6">
-          {!isSupported ? (
+          {isIOS() && !isPWA() ? (
+            <div className="rounded-md border border-warning/40 bg-warning/10 p-3 text-sm">
+              <p className="font-medium text-foreground">Install this app to enable push notifications</p>
+              <p className="mt-1 text-muted-foreground">
+                On iPhone/iPad, push notifications only work when the app is added to
+                your Home Screen. Tap the Share icon in Safari, then "Add to Home Screen,"
+                then open the app from your Home Screen.
+              </p>
+            </div>
+          ) : !isSupported ? (
             <p className="text-sm text-muted-foreground">
               Push notifications are not supported in your browser
             </p>
