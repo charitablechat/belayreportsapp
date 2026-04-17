@@ -1,58 +1,81 @@
 
 
-The user is asking specifically about **update delivery gaps** on Apple platforms (macOS Safari, iPadOS, iOS) — i.e. what stops users from getting the latest version of the PWA reliably. This is narrower than the previous general iOS audit. Focus on service worker update delivery, cache busting, and version visibility.
+The user wants to know how to access/create an audit trail viewer in the Super Admin area. Let me check what already exists.
 
-Let me think through Apple-specific update gaps:
+From the schema I can see:
+- `audit_logs` table EXISTS with: id, action_type, table_name, record_id, old_values, new_values, metadata, ip_address, user_agent, user_id, created_at
+- RLS: Super admins can SELECT; nobody can UPDATE/DELETE (immutable — good for legal evidence)
+- INSERT is implicitly blocked at RLS level too (no insert policy) — meaning logs must be written via SECURITY DEFINER triggers/functions
+- There's also `admin_edit_snapshots` (already has a recovery UI) which is a related but separate concept
 
-## Known Apple update-delivery gaps
+Let me check what's already wired up in the admin dashboard before planning.
 
-1. **iOS Safari aggressive HTTP caching of `index.html`** — even with SW updates, Safari may serve a stale `index.html` from HTTP cache, so the SW never sees the new build. Need `Cache-Control: no-cache` on HTML and SW files (Lovable hosting may already handle, but worth verifying via meta tags).
+I'll look at:
+- `SuperAdminDashboard.tsx` — does it already have an Audit Logs tab?
+- `AdminTabsSection.tsx` — list of admin tabs
+- Any existing audit-log component
 
-2. **Service Worker `updateViaCache`** — by default browsers may cache the SW script itself for 24h. Setting `updateViaCache: 'none'` on registration forces a network check every time. Need to verify in `vite-pwa-config.ts` / SW registration.
+Without reading (read-only mode, but I should read to be accurate), I'll plan based on the schema and propose:
 
-3. **macOS Safari multi-tab SW activation** — `skipWaiting` + `clients.claim` works, but if the user has multiple tabs open the new SW won't activate until all tabs close. No reload prompt is shown across other tabs.
+## Plan
 
-4. **iOS standalone PWA never reloads on its own** — when the user swipes the PWA away from app switcher and reopens, iOS sometimes restores from snapshot without re-running JS. The foreground update check I added helps, but we never *force* the user to update — `needsUpdate` just sets a flag. There's no visible "Update available" banner that I can confirm exists in the header.
+### What already exists
+- `audit_logs` table with proper RLS (super admin read-only, immutable)
+- `admin_edit_snapshots` with a recovery UI (separate, for undoing admin edits)
+- Need to verify whether anything is currently writing to `audit_logs` and whether a viewer exists
 
-5. **Hard-refresh impossible in standalone PWA on iOS** — there's no pull-to-refresh, no reload button. If SW gets wedged, user has no recovery. Need a visible "Reload app" affordance.
+### Audit before building
+Read these files to confirm state:
+- `src/pages/SuperAdminDashboard.tsx`
+- `src/components/admin/AdminTabsSection.tsx`
+- Search for `audit_logs` usage across the codebase
 
-6. **Cached API responses via SW** — if Workbox runtime caching is too aggressive, iOS users get stale data. Need to confirm Supabase API calls are network-first or not cached.
+### Proposed build (assuming no viewer exists)
 
-7. **Version mismatch invisibility** — `version.json` exists and `VersionBadge` exists, but is it actually shown? Does the user know what version they're on vs. what's available?
+**1. New component: `src/components/admin/AuditLogPanel.tsx`**
+- Table view of `audit_logs` (newest first, paginated 50/page)
+- Columns: Timestamp · User (resolved name) · Action · Table · Record ID · Diff button
+- Filters: action type, table, user, date range
+- Click a row → side sheet with full `old_values` / `new_values` JSON diff (highlighted), IP, user agent, metadata
+- Export to CSV button (super admin only)
+- Read-only — no edit/delete UI (matches RLS)
 
-8. **`apple-mobile-web-app-capable` + status bar** — affects the standalone shell, but if the manifest changes and the user has an old icon installed, iOS does NOT update the home screen icon or splash screen. Only fix is reinstall. Worth noting as a known iOS limitation, not really fixable.
+**2. Wire into SuperAdminDashboard**
+- Add a new "Audit Logs" tab in `AdminTabsSection.tsx`
+- Use existing responsive dual-layout pattern (table on md+, stacked cards on mobile) per memory `admin-dashboard-responsive-layout`
 
-9. **iOS 16.4+ web push requires re-permission after PWA reinstall** — affects update perception ("notifications stopped working").
+**3. Ensure logs are actually being written**
+Since RLS blocks direct INSERT, audit entries must come from DB triggers. Audit which mutations should generate logs and add `SECURITY DEFINER` triggers for:
+- `inspections`, `trainings`, `daily_assessments` — INSERT/UPDATE/DELETE/completion_lock
+- `user_roles` — role grants/revokes (privilege escalation evidence)
+- `profiles` — admin-driven changes
+- `admin_edit_snapshots` — already covers admin-edits-other-users; cross-link to audit row
+- Reassignments (changing `inspector_id`)
+- Soft-delete & restore actions
 
-10. **Service worker `navigationPreload`** — speeds up updates but unsupported on Safari < 16.4.
+Trigger writes: `action_type` (e.g. `report.complete`, `role.grant`), `table_name`, `record_id`, `old_values`, `new_values`, `user_id = auth.uid()`, `metadata` (jsonb with context like reason, target user).
 
-## Files to read for the audit
+**4. Retention & performance**
+- Add index on `(created_at DESC)`, `(user_id, created_at DESC)`, `(table_name, created_at DESC)`
+- No auto-purge — these are legal/compliance records (matches your liability concerns from earlier discussion)
 
-- `vite-pwa-config.ts` — check `updateViaCache`, `skipWaiting`, `clientsClaim`, runtime caching strategies
-- `index.html` — check cache-control meta tags, apple-touch-icon, manifest link
-- `public/sw.js` and other SW files — confirm fetch handler caching strategies
-- `src/main.tsx` — check SW registration call and `updateViaCache` option
-- `src/components/AuthenticatedHeader.tsx` — does an "Update available" banner show?
-- `src/components/pwa/UpdateNotification.tsx` and `UpdateBadge.tsx` — already exist, verify they're mounted and visible
-- `src/components/pwa/ManualUpdateButton.tsx` — exists, verify discoverability
-- `public/manifest.json` — verify
+**5. Access control**
+- Hide tab unless `is_super_admin()` (use existing pattern)
+- Server enforces via RLS regardless — defense in depth
 
-## Deliverable
+### Files touched
+- NEW: `src/components/admin/AuditLogPanel.tsx`
+- EDIT: `src/components/admin/AdminTabsSection.tsx` (add tab)
+- EDIT: `src/pages/SuperAdminDashboard.tsx` (mount panel)
+- MIGRATION: indexes on `audit_logs` + SECURITY DEFINER triggers on key tables
 
-After approval I'll:
-1. Read the files above (parallel).
-2. Categorize each of the 10 gaps as ✅ handled / ⚠️ partial / ❌ gap.
-3. For each ⚠️/❌, propose a concrete one-line fix and target file.
-4. Group fixes into a single batch the user can approve with "yes, fix it all" again.
+### What this gives you
+- Tamper-evident timeline of every sensitive action — directly supports the liability mitigation discussion from earlier
+- Self-serve evidence for disputes ("who changed this Pass to Fail and when?")
+- Foundation for compliance reports
 
-## Likely fixes I expect to propose (subject to audit)
+### Open question (one)
+Should the trigger coverage be **comprehensive** (every mutation on reports + roles + profiles) or **minimal-first** (just role changes + report completion + admin edits) and expand later? Comprehensive is more work but more defensible legally.
 
-- Add `updateViaCache: 'none'` to SW registration (forces fresh SW script check)
-- Add `<meta http-equiv="Cache-Control" content="no-cache">` to `index.html` so iOS Safari doesn't pin a stale shell
-- Mount a persistent "Update available — tap to reload" banner using existing `UpdateNotification` if not already in `RootLayout`
-- Add a "Force reload app" button in the iOS Sync Diagnostics sheet (already created) so wedged-PWA users have recovery
-- Verify Workbox runtime caching is `NetworkFirst` (not `CacheFirst`) for API and HTML
-- Show current version + "latest available" version in `SyncDiagnosticsSheet` so users can self-verify they're up to date
-
-This is a focused 30–60 min audit + fix cycle, all client-side, no backend changes.
+Approve and I'll build it. If you want me to ask the scope question first, say so.
 
