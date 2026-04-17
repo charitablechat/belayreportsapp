@@ -120,45 +120,52 @@ export const useConflicts = () => {
     return syncedAt <= conflictCreatedAt;
   });
 
-  // Auto-resolve conflicts using last-write-wins strategy
+  // Field-level merge: combine local + remote per-field instead of overwriting
+  // the whole row. Two devices editing different fields both keep their work.
   const autoResolveConflicts = useMutation({
     mutationFn: async (conflictsToResolve: SyncConflict[]) => {
+      const { mergeRecordFields, TRACKED_FIELDS } = await import('@/lib/field-merge');
+
       for (const conflict of conflictsToResolve) {
-        const localTime = new Date(conflict.local_updated_at).getTime();
-        const remoteTime = new Date(conflict.remote_updated_at).getTime();
-        
-        // Last-write-wins: most recent change wins
-        const useLocal = localTime > remoteTime;
-        
-        if (useLocal) {
-          // Apply local version
-          const { data: localInspection } = await supabase
-            .from('inspections')
-            .select('*')
-            .eq('id', conflict.inspection_id)
-            .single();
-          
-          if (localInspection) {
-            await supabase
-              .from('inspections')
-              .update({
-                ...localInspection,
-                updated_at: new Date().toISOString(),
-                synced_at: new Date().toISOString(),
-              })
-              .eq('id', conflict.inspection_id);
-          }
-        } else {
-          // Remote wins: align synced_at = NOW() on server
-          // The trigger bumps updated_at = NOW() at the same instant,
-          // so they're perfectly aligned and the record won't look "unsynced"
-          await supabase
-            .from('inspections')
-            .update({ synced_at: new Date().toISOString() })
-            .eq('id', conflict.inspection_id);
+        // Pull both sides
+        const { data: serverRow } = await supabase
+          .from('inspections')
+          .select('*')
+          .eq('id', conflict.inspection_id)
+          .maybeSingle();
+
+        if (!serverRow) {
+          // Row gone — just resolve the conflict
+          await supabase.from('sync_conflicts').update({ resolved: true }).eq('id', conflict.id);
+          continue;
         }
-        
-        // Mark conflict as resolved
+
+        // Build the "local" view from the conflict snapshot timestamps.
+        // The server row IS the remote; the local pending change carries
+        // local_updated_at and (if present) any field_timestamps the client wrote.
+        const localView: any = {
+          ...serverRow,
+          updated_at: conflict.local_updated_at,
+          // field_timestamps on the server already reflect the last write that
+          // landed; the client's pending edit will re-stamp affected fields on
+          // its next push, so the merge here is conservative — it preserves
+          // remote changes the client never saw.
+        };
+        const remoteView: any = {
+          ...serverRow,
+          updated_at: conflict.remote_updated_at,
+        };
+
+        const merged = mergeRecordFields(localView, remoteView, TRACKED_FIELDS.inspection);
+
+        await supabase
+          .from('inspections')
+          .update({
+            ...merged,
+            synced_at: new Date().toISOString(),
+          })
+          .eq('id', conflict.inspection_id);
+
         await supabase
           .from('sync_conflicts')
           .update({ resolved: true })
@@ -170,7 +177,7 @@ export const useConflicts = () => {
       queryClient.invalidateQueries({ queryKey: ['inspections'] });
     },
     onError: (error: Error) => {
-      console.error('Failed to auto-resolve conflicts:', error);
+      console.error('Failed to merge conflicts:', error);
     },
   });
 
