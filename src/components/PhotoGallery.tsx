@@ -879,7 +879,7 @@ export default function PhotoGallery({
 
     {/* Full-size image lightbox with navigation */}
     <Dialog open={selectedPhotoIndex !== null} onOpenChange={(open) => { if (!open) closeLightbox(); }}>
-      <DialogContent hideDefaultClose className="max-w-4xl p-2 bg-black/95 border-none [&>button]:hidden">
+      <DialogContent hideDefaultClose className="lightbox-image max-w-4xl p-2 bg-black/95 border-none [&>button]:hidden">
         {/* Close row — sits above the photo in the black area */}
         <div className="flex justify-end pb-1">
           <button

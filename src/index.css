@@ -751,3 +751,37 @@ input[type="number"] {
   0%, 50% { opacity: 1; }
   51%, 100% { opacity: 0; }
 }
+
+/* ============================================================
+   iOS / Safari compatibility layer
+   ============================================================ */
+
+/* Fix A: 100vh bug on iOS Safari (address bar resizes viewport).
+   Override Tailwind's h-screen / min-h-screen to use dynamic viewport units
+   where supported, falling back to vh on older browsers. */
+@supports (height: 100dvh) {
+  .h-screen { height: 100dvh; }
+  .min-h-screen { min-height: 100dvh; }
+  .max-h-screen { max-height: 100dvh; }
+}
+
+/* Fix B: Prevent iOS rubber-band scroll bleeding through modals/sheets
+   and interfering with pull-to-refresh. */
+html, body {
+  overscroll-behavior-y: contain;
+}
+[role="dialog"],
+[data-radix-dialog-content],
+[data-radix-sheet-content],
+[data-vaul-drawer] {
+  overscroll-behavior: contain;
+}
+
+/* Fix F: Disable iOS long-press image save sheet inside the photo lightbox
+   so users can navigate/close without the OS context menu hijacking taps. */
+[data-radix-dialog-content] img,
+.lightbox-image {
+  -webkit-touch-callout: none;
+  -webkit-user-select: none;
+  user-select: none;
+}

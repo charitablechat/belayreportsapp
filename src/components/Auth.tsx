@@ -108,8 +108,13 @@ export default function Auth() {
     setLoading(true);
 
     try {
+      // iOS PWA quirk: redirect URLs always open in Safari, not the standalone shell.
+      // Mark the redirect so we can show appropriate guidance after reset.
+      const isStandalone = window.matchMedia('(display-mode: standalone)').matches
+        || (window.navigator as any).standalone === true;
+      const redirectTo = `${window.location.origin}/${isStandalone ? '?from=pwa' : ''}`;
       const { error } = await supabase.auth.resetPasswordForEmail(email, {
-        redirectTo: `${window.location.origin}/`,
+        redirectTo,
       });
 
       if (error) throw error;
