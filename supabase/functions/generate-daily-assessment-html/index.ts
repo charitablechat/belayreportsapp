@@ -179,6 +179,15 @@ serve(async (req) => {
     const header = () => createPageHeader(ropeWorksLogo, acctLogo);
     const footer = (pageNum: number) => createPageFooter(pageNum, footerDisclaimerText);
 
+    // Fetch any post-completion edits for the admin-edit banner
+    const postEdits = await fetchPostCompletionEdits(
+      supabase,
+      'daily_assessments',
+      assessmentId,
+      (assessment as any).attestation_signed_at,
+    );
+    const adminEditBannerHtml = buildAdminEditBanner(postEdits);
+
     // Terminal-style section comments renderer
     const renderSectionComments = (comments: string | null, title: string) => {
       if (!comments || comments.trim() === '') return '';
@@ -852,6 +861,7 @@ serve(async (req) => {
   </style>
 </head>
 <body>
+  ${adminEditBannerHtml}
   <!-- Page 1: Assessment Info + Operating Systems -->
   <div class="page">
     ${header()}

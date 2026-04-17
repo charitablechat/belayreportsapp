@@ -134,6 +134,16 @@ serve(async (req) => {
     const header = () => createPageHeader(ropeWorksLogo, acctLogo);
     const footer = (pageNum: number) => createPageFooter(pageNum, footerDisclaimerText);
 
+    // Fetch any post-completion edits for the admin-edit banner
+    const trainingRow: any = (trainingData as any)?.training ?? trainingData;
+    const postEdits = await fetchPostCompletionEdits(
+      supabase,
+      'trainings',
+      trainingId,
+      trainingRow?.attestation_signed_at,
+    );
+    const adminEditBannerHtml = buildAdminEditBanner(postEdits);
+
     // Build systems in place HTML
     const ALL_SYSTEMS_IN_PLACE = [
       'A system for conducting and documenting a periodic internal monitoring of the course, surrounding environment, and equipment',
@@ -762,6 +772,7 @@ serve(async (req) => {
   </style>
 </head>
 <body>
+  ${adminEditBannerHtml}
   <!-- Page 1: Cover and Facility Information -->
   <div class="page">
     ${header()}
