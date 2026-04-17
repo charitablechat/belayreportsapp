@@ -123,6 +123,8 @@ export default function InspectionForm() {
   const [showCompletionLockDialog, setShowCompletionLockDialog] = useState(false);
   const [showLeaveDialog, setShowLeaveDialog] = useState(false);
   const [showCompleteDialog, setShowCompleteDialog] = useState(false);
+  const [showAttestationDialog, setShowAttestationDialog] = useState(false);
+  const { fullName: signerFullName } = useUserProfile();
   const [isSavingBeforeLeave, setIsSavingBeforeLeave] = useState(false);
   // Enable keyboard avoidance for mobile
   useKeyboardAvoidance();
