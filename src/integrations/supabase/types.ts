@@ -427,6 +427,7 @@ export type Database = {
           deleted_at: string | null
           deleted_by: string | null
           environment_comments: string | null
+          field_timestamps: Json
           id: string
           inspector_id: string | null
           last_modified_by: string | null
@@ -462,6 +463,7 @@ export type Database = {
           deleted_at?: string | null
           deleted_by?: string | null
           environment_comments?: string | null
+          field_timestamps?: Json
           id?: string
           inspector_id?: string | null
           last_modified_by?: string | null
@@ -497,6 +499,7 @@ export type Database = {
           deleted_at?: string | null
           deleted_by?: string | null
           environment_comments?: string | null
+          field_timestamps?: Json
           id?: string
           inspector_id?: string | null
           last_modified_by?: string | null
@@ -1234,6 +1237,7 @@ export type Database = {
           created_at: string | null
           deleted_at: string | null
           deleted_by: string | null
+          field_timestamps: Json
           id: string
           inspection_date: string
           inspector_id: string | null
@@ -1271,6 +1275,7 @@ export type Database = {
           created_at?: string | null
           deleted_at?: string | null
           deleted_by?: string | null
+          field_timestamps?: Json
           id?: string
           inspection_date?: string
           inspector_id?: string | null
@@ -1308,6 +1313,7 @@ export type Database = {
           created_at?: string | null
           deleted_at?: string | null
           deleted_by?: string | null
+          field_timestamps?: Json
           id?: string
           inspection_date?: string
           inspector_id?: string | null
@@ -2125,6 +2131,7 @@ export type Database = {
           deleted_at: string | null
           deleted_by: string | null
           end_date: string
+          field_timestamps: Json
           id: string
           inspector_id: string | null
           last_modified_by: string | null
@@ -2159,6 +2166,7 @@ export type Database = {
           deleted_at?: string | null
           deleted_by?: string | null
           end_date?: string
+          field_timestamps?: Json
           id?: string
           inspector_id?: string | null
           last_modified_by?: string | null
@@ -2193,6 +2201,7 @@ export type Database = {
           deleted_at?: string | null
           deleted_by?: string | null
           end_date?: string
+          field_timestamps?: Json
           id?: string
           inspector_id?: string | null
           last_modified_by?: string | null

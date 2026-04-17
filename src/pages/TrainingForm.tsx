@@ -27,6 +27,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import TrainingHeader from "@/components/training/TrainingHeader";
+import { CollaboratorPresence } from "@/components/CollaboratorPresence";
 import DeliveryApproachSection from "@/components/training/DeliveryApproachSection";
 import OperatingSystemsSection from "@/components/training/OperatingSystemsSection";
 import ImmediateAttentionSection from "@/components/training/ImmediateAttentionSection";
@@ -1737,6 +1738,14 @@ export default function TrainingForm() {
                   userProfile={inspectorProfile}
                   modifiedByProfile={modifiedByProfile}
                 />
+                {id && currentUser?.id && (
+                  <CollaboratorPresence
+                    reportId={id}
+                    reportType="training"
+                    currentUserId={currentUser.id}
+                    currentUserName={signerFullName || currentUser?.email || 'Someone'}
+                  />
+                )}
               </TabsContent>
 
               <TabsContent value="delivery" className="space-y-6">
