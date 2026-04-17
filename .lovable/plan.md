@@ -1,78 +1,58 @@
 
 
-User wants three legal-defensibility features. Audit log infrastructure already exists (`audit_logs` table + `fn_audit_table_change` trigger + `AuditLogPanel` viewer). Need to verify what's wired up and plan the gaps.
+User wants: pressing **Enter** in any input/textarea on any report form should blur the field (exit the box) but **not** scroll, jump, or move focus elsewhere — the page stays exactly where it is.
 
-## What already exists
-- `audit_logs` table — immutable, super-admin-readable
-- `fn_audit_table_change` trigger function — captures insert/update/delete/complete/reassign on report tables (assumed attached; `db-triggers` shows none, but that's likely the cached pg_trigger query — the migration created them last turn)
-- `version_history` / `admin_edit_snapshots` — pre-edit snapshots
-- `APP_VERSION` available via `import.meta.env.APP_VERSION`
-- Report HTML/PDF generation in `_shared/report-layout.ts` + three `generate-*-html` edge functions
+## Current behavior (inferred)
+- Inputs/textareas: Enter in `<input>` would submit a form if one wraps it; in `<textarea>` it inserts a newline.
+- TipTap rich text editors: per memory `report-form-navigation-ux`, Tab navigates between fields — Enter behavior unspecified, likely inserts newline (which is correct for rich text and should be preserved).
+- No global Enter-to-blur handler exists.
 
-## Gaps to fill
+## Approach
 
-### 1. Tamper-evident edit log on completed reports
-**Already covered** by `fn_audit_table_change` (writes `*.update` rows after `*.complete`). Two additions:
-- **"Edited by Admin on [date]" banner** — on rendered HTML/PDF reports, query `audit_logs` for any `*.update` rows on this report `record_id` after the `*.complete` row, then show an amber banner: *"This report was edited by [name] on [date] after completion. View audit trail in admin panel."*
-- Implementation: edge functions `generate-inspection-html`, `generate-training-html`, `generate-daily-assessment-html` add a query (service-role) for post-completion audit rows and render the banner in `report-layout.ts`
+Add a single global handler that, on `keydown` of `Enter` (without Shift) targeting an `<input>` or `<textarea>`:
+1. `e.preventDefault()` — stop form submit / newline insert
+2. Capture `window.scrollY` + element `getBoundingClientRect()` before blur
+3. Call `target.blur()`
+4. After blur, restore scroll position if the browser shifted it (mobile keyboard dismissal can cause jumps)
 
-### 2. Inspector attestation at completion
-**New schema** — add columns to `inspections`, `trainings`, `daily_assessments`:
-- `attestation_signed_at TIMESTAMPTZ`
-- `attestation_signer_name TEXT`
-- `attestation_signer_id UUID` (auth.uid at sign-time)
-- `attestation_ip TEXT`
-- `attestation_user_agent TEXT`
-- `attestation_text TEXT` (the exact statement signed — preserves wording even if we change it later)
+**Scope**: only the three report form routes — `/inspection/:id`, `/training/:id`, `/daily-assessment/:id` (and their `new-*` variants). Don't apply globally because:
+- Search bars, autocomplete, dialogs may rely on Enter to submit/select
+- Dashboard filters use Enter intentionally
 
-**UI** — new `AttestationDialog.tsx` shown in completion flow (before final lock):
-- Pre-fills signer name from profile
-- Shows full attestation text: *"I, [name], attest that I personally performed this [inspection/training/assessment] on [date] at [organization] and that the contents of this report are accurate to the best of my knowledge. I understand this electronic signature has the same legal effect as a handwritten signature."*
-- Checkbox: "I agree" + typed-name confirmation field (must match profile name)
-- "Sign & Complete" button → captures `navigator.userAgent`, fetches IP via existing pattern (or stores `null` and lets server-side capture), writes to row, then proceeds with completion
+**Exclusions inside the report forms**:
+- TipTap rich text editors (`[contenteditable="true"]`) — Enter must insert newline/paragraph
+- `<textarea>` elements where multi-line entry is the point — for these, Enter should still insert newline; only **Ctrl/Cmd+Enter** blurs. (Or alternatively: plain Enter blurs textareas too — depends on user intent.)
+- Autocomplete components (`GlobalAutocomplete`, `DatabaseAutocomplete`, `OrganizationAutocomplete`, `EquipmentTypeCombobox`) — Enter selects highlighted suggestion; must not be intercepted while their dropdown is open
+- Select / Combobox triggers — Enter opens them
+- Buttons — Enter activates them
 
-**Render on report** — attestation block at end of report:
-> *Electronically signed by [name] on [date] at [time]*  
-> *IP: [ip] · Device: [browser/os summary]*  
-> *Statement: "[attestation_text]"*
+## One question before I build
 
-**Offline support** — store attestation locally; sync writes IP server-side via edge function on first online sync.
+For **textareas** (multi-line fields like comments, observations), should plain **Enter** blur the field, or should it still insert a newline (with **Ctrl/Cmd+Enter** to blur)?
 
-### 3. Version stamp on every report
-**Schema** — add to `inspections`, `trainings`, `daily_assessments`:
-- `app_version_at_completion TEXT` — captured at completion time from `import.meta.env.APP_VERSION`
-- (`report_version` already exists per `update_updated_at_column`)
+- **Option A (recommended)**: Plain Enter blurs `<input>` only; textareas keep newline behavior, Cmd/Ctrl+Enter blurs them. Matches industry convention (Slack, GitHub, etc.).
+- **Option B**: Plain Enter blurs everything, even textareas. Simpler but breaks multi-line note entry — users can't add line breaks in observations/recommendations without using the rich-text editor.
 
-**Render** — footer of every HTML/PDF report:
-*"Generated by RW Reports v[app_version] · Report v[report_version] · [generated_at timestamp]"*
+## Implementation (after you pick A or B)
 
-## Files to touch
+**New file**: `src/hooks/useEnterToBlur.tsx`
+- Attaches a `keydown` listener (capture phase) scoped to a container ref
+- Filters out: contenteditable, autocomplete-open state (check `aria-expanded="true"` on ancestor), buttons, selects
+- On valid Enter: prevent default, snapshot scroll, blur, restore scroll on next frame
 
-**Migration**:
-- Add 6 attestation columns + `app_version_at_completion` to all 3 report tables
-- (Triggers from previous turn assumed in place; verify)
+**Wire into**:
+- `src/pages/InspectionForm.tsx`
+- `src/pages/TrainingForm.tsx`
+- `src/pages/DailyAssessmentForm.tsx`
+- `src/pages/NewInspection.tsx`, `NewTraining.tsx`, `NewDailyAssessment.tsx`
 
-**Frontend**:
-- NEW: `src/components/AttestationDialog.tsx`
-- EDIT: `src/pages/InspectionForm.tsx`, `TrainingForm.tsx`, `DailyAssessmentForm.tsx` — invoke dialog before completion lock; pass attestation payload to save
-- EDIT: `src/lib/non-blocking-save.ts` (or wherever completion writes happen) — include attestation + `app_version_at_completion` in the completion update
-- EDIT: `src/lib/offline-storage.ts` — persist attestation locally for offline completions
+Each gets a ref on its root form container; hook is called with that ref.
 
-**Edge functions**:
-- EDIT: `supabase/functions/_shared/report-layout.ts` — render admin-edit banner + attestation block + version footer
-- EDIT: `generate-inspection-html`, `generate-training-html`, `generate-daily-assessment-html` — query post-completion audit rows, pass to layout
-- EDIT: PDF generators — same footer/attestation rendering
+**No DB / no edge-function changes.**
 
-**Memory**: save new rule `legal-defensibility-attestation`
+## Files touched
+- NEW: `src/hooks/useEnterToBlur.tsx`
+- EDIT: 6 form pages above (one ref + one hook call each)
 
-## Out of scope (future)
-- IP geolocation lookup
-- Cryptographic hash chain on audit log (overkill for current need; existing immutability via RLS is sufficient)
-- E-signature image capture (typed name + checkbox + IP/UA is the industry-standard "click-to-sign" model)
-
-## One question before building
-
-Attestation flow timing: should it be **required** (blocks completion until signed) or **optional** (skippable but logged)? Required is more legally defensible; optional preserves your "non-blocking completion" memory rule. My recommendation: **required for first completion, skipped for subsequent edits/re-completions** (the original signature stays valid; admin edits are tracked separately via the audit-log banner).
-
-Approve and I'll build it. Reply with "skip required" if you want optional instead.
+Reply **A** or **B** (or describe different behavior) and I'll build it.
 
