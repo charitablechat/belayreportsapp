@@ -45,6 +45,10 @@ import {
   queueTrainingOperation 
 } from "@/lib/offline-storage";
 import { HtmlReportViewer } from "@/components/HtmlReportViewer";
+import { AttestationDialog } from "@/components/AttestationDialog";
+import { useUserProfile } from "@/hooks/useUserProfile";
+import type { AttestationPayload } from "@/lib/attestation";
+import { APP_VERSION } from "@/lib/attestation";
 
 import { triggerCompletionConfetti } from "@/lib/confetti";
 import { triggerHaptic } from "@/lib/haptics";
