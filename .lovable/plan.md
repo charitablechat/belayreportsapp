@@ -1,58 +1,78 @@
 
 
-User wants to ensure no Pass/Fail result fields default to "Pass" anywhere in the app. From earlier liability discussion — defaulting to Pass is a major liability risk (a skipped item silently becomes a "Pass" record).
+User wants three legal-defensibility features. Audit log infrastructure already exists (`audit_logs` table + `fn_audit_table_change` trigger + `AuditLogPanel` viewer). Need to verify what's wired up and plan the gaps.
 
-Let me audit where result fields are initialized.
+## What already exists
+- `audit_logs` table — immutable, super-admin-readable
+- `fn_audit_table_change` trigger function — captures insert/update/delete/complete/reassign on report tables (assumed attached; `db-triggers` shows none, but that's likely the cached pg_trigger query — the migration created them last turn)
+- `version_history` / `admin_edit_snapshots` — pre-edit snapshots
+- `APP_VERSION` available via `import.meta.env.APP_VERSION`
+- Report HTML/PDF generation in `_shared/report-layout.ts` + three `generate-*-html` edge functions
 
-Known result-bearing entities from validation schemas:
-- `systems` — `result` enum, optional/nullable ✅ schema allows unset
-- `ziplines` — `result` REQUIRED enum, plus `cable_result`, `braking_result`, `ead_result` (optional)
-- `equipment` — `result` REQUIRED enum
-- `standards` — `has_documentation` boolean nullable (already handled — null = "Not Set")
+## Gaps to fill
 
-ResultSelect component supports any string value including "" (placeholder shows "Select result"). Good.
+### 1. Tamper-evident edit log on completed reports
+**Already covered** by `fn_audit_table_change` (writes `*.update` rows after `*.complete`). Two additions:
+- **"Edited by Admin on [date]" banner** — on rendered HTML/PDF reports, query `audit_logs` for any `*.update` rows on this report `record_id` after the `*.complete` row, then show an amber banner: *"This report was edited by [name] on [date] after completion. View audit trail in admin panel."*
+- Implementation: edge functions `generate-inspection-html`, `generate-training-html`, `generate-daily-assessment-html` add a query (service-role) for post-completion audit rows and render the banner in `report-layout.ts`
 
-Need to check actual defaults at row creation in:
-- `src/components/inspection/OperatingSystemsTable.tsx` (systems)
-- `src/components/inspection/ZiplinesTable.tsx`
-- `src/components/inspection/EquipmentTable.tsx`
-- `src/pages/InspectionForm.tsx` (any default rows seeded on new inspection)
-- `supabase/functions/parse-inspection-docx` (DOCX import — does it default to "pass"?)
+### 2. Inspector attestation at completion
+**New schema** — add columns to `inspections`, `trainings`, `daily_assessments`:
+- `attestation_signed_at TIMESTAMPTZ`
+- `attestation_signer_name TEXT`
+- `attestation_signer_id UUID` (auth.uid at sign-time)
+- `attestation_ip TEXT`
+- `attestation_user_agent TEXT`
+- `attestation_text TEXT` (the exact statement signed — preserves wording even if we change it later)
 
-Also need to check:
-- DB column defaults on `systems.result`, `ziplines.result`, `equipment.result`
-- Validation schemas require `result` for ziplines/equipment — if we change default to unset, completion may fail. But per memory `report-completion-validation-bypass`, completion is non-blocking, so safe.
+**UI** — new `AttestationDialog.tsx` shown in completion flow (before final lock):
+- Pre-fills signer name from profile
+- Shows full attestation text: *"I, [name], attest that I personally performed this [inspection/training/assessment] on [date] at [organization] and that the contents of this report are accurate to the best of my knowledge. I understand this electronic signature has the same legal effect as a handwritten signature."*
+- Checkbox: "I agree" + typed-name confirmation field (must match profile name)
+- "Sign & Complete" button → captures `navigator.userAgent`, fetches IP via existing pattern (or stores `null` and lets server-side capture), writes to row, then proceeds with completion
 
-Plan, after approval:
+**Render on report** — attestation block at end of report:
+> *Electronically signed by [name] on [date] at [time]*  
+> *IP: [ip] · Device: [browser/os summary]*  
+> *Statement: "[attestation_text]"*
 
-## Audit (read these files)
-1. `OperatingSystemsTable.tsx`, `ZiplinesTable.tsx`, `EquipmentTable.tsx` — find `addRow`/`addNew` handlers, check default `result` value
-2. `InspectionForm.tsx` — check any seeded default rows
-3. `parse-inspection-docx/index.ts` — check imported row defaults
-4. Run `supabase--read_query` to inspect column defaults on `systems`, `ziplines`, `equipment` tables
-5. Loosen `ziplineSchema.result` / `equipmentSchema.result` to `.optional().nullable()` to match systems
+**Offline support** — store attestation locally; sync writes IP server-side via edge function on first online sync.
 
-## Fixes
-1. **New rows**: change any `result: 'pass'` default to `result: null` (or empty string `''`) so the dropdown shows "Select result" placeholder
-2. **DB defaults**: if `result` columns have a `DEFAULT 'pass'`, drop it via migration so server-side inserts don't backfill Pass
-3. **Validation schemas**: make `ziplines.result` and `equipment.result` nullable so unset items don't fail validation
-4. **DOCX import**: if parser defaults to "pass" for unspecified items, change to null and surface a warning
-5. **Completion-time check (already discussed in earlier liability plan #5)**: at report completion, count items with unset `result` and show a non-blocking warning toast: "N items have no result set — they will appear as 'Not Set' on the report."
-6. **Report rendering**: ensure HTML/PDF generation displays "Not Set" (not blank or "Pass") for null results, with a visible amber/grey badge — verify in `_shared/report-layout.ts` and the three generate-*-html functions
+### 3. Version stamp on every report
+**Schema** — add to `inspections`, `trainings`, `daily_assessments`:
+- `app_version_at_completion TEXT` — captured at completion time from `import.meta.env.APP_VERSION`
+- (`report_version` already exists per `update_updated_at_column`)
 
-## Files likely touched
-- `src/components/inspection/OperatingSystemsTable.tsx`
-- `src/components/inspection/ZiplinesTable.tsx`
-- `src/components/inspection/EquipmentTable.tsx`
-- `src/lib/validation-schemas.ts` (loosen required result enums)
-- `src/pages/InspectionForm.tsx` (completion-time warning)
-- `supabase/functions/parse-inspection-docx/index.ts` (if it defaults to pass)
-- `supabase/functions/_shared/report-layout.ts` + `generate-inspection-html/index.ts` (render "Not Set")
-- Migration: drop any `DEFAULT 'pass'` on `systems.result`, `ziplines.result`, `equipment.result`
+**Render** — footer of every HTML/PDF report:
+*"Generated by RW Reports v[app_version] · Report v[report_version] · [generated_at timestamp]"*
 
-## Out of scope
-- Daily Assessment & Training don't have Pass/Fail results (they use checkboxes / approach selectors) — no changes needed there
-- `standards.has_documentation` already supports null = "Not Set" per memory
+## Files to touch
 
-Approve and I'll execute the audit + fixes in one pass.
+**Migration**:
+- Add 6 attestation columns + `app_version_at_completion` to all 3 report tables
+- (Triggers from previous turn assumed in place; verify)
+
+**Frontend**:
+- NEW: `src/components/AttestationDialog.tsx`
+- EDIT: `src/pages/InspectionForm.tsx`, `TrainingForm.tsx`, `DailyAssessmentForm.tsx` — invoke dialog before completion lock; pass attestation payload to save
+- EDIT: `src/lib/non-blocking-save.ts` (or wherever completion writes happen) — include attestation + `app_version_at_completion` in the completion update
+- EDIT: `src/lib/offline-storage.ts` — persist attestation locally for offline completions
+
+**Edge functions**:
+- EDIT: `supabase/functions/_shared/report-layout.ts` — render admin-edit banner + attestation block + version footer
+- EDIT: `generate-inspection-html`, `generate-training-html`, `generate-daily-assessment-html` — query post-completion audit rows, pass to layout
+- EDIT: PDF generators — same footer/attestation rendering
+
+**Memory**: save new rule `legal-defensibility-attestation`
+
+## Out of scope (future)
+- IP geolocation lookup
+- Cryptographic hash chain on audit log (overkill for current need; existing immutability via RLS is sufficient)
+- E-signature image capture (typed name + checkbox + IP/UA is the industry-standard "click-to-sign" model)
+
+## One question before building
+
+Attestation flow timing: should it be **required** (blocks completion until signed) or **optional** (skippable but logged)? Required is more legally defensible; optional preserves your "non-blocking completion" memory rule. My recommendation: **required for first completion, skipped for subsequent edits/re-completions** (the original signature stays valid; admin edits are tracked separately via the audit-log banner).
+
+Approve and I'll build it. Reply with "skip required" if you want optional instead.
 
