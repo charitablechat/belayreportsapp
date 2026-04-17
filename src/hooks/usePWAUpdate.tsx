@@ -130,22 +130,65 @@ export const usePWAUpdate = (): PWAUpdateStatus => {
     };
   }, []);
 
-  // Re-check for waiting SW on BFCache restore or tab switch
+  // Re-check for waiting SW on BFCache restore or tab switch.
+  // ALSO actively trigger reg.update() when the app is foregrounded — critical on
+  // iOS Safari, where periodic SW update checks do not run while backgrounded.
   useEffect(() => {
+    if (!('serviceWorker' in navigator) || isPreviewOrIframeEnvironment()) return;
+
+    let lastForegroundUpdate = 0;
+    const FOREGROUND_UPDATE_THROTTLE = 30 * 1000; // don't hammer SW more than once per 30s
+
     const recheckWaiting = () => {
       if (registration?.waiting) setNeedRefresh(true);
     };
+
+    const triggerForegroundUpdateCheck = () => {
+      const now = Date.now();
+      if (now - lastForegroundUpdate < FOREGROUND_UPDATE_THROTTLE) return;
+      lastForegroundUpdate = now;
+
+      const reg = registration;
+      if (!reg) return;
+
+      void withTimeout(reg.update(), SW_UPDATE_TIMEOUT_MS, 'SW update (foreground)')
+        .then(() => {
+          if (reg.waiting) setNeedRefresh(true);
+          const stamp = new Date();
+          setLastChecked(stamp);
+          localStorage.setItem('pwa-last-update-check', stamp.toISOString());
+        })
+        .catch((error) => {
+          if (import.meta.env.DEV) {
+            console.warn('[PWA Update] Foreground update check failed:', error);
+          }
+        });
+    };
+
     const onPageShow = (e: PageTransitionEvent) => {
-      if (e.persisted) recheckWaiting();
+      if (e.persisted) {
+        recheckWaiting();
+        triggerForegroundUpdateCheck();
+      }
     };
     const onVisChange = () => {
-      if (document.visibilityState === 'visible') recheckWaiting();
+      if (document.visibilityState === 'visible') {
+        recheckWaiting();
+        triggerForegroundUpdateCheck();
+      }
     };
+    const onFocus = () => {
+      recheckWaiting();
+      triggerForegroundUpdateCheck();
+    };
+
     window.addEventListener('pageshow', onPageShow);
     document.addEventListener('visibilitychange', onVisChange);
+    window.addEventListener('focus', onFocus);
     return () => {
       window.removeEventListener('pageshow', onPageShow);
       document.removeEventListener('visibilitychange', onVisChange);
+      window.removeEventListener('focus', onFocus);
     };
   }, [registration]);
 
