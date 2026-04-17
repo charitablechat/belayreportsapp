@@ -1603,7 +1603,13 @@ export default function TrainingForm() {
               {training?.status !== 'completed' && (
               <Button 
                 size={isMobile ? "default" : "sm"} 
-                onClick={() => setShowCompleteDialog(true)} 
+                onClick={() => {
+                  if (training?.attestation_signed_at) {
+                    setShowCompleteDialog(true);
+                  } else {
+                    setShowAttestationDialog(true);
+                  }
+                }} 
                 disabled={isSaving}
                 className={isMobile ? "min-w-[100px] h-10 text-sm font-medium" : ""}
               >
