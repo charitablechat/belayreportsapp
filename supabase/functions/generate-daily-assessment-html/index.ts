@@ -5,7 +5,11 @@ import {
   createPageHeader, 
   createPageFooter,
   SHARED_HEADER_FOOTER_CSS,
-  SHARED_PRINT_CSS 
+  SHARED_PRINT_CSS,
+  buildAdminEditBanner,
+  buildAttestationBlock,
+  buildVersionFooter,
+  fetchPostCompletionEdits,
 } from "../_shared/report-layout.ts";
 
 const corsHeaders = {

@@ -1,6 +1,12 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
-import { getLogoBase64 } from "../_shared/report-layout.ts";
+import {
+  getLogoBase64,
+  buildAdminEditBanner,
+  buildAttestationBlock,
+  buildVersionFooter,
+  fetchPostCompletionEdits,
+} from "../_shared/report-layout.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",

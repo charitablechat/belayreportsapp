@@ -5,6 +5,10 @@ import {
   getLogoBase64, 
   createPageHeader, 
   createPageFooter,
+  buildAdminEditBanner,
+  buildAttestationBlock,
+  buildVersionFooter,
+  fetchPostCompletionEdits,
 } from "../_shared/report-layout.ts";
 
 const corsHeaders = {
