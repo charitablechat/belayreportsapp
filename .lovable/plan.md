@@ -1,81 +1,58 @@
 
 
-The user wants to know how to access/create an audit trail viewer in the Super Admin area. Let me check what already exists.
+User wants to ensure no Pass/Fail result fields default to "Pass" anywhere in the app. From earlier liability discussion — defaulting to Pass is a major liability risk (a skipped item silently becomes a "Pass" record).
 
-From the schema I can see:
-- `audit_logs` table EXISTS with: id, action_type, table_name, record_id, old_values, new_values, metadata, ip_address, user_agent, user_id, created_at
-- RLS: Super admins can SELECT; nobody can UPDATE/DELETE (immutable — good for legal evidence)
-- INSERT is implicitly blocked at RLS level too (no insert policy) — meaning logs must be written via SECURITY DEFINER triggers/functions
-- There's also `admin_edit_snapshots` (already has a recovery UI) which is a related but separate concept
+Let me audit where result fields are initialized.
 
-Let me check what's already wired up in the admin dashboard before planning.
+Known result-bearing entities from validation schemas:
+- `systems` — `result` enum, optional/nullable ✅ schema allows unset
+- `ziplines` — `result` REQUIRED enum, plus `cable_result`, `braking_result`, `ead_result` (optional)
+- `equipment` — `result` REQUIRED enum
+- `standards` — `has_documentation` boolean nullable (already handled — null = "Not Set")
 
-I'll look at:
-- `SuperAdminDashboard.tsx` — does it already have an Audit Logs tab?
-- `AdminTabsSection.tsx` — list of admin tabs
-- Any existing audit-log component
+ResultSelect component supports any string value including "" (placeholder shows "Select result"). Good.
 
-Without reading (read-only mode, but I should read to be accurate), I'll plan based on the schema and propose:
+Need to check actual defaults at row creation in:
+- `src/components/inspection/OperatingSystemsTable.tsx` (systems)
+- `src/components/inspection/ZiplinesTable.tsx`
+- `src/components/inspection/EquipmentTable.tsx`
+- `src/pages/InspectionForm.tsx` (any default rows seeded on new inspection)
+- `supabase/functions/parse-inspection-docx` (DOCX import — does it default to "pass"?)
 
-## Plan
+Also need to check:
+- DB column defaults on `systems.result`, `ziplines.result`, `equipment.result`
+- Validation schemas require `result` for ziplines/equipment — if we change default to unset, completion may fail. But per memory `report-completion-validation-bypass`, completion is non-blocking, so safe.
 
-### What already exists
-- `audit_logs` table with proper RLS (super admin read-only, immutable)
-- `admin_edit_snapshots` with a recovery UI (separate, for undoing admin edits)
-- Need to verify whether anything is currently writing to `audit_logs` and whether a viewer exists
+Plan, after approval:
 
-### Audit before building
-Read these files to confirm state:
-- `src/pages/SuperAdminDashboard.tsx`
-- `src/components/admin/AdminTabsSection.tsx`
-- Search for `audit_logs` usage across the codebase
+## Audit (read these files)
+1. `OperatingSystemsTable.tsx`, `ZiplinesTable.tsx`, `EquipmentTable.tsx` — find `addRow`/`addNew` handlers, check default `result` value
+2. `InspectionForm.tsx` — check any seeded default rows
+3. `parse-inspection-docx/index.ts` — check imported row defaults
+4. Run `supabase--read_query` to inspect column defaults on `systems`, `ziplines`, `equipment` tables
+5. Loosen `ziplineSchema.result` / `equipmentSchema.result` to `.optional().nullable()` to match systems
 
-### Proposed build (assuming no viewer exists)
+## Fixes
+1. **New rows**: change any `result: 'pass'` default to `result: null` (or empty string `''`) so the dropdown shows "Select result" placeholder
+2. **DB defaults**: if `result` columns have a `DEFAULT 'pass'`, drop it via migration so server-side inserts don't backfill Pass
+3. **Validation schemas**: make `ziplines.result` and `equipment.result` nullable so unset items don't fail validation
+4. **DOCX import**: if parser defaults to "pass" for unspecified items, change to null and surface a warning
+5. **Completion-time check (already discussed in earlier liability plan #5)**: at report completion, count items with unset `result` and show a non-blocking warning toast: "N items have no result set — they will appear as 'Not Set' on the report."
+6. **Report rendering**: ensure HTML/PDF generation displays "Not Set" (not blank or "Pass") for null results, with a visible amber/grey badge — verify in `_shared/report-layout.ts` and the three generate-*-html functions
 
-**1. New component: `src/components/admin/AuditLogPanel.tsx`**
-- Table view of `audit_logs` (newest first, paginated 50/page)
-- Columns: Timestamp · User (resolved name) · Action · Table · Record ID · Diff button
-- Filters: action type, table, user, date range
-- Click a row → side sheet with full `old_values` / `new_values` JSON diff (highlighted), IP, user agent, metadata
-- Export to CSV button (super admin only)
-- Read-only — no edit/delete UI (matches RLS)
+## Files likely touched
+- `src/components/inspection/OperatingSystemsTable.tsx`
+- `src/components/inspection/ZiplinesTable.tsx`
+- `src/components/inspection/EquipmentTable.tsx`
+- `src/lib/validation-schemas.ts` (loosen required result enums)
+- `src/pages/InspectionForm.tsx` (completion-time warning)
+- `supabase/functions/parse-inspection-docx/index.ts` (if it defaults to pass)
+- `supabase/functions/_shared/report-layout.ts` + `generate-inspection-html/index.ts` (render "Not Set")
+- Migration: drop any `DEFAULT 'pass'` on `systems.result`, `ziplines.result`, `equipment.result`
 
-**2. Wire into SuperAdminDashboard**
-- Add a new "Audit Logs" tab in `AdminTabsSection.tsx`
-- Use existing responsive dual-layout pattern (table on md+, stacked cards on mobile) per memory `admin-dashboard-responsive-layout`
+## Out of scope
+- Daily Assessment & Training don't have Pass/Fail results (they use checkboxes / approach selectors) — no changes needed there
+- `standards.has_documentation` already supports null = "Not Set" per memory
 
-**3. Ensure logs are actually being written**
-Since RLS blocks direct INSERT, audit entries must come from DB triggers. Audit which mutations should generate logs and add `SECURITY DEFINER` triggers for:
-- `inspections`, `trainings`, `daily_assessments` — INSERT/UPDATE/DELETE/completion_lock
-- `user_roles` — role grants/revokes (privilege escalation evidence)
-- `profiles` — admin-driven changes
-- `admin_edit_snapshots` — already covers admin-edits-other-users; cross-link to audit row
-- Reassignments (changing `inspector_id`)
-- Soft-delete & restore actions
-
-Trigger writes: `action_type` (e.g. `report.complete`, `role.grant`), `table_name`, `record_id`, `old_values`, `new_values`, `user_id = auth.uid()`, `metadata` (jsonb with context like reason, target user).
-
-**4. Retention & performance**
-- Add index on `(created_at DESC)`, `(user_id, created_at DESC)`, `(table_name, created_at DESC)`
-- No auto-purge — these are legal/compliance records (matches your liability concerns from earlier discussion)
-
-**5. Access control**
-- Hide tab unless `is_super_admin()` (use existing pattern)
-- Server enforces via RLS regardless — defense in depth
-
-### Files touched
-- NEW: `src/components/admin/AuditLogPanel.tsx`
-- EDIT: `src/components/admin/AdminTabsSection.tsx` (add tab)
-- EDIT: `src/pages/SuperAdminDashboard.tsx` (mount panel)
-- MIGRATION: indexes on `audit_logs` + SECURITY DEFINER triggers on key tables
-
-### What this gives you
-- Tamper-evident timeline of every sensitive action — directly supports the liability mitigation discussion from earlier
-- Self-serve evidence for disputes ("who changed this Pass to Fail and when?")
-- Foundation for compliance reports
-
-### Open question (one)
-Should the trigger coverage be **comprehensive** (every mutation on reports + roles + profiles) or **minimal-first** (just role changes + report completion + admin edits) and expand later? Comprehensive is more work but more defensible legally.
-
-Approve and I'll build it. If you want me to ask the scope question first, say so.
+Approve and I'll execute the audit + fixes in one pass.
 
