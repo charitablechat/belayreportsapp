@@ -1,43 +1,56 @@
 
 
-The user's request describes generic Apple device troubleshooting (iCloud, iPadOS updates, network reset) — that's not what this app does. This is a PWA (RopeWorks reports) running in Safari on iPad. The real issue they likely mean: **the PWA's own sync and update mechanisms are unreliable on iPad/Safari**.
+The user is asking whether there are remaining gaps in iOS/macOS/Safari support that could degrade the app. This is a research/audit question, not an implementation request — but if gaps are found, I should propose fixes.
 
-Known iOS Safari PWA limitations from the codebase:
-- `BackgroundSyncStatus.tsx` already warns that Background Sync API is unsupported on Safari
-- `useBackgroundSync.tsx` no-ops on iOS
-- Service worker updates on iOS Safari require the PWA to be foregrounded; periodic sync doesn't run
-- iOS aggressively evicts IndexedDB data from PWAs not opened in 7+ days
+Let me catalog known Safari/Apple constraints and check the codebase against each.
 
-## Plan: Improve iPad/Safari sync + update reliability
+## Known Safari/iOS gaps to audit
 
-### 1. Foreground sync trigger (replaces missing Background Sync)
-`src/hooks/useAutoSync.tsx` — add visibility/focus listeners so sync runs whenever the PWA returns to foreground (iOS users open the app → immediate sync). Also poll on a 60s interval while visible+online, but only on iOS.
+1. **Push notifications on iOS** — only work in installed PWAs on iOS 16.4+. Need to check `usePushNotifications` / `PushNotificationManager` for iOS gating.
+2. **Web Share API / file downloads** — iOS Safari blocks programmatic downloads; should use `navigator.share` or open in new tab. Check `save-to-device.ts`, `backup-export.ts`.
+3. **HEIC photo uploads** — iPhones produce HEIC by default. Check `heic-converter.ts` is wired into `PhotoCapture`.
+4. **Camera capture** — `<input capture>` behaves differently on iOS. Check `PhotoCapture` / `camera-capture-dialog`.
+5. **Viewport / safe-area insets** — iPhone notches, home indicator. Check `SafeAreaWrapper` and `index.html` viewport meta (`viewport-fit=cover`).
+6. **iOS keyboard avoidance** — keyboard covers inputs. Check `useKeyboardAvoidance`.
+7. **100vh bug on iOS Safari** — address bar resizes. Check for `dvh`/`svh` usage.
+8. **Pull-to-refresh** — iOS Safari has native PTR that interferes. Check `usePullToRefresh` and `overscroll-behavior`.
+9. **Audio/voice input** — `webkitSpeechRecognition` not supported in Safari. Check `useSpeechToText`.
+10. **IndexedDB 7-day eviction** — partially addressed via `requestPersistentStorage()` and the Add-to-Home-Screen prompt I just added. Verify `requestPersistentStorage` is actually called at startup.
+11. **`apple-touch-icon` and iOS PWA splash screens** — check `index.html` and `manifest.json`.
+12. **Service Worker registration on iOS** — must be HTTPS, must be same-origin. Already handled.
+13. **Background fetch / periodic sync** — unsupported on Safari. Already mitigated with foreground triggers.
+14. **OAuth redirect on iOS PWA** — opens in Safari instead of PWA shell, breaks session. Check auth flow.
+15. **File System Access API** — unsupported in Safari. Check backup/restore download paths.
+16. **CSS `:has()`, container queries, etc.** — iOS Safari version compatibility.
+17. **Date input UX** — iOS renders native picker differently. Usually fine, just confirm.
+18. **Long-press context menu hijack** — iOS shows image preview/save sheet on long-press, can interfere with photo gallery interactions.
 
-### 2. Foreground update check
-`src/hooks/usePWAUpdate.tsx` — call `checkForUpdates()` on `visibilitychange` → visible, and on app focus. Critical on iOS where SW update checks otherwise never fire.
+## Plan
 
-### 3. iOS-specific sync banner
-Extend `BackgroundSyncStatus.tsx` to also show: "Keep this app open until the sync indicator turns green" with the live unsynced count from `usePWA()`. Mount it in the dashboard so iPad users see it.
+Audit the codebase against each of these gaps, then present findings as:
+- ✅ Already handled
+- ⚠️ Partially handled — needs reinforcement
+- ❌ Gap — needs work
 
-### 4. Storage eviction warning for iOS
-`src/lib/mobile-detection.ts` already detects iOS. Add a one-time prompt on iOS: "Add this app to your Home Screen to prevent data loss" — installed PWAs get persistent storage on iOS 16.4+.
+For each gap found, propose a targeted fix. Group fixes into a single follow-up implementation plan the user can approve.
 
-### 5. Manual "Force sync now" prominence
-Surface `ForceSyncButton` in the AuthenticatedHeader on iOS only, so iPad users always have a one-tap recovery.
+Files to read:
+- `src/hooks/usePushNotifications.tsx`, `src/components/pwa/PushNotificationManager.tsx`
+- `src/lib/save-to-device.ts`, `src/lib/backup-export.ts`
+- `src/lib/heic-converter.ts`, `src/components/PhotoCapture.tsx`
+- `src/components/SafeAreaWrapper.tsx`, `index.html`, `public/manifest.json`
+- `src/hooks/useKeyboardAvoidance.tsx`, `src/hooks/usePullToRefresh.tsx`, `src/hooks/useSpeechToText.tsx`
+- `src/main.tsx` (check `requestPersistentStorage` call)
+- `src/components/Auth.tsx` (OAuth redirect)
+- `src/index.css` (check for `100vh` vs `100dvh`)
 
-### 6. Sync diagnostics panel
-Add a small "Sync diagnostics" sheet (Profile page) showing: SW status, last update check, last sync, unsynced counts, IndexedDB quota, online/offline, isStandalone. Lets users self-diagnose without us guessing.
+I'll present the audit results and a prioritized fix plan in a single response after the user approves this plan.
 
-## Files to modify
-- `src/hooks/useAutoSync.tsx` — visibility/focus triggers
-- `src/hooks/usePWAUpdate.tsx` — foreground update check
-- `src/components/pwa/BackgroundSyncStatus.tsx` — richer iOS guidance
-- `src/components/AuthenticatedHeader.tsx` — surface ForceSyncButton on iOS
-- `src/pages/Dashboard.tsx` — mount BackgroundSyncStatus
-- `src/pages/Profile.tsx` — add Sync Diagnostics sheet (new component)
-- New: `src/components/pwa/SyncDiagnosticsSheet.tsx`
-- New: `src/components/pwa/IOSInstallPromptOnce.tsx` (one-time, dismissible)
+## Proposed deliverable structure
 
-## What this does NOT do
-This will not change iOS, iCloud, or hardware. The user's stated steps (reset network settings, sign out of Apple ID, etc.) are device-level — outside the app. This plan fixes everything the app itself controls so the iPad has the best possible sync/update behavior within Safari's PWA constraints.
+After approval:
+1. Run the audit (read ~12 files in parallel).
+2. Produce a categorized report: handled / partial / gap.
+3. For each gap, provide a one-line fix description and which file(s) to touch.
+4. User picks which fixes to apply (or "all").
 
