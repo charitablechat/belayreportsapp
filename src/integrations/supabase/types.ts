@@ -415,7 +415,14 @@ export type Database = {
       daily_assessments: {
         Row: {
           active_duration_seconds: number | null
+          app_version_at_completion: string | null
           assessment_date: string
+          attestation_ip: string | null
+          attestation_signed_at: string | null
+          attestation_signer_id: string | null
+          attestation_signer_name: string | null
+          attestation_text: string | null
+          attestation_user_agent: string | null
           created_at: string
           deleted_at: string | null
           deleted_by: string | null
@@ -443,7 +450,14 @@ export type Database = {
         }
         Insert: {
           active_duration_seconds?: number | null
+          app_version_at_completion?: string | null
           assessment_date?: string
+          attestation_ip?: string | null
+          attestation_signed_at?: string | null
+          attestation_signer_id?: string | null
+          attestation_signer_name?: string | null
+          attestation_text?: string | null
+          attestation_user_agent?: string | null
           created_at?: string
           deleted_at?: string | null
           deleted_by?: string | null
@@ -471,7 +485,14 @@ export type Database = {
         }
         Update: {
           active_duration_seconds?: number | null
+          app_version_at_completion?: string | null
           assessment_date?: string
+          attestation_ip?: string | null
+          attestation_signed_at?: string | null
+          attestation_signer_id?: string | null
+          attestation_signer_name?: string | null
+          attestation_text?: string | null
+          attestation_user_agent?: string | null
           created_at?: string
           deleted_at?: string | null
           deleted_by?: string | null
@@ -1202,6 +1223,13 @@ export type Database = {
         Row: {
           acct_number: string | null
           active_duration_seconds: number | null
+          app_version_at_completion: string | null
+          attestation_ip: string | null
+          attestation_signed_at: string | null
+          attestation_signer_id: string | null
+          attestation_signer_name: string | null
+          attestation_text: string | null
+          attestation_user_agent: string | null
           course_history: string | null
           created_at: string | null
           deleted_at: string | null
@@ -1232,6 +1260,13 @@ export type Database = {
         Insert: {
           acct_number?: string | null
           active_duration_seconds?: number | null
+          app_version_at_completion?: string | null
+          attestation_ip?: string | null
+          attestation_signed_at?: string | null
+          attestation_signer_id?: string | null
+          attestation_signer_name?: string | null
+          attestation_text?: string | null
+          attestation_user_agent?: string | null
           course_history?: string | null
           created_at?: string | null
           deleted_at?: string | null
@@ -1262,6 +1297,13 @@ export type Database = {
         Update: {
           acct_number?: string | null
           active_duration_seconds?: number | null
+          app_version_at_completion?: string | null
+          attestation_ip?: string | null
+          attestation_signed_at?: string | null
+          attestation_signer_id?: string | null
+          attestation_signer_name?: string | null
+          attestation_text?: string | null
+          attestation_user_agent?: string | null
           course_history?: string | null
           created_at?: string | null
           deleted_at?: string | null
@@ -2072,6 +2114,13 @@ export type Database = {
       trainings: {
         Row: {
           active_duration_seconds: number | null
+          app_version_at_completion: string | null
+          attestation_ip: string | null
+          attestation_signed_at: string | null
+          attestation_signer_id: string | null
+          attestation_signer_name: string | null
+          attestation_text: string | null
+          attestation_user_agent: string | null
           created_at: string
           deleted_at: string | null
           deleted_by: string | null
@@ -2099,6 +2148,13 @@ export type Database = {
         }
         Insert: {
           active_duration_seconds?: number | null
+          app_version_at_completion?: string | null
+          attestation_ip?: string | null
+          attestation_signed_at?: string | null
+          attestation_signer_id?: string | null
+          attestation_signer_name?: string | null
+          attestation_text?: string | null
+          attestation_user_agent?: string | null
           created_at?: string
           deleted_at?: string | null
           deleted_by?: string | null
@@ -2126,6 +2182,13 @@ export type Database = {
         }
         Update: {
           active_duration_seconds?: number | null
+          app_version_at_completion?: string | null
+          attestation_ip?: string | null
+          attestation_signed_at?: string | null
+          attestation_signer_id?: string | null
+          attestation_signer_name?: string | null
+          attestation_text?: string | null
+          attestation_user_agent?: string | null
           created_at?: string
           deleted_at?: string | null
           deleted_by?: string | null

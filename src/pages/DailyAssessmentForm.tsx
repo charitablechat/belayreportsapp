@@ -39,6 +39,10 @@ import EnvironmentChecksSection from "@/components/daily-assessment/EnvironmentC
 import PhotoCapture from "@/components/PhotoCapture";
 import PhotoGallery from "@/components/PhotoGallery";
 import { HtmlReportViewer } from "@/components/HtmlReportViewer";
+import { AttestationDialog } from "@/components/AttestationDialog";
+import { useUserProfile } from "@/hooks/useUserProfile";
+import type { AttestationPayload } from "@/lib/attestation";
+import { APP_VERSION } from "@/lib/attestation";
 
 import { triggerCompletionConfetti } from "@/lib/confetti";
 import { triggerHaptic } from "@/lib/haptics";
@@ -105,6 +109,8 @@ export default function DailyAssessmentForm() {
   const [saving, setSaving] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [showSubmitDialog, setShowSubmitDialog] = useState(false);
+  const [showAttestationDialog, setShowAttestationDialog] = useState(false);
+  const { fullName: signerFullName } = useUserProfile();
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
   
   const [lastSaved, setLastSaved] = useState<Date | null>(null);
@@ -1019,7 +1025,7 @@ export default function DailyAssessmentForm() {
   }, []);
 
   // Submit and complete the assessment
-  const handleSubmit = async () => {
+  const handleSubmit = async (attestation?: AttestationPayload) => {
     console.log('[Submit] Starting submit...');
     setSubmitting(true);
     setShowSubmitDialog(false);
@@ -1048,7 +1054,13 @@ export default function DailyAssessmentForm() {
 
       // Update assessment status to completed
       const wasAlreadyCompleted = assessment?.status === 'completed';
-      const completedAssessment = { ...assessment, status: 'completed', updated_at: new Date().toISOString() };
+      const completedAssessment = {
+        ...assessment,
+        status: 'completed',
+        updated_at: new Date().toISOString(),
+        app_version_at_completion: APP_VERSION,
+        ...(attestation || {}),
+      };
       
       try {
         await withTimeout(saveDailyAssessmentOffline(completedAssessment), 3000, 'Assessment offline save');
@@ -1144,11 +1156,18 @@ export default function DailyAssessmentForm() {
           await Promise.all(upserts);
           console.log('[Submit] Child tables synced');
 
-          // Update status to completed
+          // Update status to completed (include attestation + version when present)
           const submitSyncTimestamp = new Date().toISOString();
+          const assessmentUpdate: Record<string, any> = {
+            status: 'completed',
+            updated_at: completedAssessment.updated_at,
+            synced_at: submitSyncTimestamp,
+            app_version_at_completion: APP_VERSION,
+          };
+          if (attestation) Object.assign(assessmentUpdate, attestation);
           await supabase
             .from('daily_assessments')
-            .update({ status: 'completed', updated_at: completedAssessment.updated_at, synced_at: submitSyncTimestamp })
+            .update(assessmentUpdate)
             .eq('id', id);
           console.log('[Submit] Assessment status updated');
 
@@ -1407,7 +1426,7 @@ export default function DailyAssessmentForm() {
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel>Cancel</AlertDialogCancel>
-            <AlertDialogAction onClick={handleSubmit}>
+            <AlertDialogAction onClick={() => handleSubmit()}>
               Submit
             </AlertDialogAction>
           </AlertDialogFooter>
@@ -1417,6 +1436,17 @@ export default function DailyAssessmentForm() {
         open={showCompletionLockDialog}
         onOpenChange={setShowCompletionLockDialog}
         onConfirm={() => setCompletionLockOverridden(true)}
+      />
+
+      <AttestationDialog
+        open={showAttestationDialog}
+        onOpenChange={setShowAttestationDialog}
+        kind="daily_assessment"
+        signerName={signerFullName}
+        signerId={assessment?.inspector_id ?? null}
+        organization={assessment?.organization || ''}
+        reportDate={assessment?.assessment_date || new Date().toISOString().slice(0, 10)}
+        onSigned={(payload) => handleSubmit(payload)}
       />
       <SaveBeforeLeaveDialog
         open={showLeaveDialog}
@@ -1632,7 +1662,13 @@ export default function DailyAssessmentForm() {
               {assessment?.status !== 'completed' && (
               <Button 
                 size={isMobileView ? "default" : "sm"} 
-                onClick={() => setShowSubmitDialog(true)} 
+                onClick={() => {
+                  if (assessment?.attestation_signed_at) {
+                    setShowSubmitDialog(true);
+                  } else {
+                    setShowAttestationDialog(true);
+                  }
+                }} 
                 disabled={saving || submitting}
                 className={isMobileView ? "min-w-[100px] h-10 text-sm font-medium" : ""}
               >

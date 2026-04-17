@@ -45,6 +45,10 @@ import {
   queueTrainingOperation 
 } from "@/lib/offline-storage";
 import { HtmlReportViewer } from "@/components/HtmlReportViewer";
+import { AttestationDialog } from "@/components/AttestationDialog";
+import { useUserProfile } from "@/hooks/useUserProfile";
+import type { AttestationPayload } from "@/lib/attestation";
+import { APP_VERSION } from "@/lib/attestation";
 
 import { triggerCompletionConfetti } from "@/lib/confetti";
 import { triggerHaptic } from "@/lib/haptics";
@@ -96,6 +100,8 @@ export default function TrainingForm() {
   const [showCompletionLockDialog, setShowCompletionLockDialog] = useState(false);
   const [showLeaveDialog, setShowLeaveDialog] = useState(false);
   const [showCompleteDialog, setShowCompleteDialog] = useState(false);
+  const [showAttestationDialog, setShowAttestationDialog] = useState(false);
+  const { fullName: signerFullName } = useUserProfile();
   const [isSavingBeforeLeave, setIsSavingBeforeLeave] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -1201,7 +1207,7 @@ export default function TrainingForm() {
     }
   };
 
-  const completeTraining = useCallback(async () => {
+  const completeTraining = useCallback(async (attestation?: AttestationPayload) => {
     if (!training || !id) return;
 
     setIsSaving(true);
@@ -1218,6 +1224,8 @@ export default function TrainingForm() {
         ...training,
         status: 'completed',
         updated_at: new Date().toISOString(),
+        app_version_at_completion: APP_VERSION,
+        ...(attestation || {}),
       };
 
       // Save offline first
@@ -1234,10 +1242,16 @@ export default function TrainingForm() {
       // If online, try to sync to Supabase
       if (isOnline) {
         try {
-          // Update main training record
+          // Update main training record (include attestation + version when present)
+          const trainingUpdate: Record<string, any> = {
+            status: 'completed',
+            updated_at: completedTraining.updated_at,
+            app_version_at_completion: APP_VERSION,
+          };
+          if (attestation) Object.assign(trainingUpdate, attestation);
           const { error: trainingError } = await supabase
             .from('trainings')
-            .update({ status: 'completed', updated_at: completedTraining.updated_at })
+            .update(trainingUpdate)
             .eq('id', id);
 
           if (trainingError) throw trainingError;
@@ -1589,7 +1603,13 @@ export default function TrainingForm() {
               {training?.status !== 'completed' && (
               <Button 
                 size={isMobile ? "default" : "sm"} 
-                onClick={() => setShowCompleteDialog(true)} 
+                onClick={() => {
+                  if (training?.attestation_signed_at) {
+                    setShowCompleteDialog(true);
+                  } else {
+                    setShowAttestationDialog(true);
+                  }
+                }} 
                 disabled={isSaving}
                 className={isMobile ? "min-w-[100px] h-10 text-sm font-medium" : ""}
               >
@@ -1889,12 +1909,23 @@ export default function TrainingForm() {
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel>Cancel</AlertDialogCancel>
-            <AlertDialogAction onClick={completeTraining}>
+            <AlertDialogAction onClick={() => completeTraining()}>
               Complete
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      <AttestationDialog
+        open={showAttestationDialog}
+        onOpenChange={setShowAttestationDialog}
+        kind="training"
+        signerName={signerFullName}
+        signerId={training?.trainer_id ?? null}
+        organization={training?.organization || ''}
+        reportDate={training?.training_date || new Date().toISOString().slice(0, 10)}
+        onSigned={(payload) => completeTraining(payload)}
+      />
     </>
   );
 }
