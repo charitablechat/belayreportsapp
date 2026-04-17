@@ -2310,6 +2310,14 @@ export type Database = {
         Args: { p_record_id: string; p_table_name: string }
         Returns: Json
       }
+      audit_resolve_users: {
+        Args: { _user_ids: string[] }
+        Returns: {
+          first_name: string
+          id: string
+          last_name: string
+        }[]
+      }
       backup_table: {
         Args: { p_schema_name?: string; p_table_name: string }
         Returns: string
