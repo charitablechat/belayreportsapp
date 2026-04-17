@@ -5,7 +5,9 @@ import { useQuery } from "@tanstack/react-query";
 import { getUserWithCache } from "@/lib/cached-auth";
 import { UserProfileDropdown } from "@/components/UserProfileDropdown";
 import { UpdateBadge } from "@/components/pwa/UpdateBadge";
+import { ForceSyncButton } from "@/components/pwa/ForceSyncButton";
 import { usePWA } from "@/hooks/usePWA";
+import { isIOS } from "@/lib/mobile-detection";
 import { toast } from "sonner";
 
 const PUBLIC_ROUTES = ["/", "/welcome"];
@@ -140,6 +142,7 @@ export function AuthenticatedHeader() {
       aria-label="User menu"
     >
       <UpdateBadge />
+      {isIOS() && <ForceSyncButton variant="icon" unsyncedCount={unsyncedCount} />}
       <UserProfileDropdown
         currentUser={currentUser}
         userProfile={userProfile}

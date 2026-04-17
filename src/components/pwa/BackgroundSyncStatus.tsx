@@ -1,22 +1,60 @@
 import { isBackgroundSyncSupported } from '@/lib/background-sync';
-import { Alert, AlertDescription } from '@/components/ui/alert';
-import { InfoIcon } from 'lucide-react';
+import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
+import { InfoIcon, Loader2 } from 'lucide-react';
+import { isIOS } from '@/lib/mobile-detection';
+import { usePWA } from '@/hooks/usePWA';
 
 /**
- * Display a warning for browsers that don't support Background Sync API
- * (mainly Safari/iOS)
+ * Surfaces a contextual notice for browsers without the Background Sync API
+ * (primarily Safari / iOS). On iOS we also show the live unsynced item count
+ * and instruct the user to keep the app open until sync completes — since iOS
+ * suspends background work aggressively.
  */
 export const BackgroundSyncStatus = () => {
   const isSupported = isBackgroundSyncSupported();
-  
+  const { unsyncedCount, isSyncing, isOnline } = usePWA();
+
   if (isSupported) return null;
-  
+
+  const isIOSDevice = isIOS();
+  const hasPending = unsyncedCount > 0;
+
+  // Nothing to nag about: not iOS, nothing pending → keep banner minimal.
+  if (!isIOSDevice && !hasPending) {
+    return (
+      <Alert className="mb-4 border-primary/20 bg-primary/5">
+        <InfoIcon className="h-4 w-4 text-primary" />
+        <AlertDescription className="text-foreground">
+          Background sync isn't supported on this browser. Keep the app open while syncing data.
+        </AlertDescription>
+      </Alert>
+    );
+  }
+
   return (
-    <Alert className="mb-4 border-blue-200 bg-blue-50 dark:bg-blue-950/20 dark:border-blue-800">
-      <InfoIcon className="h-4 w-4 text-blue-600 dark:text-blue-400" />
-      <AlertDescription className="text-blue-800 dark:text-blue-300">
-        Background sync is not supported on this browser. 
-        Please keep the app open while syncing data.
+    <Alert className="mb-4 border-primary/20 bg-primary/5">
+      {isSyncing ? (
+        <Loader2 className="h-4 w-4 text-primary animate-spin" />
+      ) : (
+        <InfoIcon className="h-4 w-4 text-primary" />
+      )}
+      <AlertTitle className="text-foreground">
+        {isSyncing
+          ? 'Syncing your data…'
+          : hasPending
+            ? `${unsyncedCount} item${unsyncedCount === 1 ? '' : 's'} waiting to sync`
+            : 'Keep the app open to sync'}
+      </AlertTitle>
+      <AlertDescription className="text-muted-foreground">
+        {isIOSDevice ? (
+          <>
+            iPad and iPhone don't support background syncing. Please keep this app
+            open and on-screen until the sync indicator shows everything is up to date
+            {!isOnline && ' — and reconnect to the internet'}.
+          </>
+        ) : (
+          <>This browser doesn't support background syncing. Keep the app open until sync completes.</>
+        )}
       </AlertDescription>
     </Alert>
   );

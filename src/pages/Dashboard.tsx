@@ -37,6 +37,8 @@ import { NetworkStatusIndicator } from "@/components/pwa/NetworkStatusIndicator"
 import { NetworkQualityIndicator } from "@/components/pwa/NetworkQualityIndicator";
 
 import { ForceSyncButton } from "@/components/pwa/ForceSyncButton";
+import { BackgroundSyncStatus } from "@/components/pwa/BackgroundSyncStatus";
+import { IOSInstallPromptOnce } from "@/components/pwa/IOSInstallPromptOnce";
 import { OfflineSimulator } from "@/components/dev/OfflineSimulator";
 import { StatusIndicator } from "@/components/pwa/StatusIndicator";
 import { SyncPulse } from "@/components/pwa/SyncPulse";
@@ -1391,6 +1393,8 @@ export default function Dashboard() {
       </header>
 
       <main className="container mx-auto px-1 md:px-4 py-8">
+        <IOSInstallPromptOnce />
+        <BackgroundSyncStatus />
         {/* Inline sync status -- always present, visibility via opacity only */}
         <div
           className={cn(
