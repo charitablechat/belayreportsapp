@@ -974,6 +974,18 @@ serve(async (req) => {
 
     return pagesHtml;
   })()}
+  ${buildAttestationBlock({
+    attestation_signed_at: (assessment as any).attestation_signed_at,
+    attestation_signer_name: (assessment as any).attestation_signer_name,
+    attestation_ip: (assessment as any).attestation_ip,
+    attestation_user_agent: (assessment as any).attestation_user_agent,
+    attestation_text: (assessment as any).attestation_text,
+  })}
+  ${buildVersionFooter({
+    appVersion: (assessment as any).app_version_at_completion,
+    reportVersion: (assessment as any).report_version,
+    generatedAt: new Date().toISOString(),
+  })}
 </body>
 </html>
     `;

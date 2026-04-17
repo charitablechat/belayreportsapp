@@ -986,6 +986,18 @@ serve(async (req) => {
     ${footer(5)}
   </div>
   ` : ''}
+  ${buildAttestationBlock({
+    attestation_signed_at: (trainingData as any)?.training?.attestation_signed_at ?? (trainingData as any)?.attestation_signed_at,
+    attestation_signer_name: (trainingData as any)?.training?.attestation_signer_name ?? (trainingData as any)?.attestation_signer_name,
+    attestation_ip: (trainingData as any)?.training?.attestation_ip ?? (trainingData as any)?.attestation_ip,
+    attestation_user_agent: (trainingData as any)?.training?.attestation_user_agent ?? (trainingData as any)?.attestation_user_agent,
+    attestation_text: (trainingData as any)?.training?.attestation_text ?? (trainingData as any)?.attestation_text,
+  })}
+  ${buildVersionFooter({
+    appVersion: (trainingData as any)?.training?.app_version_at_completion ?? (trainingData as any)?.app_version_at_completion,
+    reportVersion: (trainingData as any)?.training?.report_version ?? (trainingData as any)?.report_version,
+    generatedAt: new Date().toISOString(),
+  })}
 </body>
 </html>`;
 

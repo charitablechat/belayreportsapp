@@ -2697,6 +2697,19 @@ serve(async (req) => {
 
   </div> <!-- End content-wrapper -->
 
+  ${buildAttestationBlock({
+    attestation_signed_at: (inspection as any).attestation_signed_at,
+    attestation_signer_name: (inspection as any).attestation_signer_name,
+    attestation_ip: (inspection as any).attestation_ip,
+    attestation_user_agent: (inspection as any).attestation_user_agent,
+    attestation_text: (inspection as any).attestation_text,
+  })}
+  ${buildVersionFooter({
+    appVersion: (inspection as any).app_version_at_completion,
+    reportVersion: (inspection as any).report_version,
+    generatedAt: new Date().toISOString(),
+  })}
+
 </body>
 </html>`;
 
