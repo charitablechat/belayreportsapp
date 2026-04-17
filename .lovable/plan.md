@@ -1,58 +1,104 @@
 
 
-User wants: pressing **Enter** in any input/textarea on any report form should blur the field (exit the box) but **not** scroll, jump, or move focus elsewhere — the page stays exactly where it is.
+User wants **collaborative merge** for reports: when 2+ devices edit the same report (online or offline), changes from all devices should combine into one report, not overwrite each other.
 
-## Current behavior (inferred)
-- Inputs/textareas: Enter in `<input>` would submit a form if one wraps it; in `<textarea>` it inserts a newline.
-- TipTap rich text editors: per memory `report-form-navigation-ux`, Tab navigates between fields — Enter behavior unspecified, likely inserts newline (which is correct for rich text and should be preserved).
-- No global Enter-to-blur handler exists.
+## Current state (from memory + code)
 
-## Approach
+- **LWW (Last-Write-Wins)** at row level, silent. `useConflicts` resolves by `updated_at` — newest wins, loser's edits are **lost**.
+- `sync_conflicts` table exists but is auto-resolved with no merge.
+- Reports have **parent rows** (`inspections`, `trainings`, `daily_assessments`) + **child rows** (`systems`, `ziplines`, `equipment`, `standards`, `inspection_photos`, etc.).
+- Atomic sync replaces temp-IDs with UUIDs.
 
-Add a single global handler that, on `keydown` of `Enter` (without Shift) targeting an `<input>` or `<textarea>`:
-1. `e.preventDefault()` — stop form submit / newline insert
-2. Capture `window.scrollY` + element `getBoundingClientRect()` before blur
-3. Call `target.blur()`
-4. After blur, restore scroll position if the browser shifted it (mobile keyboard dismissal can cause jumps)
+## The real problem
 
-**Scope**: only the three report form routes — `/inspection/:id`, `/training/:id`, `/daily-assessment/:id` (and their `new-*` variants). Don't apply globally because:
-- Search bars, autocomplete, dialogs may rely on Enter to submit/select
-- Dashboard filters use Enter intentionally
+LWW is **fine for child rows** (each system/zipline/equipment is a separate row with its own UUID — two devices adding different items naturally merge via insert). The data loss happens on the **parent row's free-text fields**: `summary`, `observations`, `recommendations`, `notes`, `next_steps`, `inspector_name`, etc. Whichever device syncs last overwrites the other's text.
 
-**Exclusions inside the report forms**:
-- TipTap rich text editors (`[contenteditable="true"]`) — Enter must insert newline/paragraph
-- `<textarea>` elements where multi-line entry is the point — for these, Enter should still insert newline; only **Ctrl/Cmd+Enter** blurs. (Or alternatively: plain Enter blurs textareas too — depends on user intent.)
-- Autocomplete components (`GlobalAutocomplete`, `DatabaseAutocomplete`, `OrganizationAutocomplete`, `EquipmentTypeCombobox`) — Enter selects highlighted suggestion; must not be intercepted while their dropdown is open
-- Select / Combobox triggers — Enter opens them
-- Buttons — Enter activates them
+So the fix is two-pronged:
 
-## One question before I build
+### Part 1 — Child rows (already 90% working, needs hardening)
+- Inserts merge naturally: Device A adds 3 ziplines, Device B adds 2 — sync produces 5. ✅
+- Edits to the **same child row** still hit LWW. Acceptable for short fields like `result` (Pass/Fail) — last edit wins is reasonable.
+- **Deletes** are the danger: Device A edits zipline #7 while Device B deletes it. Per `sync-deletion-reconciliation` memory, orphan reconciliation soft-deletes — this could destroy A's edits. Need a "tombstone wins only if newer than the edit" rule.
 
-For **textareas** (multi-line fields like comments, observations), should plain **Enter** blur the field, or should it still insert a newline (with **Ctrl/Cmd+Enter** to blur)?
+### Part 2 — Parent free-text fields (the actual data-loss zone)
+Three viable strategies, ranked:
 
-- **Option A (recommended)**: Plain Enter blurs `<input>` only; textareas keep newline behavior, Cmd/Ctrl+Enter blurs them. Matches industry convention (Slack, GitHub, etc.).
-- **Option B**: Plain Enter blurs everything, even textareas. Simpler but breaks multi-line note entry — users can't add line breaks in observations/recommendations without using the rich-text editor.
+**Option A — Field-level LWW (recommended, lowest risk)**
+- Track `updated_at` per field in a sidecar JSONB column: `field_timestamps: { summary: "...", observations: "...", ... }`.
+- On sync, for each field independently: keep whichever side has the newer timestamp.
+- Result: Device A edits `summary`, Device B edits `observations` → both preserved. If both edit `summary` → newer wins (same as today, but only that one field is lost, not the whole row).
+- ~80% of real-world conflicts disappear because users typically work on different sections.
 
-## Implementation (after you pick A or B)
+**Option B — Three-way merge with conflict markers**
+- Store `last_synced_snapshot` per device. On sync, diff local vs snapshot vs server. Non-overlapping changes auto-merge; overlapping changes get inline markers (`<<<<<<< local ... ======= ... >>>>>>> remote`) the user must resolve.
+- Most powerful, but requires a conflict-resolution UI and breaks "silent resolution" rule from memory.
 
-**New file**: `src/hooks/useEnterToBlur.tsx`
-- Attaches a `keydown` listener (capture phase) scoped to a container ref
-- Filters out: contenteditable, autocomplete-open state (check `aria-expanded="true"` on ancestor), buttons, selects
-- On valid Enter: prevent default, snapshot scroll, blur, restore scroll on next frame
+**Option C — CRDT (Yjs / Automerge) on rich-text fields**
+- True collaborative editing, character-level merge. Works offline, syncs perfectly.
+- Heavy: requires Yjs integration in TipTap, a sync server (or peer-to-peer via Supabase Realtime), conflict-free document storage. Massive scope expansion.
 
-**Wire into**:
-- `src/pages/InspectionForm.tsx`
-- `src/pages/TrainingForm.tsx`
-- `src/pages/DailyAssessmentForm.tsx`
-- `src/pages/NewInspection.tsx`, `NewTraining.tsx`, `NewDailyAssessment.tsx`
+### Part 3 — Photos
+Already merge-safe (each photo is its own row with unique `photo_url`). No change needed.
 
-Each gets a ref on its root form container; hook is called with that ref.
+### Part 4 — Attestation
+Only one signature per report. **First-signed wins** — once `attestation_signed_at` is set, sync must never overwrite it. Subsequent device's attestation (if user signed twice) is dropped silently.
 
-**No DB / no edge-function changes.**
+## Recommendation: Option A + delete-vs-edit guard
 
-## Files touched
-- NEW: `src/hooks/useEnterToBlur.tsx`
-- EDIT: 6 form pages above (one ref + one hook call each)
+Keeps the silent-resolution UX, requires no new UI, fixes the 80% case where users edit different sections.
 
-Reply **A** or **B** (or describe different behavior) and I'll build it.
+## Implementation outline
+
+### Schema (migration)
+```sql
+ALTER TABLE inspections ADD COLUMN field_timestamps JSONB DEFAULT '{}'::jsonb;
+ALTER TABLE trainings ADD COLUMN field_timestamps JSONB DEFAULT '{}'::jsonb;
+ALTER TABLE daily_assessments ADD COLUMN field_timestamps JSONB DEFAULT '{}'::jsonb;
+
+-- Tombstones for child rows: track soft-delete time so edit-after-delete wins
+-- (deleted_at column already exists on most child tables; add to ones missing it)
+```
+
+### Client write path (`src/lib/non-blocking-save.ts` + form pages)
+- Wrap every field-level update: when user changes `summary`, also write `field_timestamps.summary = new Date().toISOString()`.
+- Helper: `setFieldWithTimestamp(record, field, value)`.
+
+### Sync merge (`src/lib/atomic-sync-manager.ts`)
+- New helper `mergeRecordFields(local, remote)`:
+  1. For each tracked field, compare `local.field_timestamps[field]` vs `remote.field_timestamps[field]`. Keep newer.
+  2. Merge `field_timestamps` objects (newest per key).
+  3. **Skip attestation fields** entirely if remote has `attestation_signed_at` set — first-sign wins.
+  4. Return merged record; push to server with single update.
+- Replace current "local wins / remote wins" branch in conflict resolution with `mergeRecordFields`.
+
+### Child row delete-vs-edit guard
+- When sync would soft-delete an orphaned child row, check: is `child.updated_at > parent_sync.last_pulled_at`? If yes, the row was edited on another device after the delete — skip the soft-delete (resurrect / keep).
+
+### Realtime presence (small bonus)
+- When two users are online editing the same report simultaneously, show a subtle banner: *"[Name] is also editing this report"* using Supabase Realtime presence. Pure awareness, no blocking. Helps prevent conflicts before they happen.
+
+### Files touched
+
+- **NEW migration** — `field_timestamps` columns on 3 report tables
+- **EDIT** `src/lib/atomic-sync-manager.ts` — merge logic
+- **EDIT** `src/hooks/useConflicts.tsx` — call merge instead of LWW
+- **EDIT** `src/lib/non-blocking-save.ts` — write field timestamps
+- **EDIT** form pages (`InspectionForm`, `TrainingForm`, `DailyAssessmentForm`) — use `setFieldWithTimestamp` helper
+- **NEW** `src/lib/field-merge.ts` — pure merge helpers + tests
+- **NEW** (optional) `src/components/CollaboratorPresence.tsx` — Realtime presence banner
+- **EDIT** `mem://features/silent-conflict-resolution-v6` → bump to v7 with field-level merge
+
+### What this does NOT do
+- No real-time collaborative typing (use Option C / CRDTs for that)
+- No conflict UI — merge stays silent per your existing rule
+- No version-vector / vector-clock — relies on wall-clock timestamps (acceptable since clock-skew tolerance already exists in `local-data-guards.ts`)
+
+## Question before I build
+
+**Do you want the Realtime presence banner** (Part 4 bonus — shows "Sarah is also editing" when 2 users open the same report online)? It's ~50 LOC and significantly reduces conflicts by warning users in advance.
+
+- **Yes** — add presence banner
+- **No** — silent merge only, no UI
+
+Reply Yes/No (or "Option B" / "Option C" if you want a different merge strategy) and I'll execute.
 
