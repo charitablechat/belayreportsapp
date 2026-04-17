@@ -52,7 +52,7 @@ export const ziplineSchema = z.object({
   ead_system: z.string().optional().nullable(),
   load_tension: z.number().int().optional().nullable(),
   unload_tension: z.number().int().optional().nullable(),
-  result: z.enum(['pass', 'pass w/provisions', 'fail', 'na']),
+  result: z.enum(['pass', 'pass w/provisions', 'fail', 'na']).optional().nullable(),
   cable_result: z.enum(['pass', 'pass w/provisions', 'fail', 'na']).optional().nullable(),
   braking_result: z.enum(['pass', 'pass w/provisions', 'fail', 'na']).optional().nullable(),
   ead_result: z.enum(['pass', 'pass w/provisions', 'fail', 'na']).optional().nullable(),
@@ -68,7 +68,7 @@ export const equipmentSchema = z.object({
   equipment_category: z.string().optional().nullable(),
   production_year: z.string().regex(/^(0|\d{4}(-\d{4})?)$/, "Must be a valid year, year range, or N/A").optional().nullable(),
   quantity: z.string().regex(/^\d+\+?$/, "Must be a number, optionally followed by +").optional().nullable(),
-  result: z.enum(['pass', 'pass w/provisions', 'fail', 'na']),
+  result: z.enum(['pass', 'pass w/provisions', 'fail', 'na']).optional().nullable(),
   comments: z.string().max(2000).optional().nullable(),
   created_at: z.string().optional().nullable(),
 });

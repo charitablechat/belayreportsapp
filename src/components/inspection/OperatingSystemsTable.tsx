@@ -88,7 +88,7 @@ function OperatingSystemsTable({ systems, onUpdate, onImmediateSave, inspectionI
           id,
           inspection_id: window.location.pathname.split('/').pop(),
           system_name: "",
-          result: "pass",
+          result: "",
           comments: "",
           is_divider: false,
           display_order: minOrder - 1,
