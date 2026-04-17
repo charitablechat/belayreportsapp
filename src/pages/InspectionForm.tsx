@@ -41,6 +41,10 @@ import {
   getOfflinePhotos
 } from "@/lib/offline-storage";
 import { validateInspectionPackage } from "@/lib/validation-schemas";
+import { AttestationDialog } from "@/components/AttestationDialog";
+import { useUserProfile } from "@/hooks/useUserProfile";
+import type { AttestationPayload } from "@/lib/attestation";
+import { APP_VERSION } from "@/lib/attestation";
 import { reconcileAllChildTables } from "@/lib/sync-reconciliation";
 import { cn } from "@/lib/utils";
 import { useNetworkStatus } from "@/hooks/useNetworkStatus";
