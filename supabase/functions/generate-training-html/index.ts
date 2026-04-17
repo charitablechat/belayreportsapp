@@ -5,6 +5,10 @@ import {
   getLogoBase64, 
   createPageHeader, 
   createPageFooter,
+  buildAdminEditBanner,
+  buildAttestationBlock,
+  buildVersionFooter,
+  fetchPostCompletionEdits,
 } from "../_shared/report-layout.ts";
 
 const corsHeaders = {
@@ -129,6 +133,16 @@ serve(async (req) => {
     // FOOTER: NO logos - only page number and disclaimer text
     const header = () => createPageHeader(ropeWorksLogo, acctLogo);
     const footer = (pageNum: number) => createPageFooter(pageNum, footerDisclaimerText);
+
+    // Fetch any post-completion edits for the admin-edit banner
+    const trainingRow: any = (trainingData as any)?.training ?? trainingData;
+    const postEdits = await fetchPostCompletionEdits(
+      supabase,
+      'trainings',
+      trainingId,
+      trainingRow?.attestation_signed_at,
+    );
+    const adminEditBannerHtml = buildAdminEditBanner(postEdits);
 
     // Build systems in place HTML
     const ALL_SYSTEMS_IN_PLACE = [
@@ -758,6 +772,7 @@ serve(async (req) => {
   </style>
 </head>
 <body>
+  ${adminEditBannerHtml}
   <!-- Page 1: Cover and Facility Information -->
   <div class="page">
     ${header()}
@@ -986,6 +1001,18 @@ serve(async (req) => {
     ${footer(5)}
   </div>
   ` : ''}
+  ${buildAttestationBlock({
+    attestation_signed_at: (trainingData as any)?.training?.attestation_signed_at ?? (trainingData as any)?.attestation_signed_at,
+    attestation_signer_name: (trainingData as any)?.training?.attestation_signer_name ?? (trainingData as any)?.attestation_signer_name,
+    attestation_ip: (trainingData as any)?.training?.attestation_ip ?? (trainingData as any)?.attestation_ip,
+    attestation_user_agent: (trainingData as any)?.training?.attestation_user_agent ?? (trainingData as any)?.attestation_user_agent,
+    attestation_text: (trainingData as any)?.training?.attestation_text ?? (trainingData as any)?.attestation_text,
+  })}
+  ${buildVersionFooter({
+    appVersion: (trainingData as any)?.training?.app_version_at_completion ?? (trainingData as any)?.app_version_at_completion,
+    reportVersion: (trainingData as any)?.training?.report_version ?? (trainingData as any)?.report_version,
+    generatedAt: new Date().toISOString(),
+  })}
 </body>
 </html>`;
 

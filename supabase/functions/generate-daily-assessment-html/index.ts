@@ -5,7 +5,11 @@ import {
   createPageHeader, 
   createPageFooter,
   SHARED_HEADER_FOOTER_CSS,
-  SHARED_PRINT_CSS 
+  SHARED_PRINT_CSS,
+  buildAdminEditBanner,
+  buildAttestationBlock,
+  buildVersionFooter,
+  fetchPostCompletionEdits,
 } from "../_shared/report-layout.ts";
 
 const corsHeaders = {
@@ -174,6 +178,15 @@ serve(async (req) => {
     // FOOTER: NO logos - only page number and disclaimer text
     const header = () => createPageHeader(ropeWorksLogo, acctLogo);
     const footer = (pageNum: number) => createPageFooter(pageNum, footerDisclaimerText);
+
+    // Fetch any post-completion edits for the admin-edit banner
+    const postEdits = await fetchPostCompletionEdits(
+      supabase,
+      'daily_assessments',
+      assessmentId,
+      (assessment as any).attestation_signed_at,
+    );
+    const adminEditBannerHtml = buildAdminEditBanner(postEdits);
 
     // Terminal-style section comments renderer
     const renderSectionComments = (comments: string | null, title: string) => {
@@ -848,6 +861,7 @@ serve(async (req) => {
   </style>
 </head>
 <body>
+  ${adminEditBannerHtml}
   <!-- Page 1: Assessment Info + Operating Systems -->
   <div class="page">
     ${header()}
@@ -974,6 +988,18 @@ serve(async (req) => {
 
     return pagesHtml;
   })()}
+  ${buildAttestationBlock({
+    attestation_signed_at: (assessment as any).attestation_signed_at,
+    attestation_signer_name: (assessment as any).attestation_signer_name,
+    attestation_ip: (assessment as any).attestation_ip,
+    attestation_user_agent: (assessment as any).attestation_user_agent,
+    attestation_text: (assessment as any).attestation_text,
+  })}
+  ${buildVersionFooter({
+    appVersion: (assessment as any).app_version_at_completion,
+    reportVersion: (assessment as any).report_version,
+    generatedAt: new Date().toISOString(),
+  })}
 </body>
 </html>
     `;
