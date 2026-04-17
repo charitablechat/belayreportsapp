@@ -1,56 +1,58 @@
 
 
-The user is asking whether there are remaining gaps in iOS/macOS/Safari support that could degrade the app. This is a research/audit question, not an implementation request — but if gaps are found, I should propose fixes.
+The user is asking specifically about **update delivery gaps** on Apple platforms (macOS Safari, iPadOS, iOS) — i.e. what stops users from getting the latest version of the PWA reliably. This is narrower than the previous general iOS audit. Focus on service worker update delivery, cache busting, and version visibility.
 
-Let me catalog known Safari/Apple constraints and check the codebase against each.
+Let me think through Apple-specific update gaps:
 
-## Known Safari/iOS gaps to audit
+## Known Apple update-delivery gaps
 
-1. **Push notifications on iOS** — only work in installed PWAs on iOS 16.4+. Need to check `usePushNotifications` / `PushNotificationManager` for iOS gating.
-2. **Web Share API / file downloads** — iOS Safari blocks programmatic downloads; should use `navigator.share` or open in new tab. Check `save-to-device.ts`, `backup-export.ts`.
-3. **HEIC photo uploads** — iPhones produce HEIC by default. Check `heic-converter.ts` is wired into `PhotoCapture`.
-4. **Camera capture** — `<input capture>` behaves differently on iOS. Check `PhotoCapture` / `camera-capture-dialog`.
-5. **Viewport / safe-area insets** — iPhone notches, home indicator. Check `SafeAreaWrapper` and `index.html` viewport meta (`viewport-fit=cover`).
-6. **iOS keyboard avoidance** — keyboard covers inputs. Check `useKeyboardAvoidance`.
-7. **100vh bug on iOS Safari** — address bar resizes. Check for `dvh`/`svh` usage.
-8. **Pull-to-refresh** — iOS Safari has native PTR that interferes. Check `usePullToRefresh` and `overscroll-behavior`.
-9. **Audio/voice input** — `webkitSpeechRecognition` not supported in Safari. Check `useSpeechToText`.
-10. **IndexedDB 7-day eviction** — partially addressed via `requestPersistentStorage()` and the Add-to-Home-Screen prompt I just added. Verify `requestPersistentStorage` is actually called at startup.
-11. **`apple-touch-icon` and iOS PWA splash screens** — check `index.html` and `manifest.json`.
-12. **Service Worker registration on iOS** — must be HTTPS, must be same-origin. Already handled.
-13. **Background fetch / periodic sync** — unsupported on Safari. Already mitigated with foreground triggers.
-14. **OAuth redirect on iOS PWA** — opens in Safari instead of PWA shell, breaks session. Check auth flow.
-15. **File System Access API** — unsupported in Safari. Check backup/restore download paths.
-16. **CSS `:has()`, container queries, etc.** — iOS Safari version compatibility.
-17. **Date input UX** — iOS renders native picker differently. Usually fine, just confirm.
-18. **Long-press context menu hijack** — iOS shows image preview/save sheet on long-press, can interfere with photo gallery interactions.
+1. **iOS Safari aggressive HTTP caching of `index.html`** — even with SW updates, Safari may serve a stale `index.html` from HTTP cache, so the SW never sees the new build. Need `Cache-Control: no-cache` on HTML and SW files (Lovable hosting may already handle, but worth verifying via meta tags).
 
-## Plan
+2. **Service Worker `updateViaCache`** — by default browsers may cache the SW script itself for 24h. Setting `updateViaCache: 'none'` on registration forces a network check every time. Need to verify in `vite-pwa-config.ts` / SW registration.
 
-Audit the codebase against each of these gaps, then present findings as:
-- ✅ Already handled
-- ⚠️ Partially handled — needs reinforcement
-- ❌ Gap — needs work
+3. **macOS Safari multi-tab SW activation** — `skipWaiting` + `clients.claim` works, but if the user has multiple tabs open the new SW won't activate until all tabs close. No reload prompt is shown across other tabs.
 
-For each gap found, propose a targeted fix. Group fixes into a single follow-up implementation plan the user can approve.
+4. **iOS standalone PWA never reloads on its own** — when the user swipes the PWA away from app switcher and reopens, iOS sometimes restores from snapshot without re-running JS. The foreground update check I added helps, but we never *force* the user to update — `needsUpdate` just sets a flag. There's no visible "Update available" banner that I can confirm exists in the header.
 
-Files to read:
-- `src/hooks/usePushNotifications.tsx`, `src/components/pwa/PushNotificationManager.tsx`
-- `src/lib/save-to-device.ts`, `src/lib/backup-export.ts`
-- `src/lib/heic-converter.ts`, `src/components/PhotoCapture.tsx`
-- `src/components/SafeAreaWrapper.tsx`, `index.html`, `public/manifest.json`
-- `src/hooks/useKeyboardAvoidance.tsx`, `src/hooks/usePullToRefresh.tsx`, `src/hooks/useSpeechToText.tsx`
-- `src/main.tsx` (check `requestPersistentStorage` call)
-- `src/components/Auth.tsx` (OAuth redirect)
-- `src/index.css` (check for `100vh` vs `100dvh`)
+5. **Hard-refresh impossible in standalone PWA on iOS** — there's no pull-to-refresh, no reload button. If SW gets wedged, user has no recovery. Need a visible "Reload app" affordance.
 
-I'll present the audit results and a prioritized fix plan in a single response after the user approves this plan.
+6. **Cached API responses via SW** — if Workbox runtime caching is too aggressive, iOS users get stale data. Need to confirm Supabase API calls are network-first or not cached.
 
-## Proposed deliverable structure
+7. **Version mismatch invisibility** — `version.json` exists and `VersionBadge` exists, but is it actually shown? Does the user know what version they're on vs. what's available?
 
-After approval:
-1. Run the audit (read ~12 files in parallel).
-2. Produce a categorized report: handled / partial / gap.
-3. For each gap, provide a one-line fix description and which file(s) to touch.
-4. User picks which fixes to apply (or "all").
+8. **`apple-mobile-web-app-capable` + status bar** — affects the standalone shell, but if the manifest changes and the user has an old icon installed, iOS does NOT update the home screen icon or splash screen. Only fix is reinstall. Worth noting as a known iOS limitation, not really fixable.
+
+9. **iOS 16.4+ web push requires re-permission after PWA reinstall** — affects update perception ("notifications stopped working").
+
+10. **Service worker `navigationPreload`** — speeds up updates but unsupported on Safari < 16.4.
+
+## Files to read for the audit
+
+- `vite-pwa-config.ts` — check `updateViaCache`, `skipWaiting`, `clientsClaim`, runtime caching strategies
+- `index.html` — check cache-control meta tags, apple-touch-icon, manifest link
+- `public/sw.js` and other SW files — confirm fetch handler caching strategies
+- `src/main.tsx` — check SW registration call and `updateViaCache` option
+- `src/components/AuthenticatedHeader.tsx` — does an "Update available" banner show?
+- `src/components/pwa/UpdateNotification.tsx` and `UpdateBadge.tsx` — already exist, verify they're mounted and visible
+- `src/components/pwa/ManualUpdateButton.tsx` — exists, verify discoverability
+- `public/manifest.json` — verify
+
+## Deliverable
+
+After approval I'll:
+1. Read the files above (parallel).
+2. Categorize each of the 10 gaps as ✅ handled / ⚠️ partial / ❌ gap.
+3. For each ⚠️/❌, propose a concrete one-line fix and target file.
+4. Group fixes into a single batch the user can approve with "yes, fix it all" again.
+
+## Likely fixes I expect to propose (subject to audit)
+
+- Add `updateViaCache: 'none'` to SW registration (forces fresh SW script check)
+- Add `<meta http-equiv="Cache-Control" content="no-cache">` to `index.html` so iOS Safari doesn't pin a stale shell
+- Mount a persistent "Update available — tap to reload" banner using existing `UpdateNotification` if not already in `RootLayout`
+- Add a "Force reload app" button in the iOS Sync Diagnostics sheet (already created) so wedged-PWA users have recovery
+- Verify Workbox runtime caching is `NetworkFirst` (not `CacheFirst`) for API and HTML
+- Show current version + "latest available" version in `SyncDiagnosticsSheet` so users can self-verify they're up to date
+
+This is a focused 30–60 min audit + fix cycle, all client-side, no backend changes.
 
