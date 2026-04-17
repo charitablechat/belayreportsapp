@@ -14,6 +14,7 @@ import { getSessionBackground } from "@/lib/background-manager";
 import { triggerHaptic } from "@/lib/haptics";
 import { useToast } from "@/hooks/use-toast";
 import { ForceSyncButton } from "@/components/pwa/ForceSyncButton";
+import { SyncDiagnosticsSheet } from "@/components/pwa/SyncDiagnosticsSheet";
 import { usePWA } from "@/hooks/usePWA";
 import { format } from "date-fns";
 import { VersionBadge } from "@/components/VersionBadge";
@@ -558,9 +559,13 @@ export default function Profile() {
               </div>
               <ForceSyncButton variant="default" />
             </div>
-            
+
+            <div className="flex justify-end">
+              <SyncDiagnosticsSheet />
+            </div>
+
             <p className="text-xs text-muted-foreground">
-              Your data syncs automatically in the background. Use the button above to manually trigger a sync if you believe your data is out of date.
+              Your data syncs automatically in the background. Use the buttons above to manually trigger a sync or open diagnostics if you believe your data is out of date.
             </p>
           </CardContent>
         </Card>
