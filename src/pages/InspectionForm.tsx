@@ -2013,7 +2013,7 @@ export default function InspectionForm() {
 
   // Auto-save/sync retry is now handled by useAutoSync hook
 
-  const completeInspection = async () => {
+  const completeInspection = async (attestation?: AttestationPayload) => {
     // Strict validation before completion - require ALL equipment to have types
     const hasSummaryContent = summary.repairs_performed || 
                               summary.critical_actions || 
@@ -2041,16 +2041,26 @@ export default function InspectionForm() {
     try {
       const wasAlreadyCompleted = inspection?.status === "completed";
       
+      // Build the update payload — include attestation only when first signing,
+      // and always stamp the app version at completion time.
+      const updatePayload: Record<string, any> = {
+        status: "completed",
+        app_version_at_completion: APP_VERSION,
+      };
+      if (attestation) {
+        Object.assign(updatePayload, attestation);
+      }
+      
       if (isOnline) {
         const { error } = await supabase
           .from("inspections")
-          .update({ status: "completed" })
+          .update(updatePayload)
           .eq("id", id);
 
         if (error) throw error;
         
         // Update local state to reflect completion
-        setInspection({ ...inspection, status: "completed" });
+        setInspection({ ...inspection, ...updatePayload });
         
         // Trigger celebration on first completion
         if (!wasAlreadyCompleted) {
@@ -2063,7 +2073,7 @@ export default function InspectionForm() {
         }
       } else {
         // Save completion offline
-        const updatedInspection = { ...inspection, status: "completed" };
+        const updatedInspection = { ...inspection, ...updatePayload };
         await saveInspectionOffline(updatedInspection);
         try {
           await Promise.race([
@@ -2090,6 +2100,17 @@ export default function InspectionForm() {
       // Stay on the inspection page - don't navigate away
     } catch (error: any) {
       console.error('[InspectionForm] Failed to complete inspection:', error);
+    }
+  };
+
+  // Click handler for the Complete button — opens attestation on first sign,
+  // skips it on subsequent re-completions (original signature stays valid).
+  const handleCompleteClick = () => {
+    if (inspection?.attestation_signed_at) {
+      // Already signed — just re-complete silently (admin re-edit flow)
+      completeInspection();
+    } else {
+      setShowAttestationDialog(true);
     }
   };
 
@@ -2724,7 +2745,7 @@ export default function InspectionForm() {
               {!effectiveReadOnly && inspection?.status !== 'completed' && (
                 <Button 
                   size={isMobileView ? "default" : "sm"} 
-                  onClick={() => setShowCompleteDialog(true)} 
+                  onClick={handleCompleteClick} 
                   disabled={saving || autoSaving}
                   className={isMobileView ? "min-w-[100px] h-10 text-sm font-medium" : ""}
                 >
@@ -3104,12 +3125,23 @@ export default function InspectionForm() {
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel>Cancel</AlertDialogCancel>
-            <AlertDialogAction onClick={completeInspection}>
+            <AlertDialogAction onClick={() => completeInspection()}>
               Complete
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      <AttestationDialog
+        open={showAttestationDialog}
+        onOpenChange={setShowAttestationDialog}
+        kind="inspection"
+        signerName={signerFullName}
+        signerId={inspection?.inspector_id ?? null}
+        organization={inspection?.organization || ''}
+        reportDate={inspection?.inspection_date || new Date().toISOString().slice(0, 10)}
+        onSigned={(payload) => completeInspection(payload)}
+      />
     </>
   );
 }
