@@ -52,17 +52,17 @@ const ATTESTATION_FIELDS = [
   'app_version_at_completion',
 ];
 
-function tsOf(rec: MergeableRecord, field: string): number {
+function tsOf(rec: MergeableRecord, field: string): { ts: number; explicit: boolean } {
   const ft = rec.field_timestamps?.[field];
   if (ft) {
     const t = new Date(ft).getTime();
-    if (!isNaN(t)) return t;
+    if (!isNaN(t)) return { ts: t, explicit: true };
   }
   if (rec.updated_at) {
     const t = new Date(rec.updated_at).getTime();
-    if (!isNaN(t)) return t;
+    if (!isNaN(t)) return { ts: t, explicit: false };
   }
-  return 0;
+  return { ts: 0, explicit: false };
 }
 
 /**
@@ -82,9 +82,16 @@ export function mergeRecordFields<T extends MergeableRecord>(
   };
 
   for (const field of trackedFields) {
-    const localTs = tsOf(local, field);
-    const remoteTs = tsOf(remote, field);
-    if (remoteTs > localTs) {
+    const localT = tsOf(local, field);
+    const remoteT = tsOf(remote, field);
+
+    // An explicit per-field timestamp always beats a row-level fallback.
+    let useRemote: boolean;
+    if (localT.explicit && !remoteT.explicit) useRemote = false;
+    else if (remoteT.explicit && !localT.explicit) useRemote = true;
+    else useRemote = remoteT.ts > localT.ts;
+
+    if (useRemote) {
       (merged as Record<string, unknown>)[field] = (remote as Record<string, unknown>)[field];
       if (remote.field_timestamps?.[field]) {
         mergedTimestamps[field] = remote.field_timestamps[field];
@@ -94,11 +101,6 @@ export function mergeRecordFields<T extends MergeableRecord>(
       if (local.field_timestamps?.[field]) {
         mergedTimestamps[field] = local.field_timestamps[field];
       }
-    }
-    // Keep newer timestamp in the unified map
-    const winner = Math.max(localTs, remoteTs);
-    if (winner > 0 && !mergedTimestamps[field]) {
-      mergedTimestamps[field] = new Date(winner).toISOString();
     }
   }
 
