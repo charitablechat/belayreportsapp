@@ -38,6 +38,14 @@ function sendAuthTokenToSW() {
 // Service Worker initialization — only in production (non-preview, non-iframe)
 if (isServiceWorkerAllowed()) {
   window.addEventListener('load', () => {
+    // Force every SW script fetch to bypass HTTP cache (critical on iOS/macOS Safari,
+    // which otherwise honors a 24h cache on the SW script and delays update delivery).
+    navigator.serviceWorker.getRegistration().then((existing) => {
+      if (!existing) {
+        navigator.serviceWorker.register('/sw.js', { scope: '/', updateViaCache: 'none' }).catch(() => {});
+      }
+    }).catch(() => {});
+
     navigator.serviceWorker.ready.then((registration) => {
       if (import.meta.env.DEV) {
         console.log('[SW] Service Worker ready:', registration.scope);
