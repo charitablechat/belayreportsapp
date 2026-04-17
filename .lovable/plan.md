@@ -1,47 +1,43 @@
 
 
-## Problem
-From the session replay + video context: when the user clicks the equipment-type dropdown on a row, the input shows a validation error (red `ring-destructive` border) and the popover dropdown closes / won't stay open after selection. The dropdown effectively can't be used reliably on any row beyond the first.
+The user's request describes generic Apple device troubleshooting (iCloud, iPadOS updates, network reset) — that's not what this app does. This is a PWA (RopeWorks reports) running in Safari on iPad. The real issue they likely mean: **the PWA's own sync and update mechanisms are unreliable on iPad/Safari**.
 
-## Root cause analysis
+Known iOS Safari PWA limitations from the codebase:
+- `BackgroundSyncStatus.tsx` already warns that Background Sync API is unsupported on Safari
+- `useBackgroundSync.tsx` no-ops on iOS
+- Service worker updates on iOS Safari require the PWA to be foregrounded; periodic sync doesn't run
+- iOS aggressively evicts IndexedDB data from PWAs not opened in 7+ days
 
-Looking at `EquipmentTypeCombobox.tsx` and `SystemTypeSelect.tsx`:
+## Plan: Improve iPad/Safari sync + update reliability
 
-1. **Trigger is an `<Input>` inside `PopoverTrigger asChild`** — Radix forwards events to the Input. Every keystroke / focus shift in the trigger Input fires focus/blur cycles that interact badly with the Popover open state.
+### 1. Foreground sync trigger (replaces missing Background Sync)
+`src/hooks/useAutoSync.tsx` — add visibility/focus listeners so sync runs whenever the PWA returns to foreground (iOS users open the app → immediate sync). Also poll on a 60s interval while visible+online, but only on iOS.
 
-2. **`handleTriggerBlur` runs a 200ms `setTimeout` that calls `onBlur?.()` and commits the value** — when the user clicks an option in the popover, the trigger Input blurs first. The setTimeout fires, calls `onBlur` (which likely triggers form validation → red error border), and resets `isEditing`. Meanwhile the CommandItem's `onSelect` also fires. Race conditions cause the popover to close before selection registers, or the validation to flash.
+### 2. Foreground update check
+`src/hooks/usePWAUpdate.tsx` — call `checkForUpdates()` on `visibilitychange` → visible, and on app focus. Critical on iOS where SW update checks otherwise never fire.
 
-3. **Two competing input surfaces** — both the trigger `<Input>` and the `<CommandInput>` inside the popover accept typing. Focus bounces between them, closing the popover.
+### 3. iOS-specific sync banner
+Extend `BackgroundSyncStatus.tsx` to also show: "Keep this app open until the sync indicator turns green" with the live unsynced count from `usePWA()`. Mount it in the dashboard so iPad users see it.
 
-4. **Popover closes on outside click** — clicking from row 1's popover into row 2 counts as outside click for row 1, but the blur handler on row 1 commits a value and fires validation, while row 2 is trying to open. They fight.
+### 4. Storage eviction warning for iOS
+`src/lib/mobile-detection.ts` already detects iOS. Add a one-time prompt on iOS: "Add this app to your Home Screen to prevent data loss" — installed PWAs get persistent storage on iOS 16.4+.
 
-## Fix
+### 5. Manual "Force sync now" prominence
+Surface `ForceSyncButton` in the AuthenticatedHeader on iOS only, so iPad users always have a one-tap recovery.
 
-Refactor `EquipmentTypeCombobox` and `SystemTypeSelect` so the popover stays open reliably:
-
-1. **Remove the trigger as an editable Input.** Use a read-only Input (or button styled as one) as the `PopoverTrigger`. All typing happens inside the `<CommandInput>` in the popover. This eliminates the dual-input focus race.
-
-2. **Open the popover on click/focus**, autofocus the `CommandInput` when it opens.
-
-3. **Drop the 200ms blur timeout entirely.** Commit values only on:
-   - Explicit selection (CommandItem click)
-   - Enter key in CommandInput
-   - Popover `onOpenChange(false)` (closing) — commit pending search text if non-empty
-
-4. **Stop calling `onBlur?.()` on every focus loss** — only call it once, when the popover actually closes. This prevents the parent's validation from flashing red mid-interaction.
-
-5. **Ensure each row's popover is independent** — Radix Popover already portals, so this should work once focus races are removed.
+### 6. Sync diagnostics panel
+Add a small "Sync diagnostics" sheet (Profile page) showing: SW status, last update check, last sync, unsynced counts, IndexedDB quota, online/offline, isStandalone. Lets users self-diagnose without us guessing.
 
 ## Files to modify
-- `src/components/inspection/EquipmentTypeCombobox.tsx` — refactor to read-only trigger + popover-only editing
-- `src/components/SystemTypeSelect.tsx` — same refactor (mirror component)
+- `src/hooks/useAutoSync.tsx` — visibility/focus triggers
+- `src/hooks/usePWAUpdate.tsx` — foreground update check
+- `src/components/pwa/BackgroundSyncStatus.tsx` — richer iOS guidance
+- `src/components/AuthenticatedHeader.tsx` — surface ForceSyncButton on iOS
+- `src/pages/Dashboard.tsx` — mount BackgroundSyncStatus
+- `src/pages/Profile.tsx` — add Sync Diagnostics sheet (new component)
+- New: `src/components/pwa/SyncDiagnosticsSheet.tsx`
+- New: `src/components/pwa/IOSInstallPromptOnce.tsx` (one-time, dismissible)
 
-Both components share the exact same buggy pattern, so the same fix applies.
-
-## What this fixes
-- Dropdown stays open until the user explicitly selects, presses Enter, presses Escape, or clicks outside
-- No more red validation flash mid-selection
-- Works identically on row 1, row 2, row 3, row N
-- Selection from popover always commits cleanly
-- No more focus-bounce between trigger Input and CommandInput
+## What this does NOT do
+This will not change iOS, iCloud, or hardware. The user's stated steps (reset network settings, sign out of Apple ID, etc.) are device-level — outside the app. This plan fixes everything the app itself controls so the iPad has the best possible sync/update behavior within Safari's PWA constraints.
 
