@@ -1,12 +1,13 @@
 import { useEffect, useState } from 'react';
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle, SheetTrigger } from '@/components/ui/sheet';
 import { Button } from '@/components/ui/button';
-import { Activity } from 'lucide-react';
+import { Activity, Trash2 } from 'lucide-react';
 import { usePWA } from '@/hooks/usePWA';
 import { ForceSyncButton } from '@/components/pwa/ForceSyncButton';
 import { getMobileCapabilities, checkStorageQuota } from '@/lib/mobile-detection';
 import { isServiceWorkerAllowed } from '@/lib/environment';
 import { format } from 'date-fns';
+import { toast } from 'sonner';
 
 interface DiagnosticsState {
   swRegistered: boolean;
@@ -103,6 +104,7 @@ export const SyncDiagnosticsSheet = () => {
           </Section>
 
           <Section title="App Updates">
+            <Row label="Installed version" value={`v${import.meta.env.APP_VERSION || '0.0.0'}`} />
             <Row label="Update available" value={needsUpdate ? 'Yes' : 'No'} />
             <Row label="Last update check" value={formatDate(lastUpdateCheck)} />
             <Row label="Service worker registered" value={diag.swRegistered ? 'Yes' : 'No'} />
@@ -135,6 +137,32 @@ export const SyncDiagnosticsSheet = () => {
             </Button>
             <Button variant="ghost" onClick={refresh}>
               Refresh diagnostics
+            </Button>
+            <Button
+              variant="outline"
+              className="text-destructive hover:text-destructive"
+              onClick={async () => {
+                if (!confirm('Force reload will clear the app cache and reload. Your saved data is preserved. Continue?')) return;
+                toast.loading('Clearing cache…', { id: 'force-reload' });
+                try {
+                  if ('serviceWorker' in navigator) {
+                    const regs = await navigator.serviceWorker.getRegistrations();
+                    await Promise.all(regs.map((r) => r.unregister()));
+                  }
+                  if ('caches' in window) {
+                    const keys = await caches.keys();
+                    await Promise.all(keys.map((k) => caches.delete(k)));
+                  }
+                  toast.dismiss('force-reload');
+                  setTimeout(() => window.location.reload(), 300);
+                } catch {
+                  toast.dismiss('force-reload');
+                  toast.error('Force reload failed');
+                }
+              }}
+            >
+              <Trash2 className="h-4 w-4 mr-2" />
+              Force reload (clear cache)
             </Button>
           </div>
         </div>
