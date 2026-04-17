@@ -15,6 +15,7 @@ import {
   Sun,
   Moon,
   Database,
+  ShieldCheck,
 } from "lucide-react";
 import { useTheme } from "next-themes";
 import { Button } from "@/components/ui/button";
@@ -29,6 +30,7 @@ const tabs = [
   { value: "notifications", icon: Bell, title: "Notifications", description: "View notification history and logs" },
   { value: "data-recovery", icon: RotateCcw, title: "Data Recovery", description: "Recover deleted or corrupted data" },
   { value: "report-ownership", icon: UserCog, title: "Report Ownership", description: "Transfer report ownership between users" },
+  { value: "audit-logs", icon: ShieldCheck, title: "Audit Trail", description: "Tamper-evident log of all sensitive actions" },
 ];
 
 interface AdminTabsSectionProps {

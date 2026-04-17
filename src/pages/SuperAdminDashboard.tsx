@@ -22,6 +22,7 @@ import { DeletedRecordsRecovery } from "@/components/admin/DeletedRecordsRecover
 import { ReportOwnershipTool } from "@/components/admin/ReportOwnershipTool";
 import { DatabaseBackupsPanel } from "@/components/admin/DatabaseBackupsPanel";
 import { OrganizationReportsPanel } from "@/components/admin/OrganizationReportsPanel";
+import { AuditLogPanel } from "@/components/admin/AuditLogPanel";
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription } from "@/components/ui/sheet";
 import { toast } from "sonner";
 import { parseLocalDate } from "@/lib/date-utils";
@@ -1467,6 +1468,10 @@ export default function SuperAdminDashboard() {
 
         <TabsContent value="database-backups" className="space-y-4">
           <DatabaseBackupsPanel />
+        </TabsContent>
+
+        <TabsContent value="audit-logs" className="space-y-4">
+          <AuditLogPanel />
         </TabsContent>
       </Tabs>
 
