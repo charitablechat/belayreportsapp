@@ -5,17 +5,17 @@ const T = (s: string) => new Date(s).toISOString();
 
 describe('mergeRecordFields', () => {
   it('merges non-overlapping field edits from two devices', () => {
-    const local = {
+    const local: any = {
       updated_at: T('2025-01-01T10:01:00Z'),
       organization: 'Acme',
       location: 'LOCAL location',
-      field_timestamps: { location: T('2025-01-01T10:01:00Z') },
+      field_timestamps: { location: T('2025-01-01T10:01:00Z') } as Record<string, string>,
     };
-    const remote = {
+    const remote: any = {
       updated_at: T('2025-01-01T10:02:00Z'),
       organization: 'REMOTE org',
       location: 'old',
-      field_timestamps: { organization: T('2025-01-01T10:02:00Z') },
+      field_timestamps: { organization: T('2025-01-01T10:02:00Z') } as Record<string, string>,
     };
     const merged = mergeRecordFields(local, remote, TRACKED_FIELDS.inspection);
     expect(merged.organization).toBe('REMOTE org');
@@ -23,32 +23,32 @@ describe('mergeRecordFields', () => {
   });
 
   it('keeps newer field on conflict', () => {
-    const local = {
+    const local: any = {
       updated_at: T('2025-01-01T10:00:00Z'),
       organization: 'OLD',
-      field_timestamps: { organization: T('2025-01-01T10:00:00Z') },
+      field_timestamps: { organization: T('2025-01-01T10:00:00Z') } as Record<string, string>,
     };
-    const remote = {
+    const remote: any = {
       updated_at: T('2025-01-01T10:05:00Z'),
       organization: 'NEW',
-      field_timestamps: { organization: T('2025-01-01T10:05:00Z') },
+      field_timestamps: { organization: T('2025-01-01T10:05:00Z') } as Record<string, string>,
     };
     const merged = mergeRecordFields(local, remote, TRACKED_FIELDS.inspection);
     expect(merged.organization).toBe('NEW');
   });
 
   it('first signature wins for attestation', () => {
-    const local = {
+    const local: any = {
       updated_at: T('2025-01-01T11:00:00Z'),
       attestation_signed_at: T('2025-01-01T10:00:00Z'),
       attestation_signer_name: 'First Signer',
-      field_timestamps: {},
+      field_timestamps: {} as Record<string, string>,
     };
-    const remote = {
+    const remote: any = {
       updated_at: T('2025-01-01T11:00:00Z'),
       attestation_signed_at: T('2025-01-01T10:30:00Z'),
       attestation_signer_name: 'Second Signer',
-      field_timestamps: {},
+      field_timestamps: {} as Record<string, string>,
     };
     const merged = mergeRecordFields(local, remote, TRACKED_FIELDS.inspection);
     expect(merged.attestation_signer_name).toBe('First Signer');
@@ -56,15 +56,15 @@ describe('mergeRecordFields', () => {
   });
 
   it('falls back to updated_at when field timestamp missing', () => {
-    const local = { updated_at: T('2025-01-01T10:00:00Z'), organization: 'A', field_timestamps: {} };
-    const remote = { updated_at: T('2025-01-01T11:00:00Z'), organization: 'B', field_timestamps: {} };
+    const local: any = { updated_at: T('2025-01-01T10:00:00Z'), organization: 'A', field_timestamps: {} };
+    const remote: any = { updated_at: T('2025-01-01T11:00:00Z'), organization: 'B', field_timestamps: {} };
     const merged = mergeRecordFields(local, remote, TRACKED_FIELDS.inspection);
     expect(merged.organization).toBe('B');
   });
 
   it('unifies field_timestamps map', () => {
-    const local = { updated_at: T('2025-01-01T10:00:00Z'), field_timestamps: { a: T('2025-01-01T10:00:00Z') } };
-    const remote = { updated_at: T('2025-01-01T10:00:00Z'), field_timestamps: { b: T('2025-01-01T10:01:00Z') } };
+    const local: any = { updated_at: T('2025-01-01T10:00:00Z'), field_timestamps: { a: T('2025-01-01T10:00:00Z') } as Record<string, string> };
+    const remote: any = { updated_at: T('2025-01-01T10:00:00Z'), field_timestamps: { b: T('2025-01-01T10:01:00Z') } as Record<string, string> };
     const merged = mergeRecordFields(local, remote, ['a', 'b']);
     expect(merged.field_timestamps?.a).toBe(T('2025-01-01T10:00:00Z'));
     expect(merged.field_timestamps?.b).toBe(T('2025-01-01T10:01:00Z'));
@@ -73,13 +73,13 @@ describe('mergeRecordFields', () => {
 
 describe('setFieldWithTimestamp', () => {
   it('stamps the modified field', () => {
-    const before = { organization: 'old', field_timestamps: {} };
+    const before: any = { organization: 'old', field_timestamps: {} as Record<string, string> };
     const after = setFieldWithTimestamp(before, 'organization', 'new');
-    expect(after.organization).toBe('new');
+    expect((after as any).organization).toBe('new');
     expect(after.field_timestamps?.organization).toBeDefined();
   });
   it('preserves other timestamps', () => {
-    const before = { field_timestamps: { location: T('2025-01-01T00:00:00Z') } };
+    const before: any = { field_timestamps: { location: T('2025-01-01T00:00:00Z') } as Record<string, string> };
     const after = setFieldWithTimestamp(before, 'organization', 'x');
     expect(after.field_timestamps?.location).toBe(T('2025-01-01T00:00:00Z'));
   });
