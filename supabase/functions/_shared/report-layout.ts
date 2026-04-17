@@ -126,6 +126,212 @@ export function createPageFooter(
 }
 
 /**
+ * Format a timestamp for display in audit/attestation blocks (Central Time).
+ */
+function formatStamp(iso: string | null | undefined): string {
+  if (!iso) return 'N/A';
+  try {
+    return new Date(iso).toLocaleString('en-US', {
+      timeZone: 'America/Chicago',
+      year: 'numeric', month: 'long', day: 'numeric',
+      hour: '2-digit', minute: '2-digit',
+    });
+  } catch {
+    return iso;
+  }
+}
+
+/**
+ * Escape HTML to prevent injection in user-provided strings.
+ */
+function escapeHtml(s: string | null | undefined): string {
+  if (!s) return '';
+  return String(s)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
+/**
+ * Summarize a user-agent string into a short device descriptor.
+ */
+function summarizeUserAgent(ua: string | null | undefined): string {
+  if (!ua) return 'Unknown device';
+  const s = String(ua);
+  let os = 'Unknown OS';
+  if (/Windows NT/.test(s)) os = 'Windows';
+  else if (/Mac OS X|Macintosh/.test(s)) os = 'macOS';
+  else if (/iPhone|iPad|iOS/.test(s)) os = 'iOS';
+  else if (/Android/.test(s)) os = 'Android';
+  else if (/Linux/.test(s)) os = 'Linux';
+  let browser = 'Unknown browser';
+  if (/Edg\//.test(s)) browser = 'Edge';
+  else if (/Chrome\//.test(s) && !/Edg\//.test(s)) browser = 'Chrome';
+  else if (/Safari\//.test(s) && !/Chrome\//.test(s)) browser = 'Safari';
+  else if (/Firefox\//.test(s)) browser = 'Firefox';
+  return `${browser} on ${os}`;
+}
+
+/**
+ * Query audit_logs for any post-completion edits to a report.
+ * Returns up to 5 most recent edits with editor name lookups.
+ *
+ * @param supabase - service-role client
+ * @param tableName - 'inspections' | 'trainings' | 'daily_assessments'
+ * @param recordId - report row id
+ * @param completedAt - the timestamp the report was first completed (or attestation_signed_at)
+ */
+export async function fetchPostCompletionEdits(
+  supabase: any,
+  tableName: string,
+  recordId: string,
+  completedAt: string | null | undefined,
+): Promise<Array<{ created_at: string; user_id: string | null; editor_name: string }>> {
+  if (!completedAt) return [];
+  try {
+    const { data: rows, error } = await supabase
+      .from('audit_logs')
+      .select('created_at, user_id, action_type')
+      .eq('table_name', tableName)
+      .eq('record_id', recordId)
+      .gt('created_at', completedAt)
+      .in('action_type', [`${tableName.replace(/s$/, '')}.update`, `${tableName}.update`, 'update'])
+      .order('created_at', { ascending: false })
+      .limit(5);
+    if (error || !rows || rows.length === 0) return [];
+
+    const userIds = Array.from(new Set(rows.map((r: any) => r.user_id).filter(Boolean)));
+    let nameMap: Record<string, string> = {};
+    if (userIds.length > 0) {
+      const { data: profiles } = await supabase
+        .from('profiles')
+        .select('id, first_name, last_name')
+        .in('id', userIds);
+      (profiles || []).forEach((p: any) => {
+        const name = [p.first_name, p.last_name].filter(Boolean).join(' ').trim();
+        nameMap[p.id] = name || 'Admin';
+      });
+    }
+    return rows.map((r: any) => ({
+      created_at: r.created_at,
+      user_id: r.user_id,
+      editor_name: r.user_id ? (nameMap[r.user_id] || 'Admin') : 'System',
+    }));
+  } catch (e) {
+    console.error('[Report Layout] fetchPostCompletionEdits failed:', e);
+    return [];
+  }
+}
+
+/**
+ * Build the amber "Edited after completion" banner shown at top of report.
+ * Returns empty string if there are no post-completion edits.
+ */
+export function buildAdminEditBanner(
+  edits: Array<{ created_at: string; editor_name: string }>,
+): string {
+  if (!edits || edits.length === 0) return '';
+  const last = edits[0];
+  const moreText = edits.length > 1 ? ` (${edits.length} edits total)` : '';
+  return `
+    <div class="admin-edit-banner" role="note" style="
+      background: #fef3c7;
+      border: 1px solid #f59e0b;
+      border-left: 4px solid #d97706;
+      color: #78350f;
+      padding: 10px 14px;
+      margin: 0 0 14px 0;
+      border-radius: 4px;
+      font-family: Arial, sans-serif;
+      font-size: 10pt;
+      line-height: 1.4;
+      page-break-inside: avoid;
+    ">
+      <strong>⚠ This report was edited after completion.</strong><br>
+      Last modified by ${escapeHtml(last.editor_name)} on ${formatStamp(last.created_at)}${moreText}.
+      Full audit trail available in the admin panel.
+    </div>
+  `;
+}
+
+/**
+ * Build the inspector e-signature / attestation block shown at end of report.
+ * Returns empty string if no attestation has been captured.
+ */
+export function buildAttestationBlock(att: {
+  attestation_signed_at?: string | null;
+  attestation_signer_name?: string | null;
+  attestation_ip?: string | null;
+  attestation_user_agent?: string | null;
+  attestation_text?: string | null;
+} | null | undefined): string {
+  if (!att || !att.attestation_signed_at || !att.attestation_signer_name) return '';
+  const device = summarizeUserAgent(att.attestation_user_agent);
+  const ipLine = att.attestation_ip ? ` &middot; IP: ${escapeHtml(att.attestation_ip)}` : '';
+  return `
+    <div class="attestation-block" style="
+      margin: 24px 0 12px 0;
+      padding: 14px 16px;
+      border: 1px solid #1e40af;
+      border-left: 4px solid #1e40af;
+      background: #f8fafc;
+      font-family: Arial, sans-serif;
+      font-size: 9.5pt;
+      line-height: 1.5;
+      color: #0f172a;
+      page-break-inside: avoid;
+      border-radius: 3px;
+    ">
+      <div style="font-weight:bold; font-size:10pt; margin-bottom:6px; color:#1e40af; text-transform:uppercase; letter-spacing:0.5px;">
+        Electronic Signature &amp; Attestation
+      </div>
+      <div style="margin-bottom:6px;">
+        Electronically signed by <strong>${escapeHtml(att.attestation_signer_name)}</strong>
+        on ${formatStamp(att.attestation_signed_at)}
+      </div>
+      <div style="font-size:8.5pt; color:#475569; margin-bottom:8px;">
+        Device: ${escapeHtml(device)}${ipLine}
+      </div>
+      ${att.attestation_text ? `
+        <div style="font-style:italic; padding:8px 10px; background:#fff; border-left:2px solid #cbd5e1; font-size:9pt; color:#334155;">
+          "${escapeHtml(att.attestation_text)}"
+        </div>
+      ` : ''}
+    </div>
+  `;
+}
+
+/**
+ * Build the version-stamp footer line shown at the very end of every report.
+ * Format: "Generated by RW Reports v[app] · Report v[report] · [timestamp]"
+ */
+export function buildVersionFooter(opts: {
+  appVersion?: string | null;
+  reportVersion?: number | string | null;
+  generatedAt?: string | null;
+}): string {
+  const app = opts.appVersion || 'unknown';
+  const rv = opts.reportVersion != null ? `v${opts.reportVersion}` : 'v1';
+  const gen = opts.generatedAt
+    ? formatStamp(opts.generatedAt)
+    : formatStamp(new Date().toISOString());
+  return `
+    <div class="version-stamp" style="
+      margin: 16px 0 4px 0;
+      text-align: center;
+      font-family: Arial, sans-serif;
+      font-size: 7.5pt;
+      color: #94a3b8;
+      letter-spacing: 0.3px;
+    ">
+      Generated by RW Reports v${escapeHtml(app)} &middot; Report ${escapeHtml(rv)} &middot; ${gen}
+    </div>
+  `;
+}
+
+/**
  * Shared CSS for header/footer layout
  * HEADER: Both logos on same horizontal line (Rope Works LEFT, ACCT RIGHT)
  * FOOTER: NO logos - only page number, line, and disclaimer
