@@ -25,6 +25,7 @@ import { useActiveTimer } from "@/hooks/useActiveTimer";
 import { ActiveTimerDisplay } from "@/components/ActiveTimerDisplay";
 import ropeWorksLogo from "@/assets/rope-works-logo.png";
 import InspectionHeader from "@/components/inspection/InspectionHeader";
+import { CollaboratorPresence } from "@/components/CollaboratorPresence";
 import OperatingSystemsTable from "@/components/inspection/OperatingSystemsTable";
 import ZiplinesTable from "@/components/inspection/ZiplinesTable";
 import EquipmentTable from "@/components/inspection/EquipmentTable";
@@ -2875,6 +2876,15 @@ export default function InspectionForm() {
           onImmediateSave={effectiveReadOnly ? undefined : stableTriggerImmediateSave}
           isReadOnly={effectiveReadOnly}
         />
+
+        {id && currentUser?.id && (
+          <CollaboratorPresence
+            reportId={id}
+            reportType="inspection"
+            currentUserId={currentUser.id}
+            currentUserName={signerFullName || currentUser?.email || 'Someone'}
+          />
+        )}
 
         {/* Swipe back indicator for mobile */}
         {isMobileView && isFirstTab && (

@@ -30,6 +30,7 @@ import { useNetworkStatus } from "@/hooks/useNetworkStatus";
 import { useStorageHealthCheck } from "@/hooks/useStorageHealthCheck";
 
 import DailyAssessmentHeader from "@/components/daily-assessment/DailyAssessmentHeader";
+import { CollaboratorPresence } from "@/components/CollaboratorPresence";
 import BeginningOfDaySection from "@/components/daily-assessment/BeginningOfDaySection";
 import EndOfDaySection from "@/components/daily-assessment/EndOfDaySection";
 import OperatingSystemsSection from "@/components/daily-assessment/OperatingSystemsSection";
@@ -1752,6 +1753,14 @@ export default function DailyAssessmentForm() {
           userProfile={inspectorProfile}
           modifiedByProfile={modifiedByProfile}
         />
+        {id && currentUser?.id && (
+          <CollaboratorPresence
+            reportId={id}
+            reportType="daily_assessment"
+            currentUserId={currentUser.id}
+            currentUserName={signerFullName || currentUser?.email || 'Someone'}
+          />
+        )}
 
         {/* Swipe back indicator for mobile */}
         {isMobileView && isFirstTab && (
