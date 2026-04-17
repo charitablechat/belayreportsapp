@@ -32,6 +32,7 @@ import { InstallBanner } from "@/components/pwa/InstallBanner";
 import { UpdateNotification } from "@/components/pwa/UpdateNotification";
 import { InstallSuccessNotification } from "@/components/pwa/InstallSuccessNotification";
 import { AuthenticatedHeader } from "@/components/AuthenticatedHeader";
+import { GlobalEnterToBlur } from "@/components/GlobalEnterToBlur";
 import { PWAProvider } from "@/components/pwa/PWAProvider";
 import { useScrollRestoration } from "@/hooks/useScrollRestoration";
 import { isMobile, logMobileCapabilities } from "@/lib/mobile-detection";
@@ -124,6 +125,7 @@ const RootLayout = () => {
             <UpdateNotification />
             <InstallSuccessNotification />
             <AuthenticatedHeader />
+            <GlobalEnterToBlur />
             <Suspense fallback={null}>
               <Outlet />
             </Suspense>

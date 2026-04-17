@@ -2,12 +2,9 @@ import { useEffect } from "react";
 import { useLocation } from "react-router-dom";
 
 const REPORT_ROUTE_PATTERNS = [
-  /^\/inspection\//,
-  /^\/training\//,
-  /^\/daily-assessment\//,
-  /^\/new-inspection(\/|$)/,
-  /^\/new-training(\/|$)/,
-  /^\/new-daily-assessment(\/|$)/,
+  /^\/inspection(\/|$)/,
+  /^\/training(\/|$)/,
+  /^\/daily-assessment(\/|$)/,
 ];
 
 function isReportRoute(pathname: string) {
