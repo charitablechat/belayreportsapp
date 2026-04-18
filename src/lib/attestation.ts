@@ -8,9 +8,15 @@
  * - App version stamped for audit trail
  */
 
-export const APP_VERSION = (import.meta as any).env?.VITE_APP_VERSION 
-  || (import.meta as any).env?.APP_VERSION 
-  || 'unknown';
+export const APP_VERSION: string =
+  (import.meta as any).env?.APP_VERSION || 'unknown';
+
+if (APP_VERSION === 'unknown' && typeof console !== 'undefined') {
+  console.warn(
+    '[attestation] APP_VERSION is "unknown" — vite-auto-version plugin may have failed to inject define values. ' +
+      'Attestation records will be stamped with "unknown" until this is resolved.',
+  );
+}
 
 export type ReportKind = 'inspection' | 'training' | 'daily_assessment';
 
