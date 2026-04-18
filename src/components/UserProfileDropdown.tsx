@@ -208,9 +208,10 @@ import { VersionBadge } from "@/components/VersionBadge";
               </div>
 
              <DropdownMenuSeparator />
-           {/* Version Badge */}
+           {/* Version Badge + Deployed status */}
            <div className="px-2 py-1.5">
              <VersionBadge compact />
+             <VersionStatusLine />
            </div>
            
            <DropdownMenuSeparator />
