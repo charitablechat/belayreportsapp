@@ -1,54 +1,58 @@
 
 
-## Phase 2 + All Cross-Platform Gaps — Execution Plan
+## Make "Check for Updates" Truly Live + Enforce Version Consistency
 
-Executing all 9 gaps from the previous audit in one pass.
+### Gaps right now
 
-### Phase 2 — Real Service Worker (Gap 1)
-- **Delete** `public/sw.js` (self-destroyer)
-- **Edit** `vite-pwa-config.ts`: `registerType: 'autoUpdate'`, `injectRegister: 'auto'`, exclude `/version.json` from precache + runtime cache
-- **Edit** `src/main.tsx`: remove manual `register('/sw.js')` block; rely on VitePWA virtual module
-- **Edit** `src/hooks/usePWAUpdate.tsx`: switch to `useRegisterSW` from `virtual:pwa-register/react`
+1. **`UpdateControlPanel` doesn't show server version.** It only displays `APP_VERSION` (the running client) and SW-based `needsUpdate`. If `version.json` shows v4.8 but client is v4.7, the panel still says "UP TO DATE" until the SW happens to flip.
+2. **Opening the panel doesn't trigger a poll.** `lastUpdateCheck` only updates from background timers — opening the sheet shows whatever time is cached.
+3. **"Check Now" only nudges the SW.** It doesn't re-fetch `/version.json`, so a stale-but-SW-quiet client looks healthy.
+4. **No enforced consistency.** No mechanism to require all clients to be on a minimum version — drift just accumulates.
 
-### iOS/macOS Cache Busting (Gaps 2, 3, 4, 7)
-- **Edit** `vite-pwa-config.ts`: ensure `updateViaCache: 'none'` on registration
-- **Edit** `src/lib/version-check.ts`: already cache-busts with `?t=${Date.now()}` + `cache: 'no-store'` (verify); add `visibilitychange` listener that calls `registration.update()` when tab returns to foreground
-- **Edit** `src/components/pwa/StaleVersionBanner.tsx`: when iOS standalone (`navigator.standalone === true`), Refresh button clears `caches.keys()` first then `location.reload()`
-- **Edit** `index.html`: confirm preview-cleanup script is strictly hostname-gated
+### Fixes
 
-### Field-Merge Skew Test (Gap 8)
-- **Add** test case to `src/lib/field-merge.test.ts`: "old client without field_timestamps does not overwrite new client's field-timestamped value"
+**A. Live panel data on open + on-demand**
+- Export a `forceVersionCheck()` from `src/lib/version-check.ts` that runs `poll()` immediately and returns the result.
+- `UpdateControlPanel`: on `open === true`, call `forceVersionCheck()` + `checkForUpdates()` in parallel. Show a spinner while running.
+- Subscribe the panel to `subscribeVersionCheck` so `deployedVersion` updates live while open.
+- Display a new "Deployed" row beneath "Version" — green check if equal, amber arrow if newer available.
+- Recompute `statusLabel`: if `deployed` newer than `current` → "UPDATE AVAILABLE" even when SW hasn't fired yet. Apply button calls SW update if `needsUpdate`, else falls back to `location.reload()` after cache clear.
 
-### Telemetry & Admin Visibility (Gap 9)
-- **Migration**: new `version_telemetry` table (user_id, client_version, server_version, platform, last_seen) + RLS (admin read, user upsert own)
-- **New** `src/lib/version-telemetry.ts`: upserts row on app load + when version mismatch detected
-- **New** `src/components/admin/VersionDistributionPanel.tsx`: bar chart of client_version distribution; mounted in `SuperAdminDashboard`
-- **Edit** `src/App.tsx`: call telemetry on mount
+**B. Auto-refresh while panel open**
+- While the sheet is open, run `forceVersionCheck()` every 15s (cleared on close). Gives instant feedback without spamming when closed.
 
-### Windows Reinstall Notice (Gap 6)
-- **New** one-time toast in `src/App.tsx` for Windows users with installed PWA detected pre-Phase 2 — surfaces uninstall+reinstall recommendation. Stored in localStorage so shown once.
+**C. Version-consistency enforcement (minimum required version)**
+- New table `app_version_policy` (singleton row): `min_required_version text`, `recommended_version text`, `enforce_hard_reload bool`, `updated_at`.
+- RLS: anyone authenticated can read; only admins can update.
+- New `src/lib/version-policy.ts`: fetches policy on app load + every 5 min; cached.
+- If `APP_VERSION < min_required_version`:
+  - **Soft mode** (`enforce_hard_reload = false`): persistent non-dismissable banner "This version is no longer supported — please refresh." Already-open work isn't lost.
+  - **Hard mode** (`enforce_hard_reload = true`): show full-screen modal blocking app use; "Refresh Now" button clears caches + reloads. Respects `unsyncedCount` — sync first, then reload.
+- New admin panel `MinVersionPolicyPanel.tsx` in `SuperAdminDashboard` next to `VersionDistributionPanel`: read `version_telemetry` to see distribution, set min/recommended versions with a single form. Confirms before applying hard mode.
 
-### WebAPK Documentation (Gap 5)
-- **Edit** `README.md`: add "Android WebAPK update lag" section noting 1–30 day Play Services manifest refresh window
+**D. Telemetry tightening**
+- Bump `version-telemetry.ts` `last_seen` whenever `forceVersionCheck` runs (so admin panel shows truly live "users on each version" counts, not stale).
 
-### Memory
-- **New** `mem://architecture/pwa-update-system` documenting: autoUpdate SW, version.json polling, iOS cache mitigations, telemetry table
+### Files
 
-### Files touched
-- DELETE: `public/sw.js`
-- EDIT: `vite-pwa-config.ts`, `src/main.tsx`, `src/hooks/usePWAUpdate.tsx`, `src/lib/version-check.ts`, `src/components/pwa/StaleVersionBanner.tsx`, `index.html`, `src/lib/field-merge.test.ts`, `src/App.tsx`, `src/pages/SuperAdminDashboard.tsx`, `README.md`
-- NEW: `supabase/migrations/...version_telemetry.sql`, `src/lib/version-telemetry.ts`, `src/components/admin/VersionDistributionPanel.tsx`
-- MEMORY: new `mem://architecture/pwa-update-system`
+**NEW**
+- `src/lib/version-policy.ts` — policy fetcher + cached signal
+- `src/components/pwa/MinVersionEnforcer.tsx` — soft banner + hard modal
+- `src/components/admin/MinVersionPolicyPanel.tsx` — admin form
+- Migration: `app_version_policy` table + RLS + seed singleton row
 
-### Risk
-- Existing users carry the self-destroying SW. On first load post-deploy, old SW unregisters itself one final time; on next load, VitePWA's autoUpdate SW takes over. Two-load transition — acceptable per "Safe" rollout choice already approved.
-- No DB data risk; telemetry table is additive.
-- iOS users on stale builds see the banner immediately (already deployed in Phase 1) and will receive auto-updates once their next visit picks up the new SW.
+**EDIT**
+- `src/lib/version-check.ts` — export `forceVersionCheck()`, expose `lastResult` getter, broadcast on every poll (not only when stale) so UI can show "deployed" even when equal
+- `src/components/pwa/UpdateControlPanel.tsx` — on-open poll, live "Deployed" row, 15s in-panel refresh, smarter status label, subscribe to version-check
+- `src/lib/version-telemetry.ts` — re-touch `last_seen` on `forceVersionCheck`
+- `src/App.tsx` — mount `<MinVersionEnforcer />`
+- `src/pages/SuperAdminDashboard.tsx` — mount `<MinVersionPolicyPanel />`
 
-<lov-actions>
-<lov-suggestion message="Test PWA update delivery end-to-end on iOS Safari, Android Chrome, and Windows Edge — confirm version banner appears and auto-update applies on next visit">Verify cross-platform updates work</lov-suggestion>
-<lov-suggestion message="Show me the version distribution panel in the admin dashboard once telemetry has data">Check version distribution</lov-suggestion>
-<lov-suggestion message="Add a 'Force update all users' admin action that bumps a server-side minimum-required version and forces reload on clients below it">Add force-update admin action</lov-suggestion>
-<lov-suggestion message="Add Sentry or similar error tracking so we catch SW registration failures in production">Add error tracking</lov-suggestion>
-</lov-actions>
+### Risks
+- Hard-mode policy could lock out users if admin sets `min_required_version` higher than any deployed build. Mitigation: confirmation dialog showing "This will lock out X% of currently-active users (per telemetry)" before save.
+- No DB data risk; additive table.
+- Backwards compatible: missing policy row = no enforcement.
+
+### Out of scope
+- Real-device cross-platform QA (already covered by prior plan; user verifies post-deploy).
 
