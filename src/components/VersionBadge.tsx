@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { VersionInfoModal } from "@/components/VersionInfoModal";
+import { useVersionStatus } from "@/hooks/useVersionStatus";
 
 interface VersionBadgeProps {
   compact?: boolean;
@@ -7,8 +8,8 @@ interface VersionBadgeProps {
 
 export function VersionBadge({ compact = false }: VersionBadgeProps) {
   const [modalOpen, setModalOpen] = useState(false);
-  const version = import.meta.env.APP_VERSION || '0.0.0';
-  
+  const { installed, updateAvailable } = useVersionStatus();
+
   return (
     <>
       <div className={compact ? "flex justify-center py-2" : "flex justify-center py-6"}>
@@ -24,15 +25,22 @@ export function VersionBadge({ compact = false }: VersionBadgeProps) {
             hover:shadow-lg
             focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-primary/50
             relative overflow-hidden
+            inline-flex items-center gap-1.5
           "
         >
-          v{version}
+          <span
+            aria-hidden
+            className={`inline-block h-1.5 w-1.5 rounded-full ${
+              updateAvailable ? "bg-amber-500 animate-pulse" : "bg-emerald-500"
+            }`}
+          />
+          v{installed}
         </button>
       </div>
 
-      <VersionInfoModal 
-        open={modalOpen} 
-        onOpenChange={setModalOpen} 
+      <VersionInfoModal
+        open={modalOpen}
+        onOpenChange={setModalOpen}
       />
     </>
   );
