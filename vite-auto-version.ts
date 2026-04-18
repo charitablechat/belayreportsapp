@@ -78,6 +78,21 @@ export function viteAutoVersion(): Plugin {
       const hash = getCommitHash();
       const { buildDate, buildTimestamp } = generateTimestamp();
 
+      // Also write public/version.json so dev server + any code path that
+      // reads it from the source tree (not just dist) sees the live version.
+      // Without this, public/version.json stays frozen at whatever was last
+      // committed and the deployed-version comparison is meaningless.
+      try {
+        const publicVersionPath = path.resolve(__dirname, 'public/version.json');
+        fs.writeFileSync(
+          publicVersionPath,
+          JSON.stringify({ version: resolvedVersion }, null, 2) + '\n',
+          'utf-8'
+        );
+      } catch {
+        // non-fatal — generateBundle still emits into dist
+      }
+
       return {
         define: {
           'import.meta.env.APP_VERSION': JSON.stringify(resolvedVersion),
