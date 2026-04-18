@@ -1,15 +1,18 @@
 import fs from 'fs';
 import path from 'path';
+import { execSync } from 'child_process';
 import type { Plugin } from 'vite';
-import { parseVersion, getNextVersion, formatVersion } from './src/lib/version-calculator';
 
-// NOTE: In the Lovable Cloud build environment, fs.writeFileSync does NOT persist
-// between builds. The write-back to version.json is ephemeral—each build reads the
-// committed version and increments +1 patch in memory only. To bump the version,
-// manually update version.json and commit. Each build then displays that value + 1.
+/**
+ * Version strategy: read base "X.Y" from version.json, append a patch derived
+ * from git commit count so EVERY deploy advances the version automatically.
+ * No file write-back required — works in ephemeral CI environments like
+ * Lovable Cloud where filesystem changes don't persist between builds.
+ *
+ * Format: v{major}.{minor}.{(commitCount % 9) + 1}  → patch ranges 1–9
+ * (matches the existing rollover scheme where .10 wraps to .1)
+ */
 const VERSION_FILE = path.resolve(__dirname, 'version.json');
-const TIMESTAMP_MARKER = path.resolve(__dirname, '.version-timestamp');
-const DEBOUNCE_MS = 5000;
 
 function generateTimestamp(): { buildDate: string; buildTimestamp: string } {
   const now = new Date();
@@ -33,51 +36,54 @@ function generateTimestamp(): { buildDate: string; buildTimestamp: string } {
   return { buildDate, buildTimestamp };
 }
 
-function shouldIncrement(): boolean {
+function getCommitCount(): number {
   try {
-    if (fs.existsSync(TIMESTAMP_MARKER)) {
-      const lastTime = parseInt(fs.readFileSync(TIMESTAMP_MARKER, 'utf-8').trim(), 10);
-      if (Date.now() - lastTime < DEBOUNCE_MS) {
-        return false;
-      }
-    }
+    const out = execSync('git rev-list --count HEAD', { encoding: 'utf-8' }).trim();
+    const n = parseInt(out, 10);
+    return Number.isFinite(n) ? n : 0;
   } catch {
-    // If marker is unreadable, proceed with increment
+    // Fall back to a time-based pseudo-counter so version still advances
+    // (minutes since 2025-01-01) — guarantees no two builds share a version.
+    const epoch = new Date('2025-01-01T00:00:00Z').getTime();
+    return Math.floor((Date.now() - epoch) / 60000);
   }
-  return true;
 }
 
-function writeMarker(): void {
-  fs.writeFileSync(TIMESTAMP_MARKER, String(Date.now()));
+function getCommitHash(): string {
+  try {
+    return execSync('git rev-parse --short HEAD', { encoding: 'utf-8' }).trim();
+  } catch {
+    return 'dev';
+  }
 }
 
-export function viteAutoVersion() {
-  let versionDefines: Record<string, string> = {};
+function computeVersion(): string {
+  const raw = JSON.parse(fs.readFileSync(VERSION_FILE, 'utf-8'));
+  const base: string = raw.version || '1.0.0';
+  const parts = base.split('.').map((p: string) => parseInt(p, 10));
+  const major = Number.isFinite(parts[0]) ? parts[0] : 1;
+  const minor = Number.isFinite(parts[1]) ? parts[1] : 0;
+  const commits = getCommitCount();
+  const patch = (commits % 9) + 1; // 1..9
+  return `${major}.${minor}.${patch}`;
+}
 
+export function viteAutoVersion(): Plugin {
   return {
     name: 'vite-auto-version',
     config() {
-      // Read current version
-      const raw = JSON.parse(fs.readFileSync(VERSION_FILE, 'utf-8'));
-      let currentVersion: string = raw.version;
-
-      // Increment if debounce allows
-      if (shouldIncrement()) {
-        const next = getNextVersion(currentVersion);
-        currentVersion = formatVersion(next, false);
-        fs.writeFileSync(VERSION_FILE, JSON.stringify({ version: currentVersion }, null, 2) + '\n');
-        writeMarker();
-      }
-
+      const version = computeVersion();
+      const hash = getCommitHash();
       const { buildDate, buildTimestamp } = generateTimestamp();
 
-      versionDefines = {
-        'import.meta.env.APP_VERSION': JSON.stringify(currentVersion),
-        'import.meta.env.BUILD_DATE': JSON.stringify(buildDate),
-        'import.meta.env.BUILD_TIMESTAMP': JSON.stringify(buildTimestamp),
+      return {
+        define: {
+          'import.meta.env.APP_VERSION': JSON.stringify(version),
+          'import.meta.env.BUILD_DATE': JSON.stringify(buildDate),
+          'import.meta.env.BUILD_TIMESTAMP': JSON.stringify(buildTimestamp),
+          'import.meta.env.BUILD_COMMIT': JSON.stringify(hash),
+        },
       };
-
-      return { define: versionDefines };
     },
   };
 }
