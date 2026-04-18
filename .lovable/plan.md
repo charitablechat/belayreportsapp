@@ -1,58 +1,62 @@
 
 
-## Make "Check for Updates" Truly Live + Enforce Version Consistency
+## Version Discrepancy Audit
 
-### Gaps right now
+### What the screenshots show
+- Lovable preview iframe: **v4.7.1**
+- Published site (rwreports.com / ropeworks.lovable.app): **v4.6.7**
 
-1. **`UpdateControlPanel` doesn't show server version.** It only displays `APP_VERSION` (the running client) and SW-based `needsUpdate`. If `version.json` shows v4.8 but client is v4.7, the panel still says "UP TO DATE" until the SW happens to flip.
-2. **Opening the panel doesn't trigger a poll.** `lastUpdateCheck` only updates from background timers — opening the sheet shows whatever time is cached.
-3. **"Check Now" only nudges the SW.** It doesn't re-fetch `/version.json`, so a stale-but-SW-quiet client looks healthy.
-4. **No enforced consistency.** No mechanism to require all clients to be on a minimum version — drift just accumulates.
+Both are the *installed* APP_VERSION, read from `import.meta.env.APP_VERSION` injected at build time by `vite-auto-version.ts`. Different values = the two environments were built at different times from different commits. This is **expected behavior**, not a bug — but the UI makes it look like a bug because there's no signal that "Deployed v4.7.x is available, you're on v4.6.7."
 
-### Fixes
+### Root cause
 
-**A. Live panel data on open + on-demand**
-- Export a `forceVersionCheck()` from `src/lib/version-check.ts` that runs `poll()` immediately and returns the result.
-- `UpdateControlPanel`: on `open === true`, call `forceVersionCheck()` + `checkForUpdates()` in parallel. Show a spinner while running.
-- Subscribe the panel to `subscribeVersionCheck` so `deployedVersion` updates live while open.
-- Display a new "Deployed" row beneath "Version" — green check if equal, amber arrow if newer available.
-- Recompute `statusLabel`: if `deployed` newer than `current` → "UPDATE AVAILABLE" even when SW hasn't fired yet. Apply button calls SW update if `needsUpdate`, else falls back to `location.reload()` after cache clear.
+1. **Two independent builds.** Lovable preview rebuilds on every code change (so it's always tip-of-tree, currently 4.7.1). The published site only rebuilds when the user clicks "Publish" (last published at 4.6.7). `version.json` in `/public` is whatever was committed at publish time.
 
-**B. Auto-refresh while panel open**
-- While the sheet is open, run `forceVersionCheck()` every 15s (cleared on close). Gives instant feedback without spamming when closed.
+2. **`version.json` may be stale on the published site.** `vite-auto-version.ts` bumps `APP_VERSION` at build but does it also rewrite `public/version.json`? If not, the published site shows installed=4.6.7 AND deployed=4.6.7 (both stale), so the "Update Available" banner never fires even after a republish — until `version.json` is manually bumped.
 
-**C. Version-consistency enforcement (minimum required version)**
-- New table `app_version_policy` (singleton row): `min_required_version text`, `recommended_version text`, `enforce_hard_reload bool`, `updated_at`.
-- RLS: anyone authenticated can read; only admins can update.
-- New `src/lib/version-policy.ts`: fetches policy on app load + every 5 min; cached.
-- If `APP_VERSION < min_required_version`:
-  - **Soft mode** (`enforce_hard_reload = false`): persistent non-dismissable banner "This version is no longer supported — please refresh." Already-open work isn't lost.
-  - **Hard mode** (`enforce_hard_reload = true`): show full-screen modal blocking app use; "Refresh Now" button clears caches + reloads. Respects `unsyncedCount` — sync first, then reload.
-- New admin panel `MinVersionPolicyPanel.tsx` in `SuperAdminDashboard` next to `VersionDistributionPanel`: read `version_telemetry` to see distribution, set min/recommended versions with a single form. Confirms before applying hard mode.
+3. **The profile dropdown shows only installed version**, not deployed. So users can't tell whether they're stale.
 
-**D. Telemetry tightening**
-- Bump `version-telemetry.ts` `last_seen` whenever `forceVersionCheck` runs (so admin panel shows truly live "users on each version" counts, not stale).
+### Other places version is shown / compared (audit)
+- `UpdateControlPanel` — shows Installed + Deployed (already fixed last turn ✓)
+- `UserProfileDropdown` — shows only `v{APP_VERSION}` (installed only) ✗
+- `VersionBadge` / `VersionInfoModal` — need to check what they show
+- `StaleVersionBanner` — fires on `version.json` mismatch ✓
+- `MinVersionEnforcer` — compares against policy ✓
+- `version_telemetry` — records client_version + server_version ✓
+- Admin `VersionDistributionPanel` — shows fleet distribution ✓
+- `attestation.ts` `APP_VERSION` constant — stamped on completed reports
+
+### Gaps to fix
+
+**Gap A — `vite-auto-version.ts` may not write `public/version.json`.**
+Need to verify. If it doesn't, every publish ships a stale `version.json` and the entire deployed-version check (banner + panel + telemetry) is comparing against a frozen value. This is the highest-impact fix.
+
+**Gap B — Profile dropdown shows only installed version, no deployed indicator.**
+Add the same Installed/Deployed dual display + colored dot (green = current, amber = update available) directly in the dropdown so users see drift without opening the panel.
+
+**Gap C — `VersionBadge` / `VersionInfoModal` consistency.**
+Audit both to surface deployed version + status, matching the panel.
+
+**Gap D — Lovable preview vs published mental model.**
+Add a small "PREVIEW" or "PUBLISHED" tag next to the version in the dropdown when running on a Lovable preview host, so the discrepancy is self-explanatory ("you're looking at the preview build, not what your users see").
+
+**Gap E — Republish guidance.**
+When `version.json` shows the published site is behind the latest committed version (admin-only signal), surface a one-line nudge in the Super Admin Dashboard: "Latest committed: v4.7.1 — Published: v4.6.7 — Click Publish in Lovable to roll out."
+
+### Plan
+
+1. **Verify + fix `vite-auto-version.ts`** to also write `public/version.json` on every build. Without this, nothing else matters.
+2. **Update `UserProfileDropdown.tsx`** to subscribe to `subscribeVersionCheck`, show Installed + Deployed with status dot, and add `PREVIEW`/`PUBLISHED` environment tag.
+3. **Update `VersionBadge.tsx` + `VersionInfoModal.tsx`** to mirror the same Installed/Deployed display.
+4. **Add admin nudge** in `VersionDistributionPanel.tsx` (or a new tiny component): if `version.json` deployed > current admin's installed, show "Republish recommended."
+5. **No DB changes.** No migrations needed.
 
 ### Files
+- EDIT: `vite-auto-version.ts`, `src/components/UserProfileDropdown.tsx`, `src/components/VersionBadge.tsx`, `src/components/VersionInfoModal.tsx`, `src/components/admin/VersionDistributionPanel.tsx`
+- MEMORY: bump `mem://architecture/pwa-update-system` to note `version.json` write requirement + dropdown surfacing
 
-**NEW**
-- `src/lib/version-policy.ts` — policy fetcher + cached signal
-- `src/components/pwa/MinVersionEnforcer.tsx` — soft banner + hard modal
-- `src/components/admin/MinVersionPolicyPanel.tsx` — admin form
-- Migration: `app_version_policy` table + RLS + seed singleton row
-
-**EDIT**
-- `src/lib/version-check.ts` — export `forceVersionCheck()`, expose `lastResult` getter, broadcast on every poll (not only when stale) so UI can show "deployed" even when equal
-- `src/components/pwa/UpdateControlPanel.tsx` — on-open poll, live "Deployed" row, 15s in-panel refresh, smarter status label, subscribe to version-check
-- `src/lib/version-telemetry.ts` — re-touch `last_seen` on `forceVersionCheck`
-- `src/App.tsx` — mount `<MinVersionEnforcer />`
-- `src/pages/SuperAdminDashboard.tsx` — mount `<MinVersionPolicyPanel />`
-
-### Risks
-- Hard-mode policy could lock out users if admin sets `min_required_version` higher than any deployed build. Mitigation: confirmation dialog showing "This will lock out X% of currently-active users (per telemetry)" before save.
-- No DB data risk; additive table.
-- Backwards compatible: missing policy row = no enforcement.
-
-### Out of scope
-- Real-device cross-platform QA (already covered by prior plan; user verifies post-deploy).
+### Risk
+- `vite-auto-version.ts` change is build-time only; safe.
+- Dropdown adds one subscription; tiny perf cost.
+- No data risk.
 
