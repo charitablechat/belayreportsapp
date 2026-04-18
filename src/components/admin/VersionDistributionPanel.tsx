@@ -2,8 +2,10 @@ import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { Activity, AlertTriangle } from 'lucide-react';
+import { Activity, AlertTriangle, Rocket } from 'lucide-react';
 import { formatDistanceToNow } from 'date-fns';
+import { useVersionStatus } from '@/hooks/useVersionStatus';
+import { isVersionNewer } from '@/lib/version-check';
 
 interface TelemetryRow {
   client_version: string;
