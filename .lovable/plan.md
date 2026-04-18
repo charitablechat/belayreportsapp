@@ -1,104 +1,149 @@
 
 
-User wants **collaborative merge** for reports: when 2+ devices edit the same report (online or offline), changes from all devices should combine into one report, not overwrite each other.
+# Versioning System Audit — Findings & Fix Plan
 
-## Current state (from memory + code)
+## TL;DR
 
-- **LWW (Last-Write-Wins)** at row level, silent. `useConflicts` resolves by `updated_at` — newest wins, loser's edits are **lost**.
-- `sync_conflicts` table exists but is auto-resolved with no merge.
-- Reports have **parent rows** (`inspections`, `trainings`, `daily_assessments`) + **child rows** (`systems`, `ziplines`, `equipment`, `standards`, `inspection_photos`, etc.).
-- Atomic sync replaces temp-IDs with UUIDs.
+The displayed version number works, but **the cross-platform update mechanism is broken**. Devices never receive new versions through the PWA update flow — they only update via hard browser reload or by clearing cache. This is why versions feel inconsistent across devices.
 
-## The real problem
+---
 
-LWW is **fine for child rows** (each system/zipline/equipment is a separate row with its own UUID — two devices adding different items naturally merge via insert). The data loss happens on the **parent row's free-text fields**: `summary`, `observations`, `recommendations`, `notes`, `next_steps`, `inspector_name`, etc. Whichever device syncs last overwrites the other's text.
+## Findings (root causes, ranked by severity)
 
-So the fix is two-pronged:
+### 🔴 CRITICAL #1 — `public/sw.js` is a self-destroying service worker
 
-### Part 1 — Child rows (already 90% working, needs hardening)
-- Inserts merge naturally: Device A adds 3 ziplines, Device B adds 2 — sync produces 5. ✅
-- Edits to the **same child row** still hit LWW. Acceptable for short fields like `result` (Pass/Fail) — last edit wins is reasonable.
-- **Deletes** are the danger: Device A edits zipline #7 while Device B deletes it. Per `sync-deletion-reconciliation` memory, orphan reconciliation soft-deletes — this could destroy A's edits. Need a "tombstone wins only if newer than the edit" rule.
+`public/sw.js` (15 lines) **unregisters itself on activate** and clears all caches:
 
-### Part 2 — Parent free-text fields (the actual data-loss zone)
-Three viable strategies, ranked:
-
-**Option A — Field-level LWW (recommended, lowest risk)**
-- Track `updated_at` per field in a sidecar JSONB column: `field_timestamps: { summary: "...", observations: "...", ... }`.
-- On sync, for each field independently: keep whichever side has the newer timestamp.
-- Result: Device A edits `summary`, Device B edits `observations` → both preserved. If both edit `summary` → newer wins (same as today, but only that one field is lost, not the whole row).
-- ~80% of real-world conflicts disappear because users typically work on different sections.
-
-**Option B — Three-way merge with conflict markers**
-- Store `last_synced_snapshot` per device. On sync, diff local vs snapshot vs server. Non-overlapping changes auto-merge; overlapping changes get inline markers (`<<<<<<< local ... ======= ... >>>>>>> remote`) the user must resolve.
-- Most powerful, but requires a conflict-resolution UI and breaks "silent resolution" rule from memory.
-
-**Option C — CRDT (Yjs / Automerge) on rich-text fields**
-- True collaborative editing, character-level merge. Works offline, syncs perfectly.
-- Heavy: requires Yjs integration in TipTap, a sync server (or peer-to-peer via Supabase Realtime), conflict-free document storage. Massive scope expansion.
-
-### Part 3 — Photos
-Already merge-safe (each photo is its own row with unique `photo_url`). No change needed.
-
-### Part 4 — Attestation
-Only one signature per report. **First-signed wins** — once `attestation_signed_at` is set, sync must never overwrite it. Subsequent device's attestation (if user signed twice) is dropped silently.
-
-## Recommendation: Option A + delete-vs-edit guard
-
-Keeps the silent-resolution UX, requires no new UI, fixes the 80% case where users edit different sections.
-
-## Implementation outline
-
-### Schema (migration)
-```sql
-ALTER TABLE inspections ADD COLUMN field_timestamps JSONB DEFAULT '{}'::jsonb;
-ALTER TABLE trainings ADD COLUMN field_timestamps JSONB DEFAULT '{}'::jsonb;
-ALTER TABLE daily_assessments ADD COLUMN field_timestamps JSONB DEFAULT '{}'::jsonb;
-
--- Tombstones for child rows: track soft-delete time so edit-after-delete wins
--- (deleted_at column already exists on most child tables; add to ones missing it)
+```js
+self.registration.unregister(),
+caches.keys().then(keys => Promise.all(keys.map(k => caches.delete(k))))
 ```
 
-### Client write path (`src/lib/non-blocking-save.ts` + form pages)
-- Wrap every field-level update: when user changes `summary`, also write `field_timestamps.summary = new Date().toISOString()`.
-- Helper: `setFieldWithTimestamp(record, field, value)`.
+But `vite-pwa-config.ts` configures VitePWA to generate a **real workbox SW at the same path** (`/sw.js`). The static `public/sw.js` **overrides the generated one** in the build output (Vite copies `public/` last). Result:
 
-### Sync merge (`src/lib/atomic-sync-manager.ts`)
-- New helper `mergeRecordFields(local, remote)`:
-  1. For each tracked field, compare `local.field_timestamps[field]` vs `remote.field_timestamps[field]`. Keep newer.
-  2. Merge `field_timestamps` objects (newest per key).
-  3. **Skip attestation fields** entirely if remote has `attestation_signed_at` set — first-sign wins.
-  4. Return merged record; push to server with single update.
-- Replace current "local wins / remote wins" branch in conflict resolution with `mergeRecordFields`.
+- No workbox precache, no runtime caching, no `importScripts(['/sw-push.js', '/sw-sync.js'])` — push and background sync workers never load.
+- `usePWAUpdate` listens for `updatefound` / `waiting` SW — **never fires** because the SW unregisters itself within seconds of every load.
+- Users only get new app versions by hard-reloading the browser. iOS/Android/Windows behave identically wrong here.
+- Combined with `registerType: 'prompt'` + `injectRegister: null`, no SW is ever registered by VitePWA either way.
 
-### Child row delete-vs-edit guard
-- When sync would soft-delete an orphaned child row, check: is `child.updated_at > parent_sync.last_pulled_at`? If yes, the row was edited on another device after the delete — skip the soft-delete (resurrect / keep).
+**This is the root cause** of "different devices show different versions."
 
-### Realtime presence (small bonus)
-- When two users are online editing the same report simultaneously, show a subtle banner: *"[Name] is also editing this report"* using Supabase Realtime presence. Pure awareness, no blocking. Helps prevent conflicts before they happen.
+### 🔴 CRITICAL #2 — Push & background-sync workers are dead
 
-### Files touched
+`vite-pwa-config.ts` does `importScripts: ['/sw-push.js', '/sw-sync.js']` inside the workbox SW. Since the workbox SW is replaced by the self-destroyer, these never execute. Background sync (recently confirmed working) is **only running via the in-app `useBackgroundSync` hook** (page-context Background Sync API), not the SW. Push notifications can't fire when app is closed.
 
-- **NEW migration** — `field_timestamps` columns on 3 report tables
-- **EDIT** `src/lib/atomic-sync-manager.ts` — merge logic
-- **EDIT** `src/hooks/useConflicts.tsx` — call merge instead of LWW
-- **EDIT** `src/lib/non-blocking-save.ts` — write field timestamps
-- **EDIT** form pages (`InspectionForm`, `TrainingForm`, `DailyAssessmentForm`) — use `setFieldWithTimestamp` helper
-- **NEW** `src/lib/field-merge.ts` — pure merge helpers + tests
-- **NEW** (optional) `src/components/CollaboratorPresence.tsx` — Realtime presence banner
-- **EDIT** `mem://features/silent-conflict-resolution-v6` → bump to v7 with field-level merge
+### 🟠 HIGH #3 — Version incrementer logic contradicts itself
 
-### What this does NOT do
-- No real-time collaborative typing (use Option C / CRDTs for that)
-- No conflict UI — merge stays silent per your existing rule
-- No version-vector / vector-clock — relies on wall-clock timestamps (acceptable since clock-skew tolerance already exists in `local-data-guards.ts`)
+`vite-auto-version.ts` writes `version.json` and a `.version-timestamp` marker, but both are **committed to git**. Each Lovable Cloud build:
+1. Reads `version.json` (e.g. `4.7.2`)
+2. Checks `.version-timestamp` — if mtime within 5s, **skip increment**
+3. Writes new value (ephemeral, doesn't persist)
+
+The header comment says "each build displays committed value + 1." Screenshot shows `v4.7.2` (the committed value, **not** +1). So either the debounce always wins, or the increment isn't being applied to the `define` map. Either way: **version number does not advance automatically across deploys** — you have to hand-bump `version.json` and commit. Users on different devices see the same number only because nobody is incrementing.
+
+### 🟠 HIGH #4 — `APP_VERSION` source resolution is inconsistent
+
+- `src/lib/attestation.ts` reads `VITE_APP_VERSION || APP_VERSION || 'unknown'` — but `VITE_APP_VERSION` is **never defined anywhere**. Dead branch.
+- `VersionInfoModal`, `UpdateControlPanel`, `useAutoSync` read only `APP_VERSION`.
+- Result: if the vite plugin ever fails silently, attestation logs `"unknown"` while the UI still shows a stale cached value. Hard to debug.
+
+### 🟡 MEDIUM #5 — `index.html` registers `/sw.js` from preview cleanup
+
+Lines 54–57 of `index.html` explicitly register `/sw.js` even in the preview environment when stale SWs are detected, then reload. This works as intended for cleanup, but combined with the self-destroyer, can cause **infinite register → unregister → reload loops** in edge cases on iOS Safari (which already has finicky SW lifecycle).
+
+### 🟡 MEDIUM #6 — No version-skew protection on field-level merge
+
+Recent `field_timestamps` work has good fallback behavior in `field-merge.ts`, BUT: an old client (cached for weeks because SW updates never propagate — see #1) writing without `field_timestamps` against a server row WITH them will lose its edit on the affected field if the row-level `updated_at` is older. Compounds with #1: until update delivery is fixed, version-skew bugs from this collaboration system are far more likely than they should be.
+
+### 🟢 LOW #7 — Version display is purely presentational
+
+`VersionInfoModal` and `UpdateControlPanel` show `import.meta.env.APP_VERSION`. There is **no server-side version check** — no way to know the deployed version vs. the running version. A user on a stale cached client would see the stale version with no warning.
+
+---
+
+## Cross-platform impact
+
+| Platform | Current behavior | Why |
+|----|----|----|
+| iOS Safari (PWA) | Version frozen until user manually clears Safari cache | No working SW = no update flow. iOS 24h SW cache makes it worse. |
+| Android Chrome | Version updates only on full browser restart | Same — no SW lifecycle, no `updatefound` event. |
+| Windows desktop | Updates on hard reload (Ctrl+Shift+R) | Browser HTTP cache eventually expires; faster than mobile. |
+| Lovable preview | Always fresh | Preview cleanup script kills SW on every load. |
+
+The "Update Available" badge (`UpdateBadge.tsx`) literally cannot appear in production because `needsUpdate` requires a waiting SW that never exists.
+
+---
+
+## Proposed fixes (in order)
+
+### Fix 1 — Restore real PWA service worker (CRITICAL)
+
+- **Delete** `public/sw.js` (or rename to `sw-cleanup.js` and only register it conditionally during one-time migration).
+- Change `vite-pwa-config.ts`: `registerType: 'autoUpdate'` (industry default) and `injectRegister: 'auto'` so VitePWA generates AND registers the SW.
+- Remove the manual `navigator.serviceWorker.register('/sw.js', ...)` from `src/main.tsx` (lines 39–47) — let VitePWA handle it via virtual module `virtual:pwa-register`.
+- Update `usePWAUpdate` to use VitePWA's `useRegisterSW` hook (or keep current code, it already handles waiting SW correctly).
+- Keep `index.html` cleanup script for **preview only**, gated strictly on hostname.
+- One-time migration concern: existing users have the self-destroying SW. After deploy, their next page load runs the self-destroyer, the workbox SW takes over on the load after that. Two-load transition is acceptable.
+
+### Fix 2 — Fix version increment
+
+Two options, recommend **A**:
+
+- **A. Use commit count as patch** — read git commit hash/count at build time, format `v{major}.{minor}.{commitCount % 10}`. Always advances, no `version.json` write-back required. ~10 LOC.
+- **B. Move version source to env var** set per-deploy by Lovable Cloud (if available via `VITE_BUILD_ID` or similar). Requires checking what Lovable injects.
+
+Either way: **delete `.version-timestamp` from the repo** and add to `.gitignore`. The current debounce relies on filesystem state that doesn't exist consistently in CI.
+
+### Fix 3 — Single source of truth for `APP_VERSION`
+
+- In `src/lib/attestation.ts` line 11–13, drop the `VITE_APP_VERSION` branch. Read only `import.meta.env.APP_VERSION`.
+- Add a runtime warning if `APP_VERSION === 'unknown'` so we catch plugin failures fast.
+
+### Fix 4 — Server-side version awareness (defense in depth)
+
+- Store the latest deployed version in a tiny public table or edge function (`current-app-version`).
+- On app load, compare local `APP_VERSION` vs server. If server is newer AND no SW update has fired within 60s, show a soft "New version available — refresh to update" banner.
+- Catches the case where SW updates fail silently (iOS + corp proxies + flaky CDN edges).
+
+### Fix 5 — Add version field to attestation audit log query
+
+Verify `app_version_at_completion` is being persisted (it's in the SQL — confirmed). Add it to the audit log viewer (`AuditLogPanel`) so admins can see which version each completion was signed under. Already partly there — verify.
+
+---
+
+## Files to change
+
+**Delete / rename:**
+- `public/sw.js` → delete (or move to `public/sw-legacy-cleanup.js` for one transition deploy)
+- `.version-timestamp` → delete and gitignore
+
+**Edit:**
+- `vite-pwa-config.ts` — `registerType: 'autoUpdate'`, `injectRegister: 'auto'`
+- `vite-auto-version.ts` — switch to commit-count strategy, no file write
+- `src/main.tsx` — remove manual SW registration block (lines 39–72 cleanup)
+- `src/lib/attestation.ts` — single env var read + warning
+- `index.html` — confirm preview cleanup script is preview-only (already is)
+- `src/hooks/usePWAUpdate.tsx` — minor: ensure works with autoUpdate mode
+
+**New:**
+- `src/lib/version-check.ts` — server version comparison utility
+- `supabase/functions/current-app-version/index.ts` — returns deployed version (optional, fix #4)
+
+**No DB migration required.** No data loss risk; only behavior change is users will start receiving real updates instead of being stuck.
+
+---
 
 ## Question before I build
 
-**Do you want the Realtime presence banner** (Part 4 bonus — shows "Sarah is also editing" when 2 users open the same report online)? It's ~50 LOC and significantly reduces conflicts by warning users in advance.
+Two design choices:
 
-- **Yes** — add presence banner
-- **No** — silent merge only, no UI
+**Q1 — SW rollout strategy:**
+- **Safe (recommended)**: keep a tiny one-time cleanup SW for one deploy to unregister the old self-destroyer cleanly, then second deploy enables the real workbox SW. Two deploys, zero user disruption.
+- **Fast**: delete `public/sw.js` immediately; rely on the existing self-destroyer to unregister itself one final time, then VitePWA's SW takes over on the next page load. One deploy, some users may see one extra reload.
 
-Reply Yes/No (or "Option B" / "Option C" if you want a different merge strategy) and I'll execute.
+**Q2 — Server version banner (Fix #4):**
+- **Yes** — add the soft refresh banner. Catches edge cases.
+- **No** — trust the SW flow only. Less code.
+
+Reply `safe + yes`, `fast + yes`, `safe + no`, or `fast + no` and I'll execute. (My recommendation: **safe + yes**.)
 
