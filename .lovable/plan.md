@@ -1,149 +1,54 @@
 
 
-# Versioning System Audit — Findings & Fix Plan
+## Phase 2 + All Cross-Platform Gaps — Execution Plan
 
-## TL;DR
+Executing all 9 gaps from the previous audit in one pass.
 
-The displayed version number works, but **the cross-platform update mechanism is broken**. Devices never receive new versions through the PWA update flow — they only update via hard browser reload or by clearing cache. This is why versions feel inconsistent across devices.
+### Phase 2 — Real Service Worker (Gap 1)
+- **Delete** `public/sw.js` (self-destroyer)
+- **Edit** `vite-pwa-config.ts`: `registerType: 'autoUpdate'`, `injectRegister: 'auto'`, exclude `/version.json` from precache + runtime cache
+- **Edit** `src/main.tsx`: remove manual `register('/sw.js')` block; rely on VitePWA virtual module
+- **Edit** `src/hooks/usePWAUpdate.tsx`: switch to `useRegisterSW` from `virtual:pwa-register/react`
 
----
+### iOS/macOS Cache Busting (Gaps 2, 3, 4, 7)
+- **Edit** `vite-pwa-config.ts`: ensure `updateViaCache: 'none'` on registration
+- **Edit** `src/lib/version-check.ts`: already cache-busts with `?t=${Date.now()}` + `cache: 'no-store'` (verify); add `visibilitychange` listener that calls `registration.update()` when tab returns to foreground
+- **Edit** `src/components/pwa/StaleVersionBanner.tsx`: when iOS standalone (`navigator.standalone === true`), Refresh button clears `caches.keys()` first then `location.reload()`
+- **Edit** `index.html`: confirm preview-cleanup script is strictly hostname-gated
 
-## Findings (root causes, ranked by severity)
+### Field-Merge Skew Test (Gap 8)
+- **Add** test case to `src/lib/field-merge.test.ts`: "old client without field_timestamps does not overwrite new client's field-timestamped value"
 
-### 🔴 CRITICAL #1 — `public/sw.js` is a self-destroying service worker
+### Telemetry & Admin Visibility (Gap 9)
+- **Migration**: new `version_telemetry` table (user_id, client_version, server_version, platform, last_seen) + RLS (admin read, user upsert own)
+- **New** `src/lib/version-telemetry.ts`: upserts row on app load + when version mismatch detected
+- **New** `src/components/admin/VersionDistributionPanel.tsx`: bar chart of client_version distribution; mounted in `SuperAdminDashboard`
+- **Edit** `src/App.tsx`: call telemetry on mount
 
-`public/sw.js` (15 lines) **unregisters itself on activate** and clears all caches:
+### Windows Reinstall Notice (Gap 6)
+- **New** one-time toast in `src/App.tsx` for Windows users with installed PWA detected pre-Phase 2 — surfaces uninstall+reinstall recommendation. Stored in localStorage so shown once.
 
-```js
-self.registration.unregister(),
-caches.keys().then(keys => Promise.all(keys.map(k => caches.delete(k))))
-```
+### WebAPK Documentation (Gap 5)
+- **Edit** `README.md`: add "Android WebAPK update lag" section noting 1–30 day Play Services manifest refresh window
 
-But `vite-pwa-config.ts` configures VitePWA to generate a **real workbox SW at the same path** (`/sw.js`). The static `public/sw.js` **overrides the generated one** in the build output (Vite copies `public/` last). Result:
+### Memory
+- **New** `mem://architecture/pwa-update-system` documenting: autoUpdate SW, version.json polling, iOS cache mitigations, telemetry table
 
-- No workbox precache, no runtime caching, no `importScripts(['/sw-push.js', '/sw-sync.js'])` — push and background sync workers never load.
-- `usePWAUpdate` listens for `updatefound` / `waiting` SW — **never fires** because the SW unregisters itself within seconds of every load.
-- Users only get new app versions by hard-reloading the browser. iOS/Android/Windows behave identically wrong here.
-- Combined with `registerType: 'prompt'` + `injectRegister: null`, no SW is ever registered by VitePWA either way.
+### Files touched
+- DELETE: `public/sw.js`
+- EDIT: `vite-pwa-config.ts`, `src/main.tsx`, `src/hooks/usePWAUpdate.tsx`, `src/lib/version-check.ts`, `src/components/pwa/StaleVersionBanner.tsx`, `index.html`, `src/lib/field-merge.test.ts`, `src/App.tsx`, `src/pages/SuperAdminDashboard.tsx`, `README.md`
+- NEW: `supabase/migrations/...version_telemetry.sql`, `src/lib/version-telemetry.ts`, `src/components/admin/VersionDistributionPanel.tsx`
+- MEMORY: new `mem://architecture/pwa-update-system`
 
-**This is the root cause** of "different devices show different versions."
+### Risk
+- Existing users carry the self-destroying SW. On first load post-deploy, old SW unregisters itself one final time; on next load, VitePWA's autoUpdate SW takes over. Two-load transition — acceptable per "Safe" rollout choice already approved.
+- No DB data risk; telemetry table is additive.
+- iOS users on stale builds see the banner immediately (already deployed in Phase 1) and will receive auto-updates once their next visit picks up the new SW.
 
-### 🔴 CRITICAL #2 — Push & background-sync workers are dead
-
-`vite-pwa-config.ts` does `importScripts: ['/sw-push.js', '/sw-sync.js']` inside the workbox SW. Since the workbox SW is replaced by the self-destroyer, these never execute. Background sync (recently confirmed working) is **only running via the in-app `useBackgroundSync` hook** (page-context Background Sync API), not the SW. Push notifications can't fire when app is closed.
-
-### 🟠 HIGH #3 — Version incrementer logic contradicts itself
-
-`vite-auto-version.ts` writes `version.json` and a `.version-timestamp` marker, but both are **committed to git**. Each Lovable Cloud build:
-1. Reads `version.json` (e.g. `4.7.2`)
-2. Checks `.version-timestamp` — if mtime within 5s, **skip increment**
-3. Writes new value (ephemeral, doesn't persist)
-
-The header comment says "each build displays committed value + 1." Screenshot shows `v4.7.2` (the committed value, **not** +1). So either the debounce always wins, or the increment isn't being applied to the `define` map. Either way: **version number does not advance automatically across deploys** — you have to hand-bump `version.json` and commit. Users on different devices see the same number only because nobody is incrementing.
-
-### 🟠 HIGH #4 — `APP_VERSION` source resolution is inconsistent
-
-- `src/lib/attestation.ts` reads `VITE_APP_VERSION || APP_VERSION || 'unknown'` — but `VITE_APP_VERSION` is **never defined anywhere**. Dead branch.
-- `VersionInfoModal`, `UpdateControlPanel`, `useAutoSync` read only `APP_VERSION`.
-- Result: if the vite plugin ever fails silently, attestation logs `"unknown"` while the UI still shows a stale cached value. Hard to debug.
-
-### 🟡 MEDIUM #5 — `index.html` registers `/sw.js` from preview cleanup
-
-Lines 54–57 of `index.html` explicitly register `/sw.js` even in the preview environment when stale SWs are detected, then reload. This works as intended for cleanup, but combined with the self-destroyer, can cause **infinite register → unregister → reload loops** in edge cases on iOS Safari (which already has finicky SW lifecycle).
-
-### 🟡 MEDIUM #6 — No version-skew protection on field-level merge
-
-Recent `field_timestamps` work has good fallback behavior in `field-merge.ts`, BUT: an old client (cached for weeks because SW updates never propagate — see #1) writing without `field_timestamps` against a server row WITH them will lose its edit on the affected field if the row-level `updated_at` is older. Compounds with #1: until update delivery is fixed, version-skew bugs from this collaboration system are far more likely than they should be.
-
-### 🟢 LOW #7 — Version display is purely presentational
-
-`VersionInfoModal` and `UpdateControlPanel` show `import.meta.env.APP_VERSION`. There is **no server-side version check** — no way to know the deployed version vs. the running version. A user on a stale cached client would see the stale version with no warning.
-
----
-
-## Cross-platform impact
-
-| Platform | Current behavior | Why |
-|----|----|----|
-| iOS Safari (PWA) | Version frozen until user manually clears Safari cache | No working SW = no update flow. iOS 24h SW cache makes it worse. |
-| Android Chrome | Version updates only on full browser restart | Same — no SW lifecycle, no `updatefound` event. |
-| Windows desktop | Updates on hard reload (Ctrl+Shift+R) | Browser HTTP cache eventually expires; faster than mobile. |
-| Lovable preview | Always fresh | Preview cleanup script kills SW on every load. |
-
-The "Update Available" badge (`UpdateBadge.tsx`) literally cannot appear in production because `needsUpdate` requires a waiting SW that never exists.
-
----
-
-## Proposed fixes (in order)
-
-### Fix 1 — Restore real PWA service worker (CRITICAL)
-
-- **Delete** `public/sw.js` (or rename to `sw-cleanup.js` and only register it conditionally during one-time migration).
-- Change `vite-pwa-config.ts`: `registerType: 'autoUpdate'` (industry default) and `injectRegister: 'auto'` so VitePWA generates AND registers the SW.
-- Remove the manual `navigator.serviceWorker.register('/sw.js', ...)` from `src/main.tsx` (lines 39–47) — let VitePWA handle it via virtual module `virtual:pwa-register`.
-- Update `usePWAUpdate` to use VitePWA's `useRegisterSW` hook (or keep current code, it already handles waiting SW correctly).
-- Keep `index.html` cleanup script for **preview only**, gated strictly on hostname.
-- One-time migration concern: existing users have the self-destroying SW. After deploy, their next page load runs the self-destroyer, the workbox SW takes over on the load after that. Two-load transition is acceptable.
-
-### Fix 2 — Fix version increment
-
-Two options, recommend **A**:
-
-- **A. Use commit count as patch** — read git commit hash/count at build time, format `v{major}.{minor}.{commitCount % 10}`. Always advances, no `version.json` write-back required. ~10 LOC.
-- **B. Move version source to env var** set per-deploy by Lovable Cloud (if available via `VITE_BUILD_ID` or similar). Requires checking what Lovable injects.
-
-Either way: **delete `.version-timestamp` from the repo** and add to `.gitignore`. The current debounce relies on filesystem state that doesn't exist consistently in CI.
-
-### Fix 3 — Single source of truth for `APP_VERSION`
-
-- In `src/lib/attestation.ts` line 11–13, drop the `VITE_APP_VERSION` branch. Read only `import.meta.env.APP_VERSION`.
-- Add a runtime warning if `APP_VERSION === 'unknown'` so we catch plugin failures fast.
-
-### Fix 4 — Server-side version awareness (defense in depth)
-
-- Store the latest deployed version in a tiny public table or edge function (`current-app-version`).
-- On app load, compare local `APP_VERSION` vs server. If server is newer AND no SW update has fired within 60s, show a soft "New version available — refresh to update" banner.
-- Catches the case where SW updates fail silently (iOS + corp proxies + flaky CDN edges).
-
-### Fix 5 — Add version field to attestation audit log query
-
-Verify `app_version_at_completion` is being persisted (it's in the SQL — confirmed). Add it to the audit log viewer (`AuditLogPanel`) so admins can see which version each completion was signed under. Already partly there — verify.
-
----
-
-## Files to change
-
-**Delete / rename:**
-- `public/sw.js` → delete (or move to `public/sw-legacy-cleanup.js` for one transition deploy)
-- `.version-timestamp` → delete and gitignore
-
-**Edit:**
-- `vite-pwa-config.ts` — `registerType: 'autoUpdate'`, `injectRegister: 'auto'`
-- `vite-auto-version.ts` — switch to commit-count strategy, no file write
-- `src/main.tsx` — remove manual SW registration block (lines 39–72 cleanup)
-- `src/lib/attestation.ts` — single env var read + warning
-- `index.html` — confirm preview cleanup script is preview-only (already is)
-- `src/hooks/usePWAUpdate.tsx` — minor: ensure works with autoUpdate mode
-
-**New:**
-- `src/lib/version-check.ts` — server version comparison utility
-- `supabase/functions/current-app-version/index.ts` — returns deployed version (optional, fix #4)
-
-**No DB migration required.** No data loss risk; only behavior change is users will start receiving real updates instead of being stuck.
-
----
-
-## Question before I build
-
-Two design choices:
-
-**Q1 — SW rollout strategy:**
-- **Safe (recommended)**: keep a tiny one-time cleanup SW for one deploy to unregister the old self-destroyer cleanly, then second deploy enables the real workbox SW. Two deploys, zero user disruption.
-- **Fast**: delete `public/sw.js` immediately; rely on the existing self-destroyer to unregister itself one final time, then VitePWA's SW takes over on the next page load. One deploy, some users may see one extra reload.
-
-**Q2 — Server version banner (Fix #4):**
-- **Yes** — add the soft refresh banner. Catches edge cases.
-- **No** — trust the SW flow only. Less code.
-
-Reply `safe + yes`, `fast + yes`, `safe + no`, or `fast + no` and I'll execute. (My recommendation: **safe + yes**.)
+<lov-actions>
+<lov-suggestion message="Test PWA update delivery end-to-end on iOS Safari, Android Chrome, and Windows Edge — confirm version banner appears and auto-update applies on next visit">Verify cross-platform updates work</lov-suggestion>
+<lov-suggestion message="Show me the version distribution panel in the admin dashboard once telemetry has data">Check version distribution</lov-suggestion>
+<lov-suggestion message="Add a 'Force update all users' admin action that bumps a server-side minimum-required version and forces reload on clients below it">Add force-update admin action</lov-suggestion>
+<lov-suggestion message="Add Sentry or similar error tracking so we catch SW registration failures in production">Add error tracking</lov-suggestion>
+</lov-actions>
 
