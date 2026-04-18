@@ -5,7 +5,8 @@ import {
   DialogTitle,
   DialogClose,
 } from "@/components/ui/dialog";
-import { X } from "lucide-react";
+import { X, ArrowUpCircle, CheckCircle2 } from "lucide-react";
+import { useVersionStatus } from "@/hooks/useVersionStatus";
 
 interface VersionInfoModalProps {
   open: boolean;
@@ -13,13 +14,15 @@ interface VersionInfoModalProps {
 }
 
 export function VersionInfoModal({ open, onOpenChange }: VersionInfoModalProps) {
-  const version = import.meta.env.APP_VERSION || '0.0.0';
-  const buildDate = import.meta.env.BUILD_DATE || 'Unknown';
-  const buildTimestamp = import.meta.env.BUILD_TIMESTAMP || 'Unknown';
+  const buildDate = (import.meta.env.BUILD_DATE as string) || 'Unknown';
+  const buildTimestamp = (import.meta.env.BUILD_TIMESTAMP as string) || 'Unknown';
+  const { installed, deployed, updateAvailable, environment } = useVersionStatus({ forceOnMount: open });
+
+  const envLabel = environment === 'preview' ? 'PREVIEW' : environment === 'published' ? 'PUBLISHED' : 'LOCAL';
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent 
+      <DialogContent
         hideDefaultClose
         className="bg-black/90 backdrop-blur-xl border border-white/20 rounded-lg shadow-2xl max-w-sm overflow-hidden"
       >
@@ -38,19 +41,46 @@ export function VersionInfoModal({ open, onOpenChange }: VersionInfoModalProps) 
         </DialogClose>
 
         <DialogHeader>
-          <DialogTitle className="font-mono text-xs uppercase tracking-widest text-amber-500">
+          <DialogTitle className="font-mono text-xs uppercase tracking-widest text-amber-500 flex items-center gap-2">
             Version Info
+            <span className="font-mono text-[10px] px-1.5 py-0.5 border border-white/30 text-white/80">
+              {envLabel}
+            </span>
           </DialogTitle>
         </DialogHeader>
 
         <div className="space-y-6 py-4 relative z-10">
-          {/* Version Number - Hero Display */}
-          <div className="text-center py-4">
+          {/* Installed Version - Hero */}
+          <div className="text-center py-2">
+            <div className="font-mono text-[10px] uppercase tracking-widest text-amber-500 mb-1">Installed</div>
             <span
               className="font-mono text-4xl font-bold text-white tracking-tight"
               style={{ textShadow: '0 0 10px rgba(34,197,94,0.3)' }}
             >
-              v{version}
+              v{installed}
+            </span>
+          </div>
+
+          {/* Deployed comparison */}
+          <div className="border border-white/20 p-3 space-y-1">
+            <div className="flex items-center justify-between">
+              <span className="font-mono text-[10px] uppercase tracking-widest text-amber-500">Deployed</span>
+              {deployed ? (
+                updateAvailable ? (
+                  <span className="flex items-center gap-1 text-amber-400 font-mono text-[10px] uppercase">
+                    <ArrowUpCircle className="h-3 w-3" /> Update Available
+                  </span>
+                ) : (
+                  <span className="flex items-center gap-1 text-emerald-400 font-mono text-[10px] uppercase">
+                    <CheckCircle2 className="h-3 w-3" /> Current
+                  </span>
+                )
+              ) : (
+                <span className="font-mono text-[10px] text-white/40 uppercase">Checking…</span>
+              )}
+            </div>
+            <span className="font-mono text-sm text-white block">
+              {deployed ? `v${deployed}` : '—'}
             </span>
           </div>
 

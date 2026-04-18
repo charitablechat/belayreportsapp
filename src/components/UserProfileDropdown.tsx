@@ -22,7 +22,27 @@ import { usePWA } from "@/hooks/usePWA";
 import { ContactDeveloperSheet } from "@/components/ContactDeveloperSheet";
 import { UserDataRecoverySheet } from "@/components/UserDataRecoverySheet";
 import { VersionBadge } from "@/components/VersionBadge";
+import { useVersionStatus } from "@/hooks/useVersionStatus";
  import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+
+function VersionStatusLine() {
+  const { installed, deployed, updateAvailable, environment } = useVersionStatus({ forceOnMount: true });
+  const envLabel = environment === 'preview' ? 'PREVIEW' : environment === 'published' ? 'PUBLISHED' : 'LOCAL';
+  return (
+    <div className="mt-1 flex flex-col items-center gap-0.5 text-[10px] font-mono text-muted-foreground">
+      <div className="flex items-center gap-1.5">
+        <span className="px-1 border border-border rounded-sm uppercase tracking-wider text-[9px]">{envLabel}</span>
+        <span>installed v{installed}</span>
+      </div>
+      {deployed && (
+        <div className={`flex items-center gap-1 ${updateAvailable ? 'text-amber-500' : 'text-emerald-500'}`}>
+          <span className={`h-1.5 w-1.5 rounded-full ${updateAvailable ? 'bg-amber-500 animate-pulse' : 'bg-emerald-500'}`} />
+          <span>deployed v{deployed}{updateAvailable ? ' — update available' : ' — current'}</span>
+        </div>
+      )}
+    </div>
+  );
+}
  
  interface UserProfileDropdownProps {
    currentUser: { email?: string; id?: string } | null;
@@ -208,9 +228,10 @@ import { VersionBadge } from "@/components/VersionBadge";
               </div>
 
              <DropdownMenuSeparator />
-           {/* Version Badge */}
+           {/* Version Badge + Deployed status */}
            <div className="px-2 py-1.5">
              <VersionBadge compact />
+             <VersionStatusLine />
            </div>
            
            <DropdownMenuSeparator />
