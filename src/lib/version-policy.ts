@@ -4,7 +4,6 @@
  */
 import { supabase } from '@/integrations/supabase/client';
 import { APP_VERSION } from './attestation';
-import { isVersionNewer } from './version-check';
 
 export interface VersionPolicy {
   min_required_version: string | null;
@@ -31,19 +30,14 @@ export function getCachedPolicy(): VersionPolicy | null {
 export function isBelowMinimum(policy: VersionPolicy | null): boolean {
   if (!policy?.min_required_version) return false;
   if (!APP_VERSION || APP_VERSION === 'unknown') return false;
-  // strict mode: any difference where min is "newer" triggers enforcement
-  return isVersionNewer(APP_VERSION, policy.min_required_version, false) ||
-         APP_VERSION === policy.min_required_version ? false :
-         // also handle exact strict comparison
-         (() => {
-           const parse = (v: string) => v.split('.').map((p) => parseInt(p, 10) || 0);
-           const [cMaj, cMin, cPatch = 0] = parse(APP_VERSION);
-           const [mMaj, mMin, mPatch = 0] = parse(policy.min_required_version!);
-           if (mMaj > cMaj) return true;
-           if (mMaj === cMaj && mMin > cMin) return true;
-           if (mMaj === cMaj && mMin === cMin && mPatch > cPatch) return true;
-           return false;
-         })();
+  if (APP_VERSION === policy.min_required_version) return false;
+  const parse = (v: string) => v.split('.').map((p) => parseInt(p, 10) || 0);
+  const [cMaj = 0, cMin = 0, cPatch = 0] = parse(APP_VERSION);
+  const [mMaj = 0, mMin = 0, mPatch = 0] = parse(policy.min_required_version);
+  if (mMaj > cMaj) return true;
+  if (mMaj === cMaj && mMin > cMin) return true;
+  if (mMaj === cMaj && mMin === cMin && mPatch > cPatch) return true;
+  return false;
 }
 
 async function fetchPolicy(): Promise<VersionPolicy | null> {
