@@ -90,6 +90,19 @@ export const VersionDistributionPanel = () => {
         </div>
       </CardHeader>
       <CardContent className="space-y-3">
+        {deployed && isVersionNewer(installed, deployed, false) && (
+          <div className="flex items-start gap-2 p-3 rounded-md border border-amber-500/40 bg-amber-500/10 text-sm">
+            <Rocket className="h-4 w-4 text-amber-500 mt-0.5 shrink-0" />
+            <div className="space-y-0.5">
+              <div className="font-medium text-amber-600 dark:text-amber-400">
+                Republish recommended
+              </div>
+              <div className="text-xs text-muted-foreground">
+                Latest committed: <strong className="font-mono">v{deployed}</strong> — Your installed: <strong className="font-mono">v{installed}</strong>. Click <strong>Publish</strong> in Lovable to roll out to all users.
+              </div>
+            </div>
+          </div>
+        )}
         {versionStats.length === 0 ? (
           <div className="text-sm text-muted-foreground py-6 text-center">
             No telemetry data yet — clients will report on next visit.
