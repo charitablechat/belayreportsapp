@@ -1,4 +1,5 @@
 import { useQuery } from '@tanstack/react-query';
+import { useEffect, useState } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -6,6 +7,28 @@ import { Activity, AlertTriangle, Rocket } from 'lucide-react';
 import { formatDistanceToNow } from 'date-fns';
 import { useVersionStatus } from '@/hooks/useVersionStatus';
 import { isVersionNewer } from '@/lib/version-check';
+
+const PUBLISHED_VERSION_URL = 'https://ropeworks.lovable.app/version.json';
+
+function usePublishedVersion(enabled: boolean) {
+  const [published, setPublished] = useState<string | null>(null);
+  useEffect(() => {
+    if (!enabled) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await fetch(`${PUBLISHED_VERSION_URL}?t=${Date.now()}`, { cache: 'no-store' });
+        if (!res.ok) return;
+        const data = await res.json();
+        if (!cancelled && typeof data?.version === 'string') setPublished(data.version);
+      } catch {
+        // ignore — silent fallback
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [enabled]);
+  return published;
+}
 
 interface TelemetryRow {
   client_version: string;
