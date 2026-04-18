@@ -39,9 +39,41 @@ import { useScrollRestoration } from "@/hooks/useScrollRestoration";
 import { isMobile, logMobileCapabilities } from "@/lib/mobile-detection";
 import { triggerNavigationHaptic } from "@/lib/haptics";
 import { cleanupStaleCachedPhotos } from "@/lib/photo-cache";
+import { reportVersionTelemetry } from "@/lib/version-telemetry";
+import { toast } from "sonner";
 
 
 const queryClient = new QueryClient();
+
+const WINDOWS_REINSTALL_NOTICE_KEY = 'windows-pwa-reinstall-notice-shown-v2';
+
+/**
+ * One-time notice for Windows users with installed PWA from the
+ * pre-Phase-2 era (when the self-destroying SW was active). Their PWA
+ * shell may be pinned to a stale SW — recommend uninstall + reinstall.
+ */
+function maybeShowWindowsReinstallNotice() {
+  try {
+    if (localStorage.getItem(WINDOWS_REINSTALL_NOTICE_KEY)) return;
+    const ua = navigator.userAgent || '';
+    if (!/Windows/.test(ua)) return;
+    const isStandalone =
+      window.matchMedia('(display-mode: standalone)').matches ||
+      // @ts-ignore
+      navigator.standalone === true;
+    if (!isStandalone) return;
+
+    localStorage.setItem(WINDOWS_REINSTALL_NOTICE_KEY, '1');
+    setTimeout(() => {
+      toast.info(
+        'Reinstall recommended for Windows PWA users — uninstall and reinstall this app once to receive the latest update mechanism.',
+        { duration: 12_000 }
+      );
+    }, 4_000);
+  } catch {
+    // ignore
+  }
+}
 
 const RootLayout = () => {
   const isMobileDevice = isMobile();
@@ -108,6 +140,12 @@ const RootLayout = () => {
     const cacheCleanupInterval = setInterval(() => {
       cleanupStaleCachedPhotos();
     }, 60 * 60 * 1000);
+
+    // Report version telemetry (best-effort, never throws)
+    void reportVersionTelemetry();
+
+    // One-time Windows PWA reinstall notice (post-Phase-2 transition)
+    maybeShowWindowsReinstallNotice();
 
     return () => {
       clearInterval(cacheCleanupInterval);

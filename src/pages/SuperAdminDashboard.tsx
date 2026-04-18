@@ -23,6 +23,7 @@ import { ReportOwnershipTool } from "@/components/admin/ReportOwnershipTool";
 import { DatabaseBackupsPanel } from "@/components/admin/DatabaseBackupsPanel";
 import { OrganizationReportsPanel } from "@/components/admin/OrganizationReportsPanel";
 import { AuditLogPanel } from "@/components/admin/AuditLogPanel";
+import { VersionDistributionPanel } from "@/components/admin/VersionDistributionPanel";
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription } from "@/components/ui/sheet";
 import { toast } from "sonner";
 import { parseLocalDate } from "@/lib/date-utils";
@@ -1472,6 +1473,7 @@ export default function SuperAdminDashboard() {
 
         <TabsContent value="audit-logs" className="space-y-4">
           <AuditLogPanel />
+          <VersionDistributionPanel />
         </TabsContent>
       </Tabs>
 
