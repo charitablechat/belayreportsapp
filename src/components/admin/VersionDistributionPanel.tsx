@@ -1,4 +1,5 @@
 import { useQuery } from '@tanstack/react-query';
+import { useEffect, useState } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -6,6 +7,28 @@ import { Activity, AlertTriangle, Rocket } from 'lucide-react';
 import { formatDistanceToNow } from 'date-fns';
 import { useVersionStatus } from '@/hooks/useVersionStatus';
 import { isVersionNewer } from '@/lib/version-check';
+
+const PUBLISHED_VERSION_URL = 'https://ropeworks.lovable.app/version.json';
+
+function usePublishedVersion(enabled: boolean) {
+  const [published, setPublished] = useState<string | null>(null);
+  useEffect(() => {
+    if (!enabled) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await fetch(`${PUBLISHED_VERSION_URL}?t=${Date.now()}`, { cache: 'no-store' });
+        if (!res.ok) return;
+        const data = await res.json();
+        if (!cancelled && typeof data?.version === 'string') setPublished(data.version);
+      } catch {
+        // ignore — silent fallback
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [enabled]);
+  return published;
+}
 
 interface TelemetryRow {
   client_version: string;
@@ -17,7 +40,9 @@ interface TelemetryRow {
 }
 
 export const VersionDistributionPanel = () => {
-  const { installed, deployed, updateAvailable } = useVersionStatus({ forceOnMount: true });
+  const { installed, deployed, environment } = useVersionStatus({ forceOnMount: true });
+  const isPreview = environment === 'preview';
+  const publishedVersion = usePublishedVersion(isPreview);
   const { data, isLoading } = useQuery({
     queryKey: ['admin-version-telemetry'],
     queryFn: async () => {
@@ -90,19 +115,41 @@ export const VersionDistributionPanel = () => {
         </div>
       </CardHeader>
       <CardContent className="space-y-3">
-        {deployed && isVersionNewer(installed, deployed, false) && (
-          <div className="flex items-start gap-2 p-3 rounded-md border border-amber-500/40 bg-amber-500/10 text-sm">
-            <Rocket className="h-4 w-4 text-amber-500 mt-0.5 shrink-0" />
-            <div className="space-y-0.5">
-              <div className="font-medium text-amber-600 dark:text-amber-400">
-                Republish recommended
+        {(() => {
+          // Preview admin: compare preview's installed version against PUBLISHED site
+          if (isPreview && publishedVersion && isVersionNewer(publishedVersion, installed, false)) {
+            return (
+              <div className="flex items-start gap-2 p-3 rounded-md border border-amber-500/40 bg-amber-500/10 text-sm">
+                <Rocket className="h-4 w-4 text-amber-500 mt-0.5 shrink-0" />
+                <div className="space-y-0.5">
+                  <div className="font-medium text-amber-600 dark:text-amber-400">
+                    Republish recommended
+                  </div>
+                  <div className="text-xs text-muted-foreground">
+                    Preview is on <strong className="font-mono">v{installed}</strong> — Published site is on <strong className="font-mono">v{publishedVersion}</strong>. Click <strong>Publish</strong> in Lovable to roll out to all users.
+                  </div>
+                </div>
               </div>
-              <div className="text-xs text-muted-foreground">
-                Latest committed: <strong className="font-mono">v{deployed}</strong> — Your installed: <strong className="font-mono">v{installed}</strong>. Click <strong>Publish</strong> in Lovable to roll out to all users.
+            );
+          }
+          // Published admin (or local): standard installed-vs-deployed check
+          if (!isPreview && deployed && isVersionNewer(installed, deployed, false)) {
+            return (
+              <div className="flex items-start gap-2 p-3 rounded-md border border-amber-500/40 bg-amber-500/10 text-sm">
+                <Rocket className="h-4 w-4 text-amber-500 mt-0.5 shrink-0" />
+                <div className="space-y-0.5">
+                  <div className="font-medium text-amber-600 dark:text-amber-400">
+                    Republish recommended
+                  </div>
+                  <div className="text-xs text-muted-foreground">
+                    Latest committed: <strong className="font-mono">v{deployed}</strong> — Your installed: <strong className="font-mono">v{installed}</strong>. Click <strong>Publish</strong> in Lovable to roll out to all users.
+                  </div>
+                </div>
               </div>
-            </div>
-          </div>
-        )}
+            );
+          }
+          return null;
+        })()}
         {versionStats.length === 0 ? (
           <div className="text-sm text-muted-foreground py-6 text-center">
             No telemetry data yet — clients will report on next visit.
