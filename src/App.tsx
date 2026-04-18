@@ -124,6 +124,7 @@ const RootLayout = () => {
             {/* PWA Notifications */}
             <InstallBanner />
             <UpdateNotification />
+            <StaleVersionBanner />
             <InstallSuccessNotification />
             <AuthenticatedHeader />
             <GlobalEnterToBlur />
