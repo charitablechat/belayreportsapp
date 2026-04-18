@@ -17,6 +17,7 @@ interface TelemetryRow {
 }
 
 export const VersionDistributionPanel = () => {
+  const { installed, deployed, updateAvailable } = useVersionStatus({ forceOnMount: true });
   const { data, isLoading } = useQuery({
     queryKey: ['admin-version-telemetry'],
     queryFn: async () => {
