@@ -69,21 +69,35 @@ function computeVersion(): string {
 }
 
 export function viteAutoVersion(): Plugin {
+  let resolvedVersion = '0.0.0';
+
   return {
     name: 'vite-auto-version',
     config() {
-      const version = computeVersion();
+      resolvedVersion = computeVersion();
       const hash = getCommitHash();
       const { buildDate, buildTimestamp } = generateTimestamp();
 
       return {
         define: {
-          'import.meta.env.APP_VERSION': JSON.stringify(version),
+          'import.meta.env.APP_VERSION': JSON.stringify(resolvedVersion),
           'import.meta.env.BUILD_DATE': JSON.stringify(buildDate),
           'import.meta.env.BUILD_TIMESTAMP': JSON.stringify(buildTimestamp),
           'import.meta.env.BUILD_COMMIT': JSON.stringify(hash),
         },
       };
     },
+    // Emit /version.json into the build output with the FULL computed version.
+    // The static file at public/version.json holds the BASE only — this
+    // overwrites it in the dist with the resolved patch so client-side stale
+    // checks compare apples to apples.
+    generateBundle() {
+      this.emitFile({
+        type: 'asset',
+        fileName: 'version.json',
+        source: JSON.stringify({ version: resolvedVersion }, null, 2) + '\n',
+      });
+    },
   };
 }
+
