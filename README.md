@@ -71,3 +71,37 @@ Yes, you can!
 To connect a domain, navigate to Project > Settings > Domains and click Connect Domain.
 
 Read more here: [Setting up a custom domain](https://docs.lovable.dev/features/custom-domain#custom-domain)
+
+---
+
+## PWA Update System & Cross-Platform Notes
+
+This app uses an **autoUpdate** Service Worker (VitePWA) plus a server-side
+`/version.json` poll to deliver new versions reliably across all platforms.
+
+### Update flow
+1. **Service Worker autoUpdate** — VitePWA checks for a new SW on every page
+   load, on tab focus, and on visibility change. New SWs activate
+   automatically without user prompts.
+2. **/version.json polling** — Every 5 minutes (and on tab foreground), the
+   client fetches `/version.json` and compares the deployed version to the
+   running version. If newer, a soft "REFRESH" banner appears as a fallback.
+3. **iOS Safari mitigation** — `updateViaCache: 'none'` forces revalidation
+   of the SW script on every load, defeating Safari's 24h SW cache.
+4. **Telemetry** — Each client reports its version to `version_telemetry`,
+   visible to admins under Admin Dashboard → Audit Logs tab.
+
+### Known platform limitation: Android WebAPK update lag
+When a user installs the PWA on Android via Chrome's "Add to Home Screen"
+prompt, Android wraps the app in a **WebAPK** managed by Google Play Services.
+- **JS / CSS / HTML updates** flow normally through the Service Worker — no
+  delay.
+- **Manifest-level changes** (app name, icons, theme color, display mode)
+  are refreshed on Play Services' own schedule, typically **1 to 30 days**.
+  This is a Google constraint with no workaround.
+
+### Windows PWA users
+Users who installed the PWA on Windows during the pre-autoUpdate era may have
+a stale Service Worker pinned to their installed shell. The app shows a
+one-time toast on Windows recommending uninstall + reinstall to receive the
+new update mechanism.

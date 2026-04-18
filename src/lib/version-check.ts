@@ -1,16 +1,18 @@
 /**
  * Server-side version check — defense in depth against silent SW failures.
  *
- * Polls the deployed app's /version.json (served as a static asset) and
- * compares it to the locally-built APP_VERSION. If they differ AND no PWA
- * update event has fired within a reasonable window, surface a soft refresh
- * banner so users on iOS/corp-proxied/flaky-CDN connections aren't stuck on
- * stale builds forever.
+ * Polls the deployed app's /version.json (served as a static asset, excluded
+ * from SW precache + runtime cache) and compares it to the locally-built
+ * APP_VERSION. If they differ AND no PWA update event has fired within a
+ * reasonable window, surface a soft refresh banner so users on iOS/corp-
+ * proxied/flaky-CDN connections aren't stuck on stale builds forever.
  *
- * Why /version.json (not an edge function)?
- * - Zero infra. The file already exists in the repo and is deployed with
- *   every build. Cache-busting via querystring guarantees a fresh read.
- * - Works offline-friendly (failure is silent — we just don't show banner).
+ * Cross-platform notes:
+ * - iOS Safari: pins SW script for 24h. We add a `visibilitychange`
+ *   listener that calls registration.update() when the tab returns to
+ *   foreground, catching foregrounded PWAs that missed periodic checks.
+ * - Android/desktop Chrome: standard SW autoUpdate handles 99% of cases;
+ *   the banner is a safety net for the long tail.
  */
 import { APP_VERSION } from './attestation';
 
@@ -29,9 +31,13 @@ async function fetchDeployedVersion(): Promise<string | null> {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
   try {
+    // Cache-bust + no-store: defeats CDN, browser HTTP cache, and any
+    // accidentally-cached responses. /version.json is also excluded from
+    // the SW runtime cache (NetworkOnly in vite-pwa-config.ts).
     const res = await fetch(`${VERSION_URL}?t=${Date.now()}`, {
       cache: 'no-store',
       signal: controller.signal,
+      headers: { 'Cache-Control': 'no-cache' },
     });
     if (!res.ok) return null;
     const data = await res.json();
@@ -48,8 +54,6 @@ async function fetchDeployedVersion(): Promise<string | null> {
  * the running version's base. Patch differences alone are ignored because
  * the patch is computed from commit count and may legitimately wobble
  * between mirrored CDN edges.
- *
- * For exact matching pass strict=true.
  */
 export function isVersionNewer(current: string, deployed: string, strict = false): boolean {
   if (!current || !deployed || current === 'unknown') return false;
@@ -77,6 +81,8 @@ type Listener = (result: VersionCheckResult) => void;
 const listeners = new Set<Listener>();
 let intervalId: ReturnType<typeof setInterval> | null = null;
 let lastResult: VersionCheckResult | null = null;
+let lastForegroundCheck = 0;
+const FOREGROUND_THROTTLE_MS = 30 * 1000;
 
 async function poll() {
   const result = await checkVersion();
@@ -86,9 +92,37 @@ async function poll() {
       try {
         l(result);
       } catch {
-        // ignore listener errors
+        // ignore
       }
     });
+  }
+}
+
+/**
+ * Trigger an SW update check + version poll when the tab comes to foreground.
+ * Critical on iOS where backgrounded PWAs do not run periodic SW checks.
+ */
+async function onVisibilityForeground() {
+  if (typeof document === 'undefined') return;
+  if (document.visibilityState !== 'visible') return;
+
+  const now = Date.now();
+  if (now - lastForegroundCheck < FOREGROUND_THROTTLE_MS) return;
+  lastForegroundCheck = now;
+
+  // 1) Re-poll version.json (sees new deploys before the SW does)
+  void poll();
+
+  // 2) Nudge the SW to check for updates as well
+  try {
+    if ('serviceWorker' in navigator) {
+      const reg = await navigator.serviceWorker.getRegistration();
+      if (reg) {
+        void reg.update().catch(() => {});
+      }
+    }
+  } catch {
+    // ignore
   }
 }
 
@@ -106,16 +140,14 @@ export function subscribeVersionCheck(listener: Listener): () => void {
     }
   }
   if (!intervalId) {
-    // Initial check after 30s to avoid competing with app boot
-    setTimeout(() => {
-      void poll();
-    }, 30_000);
+    setTimeout(() => { void poll(); }, 30_000);
     intervalId = setInterval(() => void poll(), POLL_INTERVAL_MS);
 
     if (typeof document !== 'undefined') {
-      document.addEventListener('visibilitychange', () => {
-        if (document.visibilityState === 'visible') void poll();
-      });
+      document.addEventListener('visibilitychange', onVisibilityForeground);
+    }
+    if (typeof window !== 'undefined') {
+      window.addEventListener('focus', onVisibilityForeground);
     }
   }
   return () => {

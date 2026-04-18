@@ -69,6 +69,25 @@ describe('mergeRecordFields', () => {
     expect(merged.field_timestamps?.a).toBe(T('2025-01-01T10:00:00Z'));
     expect(merged.field_timestamps?.b).toBe(T('2025-01-01T10:01:00Z'));
   });
+
+  it('old client without field_timestamps does not overwrite new client field-timestamped value', () => {
+    // Old client (pre-field-merge schema) writes with no field_timestamps map
+    // at an OLDER updated_at than the new client's field-stamped edit.
+    const oldClientLocal: any = {
+      updated_at: T('2025-01-01T09:00:00Z'),
+      organization: 'OLD CLIENT VALUE',
+      field_timestamps: {},
+    };
+    // New client edited the same field LATER with a field_timestamps entry.
+    const newClientRemote: any = {
+      updated_at: T('2025-01-01T10:00:00Z'),
+      organization: 'NEW CLIENT VALUE',
+      field_timestamps: { organization: T('2025-01-01T10:00:00Z') } as Record<string, string>,
+    };
+    const merged = mergeRecordFields(oldClientLocal, newClientRemote, TRACKED_FIELDS.inspection);
+    // Newer wins — old client's value must NOT overwrite the field-stamped edit.
+    expect(merged.organization).toBe('NEW CLIENT VALUE');
+  });
 });
 
 describe('setFieldWithTimestamp', () => {

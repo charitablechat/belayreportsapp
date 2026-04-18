@@ -34,38 +34,29 @@
 
     <script src="https://platform.aminos.ai/w/chat_plugin.js" data-bot-id="7652"></script>
 
-    <!-- Early SW cleanup for preview/iframe environments -->
+    <!-- Early SW cleanup — STRICTLY for Lovable preview/iframe contexts only.
+         Production hostnames (rwreports.com, ropeworks.lovable.app) are NEVER
+         touched here so the real VitePWA service worker remains active. -->
     <script>
       (function() {
+        var h = window.location.hostname;
+        var isPreviewHost = h.indexOf('id-preview--') !== -1 || h.indexOf('lovableproject.com') !== -1;
         var isIframe = false;
         try { isIframe = window.self !== window.top; } catch(e) { isIframe = true; }
-        var h = window.location.hostname;
-        var isPreview = h.indexOf('id-preview--') !== -1 || h.indexOf('lovableproject.com') !== -1;
-        if ((isPreview || isIframe) && 'serviceWorker' in navigator) {
-          if (sessionStorage.getItem('sw-cleanup-done')) return;
-          sessionStorage.setItem('sw-cleanup-done', '1');
-          navigator.serviceWorker.getRegistrations().then(function(regs) {
-            var hadSW = regs.length > 0;
-            regs.forEach(function(r) {
-              r.unregister();
-              // Force the stale SW to fetch our self-destroying sw.js
-              r.update().catch(function() {});
+        // Only run cleanup in preview hosts OR in iframes on preview hosts.
+        // Never strip SW from production domains.
+        if (!isPreviewHost && !isIframe) return;
+        if (!('serviceWorker' in navigator)) return;
+        if (sessionStorage.getItem('sw-cleanup-done')) return;
+        sessionStorage.setItem('sw-cleanup-done', '1');
+        navigator.serviceWorker.getRegistrations().then(function(regs) {
+          regs.forEach(function(r) { r.unregister(); });
+          if (typeof caches !== 'undefined') {
+            caches.keys().then(function(keys) {
+              Promise.all(keys.map(function(k) { return caches.delete(k); }));
             });
-            // Also explicitly register the self-destroying SW to replace any stale one
-            if (hadSW) {
-              navigator.serviceWorker.register('/sw.js', { scope: '/' }).catch(function() {});
-            }
-            if (typeof caches !== 'undefined') {
-              caches.keys().then(function(keys) {
-                Promise.all(keys.map(function(k) { return caches.delete(k); })).then(function() {
-                  if (hadSW) window.location.reload();
-                });
-              });
-            } else if (hadSW) {
-              window.location.reload();
-            }
-          });
-        }
+          }
+        });
       })();
     </script>
   </head>
