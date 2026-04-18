@@ -1,9 +1,5 @@
 /**
  * Version telemetry — tracks which client version each user is running.
- *
- * Lets admins detect stuck clients (e.g. iOS users frozen on v4.x weeks
- * after v5.x ships) via the VersionDistributionPanel in the admin
- * dashboard. Best-effort: never throws to the caller.
  */
 import { supabase } from '@/integrations/supabase/client';
 import { APP_VERSION } from './attestation';
@@ -13,7 +9,6 @@ import { isPreviewOrIframeEnvironment } from './environment';
 function detectPlatform(): string {
   if (typeof navigator === 'undefined') return 'unknown';
   const ua = navigator.userAgent || '';
-  // Order matters — iPad masquerades as Mac on iPadOS 13+
   if (/iPad|iPhone|iPod/.test(ua) || (ua.includes('Mac') && 'ontouchend' in document)) return 'ios';
   if (/Android/.test(ua)) return 'android';
   if (/Windows/.test(ua)) return 'windows';
@@ -34,36 +29,58 @@ function isStandalone(): boolean {
 }
 
 let reported = false;
+let lastTouch = 0;
+const TOUCH_THROTTLE_MS = 30_000;
 
-export async function reportVersionTelemetry(): Promise<void> {
-  if (reported) return;
-  if (isPreviewOrIframeEnvironment()) return;
-
+async function upsertTelemetry(serverVersion: string | null): Promise<boolean> {
   try {
     const { data: { user } } = await supabase.auth.getUser();
-    if (!user) return;
-
-    const { deployed } = await checkVersion();
-    const platform = detectPlatform();
-    const ua = (navigator.userAgent || '').slice(0, 500);
-
+    if (!user) return false;
     const { error } = await supabase
       .from('version_telemetry')
       .upsert(
         {
           user_id: user.id,
           client_version: APP_VERSION,
-          server_version: deployed,
-          platform,
-          user_agent: ua,
+          server_version: serverVersion,
+          platform: detectPlatform(),
+          user_agent: (navigator.userAgent || '').slice(0, 500),
           is_standalone: isStandalone(),
           last_seen: new Date().toISOString(),
         },
         { onConflict: 'user_id,platform,client_version' }
       );
-
-    if (!error) reported = true;
+    return !error;
   } catch {
-    // Best-effort — never surface to the user
+    return false;
+  }
+}
+
+export async function reportVersionTelemetry(): Promise<void> {
+  if (reported) return;
+  if (isPreviewOrIframeEnvironment()) return;
+  try {
+    const { deployed } = await checkVersion();
+    const ok = await upsertTelemetry(deployed);
+    if (ok) reported = true;
+  } catch {
+    // best-effort
+  }
+}
+
+/**
+ * Re-touch last_seen on demand (e.g. when user manually checks for updates).
+ * Throttled so rapid clicks don't spam the DB.
+ */
+export async function touchVersionTelemetry(): Promise<void> {
+  if (isPreviewOrIframeEnvironment()) return;
+  const now = Date.now();
+  if (now - lastTouch < TOUCH_THROTTLE_MS) return;
+  lastTouch = now;
+  try {
+    const { deployed } = await checkVersion();
+    await upsertTelemetry(deployed);
+  } catch {
+    // best-effort
   }
 }

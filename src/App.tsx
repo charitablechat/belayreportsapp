@@ -32,6 +32,7 @@ import { InstallBanner } from "@/components/pwa/InstallBanner";
 import { UpdateNotification } from "@/components/pwa/UpdateNotification";
 import { StaleVersionBanner } from "@/components/pwa/StaleVersionBanner";
 import { InstallSuccessNotification } from "@/components/pwa/InstallSuccessNotification";
+import { MinVersionEnforcer } from "@/components/pwa/MinVersionEnforcer";
 import { AuthenticatedHeader } from "@/components/AuthenticatedHeader";
 import { GlobalEnterToBlur } from "@/components/GlobalEnterToBlur";
 import { PWAProvider } from "@/components/pwa/PWAProvider";
@@ -164,6 +165,7 @@ const RootLayout = () => {
             <UpdateNotification />
             <StaleVersionBanner />
             <InstallSuccessNotification />
+            <MinVersionEnforcer />
             <AuthenticatedHeader />
             <GlobalEnterToBlur />
             <Suspense fallback={null}>

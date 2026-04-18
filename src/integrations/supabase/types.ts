@@ -92,6 +92,36 @@ export type Database = {
         }
         Relationships: []
       }
+      app_version_policy: {
+        Row: {
+          enforce_hard_reload: boolean
+          id: number
+          message: string | null
+          min_required_version: string | null
+          recommended_version: string | null
+          updated_at: string
+          updated_by: string | null
+        }
+        Insert: {
+          enforce_hard_reload?: boolean
+          id?: number
+          message?: string | null
+          min_required_version?: string | null
+          recommended_version?: string | null
+          updated_at?: string
+          updated_by?: string | null
+        }
+        Update: {
+          enforce_hard_reload?: boolean
+          id?: number
+          message?: string | null
+          min_required_version?: string | null
+          recommended_version?: string | null
+          updated_at?: string
+          updated_by?: string | null
+        }
+        Relationships: []
+      }
       audit_logs: {
         Row: {
           action_type: string
