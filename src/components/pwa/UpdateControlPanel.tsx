@@ -1,5 +1,5 @@
-import { useState } from 'react';
-import { RefreshCw, Download, Trash2, AlertTriangle } from 'lucide-react';
+import { useEffect, useState } from 'react';
+import { RefreshCw, Download, Trash2, AlertTriangle, CheckCircle2, ArrowUpCircle } from 'lucide-react';
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
 import { Button } from '@/components/ui/button';
 import {
@@ -15,6 +15,12 @@ import {
 import { usePWA } from '@/hooks/usePWA';
 import { triggerHaptic } from '@/lib/haptics';
 import { toast } from 'sonner';
+import {
+  forceVersionCheck,
+  subscribeVersionCheck,
+  isVersionNewer,
+  type VersionCheckResult,
+} from '@/lib/version-check';
 
 interface UpdateControlPanelProps {
   open: boolean;
@@ -22,6 +28,7 @@ interface UpdateControlPanelProps {
 }
 
 const UPDATE_FLAG_KEY = 'pwa-update-pending';
+const IN_PANEL_REFRESH_MS = 15_000;
 
 export const UpdateControlPanel = ({ open, onOpenChange }: UpdateControlPanelProps) => {
   const {
@@ -30,7 +37,6 @@ export const UpdateControlPanel = ({ open, onOpenChange }: UpdateControlPanelPro
     unsyncedCount,
     forceSync,
     isSyncing,
-    lastUpdateCheck,
     isCheckingForUpdate,
     checkForUpdates,
   } = usePWA();
@@ -38,33 +44,83 @@ export const UpdateControlPanel = ({ open, onOpenChange }: UpdateControlPanelPro
   const [showForceRefreshDialog, setShowForceRefreshDialog] = useState(false);
   const [showUnsyncedWarning, setShowUnsyncedWarning] = useState(false);
   const [applying, setApplying] = useState(false);
+  const [versionResult, setVersionResult] = useState<VersionCheckResult | null>(null);
+  const [isPolling, setIsPolling] = useState(false);
 
   const appVersion = import.meta.env.APP_VERSION || 'dev';
 
+  // Subscribe to version-check broadcasts so panel stays live
+  useEffect(() => {
+    return subscribeVersionCheck(setVersionResult);
+  }, []);
+
+  // On open: immediately poll + nudge SW. While open: re-poll every 15s.
+  useEffect(() => {
+    if (!open) return;
+
+    let cancelled = false;
+    const runCheck = async () => {
+      setIsPolling(true);
+      try {
+        await Promise.all([
+          forceVersionCheck(),
+          checkForUpdates().catch(() => {}),
+        ]);
+      } finally {
+        if (!cancelled) setIsPolling(false);
+      }
+    };
+
+    void runCheck();
+    const interval = setInterval(() => {
+      void forceVersionCheck();
+    }, IN_PANEL_REFRESH_MS);
+
+    return () => {
+      cancelled = true;
+      clearInterval(interval);
+    };
+  }, [open, checkForUpdates]);
+
+  const deployedVersion = versionResult?.deployed || null;
+  const deployedNewer = deployedVersion
+    ? isVersionNewer(appVersion, deployedVersion, false)
+    : false;
+  const deployedDiffers = deployedVersion && deployedVersion !== appVersion;
+  const updateAvailable = needsUpdate || deployedNewer;
+
   const statusLabel = applying
     ? 'APPLYING...'
-    : isCheckingForUpdate
+    : isPolling || isCheckingForUpdate
     ? 'CHECKING...'
-    : needsUpdate
-    ? 'UPDATE PENDING'
+    : updateAvailable
+    ? 'UPDATE AVAILABLE'
     : 'UP TO DATE';
 
   const statusColor = applying
     ? 'text-orange-400 border-orange-400/40'
-    : isCheckingForUpdate
+    : isPolling || isCheckingForUpdate
     ? 'text-blue-400 border-blue-400/40'
-    : needsUpdate
+    : updateAvailable
     ? 'text-amber-400 border-amber-400/40'
     : 'text-green-400 border-green-400/40';
 
-  const formatTime = (date: Date | null) => {
+  const formatTime = (date: Date | null | undefined) => {
     if (!date) return '--:--:--';
     return date.toLocaleTimeString('en-US', { hour12: false });
   };
 
   const handleCheckNow = async () => {
     triggerHaptic('light');
-    await checkForUpdates();
+    setIsPolling(true);
+    try {
+      await Promise.all([
+        forceVersionCheck(),
+        checkForUpdates().catch(() => {}),
+      ]);
+    } finally {
+      setIsPolling(false);
+    }
   };
 
   const handleApplyUpdate = async () => {
@@ -79,7 +135,29 @@ export const UpdateControlPanel = ({ open, onOpenChange }: UpdateControlPanelPro
     setApplying(true);
     localStorage.setItem(UPDATE_FLAG_KEY, 'true');
     triggerHaptic('success');
-    updateAndReload();
+    if (needsUpdate) {
+      updateAndReload();
+    } else {
+      // SW says we're current but version.json says otherwise — clear caches and reload
+      void clearCachesAndReload();
+    }
+  };
+
+  const clearCachesAndReload = async () => {
+    try {
+      if ('serviceWorker' in navigator) {
+        const regs = await navigator.serviceWorker.getRegistrations();
+        await Promise.all(regs.map((r) => r.unregister()));
+      }
+      if ('caches' in window) {
+        const names = await caches.keys();
+        await Promise.all(names.map((n) => caches.delete(n)));
+      }
+    } catch {
+      // ignore
+    } finally {
+      window.location.reload();
+    }
   };
 
   const handleSyncFirst = async () => {
@@ -108,7 +186,6 @@ export const UpdateControlPanel = ({ open, onOpenChange }: UpdateControlPanelPro
   const handleForceRefresh = async () => {
     setShowForceRefreshDialog(false);
     toast.loading('Clearing cache...', { id: 'force-refresh' });
-
     try {
       if ('serviceWorker' in navigator) {
         const registrations = await navigator.serviceWorker.getRegistrations();
@@ -137,7 +214,6 @@ export const UpdateControlPanel = ({ open, onOpenChange }: UpdateControlPanelPro
           side="right"
           className="w-[340px] sm:w-[380px] p-0 border-l border-white/20 bg-black/95 backdrop-blur-xl overflow-hidden"
         >
-          {/* CRT scanline overlay */}
           <div
             className="pointer-events-none absolute inset-0 z-10"
             style={{
@@ -154,10 +230,31 @@ export const UpdateControlPanel = ({ open, onOpenChange }: UpdateControlPanelPro
             </SheetHeader>
 
             <div className="flex-1 px-5 py-5 space-y-6 overflow-y-auto">
-              {/* Version */}
+              {/* Installed version */}
               <div>
-                <span className="text-[10px] text-white/40 uppercase tracking-widest">Version</span>
+                <span className="text-[10px] text-white/40 uppercase tracking-widest">Installed</span>
                 <p className="text-lg mt-1 text-white tracking-wider">v{appVersion}</p>
+              </div>
+
+              {/* Deployed version (live) */}
+              <div>
+                <span className="text-[10px] text-white/40 uppercase tracking-widest">Deployed</span>
+                <div className="mt-1 flex items-center gap-2">
+                  {deployedVersion ? (
+                    <>
+                      <p className="text-lg text-white tracking-wider">v{deployedVersion}</p>
+                      {!deployedDiffers ? (
+                        <CheckCircle2 className="w-4 h-4 text-green-400" />
+                      ) : (
+                        <ArrowUpCircle className="w-4 h-4 text-amber-400" />
+                      )}
+                    </>
+                  ) : (
+                    <p className="text-sm text-white/40">
+                      {isPolling ? 'Checking...' : 'Unknown'}
+                    </p>
+                  )}
+                </div>
               </div>
 
               {/* Status */}
@@ -175,7 +272,7 @@ export const UpdateControlPanel = ({ open, onOpenChange }: UpdateControlPanelPro
               {/* Last checked */}
               <div>
                 <span className="text-[10px] text-white/40 uppercase tracking-widest">Last Checked</span>
-                <p className="text-sm mt-1 text-white/70">{formatTime(lastUpdateCheck)}</p>
+                <p className="text-sm mt-1 text-white/70">{formatTime(versionResult?.checkedAt)}</p>
               </div>
 
               {/* Unsynced warning */}
@@ -190,7 +287,7 @@ export const UpdateControlPanel = ({ open, onOpenChange }: UpdateControlPanelPro
 
               {/* Actions */}
               <div className="space-y-3 pt-2">
-                {needsUpdate ? (
+                {updateAvailable ? (
                   <Button
                     onClick={handleApplyUpdate}
                     disabled={applying}
@@ -202,11 +299,11 @@ export const UpdateControlPanel = ({ open, onOpenChange }: UpdateControlPanelPro
                 ) : (
                   <Button
                     onClick={handleCheckNow}
-                    disabled={isCheckingForUpdate}
+                    disabled={isPolling || isCheckingForUpdate}
                     variant="outline"
                     className="w-full rounded-none border-white/20 bg-white/5 text-white/90 hover:bg-white/10 hover:text-white font-mono text-xs uppercase tracking-widest h-10"
                   >
-                    <RefreshCw className={`w-3.5 h-3.5 mr-2 ${isCheckingForUpdate ? 'animate-spin' : ''}`} />
+                    <RefreshCw className={`w-3.5 h-3.5 mr-2 ${(isPolling || isCheckingForUpdate) ? 'animate-spin' : ''}`} />
                     Check Now
                   </Button>
                 )}
@@ -225,7 +322,6 @@ export const UpdateControlPanel = ({ open, onOpenChange }: UpdateControlPanelPro
         </SheetContent>
       </Sheet>
 
-      {/* Force refresh confirmation */}
       <AlertDialog open={showForceRefreshDialog} onOpenChange={setShowForceRefreshDialog}>
         <AlertDialogContent>
           <AlertDialogHeader>
@@ -241,7 +337,6 @@ export const UpdateControlPanel = ({ open, onOpenChange }: UpdateControlPanelPro
         </AlertDialogContent>
       </AlertDialog>
 
-      {/* Unsynced warning */}
       <AlertDialog open={showUnsyncedWarning} onOpenChange={setShowUnsyncedWarning}>
         <AlertDialogContent>
           <AlertDialogHeader>
@@ -258,7 +353,7 @@ export const UpdateControlPanel = ({ open, onOpenChange }: UpdateControlPanelPro
             <AlertDialogAction
               onClick={() => {
                 setShowUnsyncedWarning(false);
-                if (needsUpdate) applyUpdate();
+                if (updateAvailable) applyUpdate();
                 else setShowForceRefreshDialog(true);
               }}
               className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
