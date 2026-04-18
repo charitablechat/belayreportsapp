@@ -2323,6 +2323,42 @@ export type Database = {
           },
         ]
       }
+      version_telemetry: {
+        Row: {
+          client_version: string
+          created_at: string
+          id: string
+          is_standalone: boolean
+          last_seen: string
+          platform: string
+          server_version: string | null
+          user_agent: string | null
+          user_id: string
+        }
+        Insert: {
+          client_version: string
+          created_at?: string
+          id?: string
+          is_standalone?: boolean
+          last_seen?: string
+          platform: string
+          server_version?: string | null
+          user_agent?: string | null
+          user_id: string
+        }
+        Update: {
+          client_version?: string
+          created_at?: string
+          id?: string
+          is_standalone?: boolean
+          last_seen?: string
+          platform?: string
+          server_version?: string | null
+          user_agent?: string | null
+          user_id?: string
+        }
+        Relationships: []
+      }
       webhook_config: {
         Row: {
           created_at: string | null
