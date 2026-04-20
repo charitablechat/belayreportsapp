@@ -286,7 +286,7 @@ export default function NewDailyAssessment() {
                   <Button 
                     type="button" 
                     variant="outline" 
-                    onClick={handleLocationCapture} 
+                    onClick={() => handleLocationCapture()} 
                     disabled={locationLoading}
                     className="min-w-[140px]"
                   >

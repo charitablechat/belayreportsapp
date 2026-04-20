@@ -267,7 +267,7 @@ export default function NewTraining() {
                   <Button
                     type="button"
                     variant="outline"
-                    onClick={handleLocationCapture}
+                    onClick={() => handleLocationCapture()}
                     disabled={locationLoading || loading}
                     className="shrink-0"
                   >
