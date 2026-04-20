@@ -1,41 +1,57 @@
 
 
-## Why the new UI isn't on the webpage yet
+## Fix the double-exit dialog on report forms
 
-The new `VersionStatusLine`, environment tag, and deployed indicator code is **already written and live in the preview** (v4.7.6). But your **published site is still running v4.6.7** — a build from before any of this work existed. Published sites only rebuild when you click **Publish** in Lovable. Until then, every user on rwreports.com / ropeworks.lovable.app sees the old v4.6.7 UI, no matter what platform or device.
+### Root cause
 
-### What "will this show up everywhere" actually requires
+When a user exits a report (back arrow, hardware back, or first-tab back), two independent guard systems both fire:
 
-1. **You click Publish in Lovable.** This bundles current code (v4.7.6+) and ships it to the published domains.
-2. **Each user's browser fetches the new build.** With the Phase 2 PWA work already done:
-   - First visit after publish: service worker downloads new assets in the background.
-   - Second visit (or foreground after the visibility-change check): new build activates → user sees the new dropdown UI.
-   - iOS standalone users: `StaleVersionBanner` prompts a cache-clearing reload.
-   - Anyone stuck behind the minimum-version policy: `MinVersionEnforcer` forces them current.
+1. **Manual dialog** — back-arrow `onClick` calls `setShowLeaveDialog(true)`, opening `SaveBeforeLeaveDialog`.
+2. **Router blocker** — `useUnsavedChanges` runs with `alwaysBlock: true`. As soon as the manual dialog's `onSave`/`onLeave` handler calls `navigate('/dashboard')`, `useBlocker` intercepts the navigation and opens the second dialog (`UnsavedChangesDialog`) with the same Save/Discard/Stay choices.
 
-So yes — once you Publish, the new dropdown UI propagates to **all users on all platforms** (iPhone, iPad, Android, Windows, macOS, web) within one or two app opens, automatically. No further code is needed for that.
+The user picks an option once, sees a near-identical dialog, and has to pick again — the "double exit."
 
-### The only remaining gap worth fixing
+This affects all three report forms:
+- `src/pages/InspectionForm.tsx`
+- `src/pages/TrainingForm.tsx`
+- `src/pages/DailyAssessmentForm.tsx`
 
-There's no in-app reminder telling **you** (the admin) when the published site is behind the preview. The `VersionDistributionPanel` "Republish recommended" banner I added last turn only fires for an admin who is *themselves* on a newer build than `version.json` reports — but you're viewing the panel inside the **preview iframe**, which always reads its own `version.json`. So the nudge can be misleading.
+### Fix
 
-### Plan
+Pick **one** dialog system and route every exit path through it. The cleanest option is to keep `SaveBeforeLeaveDialog` (it's the one the back-arrow already opens and the one users see first), and make its handlers tell `useUnsavedChanges` to skip the second dialog.
 
-**One small change:** make the admin "Republish recommended" nudge environment-aware.
+`useUnsavedChanges` already exposes `bypassAndProceed()` (sets `bypassRef.current = true` synchronously, so the blocker's predicate returns `false` on the next navigate). It just isn't being used by the manual exit handlers.
 
-- **Edit `src/components/admin/VersionDistributionPanel.tsx`**: when running on a Lovable preview host (use `getEnvironment()` from `useVersionStatus`), explicitly compare the preview's `APP_VERSION` against the **published** `version.json` (fetch directly from `https://ropeworks.lovable.app/version.json`). If preview is ahead, show:
-  > "Preview is on v4.7.6 — Published site is on v4.6.7. Click Publish in Lovable to roll out."
-- When running on a published host, keep the existing local-vs-deployed comparison.
+### Changes (per form file)
 
-**No other files need changes.** The dropdown, badge, modal, and update panel are all correct — they just need the published build to ship.
+In each of the three form files:
+
+1. **Pull `bypassAndProceed` from `useUnsavedChanges`** (already exported by the hook, no hook changes needed).
+2. **Wire the `SaveBeforeLeaveDialog` handlers** to bypass before navigating:
+   - `onSave`: after `handleSaveAndLeave()` finishes, call `bypassAndProceed()` then `navigate('/dashboard')` (or just call a small helper that does both).
+   - `onLeave`: call `bypassAndProceed()` then `navigate('/dashboard')`.
+   - `onCancel`: unchanged.
+3. **Remove the now-redundant `UnsavedChangesDialog`** from the JSX of these three forms (it's covered by `SaveBeforeLeaveDialog` for in-app exits, and by the native `beforeunload` prompt for hard refresh/close which `useUnsavedChanges` still handles).
+
+   Alternatively, keep `UnsavedChangesDialog` mounted as a **safety net** for any code path that calls `navigate(...)` without going through the back arrow (e.g., logout, sidebar links). That's the safer choice — keep it, but the bypass in step 2 ensures it never fires *after* the user already answered `SaveBeforeLeaveDialog`. Recommended: keep it.
 
 ### Files
-- EDIT: `src/components/admin/VersionDistributionPanel.tsx` (~20 lines added)
 
-### After this lands
-1. Click **Publish** in Lovable to ship v4.7.6+ to rwreports.com.
-2. Within 1–2 visits per user, the new profile dropdown UI (with PREVIEW/PUBLISHED tag + deployed line + status dot) appears for everyone, everywhere, automatically.
+- EDIT: `src/pages/InspectionForm.tsx` (~10 lines in 2 handlers)
+- EDIT: `src/pages/TrainingForm.tsx` (~10 lines in 2 handlers)
+- EDIT: `src/pages/DailyAssessmentForm.tsx` (~10 lines in 2 handlers)
+
+No hook changes, no new files, no migrations.
+
+### Verification after the fix
+
+- Back arrow → one dialog → Save → goes straight to dashboard (no second prompt). ✓
+- Back arrow → one dialog → Exit → goes straight to dashboard. ✓
+- Hardware back on mobile (first tab) → one dialog → same behavior. ✓
+- Logout / sidebar nav while on a dirty form → still shows `UnsavedChangesDialog` once (safety net intact). ✓
+- Browser refresh / tab close → native `beforeunload` prompt still fires. ✓
 
 ### Risk
-- Cross-origin fetch to `ropeworks.lovable.app/version.json` from the preview host — `version.json` is a static public asset, CORS-permissive by default on Lovable's CDN. If it ever fails, panel silently falls back to the existing comparison. No data risk.
+
+Tiny. The only behavior change is removing a duplicate dialog *after the user already confirmed*. Worst case: one missed `bypassAndProceed()` call leaves the existing double-dialog behavior in place (no regression). No data risk.
 
