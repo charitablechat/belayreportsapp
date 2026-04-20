@@ -324,7 +324,7 @@ export default function InspectionForm() {
   saveBeforeLeaveRef.current = handleSaveAndLeave;
 
   // Unsaved changes protection
-  const { isBlocked, confirmNavigation, cancelNavigation, saveAndLeave } = useUnsavedChanges({
+  const { isBlocked, confirmNavigation, cancelNavigation, saveAndLeave, bypassAndProceed } = useUnsavedChanges({
     hasUnsavedChanges: hasUnsavedChanges && (inspection?.status !== 'completed' || completionLockOverridden),
     alwaysBlock: true,
     message: "You have unsaved changes to this inspection. Are you sure you want to leave?",
@@ -2509,12 +2509,14 @@ export default function InspectionForm() {
             setIsSavingBeforeLeave(false);
           }
           setShowLeaveDialog(false);
+          bypassAndProceed();
           navigate('/dashboard');
         }}
         onLeave={() => {
           markPendingDashboardRefresh();
           markDashboardStaleTimestamp();
           setShowLeaveDialog(false);
+          bypassAndProceed();
           navigate('/dashboard');
         }}
         onCancel={() => setShowLeaveDialog(false)}
