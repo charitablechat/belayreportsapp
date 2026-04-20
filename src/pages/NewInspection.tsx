@@ -125,38 +125,64 @@ export default function NewInspection() {
     fetchUserProfile();
   }, []);
 
-  const handleLocationCapture = async () => {
-    triggerHaptic('light');
+  const handleLocationCapture = async (silent: boolean = false) => {
+    if (!silent) triggerHaptic('light');
     setLocationLoading(true);
     try {
       const position = await getCurrentLocationWithAddress();
+      // In silent mode, only set if reverse geocode produced a real address (not coords fallback)
+      const isCoordFallback = /^-?\d+\.\d+,\s*-?\d+\.\d+$/.test(position.address);
+      if (silent && isCoordFallback) {
+        return;
+      }
       setFormData(prev => ({
         ...prev,
         location: position.address,
         latitude: position.latitude,
         longitude: position.longitude,
       }));
-      
-      triggerHaptic('success');
-      toast.success("Location captured", {
-        description: position.address
-      });
-      
+
+      if (!silent) {
+        triggerHaptic('success');
+        toast.success("Location captured", { description: position.address });
+      }
+
       if (import.meta.env.DEV) {
-        console.log('[NewInspection] Location captured:', position);
+        console.log('[NewInspection] Location captured:', position, { silent });
       }
     } catch (error: any) {
+      if (silent) {
+        console.warn("[NewInspection] Silent location capture failed:", error?.message || error);
+        return;
+      }
       console.error("Failed to get location:", error);
       triggerHaptic('error');
-      
-      const message = error.code 
-        ? getGeolocationErrorMessage(error) 
+      const message = error.code
+        ? getGeolocationErrorMessage(error)
         : "Failed to get location. Please try again.";
       toast.error("Location Error", { description: message });
     } finally {
       setLocationLoading(false);
     }
   };
+
+  // Auto-capture location once on mount (silent — no toasts, no coord fallback)
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      if (formData.location) return;
+      try {
+        if ('permissions' in navigator) {
+          const status = await (navigator as any).permissions.query({ name: 'geolocation' });
+          if (status.state === 'denied') return;
+        }
+      } catch { /* ignore */ }
+      if (cancelled) return;
+      handleLocationCapture(true);
+    })();
+    return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const handleClearLocation = () => {
     triggerHaptic('light');
@@ -657,7 +683,7 @@ export default function NewInspection() {
                   <Button 
                     type="button" 
                     variant="outline" 
-                    onClick={handleLocationCapture} 
+                    onClick={() => handleLocationCapture()} 
                     disabled={locationLoading}
                     className="min-w-[140px]"
                   >
