@@ -1604,22 +1604,25 @@ export async function syncAllTrainingsAtomic(preValidatedUser?: CachedUser) {
   
   // Reduced retries for faster recovery
   const maxRetries = capabilities.isMobile ? 2 : 1;
-  
-  for (let i = 0; i < batch.length; i++) {
-    const training = batch[i];
+  // S2: Bounded concurrency — different trainingIds never share child rows.
+  const itemConcurrency = capabilities.isMobile ? 3 : 5;
+  let progressCounter = 0;
+
+  await runWithConcurrency(batch, itemConcurrency, async (training, i) => {
     let retryCount = 0;
     let synced = false;
-    
+
     while (retryCount < maxRetries && !synced) {
       // Emit progress for current item
+      progressCounter++;
       syncProgressEmitter.emit({
         total: batch.length,
-        current: i + 1,
+        current: progressCounter,
         currentItem: `${training.organization}${retryCount > 0 ? ` (retry ${retryCount})` : ''}${remaining > 0 ? ` (${remaining} more queued)` : ''}`,
         phase: 'trainings',
         errors,
       });
-      
+
       try {
         // Per-item timeout - pass pre-validated user to skip redundant session validation
         const itemResult = await Promise.race([
@@ -1632,13 +1635,13 @@ export async function syncAllTrainingsAtomic(preValidatedUser?: CachedUser) {
           successCount++;
           synced = true;
         }
-        
+
         if (import.meta.env.DEV) {
           console.log(`[Atomic Sync] Synced training ${i + 1}/${batch.length} (${remaining} remaining):`, training.id);
         }
       } catch (error: any) {
         retryCount++;
-        
+
         if (retryCount < maxRetries) {
           const delay = Math.min(500 * retryCount, 2000);
           if (import.meta.env.DEV) {
@@ -1652,7 +1655,7 @@ export async function syncAllTrainingsAtomic(preValidatedUser?: CachedUser) {
         }
       }
     }
-  }
+  });
   
   console.log('[Atomic Sync] Training sync results:', {
     batch: batch.length,
