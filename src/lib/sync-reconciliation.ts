@@ -167,6 +167,7 @@ export async function reconcileAllChildTables(
     parentIdColumn: string;
     localItems: Array<{ id?: string }>;
     prefetchedServerRows?: any[];
+    expectedNonEmpty?: boolean;
   }>,
   parentId: string,
   reportType: 'inspection' | 'training' | 'daily_assessment',
@@ -181,6 +182,7 @@ export async function reconcileAllChildTables(
       reportType,
       userId,
       prefetchedServerRows: t.prefetchedServerRows,
+      expectedNonEmpty: t.expectedNonEmpty,
     }))
   );
 
