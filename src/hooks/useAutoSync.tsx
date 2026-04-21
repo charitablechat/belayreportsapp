@@ -428,19 +428,21 @@ export const useAutoSync = () => {
             clearPendingSyncs();
           }
           
-          // ACCELERATED RE-SYNC: If items remain in queue, schedule next cycle sooner
-          // This drains large queues (e.g., 22 items) in ~25s instead of waiting for the full interval
+          // ACCELERATED RE-SYNC: If items remain in queue, schedule next cycle sooner.
+          // S6: Skip the wait entirely if the previous batch had no failures.
           if (totalRemaining > 0) {
+            const totalFailed = results.reduce((sum, r) => sum + (r?.failed || 0), 0);
+            const drainDelay = totalFailed > 0 ? ACCELERATED_SYNC_DELAY : 0;
             if (import.meta.env.DEV) {
-              console.log(`[AutoSync] ${totalRemaining} items remaining - scheduling accelerated sync in ${ACCELERATED_SYNC_DELAY / 1000}s`);
+              console.log(`[AutoSync] ${totalRemaining} items remaining - scheduling accelerated sync in ${drainDelay}ms (failed: ${totalFailed})`);
             }
             // Reset the min sync interval guard so the accelerated sync can proceed
-            lastSyncAttemptRef.current = Date.now() - MIN_SYNC_INTERVAL + ACCELERATED_SYNC_DELAY;
+            lastSyncAttemptRef.current = Date.now() - MIN_SYNC_INTERVAL + drainDelay;
             setTimeout(() => {
               if (navigator.onLine && !syncInProgressRef.current) {
                 performSync(true);
               }
-            }, ACCELERATED_SYNC_DELAY);
+            }, drainDelay);
           }
         } else {
           // All fetches timed out - don't report success, will retry next cycle
