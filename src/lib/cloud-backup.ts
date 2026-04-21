@@ -277,8 +277,9 @@ export async function restoreSnapshotToServer(snapshotId: string): Promise<boole
     try {
       const { capturePreEditSnapshot } = await import('./admin-edit-snapshot');
       const { data: { user } } = await supabase.auth.getUser();
-      if (user) {
-        capturePreEditSnapshot(reportType, full.report_id, full.user_id, user.id);
+      const ownerId = (parent as any)?.inspector_id || user?.id;
+      if (user && ownerId) {
+        capturePreEditSnapshot(reportType, full.report_id, ownerId, user.id);
       }
     } catch (e) {
       console.warn('[Cloud Backup] pre_restore snapshot capture failed (non-blocking):', e);

@@ -222,6 +222,8 @@ async function rollbackTransaction(
                 });
                 if (!tw.allowed) break;
               }
+              // Server-side trigger opt-in for legitimate bulk rollback delete
+              try { await (supabase as any).rpc('set_bulk_delete_opt_in'); } catch {}
               await (supabase as any).from(step.table).delete().in('id', ids);
             }
           } else if (step.data?.id) {
