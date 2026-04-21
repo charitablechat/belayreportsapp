@@ -97,6 +97,32 @@ export async function executeTransaction(
             console.error(`[Transaction] BLOCKED: Delete operation on protected table "${step.table}". This is a safety guard to prevent data loss.`);
             throw new Error(`Delete operation blocked on protected table: ${step.table}. Use upsert instead.`);
           }
+          // Gap B fix: route forward-step deletes through the tripwire
+          {
+            const fkCol = step.filter ? Object.keys(step.filter)[0] : null;
+            const fkVal = fkCol ? step.filter[fkCol] : null;
+            if (fkCol && fkVal) {
+              const { data: targetRows } = await (supabase as any)
+                .from(step.table)
+                .select('id')
+                .match(step.filter);
+              const targetIds = (targetRows || []).map((r: any) => r.id);
+              if (targetIds.length > 0) {
+                const tw = await assertSafeToDeleteChildRows({
+                  table: step.table,
+                  parentFkColumn: fkCol,
+                  parentId: String(fkVal),
+                  idsToDelete: targetIds,
+                  context: { source: 'tx_forward_delete', bulk: true, reason: 'transaction_step_delete' },
+                });
+                if (!tw.allowed) {
+                  throw new Error(`Tripwire blocked forward delete on ${step.table}: ${tw.reason}`);
+                }
+              }
+              // Server-side trigger opt-in for legitimate bulk delete
+              try { await (supabase as any).rpc('set_bulk_delete_opt_in'); } catch {}
+            }
+          }
           result = await withStepTimeout(
             (supabase as any).from(step.table).delete().match(step.filter),
             `delete:${step.table}`
