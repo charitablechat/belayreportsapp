@@ -1321,12 +1321,12 @@ export async function syncTrainingAtomic(trainingId: string, preValidatedUser?: 
     if (recordStatus?.record_exists && !recordStatus?.is_deleted) {
       await reconcileAllChildTables(
         [
-          { childTable: 'training_delivery_approaches', parentIdColumn: 'training_id', localItems: delivery_approaches, prefetchedServerRows: existingApproaches },
-          { childTable: 'training_operating_systems', parentIdColumn: 'training_id', localItems: operating_systems, prefetchedServerRows: existingSystems },
-          { childTable: 'training_immediate_attention', parentIdColumn: 'training_id', localItems: immediate_attention, prefetchedServerRows: existingAttention },
-          { childTable: 'training_verifiable_items', parentIdColumn: 'training_id', localItems: verifiable_items, prefetchedServerRows: existingVerifiable },
-          { childTable: 'training_systems_in_place', parentIdColumn: 'training_id', localItems: systems_in_place, prefetchedServerRows: existingSystemsInPlace },
-          { childTable: 'training_summary', parentIdColumn: 'training_id', localItems: summary ? [summary] : [], prefetchedServerRows: existingSummary },
+          { childTable: 'training_delivery_approaches', parentIdColumn: 'training_id', localItems: delivery_approaches, prefetchedServerRows: existingApproaches, expectedNonEmpty: trainingIdbReadFlags.delivery_approaches },
+          { childTable: 'training_operating_systems', parentIdColumn: 'training_id', localItems: operating_systems, prefetchedServerRows: existingSystems, expectedNonEmpty: trainingIdbReadFlags.operating_systems },
+          { childTable: 'training_immediate_attention', parentIdColumn: 'training_id', localItems: immediate_attention, prefetchedServerRows: existingAttention, expectedNonEmpty: trainingIdbReadFlags.immediate_attention },
+          { childTable: 'training_verifiable_items', parentIdColumn: 'training_id', localItems: verifiable_items, prefetchedServerRows: existingVerifiable, expectedNonEmpty: trainingIdbReadFlags.verifiable_items },
+          { childTable: 'training_systems_in_place', parentIdColumn: 'training_id', localItems: systems_in_place, prefetchedServerRows: existingSystemsInPlace, expectedNonEmpty: trainingIdbReadFlags.systems_in_place },
+          { childTable: 'training_summary', parentIdColumn: 'training_id', localItems: summary ? [summary] : [], prefetchedServerRows: existingSummary, expectedNonEmpty: trainingIdbReadFlags.summary },
         ],
         trainingId,
         'training',
@@ -2048,12 +2048,12 @@ export async function syncDailyAssessmentAtomic(assessmentId: string, preValidat
     if (recordStatus?.record_exists && !recordStatus?.is_deleted) {
       await reconcileAllChildTables(
         [
-          { childTable: 'daily_assessment_beginning_of_day', parentIdColumn: 'assessment_id', localItems: beginning_of_day, prefetchedServerRows: existingBeginning },
-          { childTable: 'daily_assessment_end_of_day', parentIdColumn: 'assessment_id', localItems: end_of_day, prefetchedServerRows: existingEnd },
-          { childTable: 'daily_assessment_operating_systems', parentIdColumn: 'assessment_id', localItems: operating_systems, prefetchedServerRows: existingSystems },
-          { childTable: 'daily_assessment_equipment_checks', parentIdColumn: 'assessment_id', localItems: equipment_checks, prefetchedServerRows: existingEquipment },
-          { childTable: 'daily_assessment_structure_checks', parentIdColumn: 'assessment_id', localItems: structure_checks, prefetchedServerRows: existingStructure },
-          { childTable: 'daily_assessment_environment_checks', parentIdColumn: 'assessment_id', localItems: environment_checks, prefetchedServerRows: existingEnvironment },
+          { childTable: 'daily_assessment_beginning_of_day', parentIdColumn: 'assessment_id', localItems: beginning_of_day, prefetchedServerRows: existingBeginning, expectedNonEmpty: assessmentIdbReadFlags.beginning_of_day },
+          { childTable: 'daily_assessment_end_of_day', parentIdColumn: 'assessment_id', localItems: end_of_day, prefetchedServerRows: existingEnd, expectedNonEmpty: assessmentIdbReadFlags.end_of_day },
+          { childTable: 'daily_assessment_operating_systems', parentIdColumn: 'assessment_id', localItems: operating_systems, prefetchedServerRows: existingSystems, expectedNonEmpty: assessmentIdbReadFlags.operating_systems },
+          { childTable: 'daily_assessment_equipment_checks', parentIdColumn: 'assessment_id', localItems: equipment_checks, prefetchedServerRows: existingEquipment, expectedNonEmpty: assessmentIdbReadFlags.equipment_checks },
+          { childTable: 'daily_assessment_structure_checks', parentIdColumn: 'assessment_id', localItems: structure_checks, prefetchedServerRows: existingStructure, expectedNonEmpty: assessmentIdbReadFlags.structure_checks },
+          { childTable: 'daily_assessment_environment_checks', parentIdColumn: 'assessment_id', localItems: environment_checks, prefetchedServerRows: existingEnvironment, expectedNonEmpty: assessmentIdbReadFlags.environment_checks },
         ],
         assessmentId,
         'daily_assessment',
