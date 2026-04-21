@@ -127,8 +127,25 @@ export async function syncInspectionAtomic(inspectionId: string, preValidatedUse
   let inspectionIdMapping: { oldId: string; newId: string } | null = null;
   
   try {
-    // 1. Gather all data for this inspection
-    const inspection = await getOfflineInspection(inspectionId);
+    // S9: Fetch inspection record + all child records in a single Promise.all batch.
+    // Children are keyed by inspectionId which we already have, so no need to wait
+    // for the parent record before kicking off child reads.
+    const [
+      inspectionRead,
+      systemsRead,
+      ziplinesRead,
+      equipmentRead,
+      standardsRead,
+      summaryRead,
+    ] = await Promise.all([
+      getOfflineInspection(inspectionId),
+      getRelatedDataOfflineWithStatus('systems', inspectionId),
+      getRelatedDataOfflineWithStatus('ziplines', inspectionId),
+      getRelatedDataOfflineWithStatus('equipment', inspectionId),
+      getRelatedDataOfflineWithStatus('standards', inspectionId),
+      getRelatedDataOfflineWithStatus('summary', inspectionId),
+    ]);
+    const inspection = inspectionRead;
     if (!inspection) {
       throw new Error("Inspection not found in local storage");
     }
@@ -193,17 +210,6 @@ export async function syncInspectionAtomic(inspectionId: string, preValidatedUse
       }
     }
     
-    // Fetch child records using the ORIGINAL ID (before temp-to-UUID swap)
-    // because they are stored in IndexedDB under the original inspection_id
-    const fetchId = inspectionIdMapping ? inspectionIdMapping.oldId : inspectionId;
-    
-    const [systemsRead, ziplinesRead, equipmentRead, standardsRead, summaryRead] = await Promise.all([
-      getRelatedDataOfflineWithStatus('systems', fetchId),
-      getRelatedDataOfflineWithStatus('ziplines', fetchId),
-      getRelatedDataOfflineWithStatus('equipment', fetchId),
-      getRelatedDataOfflineWithStatus('standards', fetchId),
-      getRelatedDataOfflineWithStatus('summary', fetchId),
-    ]);
     const rawSystems = systemsRead.items;
     const rawZiplines = ziplinesRead.items;
     const rawEquipment = equipmentRead.items;
