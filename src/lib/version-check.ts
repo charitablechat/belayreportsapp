@@ -49,7 +49,7 @@ async function fetchDeployedVersion(): Promise<{ version: string | null; build: 
  * compare the numeric SemVer core. (Currently /version.json never includes
  * a `+` suffix, but be defensive.)
  */
-function stripSuffix(v: string): string {
+export function stripSuffix(v: string): string {
   return v.split(/[+-]/, 1)[0] || v;
 }
 
