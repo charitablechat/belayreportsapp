@@ -48,25 +48,43 @@ export function isHeicFile(file: File): boolean {
  * Convert a HEIC/HEIF blob to JPEG.
  * Returns the converted JPEG blob, or null on failure.
  */
+/** Detect iOS for tuning conversion timeouts (older iPads are slow at JS HEIC decoding). */
+function isIOSDevice(): boolean {
+  if (typeof navigator === 'undefined') return false;
+  return /iPad|iPhone|iPod/.test(navigator.userAgent) ||
+    (navigator.platform === 'MacIntel' && (navigator as any).maxTouchPoints > 1);
+}
+
+async function decodeOnce(blob: Blob, quality: number, timeoutMs: number): Promise<Blob | null> {
+  const heic2any = (await import('heic2any')).default;
+  const result = await Promise.race([
+    heic2any({ blob, toType: 'image/jpeg', quality }),
+    new Promise<never>((_, reject) =>
+      setTimeout(() => reject(new Error(`HEIC conversion timed out after ${timeoutMs}ms`)), timeoutMs)
+    ),
+  ]);
+  return Array.isArray(result) ? result[0] : (result as Blob);
+}
+
 export async function convertHeicBlobToJpeg(
   blob: Blob,
   quality = 0.85
 ): Promise<Blob | null> {
-  const HEIC_CONVERSION_TIMEOUT = 10000; // 10s cap for iPad Safari
+  // iOS devices (especially older iPads) need more time for pure-JS HEIC decoding.
+  const timeoutMs = isIOSDevice() ? 25000 : 10000;
+  const allowRetry = isIOSDevice();
   try {
-    const heic2any = (await import('heic2any')).default;
-    const result = await Promise.race([
-      heic2any({
-        blob,
-        toType: 'image/jpeg',
-        quality,
-      }),
-      new Promise<never>((_, reject) =>
-        setTimeout(() => reject(new Error('HEIC conversion timed out after 10s')), HEIC_CONVERSION_TIMEOUT)
-      ),
-    ]);
-    return Array.isArray(result) ? result[0] : result;
+    return await decodeOnce(blob, quality, timeoutMs);
   } catch (e) {
+    if (allowRetry) {
+      console.warn('[heic-converter] First attempt failed, retrying once on iOS:', e);
+      try {
+        return await decodeOnce(blob, quality, timeoutMs);
+      } catch (e2) {
+        console.warn('[heic-converter] Retry also failed:', e2);
+        return null;
+      }
+    }
     console.warn('[heic-converter] Conversion failed:', e);
     return null;
   }

@@ -377,7 +377,7 @@ function ItemPhotoUpload({
       <input
         ref={fileInputRef}
         type="file"
-        accept="image/*"
+        accept="image/*,image/heic,image/heif,.heic,.heif"
         className="hidden"
         onChange={handleFileChange}
         disabled={disabled}

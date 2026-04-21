@@ -216,7 +216,7 @@ export default function ContactDeveloper() {
                 <Input
                   id="image"
                   type="file"
-                  accept="image/*"
+                  accept="image/*,image/heic,image/heif,.heic,.heif"
                   onChange={handleImageSelect}
                   className="hidden"
                 />

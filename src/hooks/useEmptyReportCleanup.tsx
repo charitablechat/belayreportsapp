@@ -161,6 +161,27 @@ export function useEmptyReportCleanup({
     try {
       // Soft-delete from Supabase if online (UPDATE instead of DELETE)
       if (navigator.onLine) {
+        // Gap 3 (iOS): server child-count queries below are RLS-protected. If the auth
+        // session hasn't rehydrated yet (common right after iOS PWA wake-from-suspend),
+        // the queries return count: 0 and we'd falsely confirm "empty" → soft-delete a
+        // real report. Guard with a session check + one short retry.
+        try {
+          let { data: { session } } = await supabase.auth.getSession();
+          if (!session) {
+            await new Promise((r) => setTimeout(r, 2000));
+            ({ data: { session } } = await supabase.auth.getSession());
+          }
+          if (!session) {
+            console.warn('[EmptyReportCleanup] ABORT soft-delete: no auth session after retry; cannot trust server child counts.');
+            cleanupAttempted.current = false;
+            return false;
+          }
+        } catch (sessionErr) {
+          console.warn('[EmptyReportCleanup] ABORT soft-delete: session check failed:', sessionErr);
+          cleanupAttempted.current = false;
+          return false;
+        }
+
         // Gap C fix: verify the parent really has no children on the server before soft-deleting.
         // A bad local IDB read can make a real report appear empty in memory; if we soft-delete
         // here, after 60 days the cron's hard-delete will cascade and wipe every child row.
