@@ -4,6 +4,7 @@
  */
 import { supabase } from '@/integrations/supabase/client';
 import { APP_VERSION } from './attestation';
+import { stripSuffix } from './version-check';
 
 export interface VersionPolicy {
   min_required_version: string | null;
@@ -30,10 +31,12 @@ export function getCachedPolicy(): VersionPolicy | null {
 export function isBelowMinimum(policy: VersionPolicy | null): boolean {
   if (!policy?.min_required_version) return false;
   if (!APP_VERSION || APP_VERSION === 'unknown') return false;
-  if (APP_VERSION === policy.min_required_version) return false;
+  const local = stripSuffix(APP_VERSION);
+  const minV = stripSuffix(policy.min_required_version);
+  if (local === minV) return false;
   const parse = (v: string) => v.split('.').map((p) => parseInt(p, 10) || 0);
-  const [cMaj = 0, cMin = 0, cPatch = 0] = parse(APP_VERSION);
-  const [mMaj = 0, mMin = 0, mPatch = 0] = parse(policy.min_required_version);
+  const [cMaj = 0, cMin = 0, cPatch = 0] = parse(local);
+  const [mMaj = 0, mMin = 0, mPatch = 0] = parse(minV);
   if (mMaj > cMaj) return true;
   if (mMaj === cMaj && mMin > cMin) return true;
   if (mMaj === cMaj && mMin === cMin && mPatch > cPatch) return true;

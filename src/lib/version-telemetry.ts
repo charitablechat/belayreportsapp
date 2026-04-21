@@ -36,9 +36,14 @@ async function upsertTelemetry(serverVersion: string | null): Promise<boolean> {
   try {
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) return false;
-    // Defensive trim: even though APP_VERSION is short today, the column
-    // is `text` and we don't want a runaway value to bloat the row.
-    const clientVersion = (APP_VERSION || 'unknown').slice(0, 64);
+    // R4: append build hash to client_version so distinct deploys with the
+    // same SemVer produce distinct telemetry rows. Comparator strips `+suffix`.
+    const localBuild = ((import.meta.env.BUILD_COMMIT as string) || '').trim();
+    const baseVersion = APP_VERSION || 'unknown';
+    const versioned =
+      localBuild && localBuild !== 'dev' ? `${baseVersion}+${localBuild}` : baseVersion;
+    // Defensive trim: column is `text` and we don't want a runaway value.
+    const clientVersion = versioned.slice(0, 64);
     const { error } = await supabase
       .from('version_telemetry')
       .upsert(

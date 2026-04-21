@@ -8,7 +8,25 @@ import { formatDistanceToNow } from 'date-fns';
 import { useVersionStatus } from '@/hooks/useVersionStatus';
 import { isVersionNewer } from '@/lib/version-check';
 
-const PUBLISHED_VERSION_URL = 'https://ropeworks.lovable.app/version.json';
+// Canonical user-facing domain. Used as a fallback only when the panel is
+// loaded from a non-production host (e.g., Lovable preview/local dev).
+const CANONICAL_VERSION_URL = 'https://rwreports.com/version.json';
+const PRODUCTION_HOSTS = new Set([
+  'rwreports.com',
+  'www.rwreports.com',
+  'ropeworks.lovable.app',
+]);
+
+function resolvePublishedVersionUrl(): string {
+  try {
+    if (typeof window !== 'undefined' && PRODUCTION_HOSTS.has(window.location.hostname)) {
+      return '/version.json'; // same-origin — no CORS, always freshest
+    }
+  } catch {
+    // ignore
+  }
+  return CANONICAL_VERSION_URL;
+}
 
 function usePublishedVersion(enabled: boolean) {
   const [published, setPublished] = useState<string | null>(null);
@@ -17,7 +35,8 @@ function usePublishedVersion(enabled: boolean) {
     let cancelled = false;
     (async () => {
       try {
-        const res = await fetch(`${PUBLISHED_VERSION_URL}?t=${Date.now()}`, { cache: 'no-store' });
+        const url = resolvePublishedVersionUrl();
+        const res = await fetch(`${url}?t=${Date.now()}`, { cache: 'no-store' });
         if (!res.ok) return;
         const data = await res.json();
         if (!cancelled && typeof data?.version === 'string') setPublished(data.version);
