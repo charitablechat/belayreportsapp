@@ -543,11 +543,11 @@ export async function syncInspectionAtomic(inspectionId: string, preValidatedUse
     if (recordStatus?.record_exists && !recordStatus?.is_deleted) {
       await reconcileAllChildTables(
         [
-          { childTable: 'inspection_systems', parentIdColumn: 'inspection_id', localItems: systems, prefetchedServerRows: existingSystems },
-          { childTable: 'inspection_ziplines', parentIdColumn: 'inspection_id', localItems: ziplines, prefetchedServerRows: existingZiplines },
-          { childTable: 'inspection_equipment', parentIdColumn: 'inspection_id', localItems: equipment, prefetchedServerRows: existingEquipment },
-          { childTable: 'inspection_standards', parentIdColumn: 'inspection_id', localItems: standards, prefetchedServerRows: existingStandards },
-          { childTable: 'inspection_summary', parentIdColumn: 'inspection_id', localItems: summary ? [summary] : [], prefetchedServerRows: existingSummary },
+          { childTable: 'inspection_systems', parentIdColumn: 'inspection_id', localItems: systems, prefetchedServerRows: existingSystems, expectedNonEmpty: idbReadFlags.systems },
+          { childTable: 'inspection_ziplines', parentIdColumn: 'inspection_id', localItems: ziplines, prefetchedServerRows: existingZiplines, expectedNonEmpty: idbReadFlags.ziplines },
+          { childTable: 'inspection_equipment', parentIdColumn: 'inspection_id', localItems: equipment, prefetchedServerRows: existingEquipment, expectedNonEmpty: idbReadFlags.equipment },
+          { childTable: 'inspection_standards', parentIdColumn: 'inspection_id', localItems: standards, prefetchedServerRows: existingStandards, expectedNonEmpty: idbReadFlags.standards },
+          { childTable: 'inspection_summary', parentIdColumn: 'inspection_id', localItems: summary ? [summary] : [], prefetchedServerRows: existingSummary, expectedNonEmpty: idbReadFlags.summary },
         ],
         inspectionId,
         'inspection',
