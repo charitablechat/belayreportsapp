@@ -237,7 +237,7 @@ export default function AdminLogoManagement() {
               <Input
                 id="rope-works-upload"
                 type="file"
-                accept="image/*"
+                accept="image/*,image/heic,image/heif,.heic,.heif"
                 onChange={(e) => handleFileChange(e.target.files?.[0] || null, 'ropeWorks')}
                 disabled={uploading || optimizing}
               />
@@ -286,7 +286,7 @@ export default function AdminLogoManagement() {
               <Input
                 id="acct-upload"
                 type="file"
-                accept="image/*"
+                accept="image/*,image/heic,image/heif,.heic,.heif"
                 onChange={(e) => handleFileChange(e.target.files?.[0] || null, 'acct')}
                 disabled={uploading || optimizing}
               />
