@@ -564,7 +564,16 @@ async function syncTrainingsAtomic() {
           console.warn('[SW SAFETY] suspicious_empty_guard: training edited but all children empty', training.id);
           continue;
         }
-        
+
+        // V6: child_count_hint regression guard for training
+        const tLiveChildTotal = deliveryApproaches.length + operatingSystems.length +
+          immediateAttention.length + verifiableItems.length + systemsInPlace.length + summaryArray.length;
+        const tHint = typeof training.child_count_hint === 'number' ? training.child_count_hint : null;
+        if (tHint !== null && tHint > 0 && tLiveChildTotal < tHint * 0.5) {
+          console.warn('[SW SAFETY] child_count_hint regression for training', training.id, '- live:', tLiveChildTotal, 'hint:', tHint, '- deferring sync');
+          continue;
+        }
+
         const trainingData = { ...training };
         delete trainingData.synced_at;
         // Bug 1 fix: Strip joined objects that would cause PostgREST errors
@@ -692,7 +701,16 @@ async function syncDailyAssessmentsAtomic() {
           console.warn('[SW SAFETY] suspicious_empty_guard: assessment edited but all children empty', assessment.id);
           continue;
         }
-        
+
+        // V6: child_count_hint regression guard for assessment
+        const aLiveChildTotal = beginningOfDay.length + endOfDay.length + environmentChecks.length +
+          equipmentChecks.length + structureChecks.length + operatingSystems.length;
+        const aHint = typeof assessment.child_count_hint === 'number' ? assessment.child_count_hint : null;
+        if (aHint !== null && aHint > 0 && aLiveChildTotal < aHint * 0.5) {
+          console.warn('[SW SAFETY] child_count_hint regression for assessment', assessment.id, '- live:', aLiveChildTotal, 'hint:', aHint, '- deferring sync');
+          continue;
+        }
+
         const assessmentData = { ...assessment };
         delete assessmentData.synced_at;
         // Bug 1 fix: Strip joined objects that would cause PostgREST errors

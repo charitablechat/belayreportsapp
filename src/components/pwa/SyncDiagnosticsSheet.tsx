@@ -6,6 +6,7 @@ import { usePWA } from '@/hooks/usePWA';
 import { ForceSyncButton } from '@/components/pwa/ForceSyncButton';
 import { getMobileCapabilities, checkStorageQuota } from '@/lib/mobile-detection';
 import { isServiceWorkerAllowed } from '@/lib/environment';
+import { getRecentTripwireBlockCount } from '@/lib/child-row-deletion-tripwire';
 import { format } from 'date-fns';
 import { toast } from 'sonner';
 
@@ -16,6 +17,7 @@ interface DiagnosticsState {
   storageUsageMB: number;
   storageQuotaMB: number;
   storagePercent: number;
+  tripwireBlocks24h: number;
 }
 
 const formatDate = (d: Date | null) => (d ? format(d, 'PPp') : '—');
@@ -45,6 +47,7 @@ export const SyncDiagnosticsSheet = () => {
     storageUsageMB: 0,
     storageQuotaMB: 0,
     storagePercent: 0,
+    tripwireBlocks24h: 0,
   });
 
   const refresh = async () => {
@@ -62,6 +65,7 @@ export const SyncDiagnosticsSheet = () => {
       }
     }
     const storage = await checkStorageQuota();
+    const tripwireBlocks24h = await getRecentTripwireBlockCount(24).catch(() => 0);
     setDiag({
       swRegistered,
       swController,
@@ -69,6 +73,7 @@ export const SyncDiagnosticsSheet = () => {
       storageUsageMB: storage.usage / 1024 / 1024,
       storageQuotaMB: storage.quota / 1024 / 1024,
       storagePercent: storage.percentUsed,
+      tripwireBlocks24h,
     });
   };
 
@@ -121,6 +126,10 @@ export const SyncDiagnosticsSheet = () => {
               label="Storage used"
               value={`${diag.storageUsageMB.toFixed(1)} MB / ${diag.storageQuotaMB.toFixed(0)} MB (${diag.storagePercent.toFixed(0)}%)`}
             />
+          </Section>
+
+          <Section title="Data Safety">
+            <Row label="Child-row deletions blocked (24 h)" value={String(diag.tripwireBlocks24h)} />
           </Section>
 
           <div className="flex flex-col gap-2 pt-2">
