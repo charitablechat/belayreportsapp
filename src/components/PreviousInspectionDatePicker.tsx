@@ -34,11 +34,15 @@ export function PreviousInspectionDatePicker({ value, onChange, disabled }: Prev
   };
 
   const handleDateSelect = (date: Date | undefined) => {
-    if (date) {
+    if (date && !isNaN(date.getTime())) {
       // Format as YYYY-MM-DD for database storage
       const formatted = format(date, "yyyy-MM-dd");
-      onChange(formatted);
-      setOpen(false);
+      // Guard: only persist canonical ISO date format (defends against
+      // partial values from native iOS pickers in edge cases)
+      if (/^\d{4}-\d{2}-\d{2}$/.test(formatted)) {
+        onChange(formatted);
+        setOpen(false);
+      }
     }
   };
 
