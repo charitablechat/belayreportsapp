@@ -1,10 +1,12 @@
 import { useEffect, useState } from 'react';
+import { useLocation } from 'react-router-dom';
 import { isIOS, isPWA } from '@/lib/mobile-detection';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
 import { Share, X } from 'lucide-react';
 
 const STORAGE_KEY = 'ios-install-prompt-dismissed-v1';
+const PUBLIC_ROUTES = ['/', '/welcome'];
 
 /**
  * One-time, dismissible nudge for iOS Safari users to add the app to their
@@ -12,17 +14,21 @@ const STORAGE_KEY = 'ios-install-prompt-dismissed-v1';
  * dramatically improve sync reliability (avoids 7-day IndexedDB eviction).
  *
  * Hidden once the user dismisses it or installs the app.
+ * Suppressed entirely on public routes (welcome screen).
  */
 export const IOSInstallPromptOnce = () => {
   const [show, setShow] = useState(false);
+  const location = useLocation();
+  const isPublicRoute = PUBLIC_ROUTES.includes(location.pathname);
 
   useEffect(() => {
+    if (isPublicRoute) return;
     if (!isIOS() || isPWA()) return;
     if (localStorage.getItem(STORAGE_KEY) === '1') return;
     setShow(true);
-  }, []);
+  }, [isPublicRoute]);
 
-  if (!show) return null;
+  if (isPublicRoute || !show) return null;
 
   const dismiss = () => {
     localStorage.setItem(STORAGE_KEY, '1');

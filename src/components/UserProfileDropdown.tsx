@@ -104,10 +104,10 @@ function VersionStatusLine() {
              />
            </Button>
          </DropdownMenuTrigger>
-         <DropdownMenuContent align="end" className="w-56">
+         <DropdownMenuContent align="end" className="w-72">
            <DropdownMenuLabel>
              <div className="flex flex-col space-y-1">
-               <div className="flex items-center justify-between">
+               <div className="flex items-center justify-between gap-2">
                  <p className="text-sm font-medium">Account</p>
                  {isSuperAdmin && (
                    <Badge variant="default" className="bg-warning text-warning-foreground border-warning/50 shadow-md shadow-warning/20 animate-pulse text-xs flex items-center gap-1">
@@ -116,7 +116,7 @@ function VersionStatusLine() {
                    </Badge>
                  )}
                </div>
-               <p className="text-xs text-muted-foreground truncate">
+               <p className="text-xs text-muted-foreground break-all">
                  {currentUser?.email || 'user@example.com'}
                </p>
              </div>

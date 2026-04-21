@@ -142,7 +142,6 @@ export function AuthenticatedHeader() {
       aria-label="User menu"
     >
       <UpdateBadge />
-      {isIOS() && <ForceSyncButton variant="icon" unsyncedCount={unsyncedCount} />}
       <UserProfileDropdown
         currentUser={currentUser}
         userProfile={userProfile}
