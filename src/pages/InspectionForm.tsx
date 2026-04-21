@@ -1221,6 +1221,11 @@ export default function InspectionForm() {
             );
           } else if (offlineSystems.length > 0) {
             console.warn('[InspectionForm] Server returned empty systems but local has data -- preserving local');
+            const normalizedSystems = offlineSystems.map(item => ({
+              ...item,
+              result: normalizeResultValue(item.result)
+            }));
+            setSystems(normalizedSystems);
           }
 
           const { data: ziplinesData } = ziplinesResult;
@@ -1238,6 +1243,14 @@ export default function InspectionForm() {
             );
           } else if (offlineZiplines.length > 0) {
             console.warn('[InspectionForm] Server returned empty ziplines but local has data -- preserving local');
+            const normalizedZiplines = offlineZiplines.map(item => ({
+              ...item,
+              result: normalizeResultValue(item.result),
+              cable_result: normalizeResultValue(item.cable_result),
+              braking_result: normalizeResultValue(item.braking_result),
+              ead_result: normalizeResultValue(item.ead_result)
+            }));
+            setZiplines(normalizedZiplines);
           }
 
           const { data: equipmentData } = equipmentResult;
@@ -1252,6 +1265,11 @@ export default function InspectionForm() {
             );
           } else if (offlineEquipment.length > 0) {
             console.warn('[InspectionForm] Server returned empty equipment but local has data -- preserving local');
+            const normalizedEquipment = offlineEquipment.map(item => ({
+              ...item,
+              result: normalizeResultValue(item.result)
+            }));
+            setEquipment(normalizedEquipment);
           }
 
           const { data: standardsData } = standardsResult;
@@ -1262,6 +1280,7 @@ export default function InspectionForm() {
             );
           } else if (offlineStandards.length > 0) {
             console.warn('[InspectionForm] Server returned empty standards but local has data -- preserving local');
+            setStandards(mergeStandards(offlineStandards));
           }
 
           const { data: summaryData } = summaryResult;
@@ -1272,6 +1291,7 @@ export default function InspectionForm() {
             );
           } else if (offlineSummary.length > 0) {
             console.warn('[InspectionForm] Server returned empty summary but local has data -- preserving local');
+            setSummary(offlineSummary[0]);
           }
 
           if (import.meta.env.DEV) {

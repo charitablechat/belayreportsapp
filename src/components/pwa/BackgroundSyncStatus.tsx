@@ -3,17 +3,24 @@ import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { InfoIcon, Loader2 } from 'lucide-react';
 import { isIOS } from '@/lib/mobile-detection';
 import { usePWA } from '@/hooks/usePWA';
+import { useLocation } from 'react-router-dom';
+
+const PUBLIC_ROUTES = ['/', '/welcome'];
 
 /**
  * Surfaces a contextual notice for browsers without the Background Sync API
  * (primarily Safari / iOS). On iOS we also show the live unsynced item count
  * and instruct the user to keep the app open until sync completes — since iOS
  * suspends background work aggressively.
+ *
+ * Suppressed on public routes (welcome screen) to avoid crowding the landing UI.
  */
 export const BackgroundSyncStatus = () => {
   const isSupported = isBackgroundSyncSupported();
   const { unsyncedCount, isSyncing, isOnline } = usePWA();
+  const location = useLocation();
 
+  if (PUBLIC_ROUTES.includes(location.pathname)) return null;
   if (isSupported) return null;
 
   const isIOSDevice = isIOS();

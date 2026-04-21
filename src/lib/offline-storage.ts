@@ -823,8 +823,8 @@ export async function getDB() {
       });
     };
 
-    // RC-3: Use 5s timeout on mobile (Safari bfcache restore can take 3-5s)
-    const DB_OPEN_TIMEOUT = isMobile() ? 5000 : 3000;
+    // RC-3: Use 8s timeout on mobile (Safari bfcache restore + iPad cold boot can take 5-6s)
+    const DB_OPEN_TIMEOUT = isMobile() ? 8000 : 5000;
     dbPromise = Promise.race([
       openDBV8WithTimeout(),
       new Promise<never>((_, reject) => 

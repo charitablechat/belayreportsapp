@@ -576,17 +576,18 @@ export default function DailyAssessmentForm() {
                 console.warn(`[DailyAssessmentForm] Non-critical: failed to cache ${key}`, e));
             } else if (localData.length > 0) {
               console.warn(`[DailyAssessmentForm] Server returned empty ${key} but local has data -- preserving local`);
+              setter(localData);
             } else {
               setter(serverData || []);
             }
           };
 
-          guardedSet(bodData.data, bodData.data?.length ? [] : beginningOfDay, setBeginningOfDay, 'beginning_of_day');
-          guardedSet(eodData.data, eodData.data?.length ? [] : endOfDay, setEndOfDay, 'end_of_day');
-          guardedSet(osData.data, osData.data?.length ? [] : operatingSystems, setOperatingSystems, 'operating_systems');
-          guardedSet(eqData.data, eqData.data?.length ? [] : equipmentChecks, setEquipmentChecks, 'equipment_checks');
-          guardedSet(stData.data, stData.data?.length ? [] : structureChecks, setStructureChecks, 'structure_checks');
-          guardedSet(envData.data, envData.data?.length ? [] : environmentChecks, setEnvironmentChecks, 'environment_checks');
+          guardedSet(bodData.data, beginningOfDay, setBeginningOfDay, 'beginning_of_day');
+          guardedSet(eodData.data, endOfDay, setEndOfDay, 'end_of_day');
+          guardedSet(osData.data, operatingSystems, setOperatingSystems, 'operating_systems');
+          guardedSet(eqData.data, equipmentChecks, setEquipmentChecks, 'equipment_checks');
+          guardedSet(stData.data, structureChecks, setStructureChecks, 'structure_checks');
+          guardedSet(envData.data, environmentChecks, setEnvironmentChecks, 'environment_checks');
         }
       } else if (!offlineAssessment) {
         // Offline and no cached data

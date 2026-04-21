@@ -669,7 +669,9 @@ export default function Dashboard() {
               }
               console.log('[Dashboard] Server synced_at >= local updated_at, allowing overwrite:', inspection.id);
             }
-            return saveInspectionOffline({ ...inspection, synced_at: inspection.synced_at || now });
+            // V1: Preserve local synced_at if it exists -- bumping it falsely marks unsynced child rows as fresh
+            const preservedSyncedAt = localRecord?.synced_at || inspection.synced_at || now;
+            return saveInspectionOffline({ ...inspection, synced_at: preservedSyncedAt });
           }))
             .then(async () => {
               // ORPHAN CLEANUP — deferred to avoid blocking render
@@ -839,7 +841,9 @@ export default function Dashboard() {
               }
               console.log('[Dashboard] Server synced_at >= local updated_at, allowing overwrite:', training.id);
             }
-            return saveTrainingOffline({ ...training, synced_at: training.synced_at || nowT });
+            // V1: Preserve local synced_at if it exists -- bumping it falsely marks unsynced child rows as fresh
+            const preservedSyncedAtT = localRecord?.synced_at || training.synced_at || nowT;
+            return saveTrainingOffline({ ...training, synced_at: preservedSyncedAtT });
           }))
             .then(async () => {
               // ORPHAN CLEANUP with threshold guard + rate limiting (Vector 4)
@@ -996,7 +1000,9 @@ export default function Dashboard() {
               }
               console.log('[Dashboard] Server synced_at >= local updated_at, allowing overwrite:', assessment.id);
             }
-            return saveDailyAssessmentOffline({ ...assessment, synced_at: assessment.synced_at || nowA });
+            // V1: Preserve local synced_at if it exists -- bumping it falsely marks unsynced child rows as fresh
+            const preservedSyncedAtA = localRecord?.synced_at || assessment.synced_at || nowA;
+            return saveDailyAssessmentOffline({ ...assessment, synced_at: preservedSyncedAtA });
           }))
             .then(async () => {
               // ORPHAN CLEANUP with threshold guard + rate limiting (Vector 4)
