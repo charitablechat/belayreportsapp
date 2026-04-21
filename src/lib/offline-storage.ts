@@ -1525,6 +1525,24 @@ export async function getRelatedDataOffline(
   );
 }
 
+/**
+ * Status-aware variant: returns whether the IDB read truly succeeded.
+ * `readSucceeded === false` means the value came from a fallback (timeout / circuit breaker / error)
+ * and the caller should NOT treat an empty array as "user deleted everything".
+ */
+export async function getRelatedDataOfflineWithStatus(
+  type: RelatedDataType,
+  inspectionId: string
+): Promise<{ items: any[]; readSucceeded: boolean }> {
+  const failuresBefore = indexedDBFailureCount;
+  const cbOpenBefore = isCircuitBreakerOpen();
+  const items = await getRelatedDataOffline(type, inspectionId);
+  const failuresAfter = indexedDBFailureCount;
+  const cbOpenAfter = isCircuitBreakerOpen();
+  const readSucceeded = !cbOpenBefore && !cbOpenAfter && failuresAfter === failuresBefore;
+  return { items, readSucceeded };
+}
+
 export async function clearRelatedDataOffline(
   type: RelatedDataType,
   inspectionId: string,
@@ -1842,6 +1860,20 @@ export async function getAssessmentDataOffline(
     [],
     `getAssessmentDataOffline:${type}`
   );
+}
+
+/** Status-aware variant — see getRelatedDataOfflineWithStatus. */
+export async function getAssessmentDataOfflineWithStatus(
+  type: AssessmentDataType,
+  assessmentId: string
+): Promise<{ items: any[]; readSucceeded: boolean }> {
+  const failuresBefore = indexedDBFailureCount;
+  const cbOpenBefore = isCircuitBreakerOpen();
+  const items = await getAssessmentDataOffline(type, assessmentId);
+  const failuresAfter = indexedDBFailureCount;
+  const cbOpenAfter = isCircuitBreakerOpen();
+  const readSucceeded = !cbOpenBefore && !cbOpenAfter && failuresAfter === failuresBefore;
+  return { items, readSucceeded };
 }
 
 export async function clearAssessmentDataOffline(
@@ -2207,6 +2239,20 @@ export async function getTrainingDataOffline(
     [],
     `getTrainingDataOffline:${type}`
   );
+}
+
+/** Status-aware variant — see getRelatedDataOfflineWithStatus. */
+export async function getTrainingDataOfflineWithStatus(
+  type: TrainingDataType,
+  trainingId: string
+): Promise<{ items: any[]; readSucceeded: boolean }> {
+  const failuresBefore = indexedDBFailureCount;
+  const cbOpenBefore = isCircuitBreakerOpen();
+  const items = await getTrainingDataOffline(type, trainingId);
+  const failuresAfter = indexedDBFailureCount;
+  const cbOpenAfter = isCircuitBreakerOpen();
+  const readSucceeded = !cbOpenBefore && !cbOpenAfter && failuresAfter === failuresBefore;
+  return { items, readSucceeded };
 }
 
 export async function clearTrainingDataOffline(
