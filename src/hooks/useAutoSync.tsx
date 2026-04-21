@@ -17,18 +17,19 @@ import { toast } from '@/components/ui/sonner';
 import { markSnapshotSynced } from '@/lib/local-backup-ledger';
 
 // Sync configuration with mobile optimization
-const DEBOUNCE_DELAY = 3000; // 3 seconds after local changes
+// Tuned for fast user-driven sync (S5/S6/S7) — duplicate prevention is handled by syncInProgressRef
+const DEBOUNCE_DELAY = 1500; // 1.5s after local changes (was 3s) — matches AUTO_SAVE_DEBOUNCE_MS
 const DESKTOP_SYNC_INTERVAL = 30000; // 30 seconds for desktop
 const DESKTOP_IDLE_SYNC_INTERVAL = 120000; // 120 seconds when idle (no unsynced items)
 const MOBILE_SYNC_INTERVAL = 60000; // 60 seconds for mobile (reduced from 5min for faster sync)
 const MOBILE_IDLE_SYNC_INTERVAL = 180000; // 180 seconds when idle on mobile
-const MIN_SYNC_INTERVAL = 5000; // Minimum 5 seconds between syncs
-const INITIAL_SYNC_DELAY = 2000; // 2 seconds delay for initial sync to not block UI
+const MIN_SYNC_INTERVAL = 2000; // Minimum 2s between syncs (was 5s) — anti-thrash floor
+const INITIAL_SYNC_DELAY = 500; // 500ms initial sync delay (was 2s) — UI is paint-stable by then
 const BASE_SYNC_TIMEOUT = 30000; // Base 30 second timeout
 const PER_ITEM_TIMEOUT_BUDGET = 8000; // 8 seconds budget per unsynced item
 const MAX_SYNC_TIMEOUT = 300000; // 5 minute absolute maximum
 const MAX_BATCH_SIZE = 5; // Must match atomic-sync-manager.ts
-const ACCELERATED_SYNC_DELAY = 5000; // 5s between cycles when draining a queue
+const ACCELERATED_SYNC_DELAY = 1000; // 1s between cycles when draining a queue (was 5s)
 const STALE_UPLOAD_THRESHOLD = 5 * 60 * 1000; // 5 minutes - warn if data hasn't synced
 const STALE_CHECK_INTERVAL = 60 * 1000; // Check every 60 seconds
 const POST_SYNC_COOLDOWN = 10000; // 10s cooldown after sync completes to ignore self-triggered Realtime events
