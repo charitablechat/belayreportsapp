@@ -4,7 +4,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { useQuery } from "@tanstack/react-query";
 import { getUserWithCache } from "@/lib/cached-auth";
 import { UserProfileDropdown } from "@/components/UserProfileDropdown";
-import { UpdateBadge } from "@/components/pwa/UpdateBadge";
+// UpdateBadge intentionally omitted from header — update affordance lives in the profile dropdown.
 import { usePWA } from "@/hooks/usePWA";
 import { toast } from "sonner";
 
