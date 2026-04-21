@@ -623,16 +623,8 @@ export async function syncInspectionAtomic(inspectionId: string, preValidatedUse
       throw new Error(`Transaction failed after ${result.completedSteps}/${result.totalSteps} steps. Rollback: ${result.rollbackSuccess ? 'successful' : 'failed'}`);
     }
     
-    // POST-TRANSACTION VERIFICATION: Confirm the record actually exists on the server
-    const { data: postSyncVerify } = await supabase
-      .from('inspections')
-      .select('id, synced_at')
-      .eq('id', inspectionId)
-      .maybeSingle();
-    
-    if (!postSyncVerify) {
-      throw new Error('Post-sync verification failed: inspection not found on server after transaction succeeded');
-    }
+    // S4: Skip post-transaction verify SELECT — `executeTransaction` already throws on
+    // 0-affected-row writes, and `align_synced_at` below errors loudly if the row is missing.
     
     // 6. Get cached inspector profile to attach to offline data
     const inspectorProfile = await getCachedProfile(user.id);
