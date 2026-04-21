@@ -1025,14 +1025,28 @@ export async function syncTrainingAtomic(trainingId: string, preValidatedUser?: 
     // because they are stored in IndexedDB under the original training_id
     const fetchId = trainingIdMapping ? trainingIdMapping.oldId : trainingId;
     
-    const [rawDeliveryApproaches, rawOperatingSystems, rawImmediateAttention, rawVerifiableItems, rawSystemsInPlace, summaryArray] = await Promise.all([
-      getTrainingDataOffline('delivery_approaches', fetchId),
-      getTrainingDataOffline('operating_systems', fetchId),
-      getTrainingDataOffline('immediate_attention', fetchId),
-      getTrainingDataOffline('verifiable_items', fetchId),
-      getTrainingDataOffline('systems_in_place', fetchId),
-      getTrainingDataOffline('summary', fetchId),
+    const [daRead, osRead, iaRead, viRead, sipRead, summaryReadT] = await Promise.all([
+      getTrainingDataOfflineWithStatus('delivery_approaches', fetchId),
+      getTrainingDataOfflineWithStatus('operating_systems', fetchId),
+      getTrainingDataOfflineWithStatus('immediate_attention', fetchId),
+      getTrainingDataOfflineWithStatus('verifiable_items', fetchId),
+      getTrainingDataOfflineWithStatus('systems_in_place', fetchId),
+      getTrainingDataOfflineWithStatus('summary', fetchId),
     ]);
+    const rawDeliveryApproaches = daRead.items;
+    const rawOperatingSystems = osRead.items;
+    const rawImmediateAttention = iaRead.items;
+    const rawVerifiableItems = viRead.items;
+    const rawSystemsInPlace = sipRead.items;
+    const summaryArray = summaryReadT.items;
+    const trainingIdbReadFlags = {
+      delivery_approaches: daRead.readSucceeded,
+      operating_systems: osRead.readSucceeded,
+      immediate_attention: iaRead.readSucceeded,
+      verifiable_items: viRead.readSucceeded,
+      systems_in_place: sipRead.readSucceeded,
+      summary: summaryReadT.readSucceeded,
+    };
     
     let rawSummary = summaryArray[0] || null;
     
@@ -1741,14 +1755,28 @@ export async function syncDailyAssessmentAtomic(assessmentId: string, preValidat
     // because they are stored in IndexedDB under the original assessment_id
     const fetchId = assessmentIdMapping ? assessmentIdMapping.oldId : assessmentId;
     
-    const [rawBeginningOfDay, rawEndOfDay, rawOperatingSystems, rawEquipmentChecks, rawStructureChecks, rawEnvironmentChecks] = await Promise.all([
-      getAssessmentDataOffline('beginning_of_day', fetchId),
-      getAssessmentDataOffline('end_of_day', fetchId),
-      getAssessmentDataOffline('operating_systems', fetchId),
-      getAssessmentDataOffline('equipment_checks', fetchId),
-      getAssessmentDataOffline('structure_checks', fetchId),
-      getAssessmentDataOffline('environment_checks', fetchId),
+    const [bodRead, eodRead, opSysRead, eqRead, stRead, envRead] = await Promise.all([
+      getAssessmentDataOfflineWithStatus('beginning_of_day', fetchId),
+      getAssessmentDataOfflineWithStatus('end_of_day', fetchId),
+      getAssessmentDataOfflineWithStatus('operating_systems', fetchId),
+      getAssessmentDataOfflineWithStatus('equipment_checks', fetchId),
+      getAssessmentDataOfflineWithStatus('structure_checks', fetchId),
+      getAssessmentDataOfflineWithStatus('environment_checks', fetchId),
     ]);
+    const rawBeginningOfDay = bodRead.items;
+    const rawEndOfDay = eodRead.items;
+    const rawOperatingSystems = opSysRead.items;
+    const rawEquipmentChecks = eqRead.items;
+    const rawStructureChecks = stRead.items;
+    const rawEnvironmentChecks = envRead.items;
+    const assessmentIdbReadFlags = {
+      beginning_of_day: bodRead.readSucceeded,
+      end_of_day: eodRead.readSucceeded,
+      operating_systems: opSysRead.readSucceeded,
+      equipment_checks: eqRead.readSucceeded,
+      structure_checks: stRead.readSucceeded,
+      environment_checks: envRead.readSucceeded,
+    };
     
     // If we swapped the assessment ID, propagate new ID to all child records
     if (assessmentIdMapping) {
