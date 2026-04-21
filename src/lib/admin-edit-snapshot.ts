@@ -199,6 +199,11 @@ export async function restoreAdminEditSnapshot(snapshotId: string): Promise<bool
 
   const { assertSafeToDeleteChildRows } = await import('./child-row-deletion-tripwire');
 
+  // Server-side trigger opt-in (admin restore is intentional bulk replacement)
+  try { await (supabase as any).rpc('set_bulk_delete_opt_in'); } catch (e) {
+    console.warn('[AdminEditSnapshot] set_bulk_delete_opt_in rpc failed:', e);
+  }
+
   try {
     // Upsert parent
     const { error: parentErr } = await (supabase.from(parentTable as any) as any)
