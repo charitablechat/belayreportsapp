@@ -54,6 +54,7 @@ import {
   deleteOfflineDailyAssessment,
 } from "./offline-storage";
 import { appendVersion, getLatestFieldCount, calculateFieldCount } from "./report-version-manager";
+import { runWithConcurrency } from "./concurrency";
 
 /**
  * Maximum number of items to process per sync cycle.
