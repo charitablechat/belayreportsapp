@@ -147,7 +147,6 @@ export function AuthenticatedHeader() {
       role="navigation"
       aria-label="User menu"
     >
-      <UpdateBadge />
       <UserProfileDropdown
         currentUser={currentUser}
         userProfile={userProfile}
