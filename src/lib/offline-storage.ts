@@ -2553,6 +2553,28 @@ export async function evictSyncedReports(ageDays: number): Promise<number> {
       const allRecords = await readTx.store.getAll();
       await readTx.done;
 
+      // V8: Pre-scan unsynced photo IDs to skip eviction for any report with pending uploads.
+      // Photos store has its own 'by-uploaded' index; do this once per evict pass, not per record.
+      const unsyncedReportIds = new Set<string>();
+      if (db.objectStoreNames.contains('photos')) {
+        try {
+          const photoTx = db.transaction('photos', 'readonly');
+          const allPhotos = await photoTx.store.getAll();
+          await photoTx.done;
+          for (const p of allPhotos) {
+            if (p && p.uploaded === false && p.inspectionId) {
+              unsyncedReportIds.add(p.inspectionId);
+            }
+          }
+        } catch (e) {
+          console.warn('[Eviction] Failed to scan unsynced photos -- skipping eviction this pass:', e);
+          return; // Be conservative: if we can't verify, skip eviction entirely
+        }
+      }
+
+      const RECENT_EDIT_WINDOW_MS = 30 * 60 * 1000; // 30 minutes
+      const nowMs = Date.now();
+
       for (const record of allRecords) {
         const id = record.id;
         if (!id || id === currentReportId) continue;
@@ -2562,6 +2584,23 @@ export async function evictSyncedReports(ageDays: number): Promise<number> {
         const updatedAt = record.updated_at ? new Date(record.updated_at).getTime() : 0;
         if (!syncedAt || syncedAt < updatedAt) continue;
         if (syncedAt > cutoff) continue;
+
+        // V8: Skip if parent was edited within the last 30 minutes regardless of synced_at.
+        // (Defends against a stale synced_at stamped while another tab was editing.)
+        if (updatedAt && (nowMs - updatedAt) < RECENT_EDIT_WINDOW_MS) {
+          if (import.meta.env.DEV) {
+            console.log(`[Eviction] Skip ${id.substring(0, 8)} -- recently edited (<30 min)`);
+          }
+          continue;
+        }
+
+        // V8: Skip if there are any unsynced (uploaded === false) photos for this report.
+        if (unsyncedReportIds.has(id)) {
+          if (import.meta.env.DEV) {
+            console.log(`[Eviction] Skip ${id.substring(0, 8)} -- has unsynced photos`);
+          }
+          continue;
+        }
 
         // Evict parent + children in a single transaction
         // Use 'as any' to bypass strict store name typing for dynamic store list
