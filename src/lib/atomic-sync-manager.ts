@@ -829,22 +829,27 @@ export async function syncAllInspectionsAtomic(preValidatedUser?: CachedUser) {
   
   // Mobile devices get retry logic
   const maxRetries = capabilities.isMobile ? 2 : 1; // Reduced retries for faster recovery
-  
-  for (let i = 0; i < batch.length; i++) {
-    const inspection = batch[i];
+  // S2: Bounded concurrency — different inspectionIds never share child rows, and
+  // executeTransaction is per-record. 3 on mobile / 5 on desktop is well within Supabase
+  // connection-pool headroom and dramatically reduces wall-clock for queued drains.
+  const itemConcurrency = capabilities.isMobile ? 3 : 5;
+  let progressCounter = 0;
+
+  await runWithConcurrency(batch, itemConcurrency, async (inspection, i) => {
     let retryCount = 0;
     let synced = false;
-    
+
     while (retryCount < maxRetries && !synced) {
       // Emit progress for current item
+      progressCounter++;
       syncProgressEmitter.emit({
         total: batch.length,
-        current: i + 1,
+        current: progressCounter,
         currentItem: `${inspection.organization} - ${inspection.location}${retryCount > 0 ? ` (retry ${retryCount})` : ''}${remaining > 0 ? ` (${remaining} more queued)` : ''}`,
         phase: 'inspections',
         errors,
       });
-      
+
       try {
         // Per-item timeout to prevent single item from blocking entire sync
         // Pass pre-validated user to skip redundant session validation per item
@@ -863,13 +868,13 @@ export async function syncAllInspectionsAtomic(preValidatedUser?: CachedUser) {
           successCount++;
           synced = true;
         }
-        
+
         if (import.meta.env.DEV) {
           console.log(`[Atomic Sync] Synced ${i + 1}/${batch.length} (${remaining} remaining):`, inspection.id);
         }
       } catch (error: any) {
         retryCount++;
-        
+
         if (retryCount < maxRetries) {
           // Reduced backoff for faster iteration
           const delay = Math.min(500 * retryCount, 2000);
@@ -884,7 +889,7 @@ export async function syncAllInspectionsAtomic(preValidatedUser?: CachedUser) {
         }
       }
     }
-  }
+  });
   
   // Emit completion
   syncProgressEmitter.emit({
