@@ -279,10 +279,10 @@ export const useAutoSync = () => {
         return;
       }
       
-      // Sync data types SEQUENTIALLY with UI thread yields between each
-      // This prevents sync from blocking typing and other user interactions
+      // S1: Sync the three report types IN PARALLEL (independent table families, no shared rows).
+      // Photos run AFTER report sync because they depend on the temp-ID → UUID mapping.
       const yieldToUI = () => new Promise<void>(r => setTimeout(r, 0));
-      
+
       const syncResult = await withSyncTimeout(
         (async () => {
           // Process any queued offline soft-deletes before main sync
@@ -297,12 +297,17 @@ export const useAutoSync = () => {
           }
           await yieldToUI();
 
-          const inspResult = await syncAllInspectionsAtomic(validatedUser).catch(e => { console.error('[AutoSync] Inspections sync failed:', e); return null; });
+          // Run inspections / trainings / assessments concurrently — they touch independent tables
+          const [inspSettled, trainSettled, assessSettled] = await Promise.allSettled([
+            syncAllInspectionsAtomic(validatedUser),
+            syncAllTrainingsAtomic(validatedUser),
+            syncAllDailyAssessmentsAtomic(validatedUser),
+          ]);
+          const inspResult = inspSettled.status === 'fulfilled' ? inspSettled.value : (console.error('[AutoSync] Inspections sync failed:', inspSettled.reason), null);
+          const trainResult = trainSettled.status === 'fulfilled' ? trainSettled.value : (console.error('[AutoSync] Trainings sync failed:', trainSettled.reason), null);
+          const assessResult = assessSettled.status === 'fulfilled' ? assessSettled.value : (console.error('[AutoSync] Assessments sync failed:', assessSettled.reason), null);
           await yieldToUI();
-          const trainResult = await syncAllTrainingsAtomic(validatedUser).catch(e => { console.error('[AutoSync] Trainings sync failed:', e); return null; });
-          await yieldToUI();
-          const assessResult = await syncAllDailyAssessmentsAtomic(validatedUser).catch(e => { console.error('[AutoSync] Assessments sync failed:', e); return null; });
-          await yieldToUI();
+          // Photos depend on real UUIDs assigned by the report syncs above
           const photoResult = await syncPhotos().catch(e => { console.error('[AutoSync] Photos sync failed:', e); return null; });
           return [inspResult, trainResult, assessResult, photoResult];
         })(),
