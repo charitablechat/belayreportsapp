@@ -1,73 +1,91 @@
 
 
-## Final gap closure: 3 client gaps + 1 server safety net
+## Apple/iOS/iPad gap audit — what's left
 
-After the V4–V8 work, four real gaps remain. Two are client-side oversights from the previous pass, one is a hidden cascade vector via the cron job, and one is the server-side belt-and-braces.
+After the data-integrity work, here's what I found auditing every iOS-specific code path. **Three real gaps, two cosmetic, one nice-to-have.** Most are small; one matters for sync reliability.
 
-### Gap A — `cloud-backup.ts` restore is completely unprotected
+---
 
-`restoreSnapshotToServer` (lines 276–292) deletes existing children for every table in the snapshot, **including when `rows.length === 0`** (comment literally says "even if snapshot has zero rows"). No tripwire, no empty-array guard, no pre-restore safety snapshot. This is super-admin-only but it's a one-click button that can wipe every child row of a report if the snapshot was captured during a bad IDB read.
+### Gap 1 — Manifest is missing iOS-specific touch icon sizes (cosmetic, real)
 
-**Fix:** mirror the `admin-edit-snapshot.ts` pattern exactly:
-- Skip the delete when `rows.length === 0` (preserve current server data, log warning)
-- Capture a `pre_restore` `admin_edit_snapshots` row before the operation
-- Route the per-table delete through `assertSafeToDeleteChildRows` with `context: { bulk: true, source: 'cloud_restore' }`
+`public/manifest.json` only declares one icon image at 192/512. iOS Safari/Home Screen ignores the manifest's `icons` array for the home-screen icon and instead reads `<link rel="apple-touch-icon">`. We have **one** apple-touch-icon (`/icons/app-icon.png`, no size attribute), so iOS scales the same image for every device. This works but produces fuzzy icons on iPad Pro (167×167) and old iPhones (152×152).
 
-### Gap B — `transaction-manager.ts` forward-step `delete` is not tripwired
+**Fix:** add three `<link rel="apple-touch-icon" sizes="…">` entries in `index.html` for 152, 167, and 180. Reuse the existing `/icons/app-icon.png` (iOS scales fine, just wants the explicit size hint to pick the closest match).
 
-Line 101: `result = await withStepTimeout((supabase as any).from(step.table).delete().match(step.filter), ...)`. This is the *forward* delete step (not the rollback). Only the rollback at line 199 was tripwired in the previous pass. Any transaction that includes a child-table delete as a forward step bypasses the tripwire entirely.
+---
 
-**Fix:** before the forward-step delete, fetch the matching row IDs and pass them through `assertSafeToDeleteChildRows` with `context: { bulk: true, source: 'tx_forward_delete' }`. If blocked, throw to roll the transaction back.
+### Gap 2 — No iOS splash screens (`apple-touch-startup-image`)
 
-### Gap C — `useEmptyReportCleanup` can soft-delete a non-empty report based on a bad local read, leading to cascade purge in 60 days
+When a PWA launches from the iOS Home Screen, iOS shows a white flash (or black depending on theme) until the JS bundle parses. We never declared `apple-touch-startup-image` link tags, so users see a blank screen for ~1–2 s on cold launch. Not data-loss, but it makes the installed app feel broken on first tap.
 
-The hook decides "empty" from the in-memory state. If the form mounted while IDB was returning `[]` due to the 5s timeout (which we know happens — 269 suppressed warnings in console), the hook can mark a real report as empty → soft-delete sets `deleted_at` → after 60 days `cleanup_expired_deleted_records()` runs `DELETE FROM public.inspections WHERE …` → `ON DELETE CASCADE` on every child FK wipes every child row. **The 60-day window means this damage shows up months after the bug.**
+**Fix:** generate startup images for the common iPad/iPhone sizes (or one universal one) and add the `<link rel="apple-touch-startup-image" media="…">` tags. Lowest-effort version: a single splash with the Rope Works logo on `#ffffff` background, declared without media queries (iOS will use it as fallback).
 
-**Fix:** before issuing the soft-delete, do a single round-trip count query against the parent's child tables on the server. If any child table has `count > 0`, abort the soft-delete and log a warning. Cheap (one head-only count per table), runs only at form-unmount when "empty" is detected, fully prevents the bad-read-→-soft-delete-→-cascade-purge chain.
+---
 
-### Gap D — Server-side `BEFORE DELETE` trigger on every child table
+### Gap 3 — `useEmptyReportCleanup` server-side child-count check uses anon RLS path on iOS PWA in background
 
-The single permanent fix that closes everything else, including:
-- Stale PWA versions still in production (the published `4.6.7` has none of our guards)
-- Direct API calls (Postman, curl, future edge functions, future migrations)
-- The `cleanup_expired_deleted_records` cron's cascade chain (if a parent is mistakenly purged, the trigger refuses the cascade child-deletes that would wipe >70% in one statement)
-- Any future code regression
+When iOS suspends a PWA (tab hidden >30s, low-memory eviction), the next foreground wake fires `pageshow` → `useAutoSync` → may call cleanup paths before `supabase.auth` rehydrates the session from storage. The server-side child-count guard we just shipped will return `count: 0` for any RLS-protected child table when the request goes out without a JWT, which would then **falsely confirm "report is empty"** and proceed with the soft-delete.
 
-**Implementation:**
-- New migration: `protect_child_row_mass_delete()` PL/pgSQL trigger function. For each affected child table, on `BEFORE DELETE` for each row, increment a per-statement counter via a temporary GUC `app.delete_count_<table>_<parent_id>`. After the statement, compare to total row count for that parent — if dropping >70% in one statement, raise exception unless session GUC `app.bulk_delete_opt_in = 'true'` is set.
-- Simpler alternative (recommended): use a `BEFORE DELETE … FOR EACH STATEMENT` trigger that compares `count(*) FROM <table> WHERE fk IN (SELECT fk FROM old_table)` with `count(*) from old_table`. If ratio per parent >70%, raise unless `current_setting('app.bulk_delete_opt_in', true) = 'true'`.
-- Apply to: `inspection_systems`, `inspection_ziplines`, `inspection_equipment`, `inspection_standards`, `inspection_summary_*`, `training_*` child tables, `daily_assessment_*` child tables, `photos` (parent_type/parent_id-scoped).
-- Update legitimate bulk callers (`admin-edit-snapshot.ts`, `cloud-backup.ts`, `transaction-manager.ts` rollback) to issue `SET LOCAL app.bulk_delete_opt_in = 'true'` via an `rpc('set_bulk_delete_opt_in')` helper before their delete batch.
-- Add a small SECURITY DEFINER function `set_bulk_delete_opt_in()` that callers invoke; it `SET LOCAL`s the GUC for that connection's transaction only.
-- The `cleanup_expired_deleted_records` function itself should NOT set the opt-in — that way if a parent was mistakenly soft-deleted, the cascade is blocked at the trigger level and surfaces as a visible error rather than silent data loss.
+**Fix:** before the count query, await `supabase.auth.getSession()` and abort if no session. Cheap one-line guard. Same pattern used elsewhere in `useAutoSync`'s `handlePageShow`.
+
+---
+
+### Gap 4 — `convertHeicBlobToJpeg` 10s timeout is tight for iPad Air (gen 1–3) on multi-MB photos
+
+iPads from 2018–2020 routinely take 8–14s to decode a 4032×3024 HEIC via `heic2any` (which is pure JS, no native HEIF). When it times out, the photo silently falls through with the original HEIC bytes still labeled `.jpg`, breaking PDF generation.
+
+**Fix:** raise the per-conversion timeout to 25s for iOS specifically (keep 10s elsewhere), and add a single-retry on timeout. Total worst-case 50s, only on iPad with HEIC photos, only at upload time. Acceptable.
+
+---
+
+### Gap 5 — `requestPersistentStorage()` is called but result is never surfaced to user when denied
+
+iOS only grants persistent storage to installed PWAs (Add to Home Screen). For users in Safari, the request silently returns `false` and nothing tells them their data could be evicted in 7 days of inactivity. We have `IOSInstallPromptOnce` but it shows on every iOS Safari load — not tied to actual storage-persistence denial, and gets dismissed permanently after one tap.
+
+**Fix:** when `requestPersistentStorage()` returns `false` AND the user has unsynced offline data AND they're on iOS Safari (not PWA), upgrade `IOSInstallPromptOnce` to re-show with stronger wording: *"You have N unsaved reports. iOS may delete them in 7 days unless you Add to Home Screen."* Auto-resets the dismissed flag any time `unsyncedCount > 0`.
+
+---
+
+### Gap 6 — `accept="image/*"` on `ItemPhotoUpload` doesn't include `.heic` explicitly
+
+iOS Safari's file picker correctly handles `image/*` for camera roll, but the Files-app picker (used when picking from iCloud) sometimes filters out `.heic` files unless they're explicitly listed. Inconsistent — works for some users, hides photos for others.
+
+**Fix:** change `accept="image/*"` → `accept="image/*,image/heic,image/heif,.heic,.heif"` in `ItemPhotoUpload.tsx`, `ContactDeveloper.tsx`, and `AdminLogoManagement.tsx`. One-line edit each.
+
+---
+
+### What's already solid (don't touch)
+
+- `pageshow` / `visibilitychange` handlers are wired in `useAutoSync`, `usePWAUpdate`, `Dashboard`, `useScrollRestoration` — all the right places
+- `saveToDevice` already routes through Web Share on iOS PWA (download fallback wouldn't work there)
+- HEIC magic-byte detection catches mislabeled `.jpg` files
+- Safe-area CSS variables are wired in `index.css` and exposed via `SafeAreaWrapper`
+- `viewport-fit=cover` is set in `index.html`
+- Background-sync `SyncManager` is correctly disabled on iOS (no API support); polling fallback via localStorage flags is in place
+- The new server-side BEFORE DELETE triggers protect iOS users on stale PWA versions
+
+---
 
 ### Files to change
 
-- `src/lib/cloud-backup.ts` — Gap A
-- `src/lib/transaction-manager.ts` — Gap B
-- `src/hooks/useEmptyReportCleanup.tsx` — Gap C (add server-side child-count verification)
-- NEW `supabase/migrations/<timestamp>_child_row_mass_delete_guard.sql` — Gap D
-- `src/lib/admin-edit-snapshot.ts` — call new `set_bulk_delete_opt_in` rpc before its deletes
-- `src/lib/cloud-backup.ts` — same opt-in call
-- `src/lib/transaction-manager.ts` — same opt-in call before rollback bulk deletes
+- `index.html` — add 3 `<link rel="apple-touch-icon" sizes>` tags + startup-image tag (Gaps 1, 2)
+- `src/hooks/useEmptyReportCleanup.tsx` — session-presence guard before child-count query (Gap 3)
+- `src/lib/heic-converter.ts` — iOS-aware timeout + single retry (Gap 4)
+- `src/components/pwa/IOSInstallPromptOnce.tsx` — re-prompt logic when unsynced data + storage not persisted (Gap 5)
+- `src/components/inspection/ItemPhotoUpload.tsx`, `src/components/ContactDeveloper.tsx`, `src/pages/AdminLogoManagement.tsx` — explicit `.heic` in accept (Gap 6)
+- (Optional) `public/icons/splash.png` — new asset for startup image
 
-### Verification
-
-1. Cloud restore with an empty snapshot table: server children preserved, warning logged, pre_restore snapshot captured.
-2. Forward `tx step.type === 'delete'` against a child table with >70% match: tripwire blocks, transaction rolls back.
-3. Form mounts with IDB read returning `[]` for a real report; user navigates away; `useEmptyReportCleanup` queries server, sees children, aborts the soft-delete.
-4. Manual `delete from inspection_systems where inspection_id = '<id>'` in SQL editor (without setting the GUC) on a parent with ≥3 rows: trigger raises `child_row_mass_delete_blocked`. Re-run after `select set_bulk_delete_opt_in()`: succeeds.
-5. Stale `4.6.7` PWA on a real device tries the old reconciler over-prune path: server trigger blocks the delete, sync logs an error, no data lost.
+No DB migrations. No edge function changes. No new dependencies.
 
 ### Risk
 
-- **Trigger overhead:** ~1ms per delete statement (one count query per affected parent). Child-table deletes are rare; impact negligible.
-- **Migration coordination:** the trigger goes live before all clients update. Existing legitimate bulk paths (admin restore, cloud restore, tx rollback) need the opt-in RPC shipped *in the same release* so they don't start failing. Migration script ordering: deploy code first, then migration.
-- **Cascade from hard-delete of a parent:** the cleanup cron deliberately does NOT opt in, so if a parent is mistakenly hard-deleted with rich children, the trigger raises. The cron will log the failure to its own job output; we'll surface this in `SyncDiagnosticsSheet` via a new "Server-side delete blocks (24 h)" row from `postgres_logs` (read-only via existing analytics_query infra).
+- Gap 3 fix could over-block in edge cases where session is mid-refresh; mitigated by single 2s retry before aborting.
+- Gap 5 re-prompt could annoy iOS Safari users who legitimately don't want to install. Mitigated by gating on `unsyncedCount > 0` (only shows when they actually have data at risk).
+- All other changes are additive / cosmetic.
 
 ### Out of scope
 
-- Reworking the LWW/field-merge model.
-- Replacing the soft-delete retention period.
-- Anything in `notification_*` / `push_subscriptions` / `user_field_history` / `onboarding_progress` deletes — these are user-scoped admin/state tables, not report child rows.
+- Capacitor / native iOS shell (separate decision, would require App Store account).
+- Replacing `heic2any` with native iOS HEIF decoding (only available in Capacitor).
+- Apple Sign-In OAuth (no user demand surfaced yet).
 
