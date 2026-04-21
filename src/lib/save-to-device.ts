@@ -27,6 +27,43 @@ async function tryNativeShare(blob: Blob, fileName: string): Promise<boolean> {
   }
 }
 
+/**
+ * Desktop Edge/Chrome: prefer the File System Access API so the user picks a
+ * destination via the native Save dialog instead of dumping into Downloads.
+ * Returns true when the file was written (or the user cancelled — treated as
+ * handled). Returns false when the API is unavailable or fails unexpectedly,
+ * so callers can fall back to anchor-download.
+ */
+async function trySaveFilePicker(blob: Blob, fileName: string): Promise<boolean> {
+  try {
+    const win = window as Window & {
+      showSaveFilePicker?: (opts?: {
+        suggestedName?: string;
+        types?: Array<{ description?: string; accept: Record<string, string[]> }>;
+      }) => Promise<{
+        createWritable: () => Promise<{ write: (data: Blob) => Promise<void>; close: () => Promise<void> }>;
+      }>;
+    };
+    if (typeof win.showSaveFilePicker !== "function") return false;
+    const ext = fileName.includes(".") ? fileName.slice(fileName.lastIndexOf(".")) : "";
+    const mime = blob.type || "application/octet-stream";
+    const handle = await win.showSaveFilePicker({
+      suggestedName: fileName,
+      types: ext
+        ? [{ description: "File", accept: { [mime]: [ext] } }]
+        : undefined,
+    });
+    const writable = await handle.createWritable();
+    await writable.write(blob);
+    await writable.close();
+    return true;
+  } catch (err) {
+    if ((err as DOMException)?.name === "AbortError") return true; // user cancelled
+    console.warn("[saveToDevice] showSaveFilePicker failed:", err);
+    return false;
+  }
+}
+
 function programmaticDownload(blob: Blob, fileName: string): void {
   const url = URL.createObjectURL(blob);
   const link = document.createElement("a");
@@ -73,6 +110,9 @@ export async function saveToDeviceAsync(blob: Blob, fileName: string): Promise<b
       const shared = await tryNativeShare(blob, fileName);
       if (shared) return true;
     }
+    // W4: desktop Edge/Chrome — prefer native Save As dialog when available.
+    const picked = await trySaveFilePicker(blob, fileName);
+    if (picked) return true;
     programmaticDownload(blob, fileName);
     return true;
   } catch (error) {

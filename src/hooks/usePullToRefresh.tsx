@@ -85,6 +85,18 @@ export const usePullToRefresh = ({
         if (import.meta.env.DEV) {
           console.log('[Pull to Refresh] Cooldown active, ignoring refresh');
         }
+      } else if (!navigator.onLine) {
+        // B6: offline — skip the network refresh to avoid Chrome's "No internet"
+        // page swallowing our offline-capable shell. Dispatch a sync-events ping
+        // so any local indicators (sync pulse, etc.) still react to the gesture.
+        if (import.meta.env.DEV) {
+          console.log('[Pull to Refresh] Offline — skipping network refresh');
+        }
+        try {
+          window.dispatchEvent(new CustomEvent('sync:pull-refresh-offline'));
+        } catch {
+          // no-op
+        }
       } else {
         try {
           lastRefreshTime.current = now;
