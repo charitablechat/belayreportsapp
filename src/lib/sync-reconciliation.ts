@@ -1,4 +1,5 @@
 import { supabase } from "@/integrations/supabase/client";
+import { assertSafeToDeleteChildRows } from "./child-row-deletion-tripwire";
 
 /**
  * Reconcile child table rows: delete server rows not present locally,
@@ -17,6 +18,11 @@ interface ReconcileOptions {
   reportType: 'inspection' | 'training' | 'daily_assessment';
   userId: string;
   prefetchedServerRows?: any[]; // Pre-fetched server rows from Guard 1 to avoid duplicate fetch
+  /**
+   * V5 guard: caller signals it had a successful (non-fallback) IndexedDB read
+   * for `localItems`. When false and localItems is empty, we never prune.
+   */
+  expectedNonEmpty?: boolean;
 }
 
 /**
