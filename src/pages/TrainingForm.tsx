@@ -532,6 +532,7 @@ export default function TrainingForm() {
                 console.warn('[TrainingForm] Non-critical: failed to cache delivery_approaches', e));
             } else if (delivery_approaches.length > 0) {
               console.warn('[TrainingForm] Server returned empty delivery_approaches but local has data -- preserving local');
+              setDeliveryApproaches(delivery_approaches);
             }
             if (systemData && systemData.length > 0) {
               setOperatingSystems(systemData);
@@ -539,6 +540,7 @@ export default function TrainingForm() {
                 console.warn('[TrainingForm] Non-critical: failed to cache operating_systems', e));
             } else if (operating_systems.length > 0) {
               console.warn('[TrainingForm] Server returned empty operating_systems but local has data -- preserving local');
+              setOperatingSystems(operating_systems);
             }
             if (attentionData && attentionData.length > 0) {
               setImmediateAttention(attentionData);
@@ -546,6 +548,7 @@ export default function TrainingForm() {
                 console.warn('[TrainingForm] Non-critical: failed to cache immediate_attention', e));
             } else if (immediate_attention.length > 0) {
               console.warn('[TrainingForm] Server returned empty immediate_attention but local has data -- preserving local');
+              setImmediateAttention(immediate_attention);
             }
             if (verifiableData && verifiableData.length > 0) {
               setVerifiableItems(verifiableData);
@@ -553,6 +556,7 @@ export default function TrainingForm() {
                 console.warn('[TrainingForm] Non-critical: failed to cache verifiable_items', e));
             } else if (verifiable_items.length > 0) {
               console.warn('[TrainingForm] Server returned empty verifiable_items but local has data -- preserving local');
+              setVerifiableItems(verifiable_items);
             }
             if (systemsPlaceData && systemsPlaceData.length > 0) {
               setSystemsInPlace(systemsPlaceData);
@@ -560,6 +564,7 @@ export default function TrainingForm() {
                 console.warn('[TrainingForm] Non-critical: failed to cache systems_in_place', e));
             } else if (systems_in_place.length > 0) {
               console.warn('[TrainingForm] Server returned empty systems_in_place but local has data -- preserving local');
+              setSystemsInPlace(systems_in_place);
             }
             if (summaryResult) {
               setSummary(summaryResult);
