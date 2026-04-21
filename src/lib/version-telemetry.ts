@@ -36,13 +36,16 @@ async function upsertTelemetry(serverVersion: string | null): Promise<boolean> {
   try {
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) return false;
+    // Defensive trim: even though APP_VERSION is short today, the column
+    // is `text` and we don't want a runaway value to bloat the row.
+    const clientVersion = (APP_VERSION || 'unknown').slice(0, 64);
     const { error } = await supabase
       .from('version_telemetry')
       .upsert(
         {
           user_id: user.id,
-          client_version: APP_VERSION,
-          server_version: serverVersion,
+          client_version: clientVersion,
+          server_version: serverVersion ? serverVersion.slice(0, 64) : null,
           platform: detectPlatform(),
           user_agent: (navigator.userAgent || '').slice(0, 500),
           is_standalone: isStandalone(),

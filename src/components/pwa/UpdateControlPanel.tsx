@@ -48,6 +48,7 @@ export const UpdateControlPanel = ({ open, onOpenChange }: UpdateControlPanelPro
   const [isPolling, setIsPolling] = useState(false);
 
   const appVersion = import.meta.env.APP_VERSION || 'dev';
+  const appBuild = (import.meta.env.BUILD_COMMIT as string) || '';
 
   // Subscribe to version-check broadcasts so panel stays live
   useEffect(() => {
@@ -234,6 +235,9 @@ export const UpdateControlPanel = ({ open, onOpenChange }: UpdateControlPanelPro
               <div>
                 <span className="text-[10px] text-white/40 uppercase tracking-widest">Installed</span>
                 <p className="text-lg mt-1 text-white tracking-wider">v{appVersion}</p>
+                {appBuild && (
+                  <p className="text-[10px] text-white/30 tracking-widest mt-0.5">build {appBuild}</p>
+                )}
               </div>
 
               {/* Deployed version (live) */}
@@ -255,6 +259,9 @@ export const UpdateControlPanel = ({ open, onOpenChange }: UpdateControlPanelPro
                     </p>
                   )}
                 </div>
+                {versionResult?.deployedBuild && (
+                  <p className="text-[10px] text-white/30 tracking-widest mt-0.5">build {versionResult.deployedBuild}</p>
+                )}
               </div>
 
               {/* Status */}
