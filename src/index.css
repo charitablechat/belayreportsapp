@@ -777,6 +777,18 @@ html, body {
   overscroll-behavior: contain;
 }
 
+/* iOS-only: prevent nested scroll containers (tables, scrollable sections)
+   from triggering page-level pull-to-refresh while the user is scrolling
+   inside them. Scoped via @supports(-webkit-touch-callout) so it only
+   applies to Safari/WebKit on iOS. */
+@supports (-webkit-touch-callout: none) {
+  .overflow-auto,
+  .overflow-y-auto,
+  .overflow-x-auto {
+    overscroll-behavior: contain;
+  }
+}
+
 /* Fix F: Disable iOS long-press image save sheet inside the photo lightbox
    so users can navigate/close without the OS context menu hijacking taps. */
 [data-radix-dialog-content] img,
