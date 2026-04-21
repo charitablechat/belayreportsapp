@@ -87,11 +87,23 @@ if (import.meta.env?.DEV) {
 
 export async function checkVersion(): Promise<VersionCheckResult> {
   const { version: deployed, build: deployedBuild } = await fetchDeployedVersion();
+  const localBuild = (import.meta.env.BUILD_COMMIT as string) || '';
+  const semverStale = deployed ? isVersionNewer(APP_VERSION, deployed, false) : false;
+  // R1: hash-mismatch staleness — same SemVer but different bundle hash means
+  // the device is on the wrong build. Skip when local build is unknown ('dev'/'').
+  const hashStale =
+    !semverStale &&
+    !!deployedBuild &&
+    !!localBuild &&
+    localBuild !== 'dev' &&
+    localBuild !== deployedBuild &&
+    !!deployed &&
+    deployed === APP_VERSION;
   return {
     current: APP_VERSION,
     deployed,
     deployedBuild,
-    isStale: deployed ? isVersionNewer(APP_VERSION, deployed, false) : false,
+    isStale: semverStale || hashStale,
     checkedAt: new Date(),
   };
 }
