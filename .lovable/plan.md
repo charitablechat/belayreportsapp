@@ -1,182 +1,152 @@
 
 
-## Android & Windows — first-pass gap audit
+## Sync — speed & reliability gap audit
 
-Same lens as the iOS pass: API completeness, feature parity, cross-device consistency, OS-version readiness. Only listing gaps that are **real and worth closing**.
-
----
-
-### Android — real gaps
-
-**B1 — Manifest missing `id` field**
-
-`public/manifest.json` has no `id`. Without it, Chrome on Android keys the installed PWA by `start_url`, so any future change to `start_url` (or hosting domain) creates a duplicate install instead of updating the existing one. Once shipped you can never change it.
-
-**Fix:** add `"id": "/"` to `manifest.json`. Locks identity now while we still can.
+The sync engine is correct and crash-safe but conservatively serial. There's a lot of latency on the table. Below: real gaps, ranked by impact, with concrete fixes. No data-integrity guards weaken in any of these.
 
 ---
 
-**B2 — No maskable icon distinct from "any" icon**
+### Real gaps (worth fixing)
 
-Manifest declares the same `app-icon.png` for both `purpose: "any"` and `purpose: "maskable"`. Android adaptive-icon launchers (Pixel, Samsung One UI) crop maskable icons into circles/squircles/teardrops — using a non-maskable source means the logo gets clipped at the edges on most Android launchers.
+**S1 — All four data types sync sequentially with `yieldToUI` waits (biggest wall-clock win)**
 
-**Fix:** add a dedicated `app-icon-maskable.png` (logo centered inside the 80% safe zone, padding to edges) and point only the `maskable` entries at it. Keep `any` pointing at the existing icon.
+In `useAutoSync.performSync`, inspections → trainings → assessments → photos run one after the other, each preceded by a `yieldToUI()` setTimeout(0). For a typical sync this is 4 sequential network round-trips at minimum, even when each phase has 0–1 items. Inspections, trainings, assessments touch independent tables and child trees — they cannot conflict.
 
----
-
-**B3 — No `shortcuts` in manifest**
-
-Android (and Windows) long-press on the app icon shows manifest `shortcuts` as a jump list — "New Inspection", "New Training", "Dashboard". We have all three routes; declaring them costs nothing and gives one-tap entry from the home screen.
-
-**Fix:** add a `shortcuts` array to `manifest.json` with 3 entries pointing at `/new-inspection`, `/new-training`, `/dashboard`.
+**Fix:** run the three report types in parallel via `Promise.allSettled([insp, train, assess])`, then run `syncPhotos()` after (photos depend on temp-ID → UUID mapping done by report sync). Keep per-type `MAX_BATCH_SIZE=5` so we don't blow up payloads. Net effect: ~3× faster for users who have mixed unsynced types; same speed for users with only one type.
 
 ---
 
-**B4 — `categories` and `description` localization missing from manifest**
+**S2 — Within a single type, items sync strictly sequentially**
 
-Chrome's install UI on Android shows `categories` in the Play-Store-style install card (since Chrome 108). Empty array means no category chip. Low-effort credibility win.
+`syncAllInspectionsAtomic` loops `for (let i = 0; i < batch.length; i++)` awaiting each `syncInspectionAtomic`. With `MAX_BATCH_SIZE = 5`, a draining queue of 5 inspections takes 5× the per-item RTT (~3–8s each on mobile = 15–40s) before any feedback. Items don't share rows; they only share the same Postgres connection pool, which already handles concurrency.
 
-**Fix:** add `"categories": ["business", "productivity", "utilities"]` to manifest.
-
----
-
-**B5 — Android share intent doesn't reach the app (no `share_target`)**
-
-Same gap as iOS A5 — Android supports `share_target` natively in installed PWAs and has since Chrome 71. Inspectors can't share a photo from Google Photos / Files into Rope Works to attach to a report. Listed for completeness; **decision needed** (requires a `/share-receive` route and handler).
+**Fix:** process the batch with bounded concurrency — `Promise.allSettled` over chunks of 3 (configurable: 3 on mobile, 5 on desktop). Keep retry logic per-item. Failed items don't block siblings. Wall-clock goes from N×RTT to ~⌈N/3⌉×RTT. This is safe because each `syncInspectionAtomic` operates on a distinct `inspectionId` with its own transaction.
 
 ---
 
-**B6 — Pull-to-refresh fires even when offline**
+**S3 — Photo upload loop is fully sequential at concurrency=1**
 
-`usePullToRefresh` reloads the page on pull. On Android with no connection, that triggers Chrome's "No internet" page over our offline-capable shell, breaking the offline UX. iOS doesn't show this because Safari handles offline differently.
+`syncPhotos` in `sync-manager.ts` uploads photos in a `for…of` loop. Storage uploads on slow mobile networks dominate sync wall-clock (1–5s each × 10 photos = 10–50s). Supabase Storage handles parallel uploads fine, and we already cap to `MAX_PHOTO_BATCH_SIZE = 10`.
 
-**Fix:** in `usePullToRefresh`, gate the reload on `navigator.onLine`. If offline, trigger our existing sync-events refresh instead and skip `window.location.reload()`.
-
----
-
-**B7 — No `prefer_related_applications: false` declared**
-
-When set to `false` explicitly, Chrome on Android won't ever try to suggest a "related" Play Store app over the PWA install. Defensive against future Play Store crawler false-matches.
-
-**Fix:** add `"prefer_related_applications": false` to manifest.
+**Fix:** parallelize uploads with bounded concurrency of 3 (mobile) / 5 (desktop) using a small chunk runner. Preserve the existing dedup guard, retry counter, and `processedIds` set (made thread-safe by checking before await). Net: ~3–5× faster photo drains.
 
 ---
 
-### Windows — real gaps
+**S4 — Per-item `align_synced_at` RPC + post-sync verify SELECT add 2 round-trips per record**
 
-**W1 — No `display_override` for window-controls-overlay**
+For each record, after the transaction commits, we (1) `SELECT id, synced_at` to verify, then (2) call `align_synced_at` RPC to align timestamps. Both are single-RTT round-trips done serially. The verify SELECT is largely redundant — `executeTransaction` already throws if the upsert affected 0 rows (the row-count guard in `transaction-manager.ts`).
 
-Edge on Windows 11 supports `display_override: ["window-controls-overlay"]`, which lets the app draw under the title bar with native window controls (close/min/max) overlaid. Currently the installed Edge PWA shows a generic chrome title bar wasting ~32px at the top. With our `AuthenticatedHeader` already glassmorphic and full-width, this would look native.
-
-**Fix:** add `"display_override": ["window-controls-overlay", "standalone"]` to manifest. Opt-in CSS in `AuthenticatedHeader` to respect the `env(titlebar-area-*)` safe-area variables when present so our header avoids the overlay buttons. Falls back silently on browsers that don't support it.
+**Fix:** drop the post-transaction `select('id, synced_at')` verify; rely on the existing 0-row guard inside `executeTransaction` plus the `align_synced_at` RPC return value (which already errors if the record is missing). Saves ~100–300ms per record × N records per cycle. The integrity guarantee is preserved by `align_synced_at` failing loudly when no row exists.
 
 ---
 
-**W2 — No Edge-specific tile colors**
+**S5 — `MIN_SYNC_INTERVAL = 5000ms` blocks fast user-driven syncs**
 
-Windows Start Menu pinning reads `<meta name="msapplication-TileColor">` and `<meta name="msapplication-TileImage">`. Without them, pinned tiles get a default grey background. Cheap fix.
+Background syncs are gated by 5s minimum interval. Force sync (silent=false) bypasses, but that's not what runs after autosave. After a user edits an inspection, the 3s `DEBOUNCE_DELAY` plus 5s `MIN_SYNC_INTERVAL` floor means a save can wait up to 8s before the sync even starts, and another 5s gate blocks the next one if more edits land. This compounds the perception of slowness on rapid edits.
 
-**Fix:** add `<meta name="msapplication-TileColor" content="#0b0f17">` and `<meta name="msapplication-TileImage" content="/icons/app-icon.png">` to `index.html`.
-
----
-
-**W3 — No `handle_links: "preferred"` for deep links**
-
-When a user clicks an `https://rwreports.com/...` link in Outlook / Teams / Slack on Windows with the PWA installed, Edge defaults to opening it in a new browser tab instead of the installed app. Setting `handle_links: "preferred"` makes Edge route those links into the PWA window.
-
-**Fix:** add `"handle_links": "preferred"` to manifest.
+**Fix:** reduce `DEBOUNCE_DELAY` to 1500ms (matches `AUTO_SAVE_DEBOUNCE_MS` already used for IDB writes) and `MIN_SYNC_INTERVAL` to 2000ms. The duplicate-prevention work is done by `syncInProgressRef`, not by the interval — the interval just stops thrashing. 2s is enough to debounce flutter without feeling sluggish.
 
 ---
 
-**W4 — File-System Access API unused for ZIP exports on desktop**
+**S6 — `ACCELERATED_SYNC_DELAY = 5000ms` between batches when draining a queue**
 
-On Edge/Chrome desktop (Windows + ChromeOS), `window.showSaveFilePicker()` lets the user pick where to save the local ZIP backup instead of dumping it into Downloads. We currently always go through the anchor-download fallback. Real ergonomic upgrade for power users.
+When a sync completes with `remaining > 0`, the next batch waits 5s. For a 22-item queue with batch=5: 5 batches × (sync time + 5s wait) ≈ 100–150s instead of ~30–40s. The wait was originally to avoid hammering, but with batched concurrency (S2) the per-batch sync is already a few seconds and the server can absorb back-to-back batches.
 
-**Fix:** in `saveToDevice` (or wherever the ZIP export anchor is created), feature-detect `'showSaveFilePicker' in window` and prefer it on desktop. Keep the existing anchor fallback for browsers that lack it (all of mobile Safari, Firefox).
-
----
-
-### Cross-device consistency — real gaps
-
-**C1 — Manifest `orientation: "portrait"` blocks landscape on tablets**
-
-Currently locked to `portrait`. On Android tablets and Windows touch devices, this forces the installed PWA to rotate even though the layout works fine in landscape (we already handle landscape on iPad in browser mode). For inspectors filling tables on a Windows tablet in landscape dock, this is annoying.
-
-**Fix:** change `"orientation": "portrait"` → `"orientation": "any"`. Phone users will still naturally hold portrait; tablet users get freedom.
+**Fix:** drop to 1000ms when `totalRemaining > 0`, and skip the wait entirely if the previous batch had no failures. Keep a small floor to allow `setState` to flush.
 
 ---
 
-**C2 — `background_color` doesn't match dark app shell**
+**S7 — `INITIAL_SYNC_DELAY = 2000ms` blocks sync for 2 full seconds after app open**
 
-`background_color: "#ffffff"` is what Android shows during the splash flash before JS boots. With our dark UI, users see a white flash → dark app. Same problem iOS A1 fixed for status bar.
+We delay the first sync 2s after mount "to not block UI render". But Dashboard already loads from Supabase directly via React Query — sync is for reconciling local edits. 2s is overcautious; users opening the app to push a queued report wait 2s before the sync even tries.
 
-**Fix:** change to `"#0b0f17"` to match the dark surface, OR set per-color-scheme via two manifests (overkill — single dark value is enough since we're a dark-first product).
+**Fix:** drop to 500ms. UI is already paint-stable by then on every device class (verified by existing render-budget work for the auth flow).
+
+---
+
+**S8 — `align_synced_at` RPC is called per record instead of batched**
+
+Each `align_synced_at` call is one RPC round-trip per record. For a 5-item batch, that's 5 sequential RPCs after the transactions complete (since they happen inside each `syncInspectionAtomic`).
+
+**Fix (deferred — requires DB migration):** add a batch RPC `align_synced_at_batch(table, ids[])` returning a map. Call once per type at the end of the batch instead of per-item. **Not in this round** since it requires a DB migration; flag for follow-up if S1+S2+S3 don't move the needle enough.
+
+---
+
+**S9 — `getOfflineInspection` + 5 child `getRelatedDataOfflineWithStatus` calls run in parallel already, but the inspection fetch is serial before them**
+
+In `syncInspectionAtomic`, we await `getOfflineInspection(id)` first, then run child reads in parallel. The inspection record is small and the dep is real (we need `inspector_id`), but we don't need to wait for it before kicking off child reads — they're keyed by `inspectionId` which we already have.
+
+**Fix:** wrap the 6 IDB reads (parent + 5 children) in a single `Promise.all`. Saves one IDB round-trip (~5–50ms) per record. Modest, but compounds across batches.
+
+---
+
+**S10 — Realtime change handler triggers `triggerDebouncedSync()` (3s debounce) instead of `performSync` directly when guards pass**
+
+When another device pushes an update, `handleRemoteChange` calls `triggerDebouncedSync()` which adds a 3s wait. For multi-device collaboration, that's a noticeable lag before the local IDB gets the remote-originated payload reflected (the IDB write itself happens immediately in the same handler — only the *sync* is debounced, so this is mostly benign). Still, the 3s extra wait is unnecessary since duplicate-call prevention is already handled by `syncInProgressRef` + `MIN_SYNC_INTERVAL`.
+
+**Fix:** call `performSync(true)` directly (it's already guarded). Removes 3s lag on multi-device updates.
 
 ---
 
 ### Already solid (don't touch)
 
-- VitePWA `autoUpdate` + version polling works on Chrome/Edge
-- `theme-color` light + dark variants (just shipped)
-- `apple-mobile-web-app-*` meta tags (just shipped — Android ignores cleanly)
-- `viewport-fit=cover, interactive-widget=resizes-content` (Chrome Android honors `interactive-widget`)
-- Background sync via `SyncManager` works on Android Chrome
-- Push notifications via VAPID work on Android Chrome / Edge / Windows
-- `overscroll-behavior: contain` on nested scrollers (just shipped, applies cross-platform; the iOS-only `@supports` guard is a no-op on Android — should we remove it? See below.)
-
----
-
-### One follow-up from last pass
-
-**F1 — `overscroll-behavior: contain` is iOS-scoped, but the same nested-scroll-vs-page-pull problem exists on Android Chrome**
-
-The previous pass scoped the rule via `@supports (-webkit-touch-callout: none)` because the gap was framed as iOS-specific. It's not — Android Chrome's pull-to-refresh has the identical conflict with our nested table scrollers. The CSS is harmless on Android and would prevent the same edge case there.
-
-**Fix:** drop the `@supports` wrapper so the rule applies cross-platform. Pure CSS deletion.
+- Atomic transactions via `executeTransaction` with rollback
+- Field-count regression guard with 3-skip escape valve
+- Empty-local guard with server→local recovery
+- Reconciliation tripwires (50% rule, absolute-delta ≥3, 70% wipe block)
+- Pre-sync version snapshots + pre-delete backups
+- Temp-ID → UUID transformation with dedup guard
+- Circuit breaker for IDB failures
+- Adaptive periodic interval (active vs idle)
+- Mobile-network-aware retry (2 retries on mobile, 1 on desktop)
+- Realtime channel auto-recovery with exponential backoff
+- iOS-specific `pageshow` / `focus` handlers with debounce
+- POST_SYNC_COOLDOWN to prevent self-triggered Realtime loops
 
 ---
 
 ### Out of scope
 
-- **TWA (Trusted Web Activity)** for Play Store distribution — separate decision, requires Play Console account.
-- **Windows Store packaged PWA** via PWABuilder — separate decision.
-- **Web Share Target** (B5) — same call as iOS A5; skip unless requested.
-- **WebAuthn / passkeys** — no current demand.
-- **Badging API** for app icon unread counts — nice-to-have, not requested.
-- **Periodic Background Sync** — Chrome-only, requires installed PWA + engagement score; current polling fallback is sufficient.
+- **Service-worker background sync** — already implemented in `sw-sync.js`; not the bottleneck.
+- **GraphQL / batched REST** — would require Supabase API changes outside our control.
+- **WebSocket-based bidirectional sync** — Realtime already does this for receive; sending via WS would be a major rewrite for marginal gain.
+- **S8 batch RPC** — defer until we see post-S1/S2/S3 numbers.
 
 ---
 
 ### Files to change
 
-- `public/manifest.json` — B1 (`id`), B2 (separate maskable icon entry), B3 (`shortcuts`), B4 (`categories`), B7 (`prefer_related_applications`), W1 (`display_override`), W3 (`handle_links`), C1 (`orientation: any`), C2 (`background_color`)
-- `public/icons/app-icon-maskable.png` — new asset (B2), logo centered in 80% safe zone
-- `index.html` — W2 (msapplication tile meta tags)
-- `src/hooks/usePullToRefresh.tsx` — B6 (`navigator.onLine` gate)
-- `src/lib/save-to-device.ts` — W4 (`showSaveFilePicker` preferred path with anchor fallback)
-- `src/components/AuthenticatedHeader.tsx` — W1 supporting CSS for `env(titlebar-area-*)` safe areas (~6 lines)
-- `src/index.css` — F1 (drop `@supports` wrapper around `.overflow-auto` rule)
+- `src/hooks/useAutoSync.tsx` — S1 (parallel type sync), S5 (lower debounce + min interval), S6 (faster drain delay), S7 (lower initial delay), S10 (Realtime → direct performSync)
+- `src/lib/atomic-sync-manager.ts` — S2 (batched concurrency in all three `syncAll*Atomic`), S4 (drop redundant verify SELECT in all three `sync*Atomic`), S9 (parallel parent+child IDB reads)
+- `src/lib/sync-manager.ts` — S3 (parallel photo uploads with bounded concurrency)
 
-No DB migrations. No edge functions. No new dependencies.
+No DB migrations. No edge functions. No new dependencies. ~120 LOC net change.
 
 ### Risk
 
-- **B1 (`id: "/"`)**: must ship before Chrome assigns an implicit one we can't change. If shipped after a different `id` was implied, existing Android installs would orphan. Low risk now since we haven't deviated from `start_url: "/"`.
-- **B2 (maskable icon)**: requires a new PNG asset. If the safe-zone padding is wrong, logo gets clipped on adaptive launchers — visually verifiable on any Pixel.
-- **C1 (`orientation: any`)**: phone users could rotate into landscape and find some forms cramped. Mitigated because the responsive layout already handles landscape (tested on iPad).
-- **C2 (dark `background_color`)**: brief dark splash on light-mode Android. Acceptable since the app itself is dark-first.
-- **W1 (window-controls-overlay)**: needs careful CSS — if `AuthenticatedHeader` doesn't respect the title-bar safe area, controls overlap our buttons. Mitigated by feature-detecting and only applying overlay padding when `windowControlsOverlay.visible === true`.
-- **W4 (`showSaveFilePicker`)**: secure-context only and requires a user gesture; both already true for export buttons.
-- **B6 (offline pull-to-refresh)**: dropping `window.location.reload()` when offline could mask a genuine "I'm online but the page is frozen" case. Mitigated by still firing the sync-events refresh.
+- **S1 (parallel type sync):** three concurrent transactions hitting Supabase simultaneously. Each touches a distinct table family (`inspection_*`, `training_*`, `daily_assessment_*`); no shared rows, no FK cycles. Existing per-record locking remains. Worst case is a brief connection-pool spike on the Supabase side, well within the project's compute headroom.
+- **S2 (item concurrency 3):** different `inspectionId`s never share rows in the child tables, and `executeTransaction` is per-record. The 0-row guard inside `executeTransaction` will still catch RLS surprises. If a bug surfaces, drop concurrency back to 1 with a one-line constant change.
+- **S3 (photo concurrency 3):** Storage handles parallel uploads. The dedup `processedIds` Set is read-then-await — chunked execution avoids the duplicate-add race because we only add to the set after a successful upload. Worst case: a rare double-upload that gets caught by the existing unique-constraint handler (already coded as success).
+- **S4 (drop verify SELECT):** the row-count guard in `executeTransaction` (lines 137–151 of `transaction-manager.ts`) already throws if 0 rows came back from the upsert. `align_synced_at` errors loudly if the row vanished. Removing the SELECT does not reduce safety.
+- **S5/S6/S7:** purely tuning. Easy to revert by changing constants.
+- **S9 (parallel parent fetch):** parent and child IDB reads use independent IDB transactions; no consistency loss because we already snapshot a single point in time later in the pipeline (the validation step).
+- **S10:** removing the debounce on Realtime → sync still has `syncInProgressRef` + `POST_SYNC_COOLDOWN` + `MIN_SYNC_INTERVAL` guards in front. No new loop risk.
+
+### Expected wall-clock improvements
+
+- Empty-queue background sync: ~400ms → ~150ms (S1+S4+S7)
+- Single-type 5-item drain: ~25–40s → ~8–14s (S2+S4)
+- Mixed 15-item drain (5 each type) + 10 photos: ~75–120s → ~20–35s (S1+S2+S3+S4+S6)
+- After-edit perceived sync time: 3s debounce + 5s gate = ~8s → 1.5s + 2s = ~3.5s (S5)
 
 ### Verification
 
-1. Install PWA on a Pixel — long-press icon → see "New Inspection / New Training / Dashboard" shortcuts.
-2. Pull-to-refresh while in airplane mode on Android — no Chrome offline page; sync indicator pulses instead.
-3. Install PWA in Edge on Windows 11 — title bar shows native controls overlaid on the dark header, no white chrome strip.
-4. Pin tile to Windows Start — tile background is dark, not grey.
-5. Click an `https://rwreports.com/dashboard` link from Outlook on Windows with the PWA installed — opens in the PWA window, not a new browser tab.
-6. Export a local ZIP backup in Edge desktop — native "Save As" dialog appears with file-name pre-filled.
-7. Rotate a Galaxy Tab to landscape inside the installed PWA — orientation follows, layout intact.
-8. Scroll inside Equipment table on a Pixel — no accidental page refresh from the nested scroll.
+1. Add 5 inspections offline → reconnect → time from online event to badge clearing should drop from ~25–40s to ~8–14s.
+2. Add 1 inspection + 1 training + 1 assessment offline → reconnect → all three should clear in roughly the same wall-clock as one type alone (parallel proof).
+3. Add 10 photos to an inspection offline → reconnect → photos should drain in ~⅓ the time of current behavior.
+4. Edit an inspection field rapidly → sync indicator should fire within ~3.5s of last keystroke (was ~8s).
+5. From a second device, edit a shared inspection → first device's UI should reflect the change without the previous 3s extra debounce.
+6. Open dashboard with offline-edited reports → first sync should kick off within 500ms (was 2s).
+7. Drain a 22-item queue → total wall-clock should drop from ~100–150s to ~25–40s.
+8. Verify `executeTransaction` row-count guard still fires by simulating an RLS block (e.g., temporarily set inspector_id wrong) — sync should fail cleanly with "affected 0 rows" error.
 
