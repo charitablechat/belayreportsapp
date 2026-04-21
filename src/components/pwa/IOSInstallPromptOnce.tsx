@@ -25,10 +25,8 @@ export const IOSInstallPromptOnce = () => {
   const [show, setShow] = useState(false);
   const [isPersisted, setIsPersisted] = useState<boolean | null>(null);
   const location = useLocation();
-  const { status } = useUnsyncedPhotos() as any; // hook returns { status } in some versions
-  const unsyncedCount =
-    (status && typeof status.unsyncedPhotoCount === 'number' ? status.unsyncedPhotoCount : 0) ||
-    0;
+  const { unsyncedPhotoCount } = useUnsyncedPhotos();
+  const unsyncedCount = unsyncedPhotoCount ?? 0;
   const isPublicRoute = PUBLIC_ROUTES.includes(location.pathname);
 
   // Probe persistent-storage state once on mount.
