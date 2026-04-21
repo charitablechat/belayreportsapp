@@ -197,13 +197,25 @@ export async function syncInspectionAtomic(inspectionId: string, preValidatedUse
     // because they are stored in IndexedDB under the original inspection_id
     const fetchId = inspectionIdMapping ? inspectionIdMapping.oldId : inspectionId;
     
-    const [rawSystems, rawZiplines, rawEquipment, rawStandards, summaryArray] = await Promise.all([
-      getRelatedDataOffline('systems', fetchId),
-      getRelatedDataOffline('ziplines', fetchId),
-      getRelatedDataOffline('equipment', fetchId),
-      getRelatedDataOffline('standards', fetchId),
-      getRelatedDataOffline('summary', fetchId),
+    const [systemsRead, ziplinesRead, equipmentRead, standardsRead, summaryRead] = await Promise.all([
+      getRelatedDataOfflineWithStatus('systems', fetchId),
+      getRelatedDataOfflineWithStatus('ziplines', fetchId),
+      getRelatedDataOfflineWithStatus('equipment', fetchId),
+      getRelatedDataOfflineWithStatus('standards', fetchId),
+      getRelatedDataOfflineWithStatus('summary', fetchId),
     ]);
+    const rawSystems = systemsRead.items;
+    const rawZiplines = ziplinesRead.items;
+    const rawEquipment = equipmentRead.items;
+    const rawStandards = standardsRead.items;
+    const summaryArray = summaryRead.items;
+    const idbReadFlags = {
+      systems: systemsRead.readSucceeded,
+      ziplines: ziplinesRead.readSucceeded,
+      equipment: equipmentRead.readSucceeded,
+      standards: standardsRead.readSucceeded,
+      summary: summaryRead.readSucceeded,
+    };
     
     let rawSummary = summaryArray[0] || null;
     
