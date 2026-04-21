@@ -110,6 +110,9 @@ export async function saveToDeviceAsync(blob: Blob, fileName: string): Promise<b
       const shared = await tryNativeShare(blob, fileName);
       if (shared) return true;
     }
+    // W4: desktop Edge/Chrome — prefer native Save As dialog when available.
+    const picked = await trySaveFilePicker(blob, fileName);
+    if (picked) return true;
     programmaticDownload(blob, fileName);
     return true;
   } catch (error) {
