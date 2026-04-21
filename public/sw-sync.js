@@ -353,6 +353,15 @@ async function syncInspectionsAtomic() {
           console.warn('[SW SAFETY] suspicious_empty_guard: inspection edited but all children empty', inspection.id);
           continue;
         }
+
+        // V6: child_count_hint regression guard. If we have a hint from a prior save and the
+        // current live child count is < 50% of the hint, skip this sync cycle (likely IDB partial read).
+        const liveChildTotal = systems.length + ziplines.length + equipment.length + standards.length + (summary ? 1 : 0);
+        const hint = typeof inspection.child_count_hint === 'number' ? inspection.child_count_hint : null;
+        if (hint !== null && hint > 0 && liveChildTotal < hint * 0.5) {
+          console.warn('[SW SAFETY] child_count_hint regression for inspection', inspection.id, '- live:', liveChildTotal, 'hint:', hint, '- deferring sync');
+          continue;
+        }
         
         // Sync using upsert-only transaction (no deletes)
         const syncTimestamp = await syncInspectionWithTransaction(

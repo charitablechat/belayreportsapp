@@ -185,6 +185,19 @@ export async function restoreAdminEditSnapshot(snapshotId: string): Promise<bool
   };
   const reportType = snapshot.report_type as ReportType;
   const parentTable = PARENT_TABLE[reportType];
+  const fkColumn = PARENT_FK[reportType];
+
+  // V7: Capture a pre_restore snapshot of the CURRENT server state so the restore is itself reversible.
+  try {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (user) {
+      capturePreEditSnapshot(reportType, snapshot.report_id, snapshot.original_owner_id, user.id);
+    }
+  } catch (e) {
+    console.warn('[AdminEditSnapshot] pre_restore capture failed (non-blocking):', e);
+  }
+
+  const { assertSafeToDeleteChildRows } = await import('./child-row-deletion-tripwire');
 
   try {
     // Upsert parent
@@ -195,18 +208,42 @@ export async function restoreAdminEditSnapshot(snapshotId: string): Promise<bool
       return false;
     }
 
-    // Replace children — delete existing then insert snapshot rows
-    const fkColumn = PARENT_FK[reportType];
+    // Replace children — delete existing then insert snapshot rows.
+    // V7: SKIP the delete entirely when the snapshot table is empty/missing,
+    // to preserve current server data instead of wiping it with nothing.
     for (const [table, rows] of Object.entries(children)) {
-      // Always delete existing children to ensure full replacement
-      const { error: delErr } = await (supabase.from(table as any) as any)
-        .delete()
-        .eq(fkColumn, snapshot.report_id);
-      if (delErr) {
-        console.warn(`[AdminEditSnapshot] Child delete ${table} failed:`, delErr.message);
+      if (!Array.isArray(rows) || rows.length === 0) {
+        console.warn(`[AdminEditSnapshot] Snapshot has no rows for ${table} -- skipping delete to preserve current server data`);
+        continue;
       }
 
-      if (!Array.isArray(rows) || rows.length === 0) continue;
+      // Fetch live child IDs to route through the tripwire
+      const { data: existingRows } = await (supabase.from(table as any) as any)
+        .select('id')
+        .eq(fkColumn, snapshot.report_id);
+      const existingIds = (existingRows || []).map((r: any) => r.id);
+
+      if (existingIds.length > 0) {
+        const tripwire = await assertSafeToDeleteChildRows({
+          table,
+          parentFkColumn: fkColumn,
+          parentId: snapshot.report_id,
+          idsToDelete: existingIds,
+          context: { source: 'admin_restore', bulk: true, reason: 'admin_snapshot_restore', reportType },
+        });
+        if (!tripwire.allowed) {
+          console.warn(`[AdminEditSnapshot] Tripwire blocked restore delete for ${table}; skipping`);
+          continue;
+        }
+
+        const { error: delErr } = await (supabase.from(table as any) as any)
+          .delete()
+          .eq(fkColumn, snapshot.report_id);
+        if (delErr) {
+          console.warn(`[AdminEditSnapshot] Child delete ${table} failed:`, delErr.message);
+        }
+      }
+
       const { error: childErr } = await (supabase.from(table as any) as any)
         .insert(rows);
       if (childErr) {

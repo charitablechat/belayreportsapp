@@ -5,17 +5,20 @@ import {
   saveInspectionOffline,
   getOfflineInspection,
   getRelatedDataOffline,
+  getRelatedDataOfflineWithStatus,
   saveRelatedDataOffline,
   clearRelatedDataOffline,
   getUnsyncedTrainings,
   saveTrainingOffline,
   getOfflineTraining,
   getTrainingDataOffline,
+  getTrainingDataOfflineWithStatus,
   saveTrainingDataOffline,
   getUnsyncedDailyAssessments,
   saveDailyAssessmentOffline,
   getOfflineDailyAssessment,
   getAssessmentDataOffline,
+  getAssessmentDataOfflineWithStatus,
   saveAssessmentDataOffline,
   relinkPhotosToNewInspectionId,
   clearTrainingDataOffline,
@@ -194,13 +197,25 @@ export async function syncInspectionAtomic(inspectionId: string, preValidatedUse
     // because they are stored in IndexedDB under the original inspection_id
     const fetchId = inspectionIdMapping ? inspectionIdMapping.oldId : inspectionId;
     
-    const [rawSystems, rawZiplines, rawEquipment, rawStandards, summaryArray] = await Promise.all([
-      getRelatedDataOffline('systems', fetchId),
-      getRelatedDataOffline('ziplines', fetchId),
-      getRelatedDataOffline('equipment', fetchId),
-      getRelatedDataOffline('standards', fetchId),
-      getRelatedDataOffline('summary', fetchId),
+    const [systemsRead, ziplinesRead, equipmentRead, standardsRead, summaryRead] = await Promise.all([
+      getRelatedDataOfflineWithStatus('systems', fetchId),
+      getRelatedDataOfflineWithStatus('ziplines', fetchId),
+      getRelatedDataOfflineWithStatus('equipment', fetchId),
+      getRelatedDataOfflineWithStatus('standards', fetchId),
+      getRelatedDataOfflineWithStatus('summary', fetchId),
     ]);
+    const rawSystems = systemsRead.items;
+    const rawZiplines = ziplinesRead.items;
+    const rawEquipment = equipmentRead.items;
+    const rawStandards = standardsRead.items;
+    const summaryArray = summaryRead.items;
+    const idbReadFlags = {
+      systems: systemsRead.readSucceeded,
+      ziplines: ziplinesRead.readSucceeded,
+      equipment: equipmentRead.readSucceeded,
+      standards: standardsRead.readSucceeded,
+      summary: summaryRead.readSucceeded,
+    };
     
     let rawSummary = summaryArray[0] || null;
     
@@ -528,11 +543,11 @@ export async function syncInspectionAtomic(inspectionId: string, preValidatedUse
     if (recordStatus?.record_exists && !recordStatus?.is_deleted) {
       await reconcileAllChildTables(
         [
-          { childTable: 'inspection_systems', parentIdColumn: 'inspection_id', localItems: systems, prefetchedServerRows: existingSystems },
-          { childTable: 'inspection_ziplines', parentIdColumn: 'inspection_id', localItems: ziplines, prefetchedServerRows: existingZiplines },
-          { childTable: 'inspection_equipment', parentIdColumn: 'inspection_id', localItems: equipment, prefetchedServerRows: existingEquipment },
-          { childTable: 'inspection_standards', parentIdColumn: 'inspection_id', localItems: standards, prefetchedServerRows: existingStandards },
-          { childTable: 'inspection_summary', parentIdColumn: 'inspection_id', localItems: summary ? [summary] : [], prefetchedServerRows: existingSummary },
+          { childTable: 'inspection_systems', parentIdColumn: 'inspection_id', localItems: systems, prefetchedServerRows: existingSystems, expectedNonEmpty: idbReadFlags.systems },
+          { childTable: 'inspection_ziplines', parentIdColumn: 'inspection_id', localItems: ziplines, prefetchedServerRows: existingZiplines, expectedNonEmpty: idbReadFlags.ziplines },
+          { childTable: 'inspection_equipment', parentIdColumn: 'inspection_id', localItems: equipment, prefetchedServerRows: existingEquipment, expectedNonEmpty: idbReadFlags.equipment },
+          { childTable: 'inspection_standards', parentIdColumn: 'inspection_id', localItems: standards, prefetchedServerRows: existingStandards, expectedNonEmpty: idbReadFlags.standards },
+          { childTable: 'inspection_summary', parentIdColumn: 'inspection_id', localItems: summary ? [summary] : [], prefetchedServerRows: existingSummary, expectedNonEmpty: idbReadFlags.summary },
         ],
         inspectionId,
         'inspection',
@@ -1010,14 +1025,28 @@ export async function syncTrainingAtomic(trainingId: string, preValidatedUser?: 
     // because they are stored in IndexedDB under the original training_id
     const fetchId = trainingIdMapping ? trainingIdMapping.oldId : trainingId;
     
-    const [rawDeliveryApproaches, rawOperatingSystems, rawImmediateAttention, rawVerifiableItems, rawSystemsInPlace, summaryArray] = await Promise.all([
-      getTrainingDataOffline('delivery_approaches', fetchId),
-      getTrainingDataOffline('operating_systems', fetchId),
-      getTrainingDataOffline('immediate_attention', fetchId),
-      getTrainingDataOffline('verifiable_items', fetchId),
-      getTrainingDataOffline('systems_in_place', fetchId),
-      getTrainingDataOffline('summary', fetchId),
+    const [daRead, osRead, iaRead, viRead, sipRead, summaryReadT] = await Promise.all([
+      getTrainingDataOfflineWithStatus('delivery_approaches', fetchId),
+      getTrainingDataOfflineWithStatus('operating_systems', fetchId),
+      getTrainingDataOfflineWithStatus('immediate_attention', fetchId),
+      getTrainingDataOfflineWithStatus('verifiable_items', fetchId),
+      getTrainingDataOfflineWithStatus('systems_in_place', fetchId),
+      getTrainingDataOfflineWithStatus('summary', fetchId),
     ]);
+    const rawDeliveryApproaches = daRead.items;
+    const rawOperatingSystems = osRead.items;
+    const rawImmediateAttention = iaRead.items;
+    const rawVerifiableItems = viRead.items;
+    const rawSystemsInPlace = sipRead.items;
+    const summaryArray = summaryReadT.items;
+    const trainingIdbReadFlags = {
+      delivery_approaches: daRead.readSucceeded,
+      operating_systems: osRead.readSucceeded,
+      immediate_attention: iaRead.readSucceeded,
+      verifiable_items: viRead.readSucceeded,
+      systems_in_place: sipRead.readSucceeded,
+      summary: summaryReadT.readSucceeded,
+    };
     
     let rawSummary = summaryArray[0] || null;
     
@@ -1292,12 +1321,12 @@ export async function syncTrainingAtomic(trainingId: string, preValidatedUser?: 
     if (recordStatus?.record_exists && !recordStatus?.is_deleted) {
       await reconcileAllChildTables(
         [
-          { childTable: 'training_delivery_approaches', parentIdColumn: 'training_id', localItems: delivery_approaches, prefetchedServerRows: existingApproaches },
-          { childTable: 'training_operating_systems', parentIdColumn: 'training_id', localItems: operating_systems, prefetchedServerRows: existingSystems },
-          { childTable: 'training_immediate_attention', parentIdColumn: 'training_id', localItems: immediate_attention, prefetchedServerRows: existingAttention },
-          { childTable: 'training_verifiable_items', parentIdColumn: 'training_id', localItems: verifiable_items, prefetchedServerRows: existingVerifiable },
-          { childTable: 'training_systems_in_place', parentIdColumn: 'training_id', localItems: systems_in_place, prefetchedServerRows: existingSystemsInPlace },
-          { childTable: 'training_summary', parentIdColumn: 'training_id', localItems: summary ? [summary] : [], prefetchedServerRows: existingSummary },
+          { childTable: 'training_delivery_approaches', parentIdColumn: 'training_id', localItems: delivery_approaches, prefetchedServerRows: existingApproaches, expectedNonEmpty: trainingIdbReadFlags.delivery_approaches },
+          { childTable: 'training_operating_systems', parentIdColumn: 'training_id', localItems: operating_systems, prefetchedServerRows: existingSystems, expectedNonEmpty: trainingIdbReadFlags.operating_systems },
+          { childTable: 'training_immediate_attention', parentIdColumn: 'training_id', localItems: immediate_attention, prefetchedServerRows: existingAttention, expectedNonEmpty: trainingIdbReadFlags.immediate_attention },
+          { childTable: 'training_verifiable_items', parentIdColumn: 'training_id', localItems: verifiable_items, prefetchedServerRows: existingVerifiable, expectedNonEmpty: trainingIdbReadFlags.verifiable_items },
+          { childTable: 'training_systems_in_place', parentIdColumn: 'training_id', localItems: systems_in_place, prefetchedServerRows: existingSystemsInPlace, expectedNonEmpty: trainingIdbReadFlags.systems_in_place },
+          { childTable: 'training_summary', parentIdColumn: 'training_id', localItems: summary ? [summary] : [], prefetchedServerRows: existingSummary, expectedNonEmpty: trainingIdbReadFlags.summary },
         ],
         trainingId,
         'training',
@@ -1726,14 +1755,28 @@ export async function syncDailyAssessmentAtomic(assessmentId: string, preValidat
     // because they are stored in IndexedDB under the original assessment_id
     const fetchId = assessmentIdMapping ? assessmentIdMapping.oldId : assessmentId;
     
-    const [rawBeginningOfDay, rawEndOfDay, rawOperatingSystems, rawEquipmentChecks, rawStructureChecks, rawEnvironmentChecks] = await Promise.all([
-      getAssessmentDataOffline('beginning_of_day', fetchId),
-      getAssessmentDataOffline('end_of_day', fetchId),
-      getAssessmentDataOffline('operating_systems', fetchId),
-      getAssessmentDataOffline('equipment_checks', fetchId),
-      getAssessmentDataOffline('structure_checks', fetchId),
-      getAssessmentDataOffline('environment_checks', fetchId),
+    const [bodRead, eodRead, opSysRead, eqRead, stRead, envRead] = await Promise.all([
+      getAssessmentDataOfflineWithStatus('beginning_of_day', fetchId),
+      getAssessmentDataOfflineWithStatus('end_of_day', fetchId),
+      getAssessmentDataOfflineWithStatus('operating_systems', fetchId),
+      getAssessmentDataOfflineWithStatus('equipment_checks', fetchId),
+      getAssessmentDataOfflineWithStatus('structure_checks', fetchId),
+      getAssessmentDataOfflineWithStatus('environment_checks', fetchId),
     ]);
+    const rawBeginningOfDay = bodRead.items;
+    const rawEndOfDay = eodRead.items;
+    const rawOperatingSystems = opSysRead.items;
+    const rawEquipmentChecks = eqRead.items;
+    const rawStructureChecks = stRead.items;
+    const rawEnvironmentChecks = envRead.items;
+    const assessmentIdbReadFlags = {
+      beginning_of_day: bodRead.readSucceeded,
+      end_of_day: eodRead.readSucceeded,
+      operating_systems: opSysRead.readSucceeded,
+      equipment_checks: eqRead.readSucceeded,
+      structure_checks: stRead.readSucceeded,
+      environment_checks: envRead.readSucceeded,
+    };
     
     // If we swapped the assessment ID, propagate new ID to all child records
     if (assessmentIdMapping) {
@@ -2005,12 +2048,12 @@ export async function syncDailyAssessmentAtomic(assessmentId: string, preValidat
     if (recordStatus?.record_exists && !recordStatus?.is_deleted) {
       await reconcileAllChildTables(
         [
-          { childTable: 'daily_assessment_beginning_of_day', parentIdColumn: 'assessment_id', localItems: beginning_of_day, prefetchedServerRows: existingBeginning },
-          { childTable: 'daily_assessment_end_of_day', parentIdColumn: 'assessment_id', localItems: end_of_day, prefetchedServerRows: existingEnd },
-          { childTable: 'daily_assessment_operating_systems', parentIdColumn: 'assessment_id', localItems: operating_systems, prefetchedServerRows: existingSystems },
-          { childTable: 'daily_assessment_equipment_checks', parentIdColumn: 'assessment_id', localItems: equipment_checks, prefetchedServerRows: existingEquipment },
-          { childTable: 'daily_assessment_structure_checks', parentIdColumn: 'assessment_id', localItems: structure_checks, prefetchedServerRows: existingStructure },
-          { childTable: 'daily_assessment_environment_checks', parentIdColumn: 'assessment_id', localItems: environment_checks, prefetchedServerRows: existingEnvironment },
+          { childTable: 'daily_assessment_beginning_of_day', parentIdColumn: 'assessment_id', localItems: beginning_of_day, prefetchedServerRows: existingBeginning, expectedNonEmpty: assessmentIdbReadFlags.beginning_of_day },
+          { childTable: 'daily_assessment_end_of_day', parentIdColumn: 'assessment_id', localItems: end_of_day, prefetchedServerRows: existingEnd, expectedNonEmpty: assessmentIdbReadFlags.end_of_day },
+          { childTable: 'daily_assessment_operating_systems', parentIdColumn: 'assessment_id', localItems: operating_systems, prefetchedServerRows: existingSystems, expectedNonEmpty: assessmentIdbReadFlags.operating_systems },
+          { childTable: 'daily_assessment_equipment_checks', parentIdColumn: 'assessment_id', localItems: equipment_checks, prefetchedServerRows: existingEquipment, expectedNonEmpty: assessmentIdbReadFlags.equipment_checks },
+          { childTable: 'daily_assessment_structure_checks', parentIdColumn: 'assessment_id', localItems: structure_checks, prefetchedServerRows: existingStructure, expectedNonEmpty: assessmentIdbReadFlags.structure_checks },
+          { childTable: 'daily_assessment_environment_checks', parentIdColumn: 'assessment_id', localItems: environment_checks, prefetchedServerRows: existingEnvironment, expectedNonEmpty: assessmentIdbReadFlags.environment_checks },
         ],
         assessmentId,
         'daily_assessment',
