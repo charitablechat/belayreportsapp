@@ -2611,6 +2611,7 @@ export type Database = {
         }
         Returns: number
       }
+      set_bulk_delete_opt_in: { Args: never; Returns: undefined }
       soft_delete_record: {
         Args: {
           p_deleted_by: string

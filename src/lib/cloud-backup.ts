@@ -273,17 +273,60 @@ export async function restoreSnapshotToServer(snapshotId: string): Promise<boole
       return false;
     }
 
+    // V7-style safety: capture pre_restore snapshot of CURRENT server state so this restore is reversible
+    try {
+      const { capturePreEditSnapshot } = await import('./admin-edit-snapshot');
+      const { data: { user } } = await supabase.auth.getUser();
+      const ownerId = (parent as any)?.inspector_id || user?.id;
+      if (user && ownerId) {
+        capturePreEditSnapshot(reportType, full.report_id, ownerId, user.id);
+      }
+    } catch (e) {
+      console.warn('[Cloud Backup] pre_restore snapshot capture failed (non-blocking):', e);
+    }
+
+    const { assertSafeToDeleteChildRows } = await import('./child-row-deletion-tripwire');
+
+    // Server-side trigger opt-in (replacement is intentional bulk operation)
+    try { await (supabase as any).rpc('set_bulk_delete_opt_in'); } catch (e) {
+      console.warn('[Cloud Backup] set_bulk_delete_opt_in rpc failed:', e);
+    }
+
     // Replace children — delete existing then insert snapshot rows
     for (const [tableKey, rows] of Object.entries(children)) {
-      // Always delete existing children to ensure full replacement (even if snapshot has zero rows)
-      const { error: deleteError } = await (supabase.from(tableKey as any) as any)
-        .delete()
-        .eq(fkColumn, full.report_id);
-      if (deleteError) {
-        console.warn(`[Cloud Backup] Server restore delete ${tableKey} failed:`, deleteError.message);
+      // Gap A fix: skip delete entirely when snapshot table is empty/missing — preserve current server data
+      if (!Array.isArray(rows) || rows.length === 0) {
+        console.warn(`[Cloud Backup] Snapshot has no rows for ${tableKey} -- skipping delete to preserve current server data`);
+        continue;
       }
 
-      if (!Array.isArray(rows) || rows.length === 0) continue;
+      // Fetch live IDs and route through tripwire (bulk: true legitimate replacement)
+      const { data: existingRows } = await (supabase.from(tableKey as any) as any)
+        .select('id')
+        .eq(fkColumn, full.report_id);
+      const existingIds = (existingRows || []).map((r: any) => r.id);
+
+      if (existingIds.length > 0) {
+        const tw = await assertSafeToDeleteChildRows({
+          table: tableKey,
+          parentFkColumn: fkColumn,
+          parentId: full.report_id,
+          idsToDelete: existingIds,
+          context: { source: 'cloud_restore', bulk: true, reason: 'cloud_snapshot_restore', reportType },
+        });
+        if (!tw.allowed) {
+          console.warn(`[Cloud Backup] Tripwire blocked restore delete for ${tableKey}; skipping`);
+          continue;
+        }
+
+        const { error: deleteError } = await (supabase.from(tableKey as any) as any)
+          .delete()
+          .eq(fkColumn, full.report_id);
+        if (deleteError) {
+          console.warn(`[Cloud Backup] Server restore delete ${tableKey} failed:`, deleteError.message);
+        }
+      }
+
       const { error: insertError } = await (supabase.from(tableKey as any) as any)
         .insert(rows);
       if (insertError) {

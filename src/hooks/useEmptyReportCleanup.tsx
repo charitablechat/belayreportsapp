@@ -161,6 +161,61 @@ export function useEmptyReportCleanup({
     try {
       // Soft-delete from Supabase if online (UPDATE instead of DELETE)
       if (navigator.onLine) {
+        // Gap C fix: verify the parent really has no children on the server before soft-deleting.
+        // A bad local IDB read can make a real report appear empty in memory; if we soft-delete
+        // here, after 60 days the cron's hard-delete will cascade and wipe every child row.
+        try {
+          const childTablesByType: Record<typeof type, Array<{ table: string; fk: string }>> = {
+            inspection: [
+              { table: 'inspection_systems', fk: 'inspection_id' },
+              { table: 'inspection_ziplines', fk: 'inspection_id' },
+              { table: 'inspection_equipment', fk: 'inspection_id' },
+              { table: 'inspection_standards', fk: 'inspection_id' },
+              { table: 'inspection_photos', fk: 'inspection_id' },
+            ],
+            training: [
+              { table: 'training_delivery_approaches', fk: 'training_id' },
+              { table: 'training_operating_systems', fk: 'training_id' },
+              { table: 'training_immediate_attention', fk: 'training_id' },
+              { table: 'training_verifiable_items', fk: 'training_id' },
+              { table: 'training_systems_in_place', fk: 'training_id' },
+              { table: 'training_photos', fk: 'training_id' },
+            ],
+            daily_assessment: [
+              { table: 'daily_assessment_beginning_of_day', fk: 'assessment_id' },
+              { table: 'daily_assessment_end_of_day', fk: 'assessment_id' },
+              { table: 'daily_assessment_operating_systems', fk: 'assessment_id' },
+              { table: 'daily_assessment_equipment_checks', fk: 'assessment_id' },
+              { table: 'daily_assessment_structure_checks', fk: 'assessment_id' },
+              { table: 'daily_assessment_environment_checks', fk: 'assessment_id' },
+              { table: 'daily_assessment_photos', fk: 'assessment_id' },
+            ],
+          };
+          const checks = childTablesByType[type] || [];
+          const counts = await Promise.all(
+            checks.map(({ table, fk }) =>
+              (supabase as any)
+                .from(table)
+                .select('id', { count: 'exact', head: true })
+                .eq(fk, id)
+                .then((r: any) => r?.count ?? 0)
+                .catch(() => 0)
+            )
+          );
+          const totalChildren = counts.reduce((a: number, b: number) => a + b, 0);
+          if (totalChildren > 0) {
+            console.warn(
+              `[EmptyReportCleanup] ABORT soft-delete: server reports ${totalChildren} child rows for ${type} ${id}. Local read was stale.`
+            );
+            cleanupAttempted.current = false;
+            return false;
+          }
+        } catch (verifyErr) {
+          console.warn('[EmptyReportCleanup] Server child-count verification failed; aborting soft-delete to be safe:', verifyErr);
+          cleanupAttempted.current = false;
+          return false;
+        }
+
         const { error } = await supabase
           .from(tableName)
           .update(softDeleteData)
