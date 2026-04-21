@@ -620,7 +620,9 @@ export const useAutoSync = () => {
           console.log('[AutoSync] Skipping Realtime-triggered sync (post-sync cooldown)', { msSinceLastComplete });
         }
       } else if (msSinceLastAttempt > MIN_SYNC_INTERVAL) {
-        triggerDebouncedSync();
+        // S10: Call performSync directly — duplicate prevention is handled by syncInProgressRef +
+        // POST_SYNC_COOLDOWN + MIN_SYNC_INTERVAL. The 3s debounce just adds lag for multi-device updates.
+        performSync(true);
       } else if (import.meta.env.DEV) {
         console.log('[AutoSync] Skipping Realtime-triggered sync (min interval cooldown)', { msSinceLastAttempt });
       }
