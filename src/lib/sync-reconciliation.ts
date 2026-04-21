@@ -39,6 +39,7 @@ export async function reconcileChildTable({
   reportType,
   userId,
   prefetchedServerRows,
+  expectedNonEmpty,
 }: ReconcileOptions): Promise<{ deletedCount: number; deletedRows: any[] }> {
   // 1. Use pre-fetched rows if available, otherwise fetch from server
   let serverRows: any[];
@@ -68,15 +69,26 @@ export async function reconcileChildTable({
       .filter((id): id is string => !!id && !id.startsWith('temp-'))
   );
 
-  // 3. Partial-read detection: if local has < 50% of server rows, skip reconciliation
   const localCount = localItems.filter(i => i.id && !i.id.startsWith('temp-')).length;
   const serverCount = serverRows.length;
 
-  // V3: Defer reconciliation if parent was just touched by another device.
-  // If server has more rows than local AND local count is small (likely partial read or
-  // foreign-device window), preserve server data rather than auto-prune.
-  if (serverCount > 2 && localCount > 0 && localCount < serverCount * 0.5) {
-    console.warn(`[Reconcile] BLOCKED: ${childTable} local has ${localCount}/${serverCount} rows -- possible partial read or foreign-device sync window, preserving server data`);
+  // V5: If caller couldn't confirm a successful IDB read AND local is empty, never prune.
+  if (expectedNonEmpty === false && localCount === 0) {
+    console.warn(`[Reconcile] BLOCKED: ${childTable} local IDB read failed (expectedNonEmpty=false) -- preserving server data`);
+    return { deletedCount: 0, deletedRows: [] };
+  }
+
+  // V4: 50% rule applies at any server size where serverCount >= 1
+  // (Previously only fired when serverCount > 2; small reports could still be wiped.)
+  if (serverCount >= 1 && localCount > 0 && localCount < serverCount * 0.5) {
+    console.warn(`[Reconcile] BLOCKED: ${childTable} local has ${localCount}/${serverCount} rows (<50%) -- possible partial read or foreign-device sync window, preserving server data`);
+    return { deletedCount: 0, deletedRows: [] };
+  }
+
+  // V4: Absolute-delta tripwire. Catches the case where local lost 3+ items
+  // in one read regardless of percentage (e.g. 5 -> 2 = 40% drop).
+  if (serverCount - localCount >= 3) {
+    console.warn(`[Reconcile] BLOCKED: ${childTable} server-local delta is ${serverCount - localCount} (>=3) -- preserving server data`);
     return { deletedCount: 0, deletedRows: [] };
   }
 
@@ -98,6 +110,19 @@ export async function reconcileChildTable({
 
   // 4. Delete the rows from server
   const idsToDelete = rowsToDelete.map((r: any) => r.id);
+
+  // FINAL TRIPWIRE: re-fetch live count, refuse if >70% would be wiped
+  const tripwire = await assertSafeToDeleteChildRows({
+    table: childTable,
+    parentFkColumn: parentIdColumn,
+    parentId,
+    idsToDelete,
+    context: { source: 'reconcileChildTable', reportType, userId },
+  });
+  if (!tripwire.allowed) {
+    return { deletedCount: 0, deletedRows: [] };
+  }
+
   const { error: deleteError } = await (supabase as any)
     .from(childTable)
     .delete()
