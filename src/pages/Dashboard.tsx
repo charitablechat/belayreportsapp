@@ -1359,8 +1359,6 @@ export default function Dashboard() {
                 <NetworkQualityIndicator />
               </div>
               
-              {/* Visible Force Sync button for quick access */}
-              <ForceSyncButton variant="icon" className="h-8 w-8" />
               
               {/* Refresh reports button */}
               <Tooltip>
