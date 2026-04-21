@@ -1360,28 +1360,6 @@ export default function Dashboard() {
               </div>
               
               
-              {/* Refresh reports button */}
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    className="h-8 w-8"
-                    disabled={refreshInFlightRef.current}
-                    onClick={() => {
-                      refreshReports(true);
-                      toast.info("Refreshing reports...");
-                    }}
-                    aria-label="Refresh reports"
-                  >
-                    <span className="relative inline-flex items-center justify-center">
-                      <RefreshCw className={cn("h-4 w-4", refreshInFlightRef.current && "animate-spin")} />
-                      <span className="absolute text-[7px] font-bold leading-none">R</span>
-                    </span>
-                  </Button>
-                </TooltipTrigger>
-                <TooltipContent>Refresh reports</TooltipContent>
-              </Tooltip>
               
               {isSuperAdmin && (
                 <Badge variant="default" className="bg-warning/90 text-warning-foreground border border-warning/50 backdrop-blur-[12px] shadow-lg shadow-warning/20 animate-pulse hidden sm:flex items-center gap-1">
