@@ -1402,16 +1402,8 @@ export async function syncTrainingAtomic(trainingId: string, preValidatedUser?: 
       throw new Error(`Transaction failed after ${result.completedSteps}/${result.totalSteps} steps. Rollback: ${result.rollbackSuccess ? 'successful' : 'failed'}`);
     }
     
-    // POST-TRANSACTION VERIFICATION: Confirm the record actually exists on the server
-    const { data: postSyncVerify } = await supabase
-      .from('trainings')
-      .select('id, synced_at')
-      .eq('id', trainingId)
-      .maybeSingle();
-    
-    if (!postSyncVerify) {
-      throw new Error('Post-sync verification failed: training not found on server after transaction succeeded');
-    }
+    // S4: Skip post-transaction verify SELECT — `executeTransaction` row-count guard +
+    // `align_synced_at` failure-on-missing-row already provide the same guarantee.
     
     // 6. Get cached inspector profile to attach to offline data
     const inspectorProfile = await getCachedProfile(user.id);
