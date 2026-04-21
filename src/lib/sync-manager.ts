@@ -44,6 +44,9 @@ export async function syncTrainings(): Promise<never> {
 }
 
 // Photo sync manager - still valid, not deprecated
+import { runWithConcurrency } from './concurrency';
+import { isMobile } from './mobile-detection';
+
 const MAX_PHOTO_BATCH_SIZE = 10;
 const MAX_PHOTO_RETRIES = 5;
 
@@ -76,21 +79,26 @@ export async function syncPhotos(): Promise<{ remaining: number }> {
     }
 
     let successCount = 0;
-    // Track IDs already processed in this batch to skip duplicates without N+1 queries
+    // Track IDs already processed in this batch to skip duplicates without N+1 queries.
+    // Read-then-await pattern below makes this safe under bounded concurrency.
     const processedIds = new Set<string>();
 
-    for (const photo of batch) {
+    // S3: Bounded parallel uploads — Storage handles concurrent PUTs fine.
+    // 3 on mobile / 5 on desktop keeps us within network/connection-pool comfort zone.
+    const photoConcurrency = isMobile() ? 3 : 5;
+
+    await runWithConcurrency(batch, photoConcurrency, async (photo) => {
       try {
         if (processedIds.has(photo.id)) {
           successCount++;
-          continue;
+          return;
         }
 
         if (photo.inspectionId?.startsWith('temp-')) {
           if (import.meta.env.DEV) {
             console.warn('[Sync Manager] Skipping photo with temporary inspection ID:', photo.id);
           }
-          continue;
+          return;
         }
 
         // Normalize pending/ paths: replace placeholder prefix with real userId
@@ -101,7 +109,7 @@ export async function syncPhotos(): Promise<{ remaining: number }> {
             if (import.meta.env.DEV) {
               console.log('[Sync Manager] Skipping pending photo (no auth):', photo.id);
             }
-            continue;
+            return;
           }
           const normalizedPath = photo.photoUrl.replace(/^pending\//, `${user.id}/`);
           photo.photoUrl = normalizedPath;
@@ -123,7 +131,7 @@ export async function syncPhotos(): Promise<{ remaining: number }> {
             console.warn('[Sync Manager] Skipping photo with null blob (already uploaded?):', photo.id);
           }
           await markPhotoAsUploaded(photo.id, photo.photoUrl || photo.id);
-          continue;
+          return;
         }
 
         let user = await getUserWithCache();
@@ -152,9 +160,6 @@ export async function syncPhotos(): Promise<{ remaining: number }> {
           });
 
         if (uploadError) throw uploadError;
-
-
-
 
         // Deduplication guard: check if a DB row already exists for this photo_url
         const { data: existing } = await (supabase
@@ -203,7 +208,7 @@ export async function syncPhotos(): Promise<{ remaining: number }> {
         // Increment retry counter so we eventually stop retrying broken photos
         await incrementPhotoRetryCount(photo.id);
       }
-    }
+    });
 
     if (import.meta.env.DEV) {
       console.log(`[Sync Manager] Photo sync completed: ${successCount} photos, ${remaining} remaining`);
