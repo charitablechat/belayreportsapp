@@ -849,8 +849,25 @@ export async function saveInspectionOffline(inspection: any) {
     async () => {
       try {
         const db = await getDB();
+
+        // V6: Stamp child_count_hint = total live children at save time so SW can detect regressions.
+        try {
+          const [systems, ziplines, equipment, standards, summary] = await Promise.all([
+            db.getAllFromIndex('inspection_systems', 'by-inspection', inspection.id).catch(() => []),
+            db.getAllFromIndex('inspection_ziplines', 'by-inspection', inspection.id).catch(() => []),
+            db.getAllFromIndex('inspection_equipment', 'by-inspection', inspection.id).catch(() => []),
+            db.getAllFromIndex('inspection_standards', 'by-inspection', inspection.id).catch(() => []),
+            db.getAllFromIndex('inspection_summary', 'by-inspection', inspection.id).catch(() => []),
+          ]);
+          const total = (systems?.length ?? 0) + (ziplines?.length ?? 0) + (equipment?.length ?? 0)
+            + (standards?.length ?? 0) + ((summary?.length ?? 0) > 0 ? 1 : 0);
+          if (total > 0) inspection.child_count_hint = total;
+        } catch {
+          // non-fatal
+        }
+
         await db.put('inspections', inspection);
-        
+
         if (import.meta.env.DEV) {
           console.log('[Offline Storage] Saved inspection:', inspection.id);
         }
@@ -1586,6 +1603,24 @@ export async function saveDailyAssessmentOffline(assessment: any) {
   return withIndexedDBErrorBoundary(
     async () => {
       const db = await getDB();
+
+      // V6: Stamp child_count_hint for assessment
+      try {
+        const [bod, eod, env, eq, str, os] = await Promise.all([
+          db.getAllFromIndex('daily_assessment_beginning_of_day', 'by-assessment', assessment.id).catch(() => []),
+          db.getAllFromIndex('daily_assessment_end_of_day', 'by-assessment', assessment.id).catch(() => []),
+          db.getAllFromIndex('daily_assessment_environment_checks', 'by-assessment', assessment.id).catch(() => []),
+          db.getAllFromIndex('daily_assessment_equipment_checks', 'by-assessment', assessment.id).catch(() => []),
+          db.getAllFromIndex('daily_assessment_structure_checks', 'by-assessment', assessment.id).catch(() => []),
+          db.getAllFromIndex('daily_assessment_operating_systems', 'by-assessment', assessment.id).catch(() => []),
+        ]);
+        const total = (bod?.length ?? 0) + (eod?.length ?? 0) + (env?.length ?? 0)
+          + (eq?.length ?? 0) + (str?.length ?? 0) + (os?.length ?? 0);
+        if (total > 0) assessment.child_count_hint = total;
+      } catch {
+        // non-fatal
+      }
+
       await db.put('daily_assessments', assessment);
       
       if (import.meta.env.DEV) {
@@ -1919,6 +1954,24 @@ export async function saveTrainingOffline(training: any) {
   return withIndexedDBErrorBoundary(
     async () => {
       const db = await getDB();
+
+      // V6: Stamp child_count_hint for training
+      try {
+        const [da, os, ia, vi, sip, summary] = await Promise.all([
+          db.getAllFromIndex('training_delivery_approaches', 'by-training', training.id).catch(() => []),
+          db.getAllFromIndex('training_operating_systems', 'by-training', training.id).catch(() => []),
+          db.getAllFromIndex('training_immediate_attention', 'by-training', training.id).catch(() => []),
+          db.getAllFromIndex('training_verifiable_items', 'by-training', training.id).catch(() => []),
+          db.getAllFromIndex('training_systems_in_place', 'by-training', training.id).catch(() => []),
+          db.getAllFromIndex('training_summary', 'by-training', training.id).catch(() => []),
+        ]);
+        const total = (da?.length ?? 0) + (os?.length ?? 0) + (ia?.length ?? 0)
+          + (vi?.length ?? 0) + (sip?.length ?? 0) + (summary?.length ?? 0);
+        if (total > 0) training.child_count_hint = total;
+      } catch {
+        // non-fatal
+      }
+
       await db.put('trainings', training);
       
       if (import.meta.env.DEV) {

@@ -1,4 +1,5 @@
 import { supabase } from "@/integrations/supabase/client";
+import { assertSafeToDeleteChildRows } from "./child-row-deletion-tripwire";
 
 // Timeout for individual database steps to prevent hanging on slow connections
 const STEP_TIMEOUT = 15000; // 15 seconds per step (allows large ~2MB records to sync on slower connections)
@@ -182,6 +183,19 @@ async function rollbackTransaction(
             // Batch insert - delete all items with IDs
             const ids = step.data.map((item: any) => item.id).filter(Boolean);
             if (ids.length > 0) {
+              // Tripwire: rollback is a legitimate bulk delete -- pass bulk:true
+              const parentFk = Object.keys(step.filter || {})[0];
+              const parentId = parentFk ? step.filter[parentFk] : null;
+              if (parentFk && parentId) {
+                const tw = await assertSafeToDeleteChildRows({
+                  table: step.table,
+                  parentFkColumn: parentFk,
+                  parentId,
+                  idsToDelete: ids,
+                  context: { source: 'transaction_rollback', bulk: true, reason: 'rollback_insert' },
+                });
+                if (!tw.allowed) break;
+              }
               await (supabase as any).from(step.table).delete().in('id', ids);
             }
           } else if (step.data?.id) {
