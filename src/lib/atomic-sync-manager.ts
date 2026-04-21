@@ -54,6 +54,7 @@ import {
   deleteOfflineDailyAssessment,
 } from "./offline-storage";
 import { appendVersion, getLatestFieldCount, calculateFieldCount } from "./report-version-manager";
+import { runWithConcurrency } from "./concurrency";
 
 /**
  * Maximum number of items to process per sync cycle.
@@ -127,8 +128,25 @@ export async function syncInspectionAtomic(inspectionId: string, preValidatedUse
   let inspectionIdMapping: { oldId: string; newId: string } | null = null;
   
   try {
-    // 1. Gather all data for this inspection
-    const inspection = await getOfflineInspection(inspectionId);
+    // S9: Fetch inspection record + all child records in a single Promise.all batch.
+    // Children are keyed by inspectionId which we already have, so no need to wait
+    // for the parent record before kicking off child reads.
+    const [
+      inspectionRead,
+      systemsRead,
+      ziplinesRead,
+      equipmentRead,
+      standardsRead,
+      summaryRead,
+    ] = await Promise.all([
+      getOfflineInspection(inspectionId),
+      getRelatedDataOfflineWithStatus('systems', inspectionId),
+      getRelatedDataOfflineWithStatus('ziplines', inspectionId),
+      getRelatedDataOfflineWithStatus('equipment', inspectionId),
+      getRelatedDataOfflineWithStatus('standards', inspectionId),
+      getRelatedDataOfflineWithStatus('summary', inspectionId),
+    ]);
+    const inspection = inspectionRead;
     if (!inspection) {
       throw new Error("Inspection not found in local storage");
     }
@@ -193,17 +211,6 @@ export async function syncInspectionAtomic(inspectionId: string, preValidatedUse
       }
     }
     
-    // Fetch child records using the ORIGINAL ID (before temp-to-UUID swap)
-    // because they are stored in IndexedDB under the original inspection_id
-    const fetchId = inspectionIdMapping ? inspectionIdMapping.oldId : inspectionId;
-    
-    const [systemsRead, ziplinesRead, equipmentRead, standardsRead, summaryRead] = await Promise.all([
-      getRelatedDataOfflineWithStatus('systems', fetchId),
-      getRelatedDataOfflineWithStatus('ziplines', fetchId),
-      getRelatedDataOfflineWithStatus('equipment', fetchId),
-      getRelatedDataOfflineWithStatus('standards', fetchId),
-      getRelatedDataOfflineWithStatus('summary', fetchId),
-    ]);
     const rawSystems = systemsRead.items;
     const rawZiplines = ziplinesRead.items;
     const rawEquipment = equipmentRead.items;
@@ -617,16 +624,8 @@ export async function syncInspectionAtomic(inspectionId: string, preValidatedUse
       throw new Error(`Transaction failed after ${result.completedSteps}/${result.totalSteps} steps. Rollback: ${result.rollbackSuccess ? 'successful' : 'failed'}`);
     }
     
-    // POST-TRANSACTION VERIFICATION: Confirm the record actually exists on the server
-    const { data: postSyncVerify } = await supabase
-      .from('inspections')
-      .select('id, synced_at')
-      .eq('id', inspectionId)
-      .maybeSingle();
-    
-    if (!postSyncVerify) {
-      throw new Error('Post-sync verification failed: inspection not found on server after transaction succeeded');
-    }
+    // S4: Skip post-transaction verify SELECT — `executeTransaction` already throws on
+    // 0-affected-row writes, and `align_synced_at` below errors loudly if the row is missing.
     
     // 6. Get cached inspector profile to attach to offline data
     const inspectorProfile = await getCachedProfile(user.id);
@@ -830,22 +829,27 @@ export async function syncAllInspectionsAtomic(preValidatedUser?: CachedUser) {
   
   // Mobile devices get retry logic
   const maxRetries = capabilities.isMobile ? 2 : 1; // Reduced retries for faster recovery
-  
-  for (let i = 0; i < batch.length; i++) {
-    const inspection = batch[i];
+  // S2: Bounded concurrency — different inspectionIds never share child rows, and
+  // executeTransaction is per-record. 3 on mobile / 5 on desktop is well within Supabase
+  // connection-pool headroom and dramatically reduces wall-clock for queued drains.
+  const itemConcurrency = capabilities.isMobile ? 3 : 5;
+  let progressCounter = 0;
+
+  await runWithConcurrency(batch, itemConcurrency, async (inspection, i) => {
     let retryCount = 0;
     let synced = false;
-    
+
     while (retryCount < maxRetries && !synced) {
       // Emit progress for current item
+      progressCounter++;
       syncProgressEmitter.emit({
         total: batch.length,
-        current: i + 1,
+        current: progressCounter,
         currentItem: `${inspection.organization} - ${inspection.location}${retryCount > 0 ? ` (retry ${retryCount})` : ''}${remaining > 0 ? ` (${remaining} more queued)` : ''}`,
         phase: 'inspections',
         errors,
       });
-      
+
       try {
         // Per-item timeout to prevent single item from blocking entire sync
         // Pass pre-validated user to skip redundant session validation per item
@@ -864,13 +868,13 @@ export async function syncAllInspectionsAtomic(preValidatedUser?: CachedUser) {
           successCount++;
           synced = true;
         }
-        
+
         if (import.meta.env.DEV) {
           console.log(`[Atomic Sync] Synced ${i + 1}/${batch.length} (${remaining} remaining):`, inspection.id);
         }
       } catch (error: any) {
         retryCount++;
-        
+
         if (retryCount < maxRetries) {
           // Reduced backoff for faster iteration
           const delay = Math.min(500 * retryCount, 2000);
@@ -885,7 +889,7 @@ export async function syncAllInspectionsAtomic(preValidatedUser?: CachedUser) {
         }
       }
     }
-  }
+  });
   
   // Emit completion
   syncProgressEmitter.emit({
@@ -1404,16 +1408,8 @@ export async function syncTrainingAtomic(trainingId: string, preValidatedUser?: 
       throw new Error(`Transaction failed after ${result.completedSteps}/${result.totalSteps} steps. Rollback: ${result.rollbackSuccess ? 'successful' : 'failed'}`);
     }
     
-    // POST-TRANSACTION VERIFICATION: Confirm the record actually exists on the server
-    const { data: postSyncVerify } = await supabase
-      .from('trainings')
-      .select('id, synced_at')
-      .eq('id', trainingId)
-      .maybeSingle();
-    
-    if (!postSyncVerify) {
-      throw new Error('Post-sync verification failed: training not found on server after transaction succeeded');
-    }
+    // S4: Skip post-transaction verify SELECT — `executeTransaction` row-count guard +
+    // `align_synced_at` failure-on-missing-row already provide the same guarantee.
     
     // 6. Get cached inspector profile to attach to offline data
     const inspectorProfile = await getCachedProfile(user.id);
@@ -1608,22 +1604,25 @@ export async function syncAllTrainingsAtomic(preValidatedUser?: CachedUser) {
   
   // Reduced retries for faster recovery
   const maxRetries = capabilities.isMobile ? 2 : 1;
-  
-  for (let i = 0; i < batch.length; i++) {
-    const training = batch[i];
+  // S2: Bounded concurrency — different trainingIds never share child rows.
+  const itemConcurrency = capabilities.isMobile ? 3 : 5;
+  let progressCounter = 0;
+
+  await runWithConcurrency(batch, itemConcurrency, async (training, i) => {
     let retryCount = 0;
     let synced = false;
-    
+
     while (retryCount < maxRetries && !synced) {
       // Emit progress for current item
+      progressCounter++;
       syncProgressEmitter.emit({
         total: batch.length,
-        current: i + 1,
+        current: progressCounter,
         currentItem: `${training.organization}${retryCount > 0 ? ` (retry ${retryCount})` : ''}${remaining > 0 ? ` (${remaining} more queued)` : ''}`,
         phase: 'trainings',
         errors,
       });
-      
+
       try {
         // Per-item timeout - pass pre-validated user to skip redundant session validation
         const itemResult = await Promise.race([
@@ -1636,13 +1635,13 @@ export async function syncAllTrainingsAtomic(preValidatedUser?: CachedUser) {
           successCount++;
           synced = true;
         }
-        
+
         if (import.meta.env.DEV) {
           console.log(`[Atomic Sync] Synced training ${i + 1}/${batch.length} (${remaining} remaining):`, training.id);
         }
       } catch (error: any) {
         retryCount++;
-        
+
         if (retryCount < maxRetries) {
           const delay = Math.min(500 * retryCount, 2000);
           if (import.meta.env.DEV) {
@@ -1656,7 +1655,7 @@ export async function syncAllTrainingsAtomic(preValidatedUser?: CachedUser) {
         }
       }
     }
-  }
+  });
   
   console.log('[Atomic Sync] Training sync results:', {
     batch: batch.length,
@@ -2125,16 +2124,8 @@ export async function syncDailyAssessmentAtomic(assessmentId: string, preValidat
       throw new Error(`Transaction failed after ${result.completedSteps}/${result.totalSteps} steps. Rollback: ${result.rollbackSuccess ? 'successful' : 'failed'}`);
     }
     
-    // POST-TRANSACTION VERIFICATION: Confirm the record actually exists on the server
-    const { data: postSyncVerify } = await supabase
-      .from('daily_assessments')
-      .select('id, synced_at')
-      .eq('id', assessmentId)
-      .maybeSingle();
-    
-    if (!postSyncVerify) {
-      throw new Error('Post-sync verification failed: daily assessment not found on server after transaction succeeded');
-    }
+    // S4: Skip post-transaction verify SELECT — `executeTransaction` row-count guard +
+    // `align_synced_at` failure-on-missing-row already provide the same guarantee.
     
     // 6. Get cached inspector profile to attach to offline data
     const inspectorProfile = await getCachedProfile(user.id);
@@ -2328,22 +2319,25 @@ export async function syncAllDailyAssessmentsAtomic(preValidatedUser?: CachedUse
   
   // Reduced retries for faster recovery
   const maxRetries = capabilities.isMobile ? 2 : 1;
-  
-  for (let i = 0; i < batch.length; i++) {
-    const assessment = batch[i];
+  // S2: Bounded concurrency — different assessmentIds never share child rows.
+  const itemConcurrency = capabilities.isMobile ? 3 : 5;
+  let progressCounter = 0;
+
+  await runWithConcurrency(batch, itemConcurrency, async (assessment, i) => {
     let retryCount = 0;
     let synced = false;
-    
+
     while (retryCount < maxRetries && !synced) {
       // Emit progress for current item
+      progressCounter++;
       syncProgressEmitter.emit({
         total: batch.length,
-        current: i + 1,
+        current: progressCounter,
         currentItem: `${assessment.organization} - ${assessment.site}${retryCount > 0 ? ` (retry ${retryCount})` : ''}${remaining > 0 ? ` (${remaining} more queued)` : ''}`,
         phase: 'assessments',
         errors,
       });
-      
+
       try {
         // Per-item timeout - pass pre-validated user to skip redundant session validation
         const itemResult = await Promise.race([
@@ -2356,13 +2350,13 @@ export async function syncAllDailyAssessmentsAtomic(preValidatedUser?: CachedUse
           successCount++;
           synced = true;
         }
-        
+
         if (import.meta.env.DEV) {
           console.log(`[Atomic Sync] Synced daily assessment ${i + 1}/${batch.length} (${remaining} remaining):`, assessment.id);
         }
       } catch (error: any) {
         retryCount++;
-        
+
         if (retryCount < maxRetries) {
           const delay = Math.min(500 * retryCount, 2000);
           if (import.meta.env.DEV) {
@@ -2376,7 +2370,7 @@ export async function syncAllDailyAssessmentsAtomic(preValidatedUser?: CachedUse
         }
       }
     }
-  }
+  });
   
   console.log('[Atomic Sync] Daily assessment sync results:', {
     batch: batch.length,

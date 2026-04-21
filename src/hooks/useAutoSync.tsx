@@ -17,18 +17,19 @@ import { toast } from '@/components/ui/sonner';
 import { markSnapshotSynced } from '@/lib/local-backup-ledger';
 
 // Sync configuration with mobile optimization
-const DEBOUNCE_DELAY = 3000; // 3 seconds after local changes
+// Tuned for fast user-driven sync (S5/S6/S7) — duplicate prevention is handled by syncInProgressRef
+const DEBOUNCE_DELAY = 1500; // 1.5s after local changes (was 3s) — matches AUTO_SAVE_DEBOUNCE_MS
 const DESKTOP_SYNC_INTERVAL = 30000; // 30 seconds for desktop
 const DESKTOP_IDLE_SYNC_INTERVAL = 120000; // 120 seconds when idle (no unsynced items)
 const MOBILE_SYNC_INTERVAL = 60000; // 60 seconds for mobile (reduced from 5min for faster sync)
 const MOBILE_IDLE_SYNC_INTERVAL = 180000; // 180 seconds when idle on mobile
-const MIN_SYNC_INTERVAL = 5000; // Minimum 5 seconds between syncs
-const INITIAL_SYNC_DELAY = 2000; // 2 seconds delay for initial sync to not block UI
+const MIN_SYNC_INTERVAL = 2000; // Minimum 2s between syncs (was 5s) — anti-thrash floor
+const INITIAL_SYNC_DELAY = 500; // 500ms initial sync delay (was 2s) — UI is paint-stable by then
 const BASE_SYNC_TIMEOUT = 30000; // Base 30 second timeout
 const PER_ITEM_TIMEOUT_BUDGET = 8000; // 8 seconds budget per unsynced item
 const MAX_SYNC_TIMEOUT = 300000; // 5 minute absolute maximum
 const MAX_BATCH_SIZE = 5; // Must match atomic-sync-manager.ts
-const ACCELERATED_SYNC_DELAY = 5000; // 5s between cycles when draining a queue
+const ACCELERATED_SYNC_DELAY = 1000; // 1s between cycles when draining a queue (was 5s)
 const STALE_UPLOAD_THRESHOLD = 5 * 60 * 1000; // 5 minutes - warn if data hasn't synced
 const STALE_CHECK_INTERVAL = 60 * 1000; // Check every 60 seconds
 const POST_SYNC_COOLDOWN = 10000; // 10s cooldown after sync completes to ignore self-triggered Realtime events
@@ -278,10 +279,10 @@ export const useAutoSync = () => {
         return;
       }
       
-      // Sync data types SEQUENTIALLY with UI thread yields between each
-      // This prevents sync from blocking typing and other user interactions
+      // S1: Sync the three report types IN PARALLEL (independent table families, no shared rows).
+      // Photos run AFTER report sync because they depend on the temp-ID → UUID mapping.
       const yieldToUI = () => new Promise<void>(r => setTimeout(r, 0));
-      
+
       const syncResult = await withSyncTimeout(
         (async () => {
           // Process any queued offline soft-deletes before main sync
@@ -296,12 +297,17 @@ export const useAutoSync = () => {
           }
           await yieldToUI();
 
-          const inspResult = await syncAllInspectionsAtomic(validatedUser).catch(e => { console.error('[AutoSync] Inspections sync failed:', e); return null; });
+          // Run inspections / trainings / assessments concurrently — they touch independent tables
+          const [inspSettled, trainSettled, assessSettled] = await Promise.allSettled([
+            syncAllInspectionsAtomic(validatedUser),
+            syncAllTrainingsAtomic(validatedUser),
+            syncAllDailyAssessmentsAtomic(validatedUser),
+          ]);
+          const inspResult = inspSettled.status === 'fulfilled' ? inspSettled.value : (console.error('[AutoSync] Inspections sync failed:', inspSettled.reason), null);
+          const trainResult = trainSettled.status === 'fulfilled' ? trainSettled.value : (console.error('[AutoSync] Trainings sync failed:', trainSettled.reason), null);
+          const assessResult = assessSettled.status === 'fulfilled' ? assessSettled.value : (console.error('[AutoSync] Assessments sync failed:', assessSettled.reason), null);
           await yieldToUI();
-          const trainResult = await syncAllTrainingsAtomic(validatedUser).catch(e => { console.error('[AutoSync] Trainings sync failed:', e); return null; });
-          await yieldToUI();
-          const assessResult = await syncAllDailyAssessmentsAtomic(validatedUser).catch(e => { console.error('[AutoSync] Assessments sync failed:', e); return null; });
-          await yieldToUI();
+          // Photos depend on real UUIDs assigned by the report syncs above
           const photoResult = await syncPhotos().catch(e => { console.error('[AutoSync] Photos sync failed:', e); return null; });
           return [inspResult, trainResult, assessResult, photoResult];
         })(),
@@ -422,19 +428,21 @@ export const useAutoSync = () => {
             clearPendingSyncs();
           }
           
-          // ACCELERATED RE-SYNC: If items remain in queue, schedule next cycle sooner
-          // This drains large queues (e.g., 22 items) in ~25s instead of waiting for the full interval
+          // ACCELERATED RE-SYNC: If items remain in queue, schedule next cycle sooner.
+          // S6: Skip the wait entirely if the previous batch had no failures.
           if (totalRemaining > 0) {
+            const totalFailed = results.reduce((sum, r) => sum + (r?.failed || 0), 0);
+            const drainDelay = totalFailed > 0 ? ACCELERATED_SYNC_DELAY : 0;
             if (import.meta.env.DEV) {
-              console.log(`[AutoSync] ${totalRemaining} items remaining - scheduling accelerated sync in ${ACCELERATED_SYNC_DELAY / 1000}s`);
+              console.log(`[AutoSync] ${totalRemaining} items remaining - scheduling accelerated sync in ${drainDelay}ms (failed: ${totalFailed})`);
             }
             // Reset the min sync interval guard so the accelerated sync can proceed
-            lastSyncAttemptRef.current = Date.now() - MIN_SYNC_INTERVAL + ACCELERATED_SYNC_DELAY;
+            lastSyncAttemptRef.current = Date.now() - MIN_SYNC_INTERVAL + drainDelay;
             setTimeout(() => {
               if (navigator.onLine && !syncInProgressRef.current) {
                 performSync(true);
               }
-            }, ACCELERATED_SYNC_DELAY);
+            }, drainDelay);
           }
         } else {
           // All fetches timed out - don't report success, will retry next cycle
@@ -612,7 +620,9 @@ export const useAutoSync = () => {
           console.log('[AutoSync] Skipping Realtime-triggered sync (post-sync cooldown)', { msSinceLastComplete });
         }
       } else if (msSinceLastAttempt > MIN_SYNC_INTERVAL) {
-        triggerDebouncedSync();
+        // S10: Call performSync directly — duplicate prevention is handled by syncInProgressRef +
+        // POST_SYNC_COOLDOWN + MIN_SYNC_INTERVAL. The 3s debounce just adds lag for multi-device updates.
+        performSync(true);
       } else if (import.meta.env.DEV) {
         console.log('[AutoSync] Skipping Realtime-triggered sync (min interval cooldown)', { msSinceLastAttempt });
       }
