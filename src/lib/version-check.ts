@@ -16,12 +16,13 @@ const FETCH_TIMEOUT_MS = 8000;
 export interface VersionCheckResult {
   current: string;
   deployed: string | null;
+  deployedBuild: string | null;
   isStale: boolean;
   checkedAt: Date;
 }
 
-async function fetchDeployedVersion(): Promise<string | null> {
-  if (typeof fetch === 'undefined') return null;
+async function fetchDeployedVersion(): Promise<{ version: string | null; build: string | null }> {
+  if (typeof fetch === 'undefined') return { version: null, build: null };
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
   try {
@@ -30,14 +31,26 @@ async function fetchDeployedVersion(): Promise<string | null> {
       signal: controller.signal,
       headers: { 'Cache-Control': 'no-cache' },
     });
-    if (!res.ok) return null;
+    if (!res.ok) return { version: null, build: null };
     const data = await res.json();
-    return typeof data?.version === 'string' ? data.version : null;
+    return {
+      version: typeof data?.version === 'string' ? data.version : null,
+      build: typeof data?.build === 'string' ? data.build : null,
+    };
   } catch {
-    return null;
+    return { version: null, build: null };
   } finally {
     clearTimeout(timer);
   }
+}
+
+/**
+ * Strip any `+build` suffix or pre-release tag before comparing — we only
+ * compare the numeric SemVer core. (Currently /version.json never includes
+ * a `+` suffix, but be defensive.)
+ */
+function stripSuffix(v: string): string {
+  return v.split(/[+-]/, 1)[0] || v;
 }
 
 export function isVersionNewer(current: string, deployed: string, strict = false): boolean {
@@ -45,19 +58,39 @@ export function isVersionNewer(current: string, deployed: string, strict = false
   if (current === deployed) return false;
   if (strict) return current !== deployed;
 
-  const parse = (v: string) => v.split('.').map((p) => parseInt(p, 10) || 0);
-  const [cMaj, cMin] = parse(current);
-  const [dMaj, dMin] = parse(deployed);
-  if (dMaj > cMaj) return true;
-  if (dMaj === cMaj && dMin > cMin) return true;
-  return false;
+  const parse = (v: string) => stripSuffix(v).split('.').map((p) => parseInt(p, 10) || 0);
+  const [cMaj, cMin, cPatch] = parse(current);
+  const [dMaj, dMin, dPatch] = parse(deployed);
+  if (dMaj !== cMaj) return dMaj > cMaj;
+  if (dMin !== cMin) return dMin > cMin;
+  return dPatch > cPatch;
+}
+
+// Dev-only self-test: catches regressions in the comparator immediately.
+// Costs nothing in prod (DEV is a static define stripped by Vite).
+if (import.meta.env?.DEV) {
+  try {
+    const assert = (cond: boolean, msg: string) => {
+      if (!cond) throw new Error(`[version-check self-test] ${msg}`);
+    };
+    assert(isVersionNewer('4.7.5', '4.7.6') === true, 'patch increment must be newer');
+    assert(isVersionNewer('4.7.10', '4.7.9') === false, 'patch decrement must not be newer');
+    assert(isVersionNewer('4.7.142', '4.7.143') === true, 'multi-digit patch must compare numerically');
+    assert(isVersionNewer('4.7.5', '4.7.5') === false, 'equal must not be newer');
+    assert(isVersionNewer('4.7.9', '4.8.1') === true, 'minor bump must be newer');
+    assert(isVersionNewer('5.0.1', '4.9.99') === false, 'lower major must not be newer');
+  } catch (err) {
+    // eslint-disable-next-line no-console
+    console.error(err);
+  }
 }
 
 export async function checkVersion(): Promise<VersionCheckResult> {
-  const deployed = await fetchDeployedVersion();
+  const { version: deployed, build: deployedBuild } = await fetchDeployedVersion();
   return {
     current: APP_VERSION,
     deployed,
+    deployedBuild,
     isStale: deployed ? isVersionNewer(APP_VERSION, deployed, false) : false,
     checkedAt: new Date(),
   };
