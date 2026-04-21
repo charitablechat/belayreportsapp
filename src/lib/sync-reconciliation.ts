@@ -66,8 +66,18 @@ export async function reconcileChildTable({
   const localCount = localItems.filter(i => i.id && !i.id.startsWith('temp-')).length;
   const serverCount = serverRows.length;
 
+  // V3: Defer reconciliation if parent was just touched by another device.
+  // If server has more rows than local AND local count is small (likely partial read or
+  // foreign-device window), preserve server data rather than auto-prune.
   if (serverCount > 2 && localCount > 0 && localCount < serverCount * 0.5) {
-    console.warn(`[Reconcile] BLOCKED: ${childTable} local has ${localCount}/${serverCount} rows -- possible partial read, preserving server data`);
+    console.warn(`[Reconcile] BLOCKED: ${childTable} local has ${localCount}/${serverCount} rows -- possible partial read or foreign-device sync window, preserving server data`);
+    return { deletedCount: 0, deletedRows: [] };
+  }
+
+  // V3 extra guard: if local has zero non-temp items but server has data, never prune.
+  // This prevents wiping a freshly-loaded device that hasn't yet rendered local children.
+  if (localCount === 0 && serverCount > 0) {
+    console.warn(`[Reconcile] BLOCKED: ${childTable} local has 0 items but server has ${serverCount} -- preserving server data`);
     return { deletedCount: 0, deletedRows: [] };
   }
 
