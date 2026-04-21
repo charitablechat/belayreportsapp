@@ -2319,22 +2319,25 @@ export async function syncAllDailyAssessmentsAtomic(preValidatedUser?: CachedUse
   
   // Reduced retries for faster recovery
   const maxRetries = capabilities.isMobile ? 2 : 1;
-  
-  for (let i = 0; i < batch.length; i++) {
-    const assessment = batch[i];
+  // S2: Bounded concurrency — different assessmentIds never share child rows.
+  const itemConcurrency = capabilities.isMobile ? 3 : 5;
+  let progressCounter = 0;
+
+  await runWithConcurrency(batch, itemConcurrency, async (assessment, i) => {
     let retryCount = 0;
     let synced = false;
-    
+
     while (retryCount < maxRetries && !synced) {
       // Emit progress for current item
+      progressCounter++;
       syncProgressEmitter.emit({
         total: batch.length,
-        current: i + 1,
+        current: progressCounter,
         currentItem: `${assessment.organization} - ${assessment.site}${retryCount > 0 ? ` (retry ${retryCount})` : ''}${remaining > 0 ? ` (${remaining} more queued)` : ''}`,
         phase: 'assessments',
         errors,
       });
-      
+
       try {
         // Per-item timeout - pass pre-validated user to skip redundant session validation
         const itemResult = await Promise.race([
@@ -2347,13 +2350,13 @@ export async function syncAllDailyAssessmentsAtomic(preValidatedUser?: CachedUse
           successCount++;
           synced = true;
         }
-        
+
         if (import.meta.env.DEV) {
           console.log(`[Atomic Sync] Synced daily assessment ${i + 1}/${batch.length} (${remaining} remaining):`, assessment.id);
         }
       } catch (error: any) {
         retryCount++;
-        
+
         if (retryCount < maxRetries) {
           const delay = Math.min(500 * retryCount, 2000);
           if (import.meta.env.DEV) {
@@ -2367,7 +2370,7 @@ export async function syncAllDailyAssessmentsAtomic(preValidatedUser?: CachedUse
         }
       }
     }
-  }
+  });
   
   console.log('[Atomic Sync] Daily assessment sync results:', {
     batch: batch.length,
