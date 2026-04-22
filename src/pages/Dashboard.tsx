@@ -561,6 +561,68 @@ export default function Dashboard() {
     const handleDashboardStale = () => refreshReports(true);
     window.addEventListener('dashboard-stale', handleDashboardStale);
 
+    // F1: Realtime subscription — merge remote UPDATE/INSERT/DELETE events directly into
+    // local list state so the "Edited X ago" pill (and any other server-derived field)
+    // refreshes within ~1s on every connected device, not just on tab refocus.
+    const mergeRow = (prev: any[], row: any) => {
+      const exists = prev.some((r) => r.id === row.id);
+      if (exists) {
+        return prev.map((r) =>
+          r.id === row.id
+            ? { ...r, ...row, updated_at: row.updated_at, synced_at: row.updated_at }
+            : r
+        );
+      }
+      return [row, ...prev];
+    };
+    const removeRow = (prev: any[], id: string) => prev.filter((r) => r.id !== id);
+
+    const dashboardChannel = supabase
+      .channel('dashboard-realtime')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'inspections' }, (payload: any) => {
+        if (payload.eventType === 'DELETE') {
+          const id = payload.old?.id;
+          if (id) setInspections((prev) => removeRow(prev, id));
+          return;
+        }
+        const row = payload.new;
+        if (!row?.id) return;
+        if (row.deleted_at) {
+          setInspections((prev) => removeRow(prev, row.id));
+          return;
+        }
+        setInspections((prev) => mergeRow(prev, row));
+      })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'trainings' }, (payload: any) => {
+        if (payload.eventType === 'DELETE') {
+          const id = payload.old?.id;
+          if (id) setTrainings((prev) => removeRow(prev, id));
+          return;
+        }
+        const row = payload.new;
+        if (!row?.id) return;
+        if (row.deleted_at) {
+          setTrainings((prev) => removeRow(prev, row.id));
+          return;
+        }
+        setTrainings((prev) => mergeRow(prev, row));
+      })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'daily_assessments' }, (payload: any) => {
+        if (payload.eventType === 'DELETE') {
+          const id = payload.old?.id;
+          if (id) setDailyAssessments((prev) => removeRow(prev, id));
+          return;
+        }
+        const row = payload.new;
+        if (!row?.id) return;
+        if (row.deleted_at) {
+          setDailyAssessments((prev) => removeRow(prev, row.id));
+          return;
+        }
+        setDailyAssessments((prev) => mergeRow(prev, row));
+      })
+      .subscribe();
+
     return () => {
       window.removeEventListener('online', handleOnline);
       window.removeEventListener('offline', handleOffline);
@@ -568,6 +630,7 @@ export default function Dashboard() {
       window.removeEventListener('pageshow', handlePageShow);
       document.removeEventListener('visibilitychange', handleVisibilityChange);
       window.removeEventListener('dashboard-stale', handleDashboardStale);
+      supabase.removeChannel(dashboardChannel);
       subscription.unsubscribe();
       unsubscribeSyncComplete();
     };
