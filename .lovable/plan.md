@@ -1,79 +1,95 @@
 
 
-## Re-audit: remaining version-update gaps
+## Why the screenshot shows "2 pending" and "Poor" — and how to fix it
 
-The big-ticket fixes from the previous round are in place: monotonic patch, patch-aware comparator, no `public/version.json` mutation, build hash exposed, dev self-test. Re-reading the current code surfaces **four residual issues** that can still cause version drift or stale "up to date" reports.
+### What the user is actually seeing
 
-### Residual gaps
+Two separate badges in the dashboard header:
 
-**R1 — Build-hash mismatch is silently ignored**
+1. **Orange "2 pending" cloud chip** (`Dashboard.tsx` lines 1351–1356) — driven by `unsyncedCount` from `usePWA()`. Two records (inspection / training / assessment / photos) genuinely have not synced to the cloud yet.
+2. **Dark "Poor" signal-bars badge** (`NetworkQualityIndicator.tsx`) — driven by `effectiveType` / `downlink` / `rtt` from the Network Information API.
 
-`/version.json` now ships a `build` field (commit hash), and `version-check.ts` parses it into `deployedBuild`, but `isStale` only compares the SemVer string. If two deploys ever share `major.minor.patch` (shallow git clone in CI, force-push, branch reset), the running client and the deployed client report identical versions while running different bundles — and `StaleVersionBanner` will never fire. This is the last silent-divergence path.
+The screenshot shows wifi at 100% battery, full bars at the OS level. So the network is fine. The "Poor" label is wrong.
 
-**Fix:** In `checkVersion()`, set `isStale` to `true` when the SemVer is equal **but** `deployedBuild` is non-null and differs from the locally-defined `BUILD_COMMIT`. Strict-equal hash mismatch is a definitive "you're on the wrong bundle" signal.
+### Root cause of the false "Poor" label
 
-**R2 — `VersionDistributionPanel` polls the wrong host**
+`NetworkQualityIndicator.tsx` is the bug. The `getNetworkQuality()` cascade is:
 
-It hardcodes `https://ropeworks.lovable.app/version.json`, but the actual published custom domain users hit is `rwreports.com` (and there's a `www.rwreports.com` alias). Three problems:
+```ts
+if (effectiveType === '4g' || (downlink && downlink > 5))   return 'excellent';
+if (effectiveType === '3g' || (downlink && downlink > 1.5)) return 'good';
+if (effectiveType === '2g' || (downlink && downlink > 0.5)) return 'fair';
+if (rtt !== null) { /* rtt-based bucketing */ }
+return 'poor';   // ← final fallback
+```
 
-- Cross-origin fetch from preview/local→`ropeworks.lovable.app` may be blocked by CORS or return a stale CDN copy that lags `rwreports.com` by minutes.
-- Admins viewing the panel from `rwreports.com` would do an unnecessary cross-origin request when same-origin `/version.json` is right there.
-- "Published version" displayed in the admin panel may not match what users actually run.
+The Network Information API (`navigator.connection`) **does not exist in Safari** (iOS or macOS), and is unreliable in several other browsers. When unavailable, `useNetworkStatus.tsx` correctly sets `effectiveType`, `downlink`, and `rtt` to `null`. Every branch in `getNetworkQuality()` then evaluates falsy, the rtt block is skipped, and the function returns the `'poor'` fallback.
 
-**Fix:** Always fetch same-origin `/version.json` when the panel is loaded from `rwreports.com`/`www.rwreports.com`/`ropeworks.lovable.app`. Only fall back to the absolute URL when running from a preview/local host. Use `rwreports.com` as the fallback (the canonical user-facing domain), not `ropeworks.lovable.app`.
+Result: **every Safari/iOS user sees "Poor"** even on gigabit fiber. That's exactly what's in the screenshot — it's an iPad on Safari (the share/+/tabs icons in the top right and the "100%" battery glyph confirm it).
 
-**R3 — `isBelowMinimum` doesn't strip `+build` suffix**
+The "2 pending" chip is **not** a bug — it's accurate. Two items are queued. But because it appears next to a falsely-alarming "Poor" badge, the combined UI reads as "your connection is broken AND your data is stuck," which is what's freaking users out.
 
-`version-policy.ts` splits on `.` directly. If a future build or admin-entered policy includes a `+hash` or `-rc` suffix, `parseInt('142+a3f29c1', 10)` happens to work (parses leading digits) but `parseInt('1-rc', 10)` returns `1` correctly only by accident. The brittleness will eventually bite.
+### Secondary problem
 
-**Fix:** Reuse the same `stripSuffix` helper (export it from `version-check.ts`) before splitting, mirroring `isVersionNewer`. Also short-circuit on `'unknown'` consistently.
+There's no fast way for a user looking at "2 pending" on iPad Safari to understand "this will sync as soon as the app gets a chance — your network is fine." The orange chip has no tooltip and no action; users assume something is wrong.
 
-**R4 — Telemetry collides if two builds ever share a version string**
+---
 
-Upsert key is `(user_id, platform, client_version)`. With monotonic patch this should never happen, but defense-in-depth: include build hash in the row so the admin panel can disambiguate. No constraint change needed; just add a `build_hash` column write (existing `text` column or skip if not present — verify schema before deciding).
+### Fix plan
 
-**Fix:** If `version_telemetry` already has a `build_hash`/`build` column, write it. Otherwise, append `+{hash}` to `client_version` only when present. Simplest no-migration option: store as `client_version = "${version}+${hash}"` (truncated to 64 chars). The `isVersionNewer` comparator already strips `+` suffixes, so distribution math still works.
+**F1 — Stop the false "Poor" badge (the actual bug)**
 
-### Already-correct (verified, don't touch)
+In `NetworkQualityIndicator.tsx`, change `getNetworkQuality()` so that **when the Network Information API is unavailable, we return `'good'` (a neutral "we don't know, but the browser says you're online") instead of `'poor'`**.
 
-- `vite-auto-version.ts` — monotonic commit-count patch, dist-only `/version.json` emission, dev middleware, build-hash export, git-fallback warning.
-- `isVersionNewer` — three-segment compare, suffix stripping, dev self-test, equal-string fast path.
-- `vite-pwa-config.ts` — `/version.json` excluded from precache + `NetworkOnly` runtime cache + `navigateFallbackDenylist`.
-- `usePWAUpdate` — foreground throttled `reg.update()`, `pageshow`/`visibilitychange`/`focus` triggers, `SKIP_WAITING` + `controllerchange` reload.
-- `StaleVersionBanner` — iOS standalone cache-clear before reload.
-- `MinVersionEnforcer` — sync-before-reload guard, hard/soft modes.
-- `UpdateControlPanel` — exposes installed/deployed build hashes, parallel `forceVersionCheck` + `checkForUpdates`.
+Concretely:
+- Detect "no API data" = `effectiveType === null && downlink === null && rtt === null`.
+- In that case, when `isOnline === true`, return a new `'unknown'` quality that renders as a plain Wifi icon with label "Online" (or just hides entirely on small screens).
+- Keep the existing `'poor'` bucket only for cases where the API *did* report data and that data is genuinely poor.
+
+This single change fixes the screenshot for every iOS/Safari user.
+
+**F2 — Make the "Poor"/quality badge less prominent on mobile**
+
+The badge today renders the icon always and only hides the label on `<sm` screens. On the iPad (`sm` and up) the full badge shows. Since network quality is a soft diagnostic, not an action item:
+- Hide the entire `NetworkQualityIndicator` on mobile/tablet viewports unless quality is truly degraded (`fair` or worse with verified API data) **or** the device is offline. Desktop keeps it.
+- Already wrapped in `<div className="hidden sm:flex">` — change to `hidden lg:flex` and add an inner conditional so it only renders when there's something interesting to say.
+
+**F3 — Make the "2 pending" chip self-explanatory**
+
+The chip currently has no tooltip. Add one that says: *"2 items queued. They'll sync automatically when conditions allow. Tap to sync now."* Make the chip clickable to call `forceSync()` (which is already exposed by `usePWA`). This turns a scary indicator into a reassuring + actionable one.
+
+Optional: change the color from amber to a calmer slate/blue when `isOnline === true && !syncError` — amber reads as "warning," but a queued upload on a healthy connection isn't a warning, it's just status.
+
+**F4 — Defensive: confirm `useNetworkStatus` isn't masking real signal**
+
+Verified: `useNetworkStatus.tsx` correctly trusts `navigator.onLine` and only nullifies `effectiveType`/`downlink`/`rtt` when the API is missing. No change needed here.
 
 ### Files to change
 
-- `src/lib/version-check.ts` — R1 (hash-mismatch staleness), export `stripSuffix`.
-- `src/components/admin/VersionDistributionPanel.tsx` — R2 (same-origin first, correct fallback).
-- `src/lib/version-policy.ts` — R3 (suffix-strip + `'unknown'` guard).
-- `src/lib/version-telemetry.ts` — R4 (write build hash into `client_version` field, defensively trimmed).
+- `src/components/pwa/NetworkQualityIndicator.tsx` — F1 (add `'unknown'` bucket, treat null-API as unknown, not poor) + F2 (render-gating helper).
+- `src/pages/Dashboard.tsx` — F2 (`hidden lg:flex` + conditional render) + F3 (tooltip on amber chip + `onClick={forceSync}` + neutral color when healthy).
 
-No DB migrations. No edge functions. ~30 LOC net.
+No other components touch these badges. ~25 LOC net.
 
 ### Risk
 
-- **R1:** `isStale=true` when only the hash differs is technically correct. Edge case: a dev with `BUILD_COMMIT='dev'` (no git) viewing a published `/version.json` that has a real hash — banner would fire unnecessarily. Mitigation: skip hash compare when local hash is `'dev'` or empty.
-- **R2:** Same-origin path eliminates CORS risk entirely. Fallback to `rwreports.com` matches what real users hit. Worst case: corp proxy blocks `rwreports.com` from a preview host — same failure mode as today, just with a more accurate URL.
-- **R3:** Strictly more lenient parser. No new false positives.
-- **R4:** Lengthens `client_version` strings to ~30 chars max. Already trimmed to 64. Existing telemetry rows keep working; new rows include the hash. Distribution panel grouping by `client_version` will show one row per real build (correct).
+- **F1:** A genuinely slow connection on a browser without the Network Info API will no longer show "Poor." That signal was already unreliable on Safari, so we're trading a false-positive for a true-unknown — net better.
+- **F2:** Less screen real estate spent on diagnostics on mobile. Users who *want* the indicator can still see it at desktop sizes and inside the SyncDiagnosticsSheet.
+- **F3:** Adding `onClick` to the amber chip — must guard against double-tap during in-flight sync (disable while `isSyncing`).
 
 ### Expected outcomes
 
-- A device running a build with the same SemVer but different bundle hash than the deployed copy will surface the stale banner.
-- Admin Version Distribution panel always shows the same value users see.
-- Telemetry rows are uniquely identifiable per real deploy.
-- Future suffix variants (`+hash`, `-rc1`) won't break the min-version enforcer.
+- iPad / iPhone / Safari users no longer see the misleading "Poor" badge.
+- Desktop Chrome/Edge keeps accurate quality reporting where the API exists.
+- The "2 pending" chip becomes informative + actionable rather than alarming.
+- No change to actual sync behavior — purely a UI honesty fix.
 
 ### Verification
 
-1. Manually edit local `/version.json` response to return same version but different `build` → `StaleVersionBanner` fires.
-2. From a dev environment with `BUILD_COMMIT='dev'`, banner does **not** fire on hash mismatch.
-3. Open Version Distribution panel from `rwreports.com` → DevTools shows a same-origin `/version.json` request (no CORS preflight to `ropeworks.lovable.app`).
-4. Open same panel from a Lovable preview → falls back to `https://rwreports.com/version.json`.
-5. Admin sets min-required-version to `4.7.150+abc1234` → `isBelowMinimum` correctly compares the numeric core.
-6. After three deploys, `version_telemetry` shows three distinct `client_version` rows per active user/platform (each suffixed with its build hash).
-7. Existing dev self-tests for `isVersionNewer` still pass (no regression).
+1. Open dashboard on iPad Safari → no "Poor" badge.
+2. Open on desktop Chrome with throttled "Slow 3G" in DevTools → "Fair" or "Poor" still shows correctly.
+3. Open on desktop Chrome on real wifi → "Excellent" still shows.
+4. Toggle airplane mode → "Offline" badge shows on all platforms (unchanged).
+5. Create a record offline, come online → amber "1 pending" chip appears, tap it → `forceSync` runs, chip clears.
+6. Hover/long-press the amber chip → tooltip explains it's queued, not broken.
 
