@@ -182,6 +182,43 @@ export const SyncPulse = ({ className }: { className?: string }) => {
               </div>
             )}
 
+            {/* Failed (dead-letter) photos — retry-exhausted or orphaned */}
+            {deadLetterCount > 0 && (
+              <div className="space-y-1.5 border-t border-green-900/40 pt-2">
+                <div className="flex items-center justify-between">
+                  <span className="text-green-400 text-[10px] uppercase tracking-wider">
+                    ▸ Failed photos ({deadLetterCount})
+                  </span>
+                  <button
+                    type="button"
+                    disabled={retrying}
+                    onClick={async () => {
+                      try {
+                        setRetrying(true);
+                        const dead = await getDeadLetterPhotos();
+                        const ids = dead.map((p: any) => p.id);
+                        if (ids.length > 0) {
+                          await resetPhotoRetryCounts(ids);
+                        }
+                        await updatePhotoCount();
+                        await forceSync();
+                      } catch (e) {
+                        console.warn('[SyncPulse] Retry failed:', e);
+                      } finally {
+                        setRetrying(false);
+                      }
+                    }}
+                    className="text-[10px] uppercase tracking-wider px-2 py-0.5 rounded border border-amber-700/60 text-amber-300 hover:bg-amber-900/30 disabled:opacity-50"
+                  >
+                    {retrying ? 'RETRYING…' : 'RETRY'}
+                  </button>
+                </div>
+                <p className="text-green-700 text-[10px] italic">
+                  These photos exhausted upload retries or have no parent record. Tap Retry to attempt again.
+                </p>
+              </div>
+            )}
+
             {/* Error */}
             {syncError && (
               <p className="text-red-400 text-[10px] bg-red-950/40 rounded px-2 py-1.5 border border-red-900/40">
