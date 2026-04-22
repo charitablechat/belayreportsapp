@@ -590,6 +590,11 @@ export const useAutoSync = () => {
             } else if (payload.table === 'daily_assessments') {
               await saveDailyAssessmentOffline(enriched);
             }
+            // F3 backstop: notify the Dashboard so its in-memory list refreshes
+            // even if the postgres_changes subscription isn't mounted (e.g. on a
+            // route the Dashboard isn't rendering). Cheap; deduped by the
+            // Dashboard's lastRefreshTsRef.
+            window.dispatchEvent(new CustomEvent('dashboard-stale'));
           } catch (e) {
             // Non-critical — IndexedDB will catch up on next sync cycle
             if (import.meta.env.DEV) {

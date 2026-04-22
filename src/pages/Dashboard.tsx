@@ -734,7 +734,11 @@ export default function Dashboard() {
             }
             // V1: Preserve local synced_at if it exists -- bumping it falsely marks unsynced child rows as fresh
             const preservedSyncedAt = localRecord?.synced_at || inspection.synced_at || now;
-            return saveInspectionOffline({ ...inspection, synced_at: preservedSyncedAt });
+            // F3: Never let an older local updated_at shadow a fresher server one
+            const localUpd = localRecord?.updated_at ? new Date(localRecord.updated_at).getTime() : 0;
+            const serverUpd = inspection.updated_at ? new Date(inspection.updated_at).getTime() : 0;
+            const preservedUpdatedAt = localUpd > serverUpd ? localRecord.updated_at : inspection.updated_at;
+            return saveInspectionOffline({ ...inspection, updated_at: preservedUpdatedAt, synced_at: preservedSyncedAt });
           }))
             .then(async () => {
               // ORPHAN CLEANUP — deferred to avoid blocking render
@@ -906,7 +910,11 @@ export default function Dashboard() {
             }
             // V1: Preserve local synced_at if it exists -- bumping it falsely marks unsynced child rows as fresh
             const preservedSyncedAtT = localRecord?.synced_at || training.synced_at || nowT;
-            return saveTrainingOffline({ ...training, synced_at: preservedSyncedAtT });
+            // F3: Never let an older local updated_at shadow a fresher server one
+            const localUpdT = localRecord?.updated_at ? new Date(localRecord.updated_at).getTime() : 0;
+            const serverUpdT = training.updated_at ? new Date(training.updated_at).getTime() : 0;
+            const preservedUpdatedAtT = localUpdT > serverUpdT ? localRecord.updated_at : training.updated_at;
+            return saveTrainingOffline({ ...training, updated_at: preservedUpdatedAtT, synced_at: preservedSyncedAtT });
           }))
             .then(async () => {
               // ORPHAN CLEANUP with threshold guard + rate limiting (Vector 4)
@@ -1065,7 +1073,11 @@ export default function Dashboard() {
             }
             // V1: Preserve local synced_at if it exists -- bumping it falsely marks unsynced child rows as fresh
             const preservedSyncedAtA = localRecord?.synced_at || assessment.synced_at || nowA;
-            return saveDailyAssessmentOffline({ ...assessment, synced_at: preservedSyncedAtA });
+            // F3: Never let an older local updated_at shadow a fresher server one
+            const localUpdA = localRecord?.updated_at ? new Date(localRecord.updated_at).getTime() : 0;
+            const serverUpdA = assessment.updated_at ? new Date(assessment.updated_at).getTime() : 0;
+            const preservedUpdatedAtA = localUpdA > serverUpdA ? localRecord.updated_at : assessment.updated_at;
+            return saveDailyAssessmentOffline({ ...assessment, updated_at: preservedUpdatedAtA, synced_at: preservedSyncedAtA });
           }))
             .then(async () => {
               // ORPHAN CLEANUP with threshold guard + rate limiting (Vector 4)
