@@ -6,7 +6,8 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { RefreshCw, Upload, Trash2, AlertTriangle, Database, HardDrive, CheckCircle2, XCircle, Clock, Loader2, Download, RotateCcw, Shield, Cloud, Search, X } from "lucide-react";
+import { RefreshCw, Upload, Trash2, AlertTriangle, Database, HardDrive, CheckCircle2, XCircle, Clock, Loader2, Download, RotateCcw, Shield, Cloud, Search, X, Eye } from "lucide-react";
+import { SnapshotPreviewDialog } from "./SnapshotPreviewDialog";
 import { Input } from "@/components/ui/input";
 import { toast } from "sonner";
 import { format, formatDistanceToNow } from "date-fns";
@@ -187,10 +188,29 @@ export function LocalSnapshotsPanel({ allowDelete = true }: SnapshotsPanelProps)
   const [importing, setImporting] = useState(false);
   const [highlightedId, setHighlightedId] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
+  const [previewState, setPreviewState] = useState<{ open: boolean; snapshot: any; reportType?: ReportType; reportId?: string; meta?: any }>({ open: false, snapshot: null });
 
   const refreshSnapshots = useCallback(() => {
     setSnapshots(listAllSnapshots());
     setStorageInfo(getBackupStorageInfo());
+  }, []);
+
+  const handlePreview = useCallback((s: any) => {
+    const snap = getReportSnapshot(s.reportType, s.reportId);
+    setPreviewState({
+      open: true,
+      snapshot: snap,
+      reportType: s.reportType,
+      reportId: s.reportId,
+      meta: {
+        snapshotId: s.reportId,
+        device: s.device,
+        timestamp: s.timestamp,
+        synced: s.synced,
+        sizeBytes: s.sizeBytes,
+        source: 'local' as const,
+      },
+    });
   }, []);
 
   const handleImportFile = useCallback(async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -284,6 +304,7 @@ export function LocalSnapshotsPanel({ allowDelete = true }: SnapshotsPanelProps)
   });
 
   return (
+    <>
     <Card className="backdrop-blur-md bg-white/5 dark:bg-white/[0.03] border border-white/10 rounded-xl shadow-lg shadow-black/5 overflow-hidden">
       <CardHeader className="px-3 md:px-6 py-4 md:p-6">
         <div className="flex items-center justify-between">
@@ -369,6 +390,9 @@ export function LocalSnapshotsPanel({ allowDelete = true }: SnapshotsPanelProps)
                           <RotateCcw className="h-4 w-4 mr-1.5" />
                           Restore
                         </Button>
+                        <Button size="sm" variant="outline" onClick={() => handlePreview(s)} title="Preview snapshot">
+                          <Eye className="h-4 w-4" />
+                        </Button>
                         {allowDelete && (
                           <>
                             <Button size="sm" variant="outline" onClick={() => handleExport(s.reportType, s.reportId)} title="Export">
@@ -417,6 +441,9 @@ export function LocalSnapshotsPanel({ allowDelete = true }: SnapshotsPanelProps)
                               <Button size="sm" variant="outline" onClick={() => handleRestore(s.reportType, s.reportId)} title="Restore to IndexedDB">
                                 <RotateCcw className="h-4 w-4" />
                               </Button>
+                              <Button size="sm" variant="outline" onClick={() => handlePreview(s)} title="Preview snapshot contents">
+                                <Eye className="h-4 w-4" />
+                              </Button>
                               {allowDelete && (
                                 <>
                                   <Button size="sm" variant="outline" onClick={() => handleExport(s.reportType, s.reportId)} title="Export as JSON">
@@ -440,6 +467,22 @@ export function LocalSnapshotsPanel({ allowDelete = true }: SnapshotsPanelProps)
         )}
       </CardContent>
     </Card>
+    <SnapshotPreviewDialog
+      open={previewState.open}
+      onOpenChange={(open) => setPreviewState((p) => ({ ...p, open }))}
+      snapshotData={previewState.snapshot}
+      reportType={previewState.reportType}
+      meta={previewState.meta}
+      onRestore={previewState.reportType && previewState.reportId
+        ? async () => {
+            await handleRestore(previewState.reportType!, previewState.reportId!);
+          }
+        : undefined}
+      onExport={previewState.reportType && previewState.reportId
+        ? () => handleExport(previewState.reportType!, previewState.reportId!)
+        : undefined}
+    />
+    </>
   );
 }
 
@@ -453,6 +496,41 @@ export function CloudSnapshotsPanel({ allowDelete = true }: CloudSnapshotsPanelP
   const lastFetchedAt = useRef<number>(0);
   const STALE_TIME = 30000;
   const [searchQuery, setSearchQuery] = useState('');
+  const [previewState, setPreviewState] = useState<{ open: boolean; snapshot: any; loading: boolean; row: any | null }>({ open: false, snapshot: null, loading: false, row: null });
+  const previewCache = useRef<Map<string, any>>(new Map());
+
+  const handlePreview = useCallback(async (s: any) => {
+    if (previewCache.current.has(s.id)) {
+      setPreviewState({ open: true, snapshot: previewCache.current.get(s.id), loading: false, row: s });
+      return;
+    }
+    setPreviewState({ open: true, snapshot: null, loading: true, row: s });
+    try {
+      const { fetchCloudSnapshot } = await import('@/lib/cloud-backup');
+      const full = await fetchCloudSnapshot(s.id);
+      const data = full?.snapshot_data || null;
+      if (data) previewCache.current.set(s.id, data);
+      setPreviewState({ open: true, snapshot: data, loading: false, row: s });
+    } catch (e) {
+      toast.error("Failed to load snapshot preview");
+      setPreviewState({ open: false, snapshot: null, loading: false, row: null });
+    }
+  }, []);
+
+  const handlePreviewExport = useCallback(() => {
+    const row = previewState.row;
+    const data = previewState.snapshot;
+    if (!row || !data) return;
+    const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    const org = data?.parent?.organization || row.facility || 'snapshot';
+    a.download = formatReportFilename(org, (row.report_type || 'inspection') as any, 'json');
+    a.click();
+    URL.revokeObjectURL(url);
+    toast.success("Snapshot exported as JSON");
+  }, [previewState]);
 
   const loadSnapshots = useCallback(async (force = false) => {
     // Skip if data is fresh (stale-while-revalidate)
@@ -549,6 +627,7 @@ export function CloudSnapshotsPanel({ allowDelete = true }: CloudSnapshotsPanelP
   });
 
   return (
+    <>
     <Card className="backdrop-blur-md bg-white/5 dark:bg-white/[0.03] border border-white/10 rounded-xl shadow-lg shadow-black/5 overflow-hidden">
       <CardHeader className="px-3 md:px-6 py-4 md:p-6">
         <div className="flex items-center justify-between">
@@ -647,6 +726,9 @@ export function CloudSnapshotsPanel({ allowDelete = true }: CloudSnapshotsPanelP
                       <RotateCcw className="h-4 w-4 mr-1.5" />
                       Restore
                     </Button>
+                    <Button size="sm" variant="outline" onClick={() => handlePreview(s)} title="Preview snapshot" disabled={previewState.loading && previewState.row?.id === s.id}>
+                      {previewState.loading && previewState.row?.id === s.id ? <Loader2 className="h-4 w-4 animate-spin" /> : <Eye className="h-4 w-4" />}
+                    </Button>
                     {allowDelete && (
                       <Button size="sm" variant="ghost" className="text-destructive" onClick={() => handleDelete(s.id)} title="Delete">
                         <Trash2 className="h-4 w-4" />
@@ -690,6 +772,9 @@ export function CloudSnapshotsPanel({ allowDelete = true }: CloudSnapshotsPanelP
                           <Button size="sm" variant="outline" onClick={() => handleRestore(s.id)} title="Restore to IndexedDB">
                             <RotateCcw className="h-4 w-4" />
                           </Button>
+                          <Button size="sm" variant="outline" onClick={() => handlePreview(s)} title="Preview snapshot contents" disabled={previewState.loading && previewState.row?.id === s.id}>
+                            {previewState.loading && previewState.row?.id === s.id ? <Loader2 className="h-4 w-4 animate-spin" /> : <Eye className="h-4 w-4" />}
+                          </Button>
                           {allowDelete && (
                             <Button size="sm" variant="ghost" className="text-destructive" onClick={() => handleDelete(s.id)} title="Delete cloud backup">
                               <Trash2 className="h-4 w-4" />
@@ -708,6 +793,24 @@ export function CloudSnapshotsPanel({ allowDelete = true }: CloudSnapshotsPanelP
         )}
       </CardContent>
     </Card>
+    <SnapshotPreviewDialog
+      open={previewState.open}
+      onOpenChange={(open) => setPreviewState((p) => ({ ...p, open }))}
+      snapshotData={previewState.snapshot}
+      reportType={previewState.row?.report_type}
+      loading={previewState.loading}
+      meta={previewState.row ? {
+        snapshotId: previewState.row.id,
+        device: previewState.row.device,
+        timestamp: previewState.row.snapshot_ts,
+        synced: previewState.row.synced,
+        userName: previewState.row.user_name,
+        source: 'cloud' as const,
+      } : undefined}
+      onRestore={previewState.row ? async () => { await handleRestore(previewState.row.id); } : undefined}
+      onExport={handlePreviewExport}
+    />
+    </>
   );
 }
 
