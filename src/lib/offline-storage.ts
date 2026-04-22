@@ -1,5 +1,6 @@
 import { openDB, DBSchema, IDBPDatabase } from 'idb';
 import { checkStorageQuota, requestPersistentStorage, isMobile } from './mobile-detection';
+import { SYNC_DRIFT_TOLERANCE_MS } from './local-data-guards';
 
 interface InspectionDB extends DBSchema {
   inspections: {
