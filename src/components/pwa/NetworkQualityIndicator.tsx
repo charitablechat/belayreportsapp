@@ -85,6 +85,14 @@ const getQualityConfig = (quality: NetworkQuality) => {
         color: 'text-muted-foreground',
         description: 'No connection - changes will sync when online',
       };
+    case 'unknown':
+      return {
+        icon: Wifi,
+        label: 'Online',
+        variant: 'secondary' as const,
+        color: 'text-muted-foreground',
+        description: 'Connected. Detailed connection quality is unavailable on this browser.',
+      };
   }
 };
 
