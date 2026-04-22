@@ -56,4 +56,18 @@ if (isServiceWorkerAllowed()) {
   });
 }
 
+// One-time migration: reset photo retryCount so previously-dead photos
+// get one fresh upload attempt after the dead-letter filter is introduced.
+const PHOTO_RETRY_RESET_FLAG = 'photo-retry-reset-v1';
+if (typeof localStorage !== 'undefined' && !localStorage.getItem(PHOTO_RETRY_RESET_FLAG)) {
+  import('@/lib/offline-storage').then(({ resetPhotoRetryCounts }) => {
+    resetPhotoRetryCounts().then((count) => {
+      try { localStorage.setItem(PHOTO_RETRY_RESET_FLAG, String(Date.now())); } catch {}
+      if (import.meta.env.DEV) {
+        console.log(`[Boot] Photo retry-count reset migration ran (${count} photos)`);
+      }
+    }).catch(() => {});
+  }).catch(() => {});
+}
+
 createRoot(document.getElementById("root")!).render(<App />);
