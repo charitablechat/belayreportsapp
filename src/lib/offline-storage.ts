@@ -1271,21 +1271,126 @@ export async function updateOfflinePhotoCaption(photoId: string, caption: string
   );
 }
 
+/**
+ * Maximum upload retry attempts for a single photo before it is considered
+ * "dead-letter" (excluded from live pending counts but preserved in IDB).
+ * Shared between sync-manager and count queries so they always agree.
+ */
+export const MAX_PHOTO_RETRIES = 5;
+
+/**
+ * Returns photos that are eligible to be counted as "pending sync".
+ * Excludes:
+ *  - photos with a null blob (already partially uploaded)
+ *  - photos that exhausted MAX_PHOTO_RETRIES (dead-letter)
+ *  - photos whose parent inspection is a temp-* id with no matching local row
+ *    (orphan: the parent was deleted before sync, so they can never upload)
+ */
 export async function getUnuploadedPhotos(userId?: string) {
   return withIndexedDBErrorBoundary(
     async () => {
       const db = await getDB();
-      // Use index query instead of full table scan to avoid timeouts on large photo stores
       const tx = db.transaction('photos', 'readonly');
       const index = tx.store.index('by-uploaded');
-      // IndexedDB stores booleans as 0/1 in indexes; false = 0
       const unuploaded = await index.getAll(IDBKeyRange.only(0));
       await tx.done;
-      // Still need to filter for non-null blob (nullified after sync)
-      return unuploaded.filter(p => p.blob != null);
+
+      const withBlob = unuploaded.filter(p => p.blob != null);
+      const eligible = withBlob.filter(p => (p.retryCount || 0) < MAX_PHOTO_RETRIES);
+
+      // Orphan check — only for temp-* parent ids
+      const tempPhotos = eligible.filter(p => p.inspectionId?.startsWith('temp-'));
+      const orphanIds = new Set<string>();
+      if (tempPhotos.length > 0) {
+        const inspTx = db.transaction('inspections', 'readonly');
+        await Promise.all(
+          tempPhotos.map(async (p) => {
+            const parent = await inspTx.store.get(p.inspectionId);
+            if (!parent) orphanIds.add(p.id);
+          })
+        );
+        await inspTx.done;
+      }
+      return eligible.filter(p => !orphanIds.has(p.id));
     },
     [],
     'getUnuploadedPhotos'
+  );
+}
+
+/**
+ * Returns photos that are stuck (dead-letter): retry-exhausted or orphaned.
+ * Used by the SyncPulse sheet so users can manually retry them.
+ */
+export async function getDeadLetterPhotos(): Promise<any[]> {
+  return withIndexedDBErrorBoundary(
+    async () => {
+      const db = await getDB();
+      const tx = db.transaction('photos', 'readonly');
+      const index = tx.store.index('by-uploaded');
+      const unuploaded = await index.getAll(IDBKeyRange.only(0));
+      await tx.done;
+
+      const withBlob = unuploaded.filter(p => p.blob != null);
+      const exhausted = withBlob.filter(p => (p.retryCount || 0) >= MAX_PHOTO_RETRIES);
+
+      const tempPhotos = withBlob.filter(
+        p => p.inspectionId?.startsWith('temp-') && (p.retryCount || 0) < MAX_PHOTO_RETRIES
+      );
+      const orphans: any[] = [];
+      if (tempPhotos.length > 0) {
+        const inspTx = db.transaction('inspections', 'readonly');
+        await Promise.all(
+          tempPhotos.map(async (p) => {
+            const parent = await inspTx.store.get(p.inspectionId);
+            if (!parent) orphans.push(p);
+          })
+        );
+        await inspTx.done;
+      }
+      // Dedupe by id
+      const seen = new Set<string>();
+      return [...exhausted, ...orphans].filter(p => {
+        if (seen.has(p.id)) return false;
+        seen.add(p.id);
+        return true;
+      });
+    },
+    [],
+    'getDeadLetterPhotos'
+  );
+}
+
+/**
+ * Reset retryCount = 0 on every photo. Used by the boot one-shot migration
+ * and the manual "Retry" action in the SyncPulse sheet.
+ */
+export async function resetPhotoRetryCounts(onlyIds?: string[]): Promise<number> {
+  return withIndexedDBErrorBoundary(
+    async () => {
+      const db = await getDB();
+      const tx = db.transaction('photos', 'readwrite');
+      let cursor = await tx.store.openCursor();
+      let reset = 0;
+      const idSet = onlyIds ? new Set(onlyIds) : null;
+      while (cursor) {
+        const photo = cursor.value;
+        const matches = idSet ? idSet.has(photo.id) : true;
+        if (matches && (photo.retryCount || 0) > 0) {
+          photo.retryCount = 0;
+          await cursor.update(photo);
+          reset++;
+        }
+        cursor = await cursor.continue();
+      }
+      await tx.done;
+      if (reset > 0 && import.meta.env.DEV) {
+        console.log(`[Offline Storage] Reset retryCount on ${reset} photos`);
+      }
+      return reset;
+    },
+    0,
+    'resetPhotoRetryCounts'
   );
 }
 

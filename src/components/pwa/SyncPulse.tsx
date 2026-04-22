@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { usePWA } from '@/hooks/usePWA';
 import { isIOS } from '@/lib/mobile-detection';
 import { cn } from '@/lib/utils';
@@ -9,6 +9,7 @@ import {
   SheetTitle,
   SheetDescription,
 } from '@/components/ui/sheet';
+import { getDeadLetterPhotos, resetPhotoRetryCounts } from '@/lib/offline-storage';
 
 type Phase = 'idle' | 'syncing' | 'synced' | 'unsynced' | 'error';
 
@@ -27,12 +28,16 @@ export const SyncPulse = ({ className }: { className?: string }) => {
     syncError,
     isOnline,
     unsyncedPhotoCount,
+    deadLetterCount,
+    forceSync,
+    updatePhotoCount,
   } = usePWA();
 
   const isIOSDevice = isIOS();
   const [justSynced, setJustSynced] = useState(false);
   const [previousSyncingState, setPreviousSyncingState] = useState(false);
   const [open, setOpen] = useState(false);
+  const [retrying, setRetrying] = useState(false);
 
   const totalUnsynced = unsyncedCount + unsyncedPhotoCount;
 
@@ -174,6 +179,43 @@ export const SyncPulse = ({ className }: { className?: string }) => {
               <div className="flex items-center justify-between text-green-300/80">
                 <span>PENDING_PHOTOS</span>
                 <span className="text-amber-400">{unsyncedPhotoCount}</span>
+              </div>
+            )}
+
+            {/* Failed (dead-letter) photos — retry-exhausted or orphaned */}
+            {deadLetterCount > 0 && (
+              <div className="space-y-1.5 border-t border-green-900/40 pt-2">
+                <div className="flex items-center justify-between">
+                  <span className="text-green-400 text-[10px] uppercase tracking-wider">
+                    ▸ Failed photos ({deadLetterCount})
+                  </span>
+                  <button
+                    type="button"
+                    disabled={retrying}
+                    onClick={async () => {
+                      try {
+                        setRetrying(true);
+                        const dead = await getDeadLetterPhotos();
+                        const ids = dead.map((p: any) => p.id);
+                        if (ids.length > 0) {
+                          await resetPhotoRetryCounts(ids);
+                        }
+                        await updatePhotoCount();
+                        await forceSync();
+                      } catch (e) {
+                        console.warn('[SyncPulse] Retry failed:', e);
+                      } finally {
+                        setRetrying(false);
+                      }
+                    }}
+                    className="text-[10px] uppercase tracking-wider px-2 py-0.5 rounded border border-amber-700/60 text-amber-300 hover:bg-amber-900/30 disabled:opacity-50"
+                  >
+                    {retrying ? 'RETRYING…' : 'RETRY'}
+                  </button>
+                </div>
+                <p className="text-green-700 text-[10px] italic">
+                  These photos exhausted upload retries or have no parent record. Tap Retry to attempt again.
+                </p>
               </div>
             )}
 

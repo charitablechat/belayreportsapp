@@ -275,6 +275,8 @@ export const useAutoSync = () => {
         clearTimeout(safetyTimeoutHandle);
         // Always refresh counts so badge reflects reality (fixes stale badge after circuit breaker)
         updateUnsyncedCounts().catch(() => {});
+        // Notify photo-count consumers so dead-letter / orphan filters re-evaluate
+        try { window.dispatchEvent(new Event('sync-photos-updated')); } catch {}
         setState(prev => ({ ...prev, isSyncing: false, lastSyncTime: new Date() }));
         return;
       }
@@ -467,6 +469,8 @@ export const useAutoSync = () => {
       setState(prev => ({ ...prev, isSyncing: false }));
       // Always refresh unsynced counts so the badge is accurate after every sync attempt
       updateUnsyncedCounts().catch(() => {});
+      // Always notify photo-count consumers so dead-letter / orphan filters re-evaluate
+      try { window.dispatchEvent(new Event('sync-photos-updated')); } catch {}
     }
   }, [queryClient, isMobileDevice, isIOSDevice]);
   

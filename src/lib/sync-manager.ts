@@ -4,6 +4,7 @@ import {
   getUnuploadedPhotos,
   markPhotoAsUploaded,
   incrementPhotoRetryCount,
+  MAX_PHOTO_RETRIES,
 } from "./offline-storage";
 
 /**
@@ -48,7 +49,6 @@ import { runWithConcurrency } from './concurrency';
 import { isMobile } from './mobile-detection';
 
 const MAX_PHOTO_BATCH_SIZE = 10;
-const MAX_PHOTO_RETRIES = 5;
 
 export async function syncPhotos(): Promise<{ remaining: number }> {
   if (!navigator.onLine) {
