@@ -188,10 +188,29 @@ export function LocalSnapshotsPanel({ allowDelete = true }: SnapshotsPanelProps)
   const [importing, setImporting] = useState(false);
   const [highlightedId, setHighlightedId] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
+  const [previewState, setPreviewState] = useState<{ open: boolean; snapshot: any; reportType?: ReportType; reportId?: string; meta?: any }>({ open: false, snapshot: null });
 
   const refreshSnapshots = useCallback(() => {
     setSnapshots(listAllSnapshots());
     setStorageInfo(getBackupStorageInfo());
+  }, []);
+
+  const handlePreview = useCallback((s: any) => {
+    const snap = getReportSnapshot(s.reportType, s.reportId);
+    setPreviewState({
+      open: true,
+      snapshot: snap,
+      reportType: s.reportType,
+      reportId: s.reportId,
+      meta: {
+        snapshotId: s.reportId,
+        device: s.device,
+        timestamp: s.timestamp,
+        synced: s.synced,
+        sizeBytes: s.sizeBytes,
+        source: 'local' as const,
+      },
+    });
   }, []);
 
   const handleImportFile = useCallback(async (e: React.ChangeEvent<HTMLInputElement>) => {
