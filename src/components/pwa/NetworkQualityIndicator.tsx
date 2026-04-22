@@ -113,6 +113,12 @@ export const NetworkQualityIndicator = () => {
   
   const Icon = config.icon;
 
+  // Hide entirely when status is uninteresting (unknown = online but no API detail).
+  // Offline / fair / poor / good / excellent all still render.
+  if (quality === 'unknown') {
+    return null;
+  }
+
   return (
     <TooltipProvider>
       <Tooltip>
