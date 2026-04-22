@@ -30,6 +30,7 @@ const fallbackContext: PWAContextType = {
   unsyncedPhotoCount: 0,
   photosByInspection: {},
   updatePhotoCount: async () => {},
+  deadLetterCount: 0,
 };
 
 export const usePWA = (): PWAContextType => {

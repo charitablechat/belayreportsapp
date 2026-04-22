@@ -57,6 +57,7 @@ class PWAErrorBoundary extends Component<
         unsyncedPhotoCount: 0,
         photosByInspection: {},
         updatePhotoCount: async () => {},
+        deadLetterCount: 0,
       };
 
       return (
@@ -108,6 +109,7 @@ export interface PWAContextType {
   unsyncedPhotoCount: number;
   photosByInspection: Record<string, number>;
   updatePhotoCount: () => Promise<void>;
+  deadLetterCount: number;
 }
 
 export const PWAContext = createContext<PWAContextType | null>(null);
@@ -135,7 +137,8 @@ const PWAProviderContent = ({ children }: PWAProviderProps) => {
   const {
     unsyncedPhotoCount,
     photosByInspection,
-    updatePhotoCount
+    updatePhotoCount,
+    deadLetterCount,
   } = useUnsyncedPhotos();
 
   const updateAndReload = async () => {
@@ -174,6 +177,7 @@ const PWAProviderContent = ({ children }: PWAProviderProps) => {
     unsyncedPhotoCount,
     photosByInspection,
     updatePhotoCount,
+    deadLetterCount,
   };
 
   return (
