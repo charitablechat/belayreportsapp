@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { usePWA } from '@/hooks/usePWA';
 import { isIOS } from '@/lib/mobile-detection';
 import { cn } from '@/lib/utils';
@@ -9,6 +9,7 @@ import {
   SheetTitle,
   SheetDescription,
 } from '@/components/ui/sheet';
+import { getDeadLetterPhotos, resetPhotoRetryCounts } from '@/lib/offline-storage';
 
 type Phase = 'idle' | 'syncing' | 'synced' | 'unsynced' | 'error';
 
@@ -27,12 +28,16 @@ export const SyncPulse = ({ className }: { className?: string }) => {
     syncError,
     isOnline,
     unsyncedPhotoCount,
+    deadLetterCount,
+    forceSync,
+    updatePhotoCount,
   } = usePWA();
 
   const isIOSDevice = isIOS();
   const [justSynced, setJustSynced] = useState(false);
   const [previousSyncingState, setPreviousSyncingState] = useState(false);
   const [open, setOpen] = useState(false);
+  const [retrying, setRetrying] = useState(false);
 
   const totalUnsynced = unsyncedCount + unsyncedPhotoCount;
 
