@@ -375,6 +375,34 @@ export default function DailyAssessmentForm() {
     loadAssessment();
   }, [id]);
 
+  // F4: Realtime refresh for THIS assessment. Suppressed while user has unsaved edits.
+  useEffect(() => {
+    if (!id || id.startsWith('temp-')) return;
+    const channel = supabase
+      .channel(`assessment-form-${id}`)
+      .on(
+        'postgres_changes',
+        { event: 'UPDATE', schema: 'public', table: 'daily_assessments', filter: `id=eq.${id}` },
+        (payload) => {
+          const remoteUpdated = (payload.new as any)?.updated_at;
+          if (!remoteUpdated) return;
+          const localUpdated = (assessment as any)?.updated_at;
+          const remoteMs = new Date(remoteUpdated).getTime();
+          const localMs = localUpdated ? new Date(localUpdated).getTime() : 0;
+          if (remoteMs - localMs <= 5000) return;
+          if (hasUnsavedChanges) {
+            if (import.meta.env.DEV) console.log('[DailyAssessmentForm] Skipping remote refresh — unsaved local changes');
+            return;
+          }
+          if (import.meta.env.DEV) console.log('[DailyAssessmentForm] Remote update detected — reloading');
+          loadAssessment();
+        }
+      )
+      .subscribe();
+    return () => { supabase.removeChannel(channel); };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [id, assessment?.updated_at, hasUnsavedChanges]);
+
   // Debounced auto-save on data changes (3-second debounce) - immediate persistence
   // Watches ALL data sections: Beginning/End of Day, Operating Systems, Equipment/Structure/Environment Checks
   // Also watches assessment-level fields like section comments

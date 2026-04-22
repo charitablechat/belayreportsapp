@@ -597,6 +597,34 @@ export default function TrainingForm() {
     loadTraining();
   }, [loadTraining]);
 
+  // F4: Realtime refresh for THIS training. Suppressed while user has unsaved edits.
+  useEffect(() => {
+    if (!id || id.startsWith('temp-')) return;
+    const channel = supabase
+      .channel(`training-form-${id}`)
+      .on(
+        'postgres_changes',
+        { event: 'UPDATE', schema: 'public', table: 'trainings', filter: `id=eq.${id}` },
+        (payload) => {
+          const remoteUpdated = (payload.new as any)?.updated_at;
+          if (!remoteUpdated) return;
+          const localUpdated = (training as any)?.updated_at;
+          const remoteMs = new Date(remoteUpdated).getTime();
+          const localMs = localUpdated ? new Date(localUpdated).getTime() : 0;
+          if (remoteMs - localMs <= 5000) return;
+          if (hasUnsavedChanges) {
+            if (import.meta.env.DEV) console.log('[TrainingForm] Skipping remote refresh — unsaved local changes');
+            return;
+          }
+          if (import.meta.env.DEV) console.log('[TrainingForm] Remote update detected — reloading');
+          loadTraining();
+        }
+      )
+      .subscribe();
+    return () => { supabase.removeChannel(channel); };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [id, training?.updated_at, hasUnsavedChanges, loadTraining]);
+
   // Listen for JSON import events — reload form state from IndexedDB to prevent
   // stale React state from overwriting imported data on next save
   useEffect(() => {
