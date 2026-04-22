@@ -1,3 +1,4 @@
+import { useEffect, useState } from "react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -8,6 +9,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { format, differenceInDays, formatDistanceToNow } from "date-fns";
 import { FileText, MoreVertical, Trash2, Download, Check, Cloud, Receipt } from "lucide-react";
 import { triggerHaptic } from "@/lib/haptics";
@@ -15,6 +17,30 @@ import { parseLocalDate } from "@/lib/date-utils";
 import { triggerSuccessConfetti } from "@/lib/confetti";
 import { cn } from "@/lib/utils";
 import { useClickAndHoverSparkles, SparkleContainer } from "@/components/christmas/Sparkles";
+
+// F2: Module-level minute-tick subscriber so we share ONE setInterval across all
+// ReportCard instances on the page (not N intervals for N cards).
+const tickSubscribers = new Set<() => void>();
+let tickInterval: ReturnType<typeof setInterval> | null = null;
+function subscribeMinuteTick(cb: () => void) {
+  tickSubscribers.add(cb);
+  if (!tickInterval) {
+    tickInterval = setInterval(() => {
+      tickSubscribers.forEach((fn) => fn());
+    }, 60_000);
+  }
+  return () => {
+    tickSubscribers.delete(cb);
+    if (tickSubscribers.size === 0 && tickInterval) {
+      clearInterval(tickInterval);
+      tickInterval = null;
+    }
+  };
+}
+function useMinuteTick() {
+  const [, setTick] = useState(0);
+  useEffect(() => subscribeMinuteTick(() => setTick((n) => n + 1)), []);
+}
 
 export type ReportAgeState = 'critical' | 'warning' | 'completed' | 'default';
 
@@ -40,6 +66,7 @@ interface ReportCardProps {
 }
 
 export function ReportCard({ report, type, onDelete, onClick, getStatusBadge, compact, isAdmin, isInvoiced, onToggleInvoiced }: ReportCardProps) {
+  useMinuteTick(); // F2: re-render every 60s so "Edited X ago" stays current
   const { sparkles, triggerSparkles, handleMouseMove } = useClickAndHoverSparkles();
   const isInspection = type === 'inspection';
   const isDaily = type === 'daily';
@@ -235,9 +262,16 @@ export function ReportCard({ report, type, onDelete, onClick, getStatusBadge, co
             {dateInfo ? dateInfo.relative : 'No date'}
           </p>
           {lastActivity && getReportStatus() !== 'completed' && (
-            <p className="text-muted-foreground/70 text-[11px]">
-              Edited {lastActivity}
-            </p>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <p className="text-muted-foreground/70 text-[11px] cursor-help w-fit">
+                  Edited {lastActivity}
+                </p>
+              </TooltipTrigger>
+              <TooltipContent side="top">
+                {report.updated_at ? format(new Date(report.updated_at), 'PPpp') : 'Unknown'}
+              </TooltipContent>
+            </Tooltip>
           )}
           <div className="flex items-center gap-2">
             <Avatar className="h-6 w-6">

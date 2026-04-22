@@ -561,6 +561,68 @@ export default function Dashboard() {
     const handleDashboardStale = () => refreshReports(true);
     window.addEventListener('dashboard-stale', handleDashboardStale);
 
+    // F1: Realtime subscription — merge remote UPDATE/INSERT/DELETE events directly into
+    // local list state so the "Edited X ago" pill (and any other server-derived field)
+    // refreshes within ~1s on every connected device, not just on tab refocus.
+    const mergeRow = (prev: any[], row: any) => {
+      const exists = prev.some((r) => r.id === row.id);
+      if (exists) {
+        return prev.map((r) =>
+          r.id === row.id
+            ? { ...r, ...row, updated_at: row.updated_at, synced_at: row.updated_at }
+            : r
+        );
+      }
+      return [row, ...prev];
+    };
+    const removeRow = (prev: any[], id: string) => prev.filter((r) => r.id !== id);
+
+    const dashboardChannel = supabase
+      .channel('dashboard-realtime')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'inspections' }, (payload: any) => {
+        if (payload.eventType === 'DELETE') {
+          const id = payload.old?.id;
+          if (id) setInspections((prev) => removeRow(prev, id));
+          return;
+        }
+        const row = payload.new;
+        if (!row?.id) return;
+        if (row.deleted_at) {
+          setInspections((prev) => removeRow(prev, row.id));
+          return;
+        }
+        setInspections((prev) => mergeRow(prev, row));
+      })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'trainings' }, (payload: any) => {
+        if (payload.eventType === 'DELETE') {
+          const id = payload.old?.id;
+          if (id) setTrainings((prev) => removeRow(prev, id));
+          return;
+        }
+        const row = payload.new;
+        if (!row?.id) return;
+        if (row.deleted_at) {
+          setTrainings((prev) => removeRow(prev, row.id));
+          return;
+        }
+        setTrainings((prev) => mergeRow(prev, row));
+      })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'daily_assessments' }, (payload: any) => {
+        if (payload.eventType === 'DELETE') {
+          const id = payload.old?.id;
+          if (id) setDailyAssessments((prev) => removeRow(prev, id));
+          return;
+        }
+        const row = payload.new;
+        if (!row?.id) return;
+        if (row.deleted_at) {
+          setDailyAssessments((prev) => removeRow(prev, row.id));
+          return;
+        }
+        setDailyAssessments((prev) => mergeRow(prev, row));
+      })
+      .subscribe();
+
     return () => {
       window.removeEventListener('online', handleOnline);
       window.removeEventListener('offline', handleOffline);
@@ -568,6 +630,7 @@ export default function Dashboard() {
       window.removeEventListener('pageshow', handlePageShow);
       document.removeEventListener('visibilitychange', handleVisibilityChange);
       window.removeEventListener('dashboard-stale', handleDashboardStale);
+      supabase.removeChannel(dashboardChannel);
       subscription.unsubscribe();
       unsubscribeSyncComplete();
     };
@@ -671,7 +734,11 @@ export default function Dashboard() {
             }
             // V1: Preserve local synced_at if it exists -- bumping it falsely marks unsynced child rows as fresh
             const preservedSyncedAt = localRecord?.synced_at || inspection.synced_at || now;
-            return saveInspectionOffline({ ...inspection, synced_at: preservedSyncedAt });
+            // F3: Never let an older local updated_at shadow a fresher server one
+            const localUpd = localRecord?.updated_at ? new Date(localRecord.updated_at).getTime() : 0;
+            const serverUpd = inspection.updated_at ? new Date(inspection.updated_at).getTime() : 0;
+            const preservedUpdatedAt = localUpd > serverUpd ? localRecord.updated_at : inspection.updated_at;
+            return saveInspectionOffline({ ...inspection, updated_at: preservedUpdatedAt, synced_at: preservedSyncedAt });
           }))
             .then(async () => {
               // ORPHAN CLEANUP — deferred to avoid blocking render
@@ -843,7 +910,11 @@ export default function Dashboard() {
             }
             // V1: Preserve local synced_at if it exists -- bumping it falsely marks unsynced child rows as fresh
             const preservedSyncedAtT = localRecord?.synced_at || training.synced_at || nowT;
-            return saveTrainingOffline({ ...training, synced_at: preservedSyncedAtT });
+            // F3: Never let an older local updated_at shadow a fresher server one
+            const localUpdT = localRecord?.updated_at ? new Date(localRecord.updated_at).getTime() : 0;
+            const serverUpdT = training.updated_at ? new Date(training.updated_at).getTime() : 0;
+            const preservedUpdatedAtT = localUpdT > serverUpdT ? localRecord.updated_at : training.updated_at;
+            return saveTrainingOffline({ ...training, updated_at: preservedUpdatedAtT, synced_at: preservedSyncedAtT });
           }))
             .then(async () => {
               // ORPHAN CLEANUP with threshold guard + rate limiting (Vector 4)
@@ -1002,7 +1073,11 @@ export default function Dashboard() {
             }
             // V1: Preserve local synced_at if it exists -- bumping it falsely marks unsynced child rows as fresh
             const preservedSyncedAtA = localRecord?.synced_at || assessment.synced_at || nowA;
-            return saveDailyAssessmentOffline({ ...assessment, synced_at: preservedSyncedAtA });
+            // F3: Never let an older local updated_at shadow a fresher server one
+            const localUpdA = localRecord?.updated_at ? new Date(localRecord.updated_at).getTime() : 0;
+            const serverUpdA = assessment.updated_at ? new Date(assessment.updated_at).getTime() : 0;
+            const preservedUpdatedAtA = localUpdA > serverUpdA ? localRecord.updated_at : assessment.updated_at;
+            return saveDailyAssessmentOffline({ ...assessment, updated_at: preservedUpdatedAtA, synced_at: preservedSyncedAtA });
           }))
             .then(async () => {
               // ORPHAN CLEANUP with threshold guard + rate limiting (Vector 4)
