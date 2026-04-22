@@ -466,6 +466,22 @@ export function LocalSnapshotsPanel({ allowDelete = true }: SnapshotsPanelProps)
         )}
       </CardContent>
     </Card>
+    <SnapshotPreviewDialog
+      open={previewState.open}
+      onOpenChange={(open) => setPreviewState((p) => ({ ...p, open }))}
+      snapshotData={previewState.snapshot}
+      reportType={previewState.reportType}
+      meta={previewState.meta}
+      onRestore={previewState.reportType && previewState.reportId
+        ? async () => {
+            await handleRestore(previewState.reportType!, previewState.reportId!);
+          }
+        : undefined}
+      onExport={previewState.reportType && previewState.reportId
+        ? () => handleExport(previewState.reportType!, previewState.reportId!)
+        : undefined}
+    />
+    </>
   );
 }
 
