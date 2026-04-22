@@ -793,6 +793,24 @@ export function CloudSnapshotsPanel({ allowDelete = true }: CloudSnapshotsPanelP
         )}
       </CardContent>
     </Card>
+    <SnapshotPreviewDialog
+      open={previewState.open}
+      onOpenChange={(open) => setPreviewState((p) => ({ ...p, open }))}
+      snapshotData={previewState.snapshot}
+      reportType={previewState.row?.report_type}
+      loading={previewState.loading}
+      meta={previewState.row ? {
+        snapshotId: previewState.row.id,
+        device: previewState.row.device,
+        timestamp: previewState.row.snapshot_ts,
+        synced: previewState.row.synced,
+        userName: previewState.row.user_name,
+        source: 'cloud' as const,
+      } : undefined}
+      onRestore={previewState.row ? async () => { await handleRestore(previewState.row.id); } : undefined}
+      onExport={handlePreviewExport}
+    />
+    </>
   );
 }
 
