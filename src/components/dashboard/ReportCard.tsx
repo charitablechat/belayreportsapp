@@ -66,6 +66,7 @@ interface ReportCardProps {
 }
 
 export function ReportCard({ report, type, onDelete, onClick, getStatusBadge, compact, isAdmin, isInvoiced, onToggleInvoiced }: ReportCardProps) {
+  useMinuteTick(); // F2: re-render every 60s so "Edited X ago" stays current
   const { sparkles, triggerSparkles, handleMouseMove } = useClickAndHoverSparkles();
   const isInspection = type === 'inspection';
   const isDaily = type === 'daily';
@@ -261,9 +262,16 @@ export function ReportCard({ report, type, onDelete, onClick, getStatusBadge, co
             {dateInfo ? dateInfo.relative : 'No date'}
           </p>
           {lastActivity && getReportStatus() !== 'completed' && (
-            <p className="text-muted-foreground/70 text-[11px]">
-              Edited {lastActivity}
-            </p>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <p className="text-muted-foreground/70 text-[11px] cursor-help w-fit">
+                  Edited {lastActivity}
+                </p>
+              </TooltipTrigger>
+              <TooltipContent side="top">
+                {report.updated_at ? format(new Date(report.updated_at), 'PPpp') : 'Unknown'}
+              </TooltipContent>
+            </Tooltip>
           )}
           <div className="flex items-center gap-2">
             <Avatar className="h-6 w-6">
