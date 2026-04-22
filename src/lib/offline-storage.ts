@@ -1,5 +1,6 @@
 import { openDB, DBSchema, IDBPDatabase } from 'idb';
 import { checkStorageQuota, requestPersistentStorage, isMobile } from './mobile-detection';
+import { SYNC_DRIFT_TOLERANCE_MS } from './local-data-guards';
 
 interface InspectionDB extends DBSchema {
   inspections: {
@@ -961,7 +962,16 @@ export async function getUnsyncedInspections(userId?: string) {
         if (!record.synced_at) return true; // never synced
         if (record.updated_at) {
           const drift = new Date(record.updated_at).getTime() - new Date(record.synced_at).getTime();
-          return drift > 2000;
+          const isUnsynced = drift > SYNC_DRIFT_TOLERANCE_MS;
+          if (isUnsynced && import.meta.env.DEV) {
+            console.log('[Offline Storage] Inspection flagged unsynced:', {
+              id: String(record.id).substring(0, 12),
+              localUpdated: record.updated_at,
+              localSynced: record.synced_at,
+              drift_ms: drift,
+            });
+          }
+          return isUnsynced;
         }
         return false;
       });
@@ -1701,7 +1711,7 @@ export async function getUnsyncedDailyAssessments(userId?: string) {
         if (!record.synced_at) return true;
         if (record.updated_at) {
           const drift = new Date(record.updated_at).getTime() - new Date(record.synced_at).getTime();
-          return drift > 2000;
+          return drift > SYNC_DRIFT_TOLERANCE_MS;
         }
         return false;
       });
@@ -2052,7 +2062,7 @@ export async function getUnsyncedTrainings(userId?: string) {
         if (!record.synced_at) return true;
         if (record.updated_at) {
           const drift = new Date(record.updated_at).getTime() - new Date(record.synced_at).getTime();
-          return drift > 2000;
+          return drift > SYNC_DRIFT_TOLERANCE_MS;
         }
         return false;
       });
@@ -2101,7 +2111,16 @@ export async function getUnsyncedCounts(userId?: string): Promise<{
           if (!i.synced_at) return true;
           if (!i.updated_at) return false;
           const drift = new Date(i.updated_at).getTime() - new Date(i.synced_at).getTime();
-          return drift > 2000;
+          const isUnsynced = drift > SYNC_DRIFT_TOLERANCE_MS;
+          if (isUnsynced && import.meta.env.DEV) {
+            console.log(`[Offline Storage] ${storeName} flagged unsynced:`, {
+              id: String(i.id).substring(0, 12),
+              localUpdated: i.updated_at,
+              localSynced: i.synced_at,
+              drift_ms: drift,
+            });
+          }
+          return isUnsynced;
         });
         
         if (userId) {

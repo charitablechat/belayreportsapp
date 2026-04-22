@@ -1,6 +1,26 @@
 /**
+ * Shared drift tolerance for "is this record actually unsynced?" decisions.
+ *
+ * Why a single constant: the same question ("is local newer than synced?") is
+ * asked from at least three call sites — form load (`isLocalDataNewer`),
+ * dashboard cache write (`shouldPreserveLocalRecord`), and the unsynced-counts
+ * query in `offline-storage.ts`. When those answers disagree, you get phantom
+ * "X pending" badges that never clear AND stale local copies overriding fresh
+ * server payloads. Unifying on 5s eliminates both failure modes.
+ *
+ * 5 seconds comfortably absorbs Postgres-trigger / network / clock-skew jitter
+ * without masking real edits (which always produce drift in the tens of seconds
+ * or more).
+ */
+export const SYNC_DRIFT_TOLERANCE_MS = 5000;
+
+/**
  * Determines whether local (IndexedDB) data should take priority over server data.
  * Used by form pages to prevent stale server data from overwriting newer local edits.
+ *
+ * Server payload wins whenever the timestamps are within `SYNC_DRIFT_TOLERANCE_MS`
+ * of each other AND the local copy has been synced at least once. This prevents the
+ * "iPad keeps showing yesterday's local copy even after a fresh server fetch" failure.
  */
 export function isLocalDataNewer(
   offlineData: { updated_at?: string | null; synced_at?: string | null } | null | undefined,
@@ -8,22 +28,26 @@ export function isLocalDataNewer(
 ): boolean {
   if (!offlineData) return false;
   if (!offlineData.synced_at) return true; // Never synced = local has unsynced changes
-  return !!(
-    offlineData.updated_at &&
-    serverData?.updated_at &&
-    new Date(offlineData.updated_at) > new Date(serverData.updated_at)
-  );
+
+  if (!offlineData.updated_at || !serverData?.updated_at) return false;
+
+  const localMs = new Date(offlineData.updated_at).getTime();
+  const serverMs = new Date(serverData.updated_at).getTime();
+
+  // Within tolerance — treat as the same logical version, prefer the server payload.
+  if (Math.abs(localMs - serverMs) <= SYNC_DRIFT_TOLERANCE_MS) {
+    return false;
+  }
+
+  // Local is meaningfully newer than the server.
+  return localMs > serverMs;
 }
 
 /**
- * Clock-skew tolerance in milliseconds.
- * Client `updated_at` is set via `new Date()` while `synced_at` is set by
- * the server (`NOW()`). If the client clock is ahead by a few seconds the
- * record will appear "dirty" even though no real edits occurred. A 5-second
- * window absorbs typical mobile clock drift without masking genuine edits
- * (which produce gaps of many seconds or more).
+ * @deprecated Use {@link SYNC_DRIFT_TOLERANCE_MS} instead. Kept as an alias to
+ * avoid breaking any importer that still references the old name.
  */
-const CLOCK_SKEW_TOLERANCE_MS = 5000;
+const CLOCK_SKEW_TOLERANCE_MS = SYNC_DRIFT_TOLERANCE_MS;
 
 /**
  * Determines whether a local IndexedDB record should be preserved (not overwritten)
