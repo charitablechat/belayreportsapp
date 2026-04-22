@@ -579,7 +579,10 @@ export const useAutoSync = () => {
         const persistToIDB = async () => {
           try {
             if (shouldPreserveLocalRecord(record)) return; // don't overwrite richer local data
-            const enriched = { ...record, synced_at: new Date().toISOString() };
+            // F3: Re-align synced_at to the payload's own updated_at so the next
+            // unsynced-counts query doesn't immediately re-flag this record as dirty.
+            // Using `new Date()` here causes drift > tolerance vs. the server timestamp.
+            const enriched = { ...record, synced_at: record.updated_at || new Date().toISOString() };
             if (payload.table === 'inspections') {
               await saveInspectionOffline(enriched);
             } else if (payload.table === 'trainings') {
