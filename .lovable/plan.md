@@ -1,98 +1,83 @@
 
 
-## Why "Edited X days ago" is stuck across devices
+## Why the orange "3 pending" dot won't clear
 
-The pink "Edited 19 days ago" pill on each dashboard report card is rendered from `report.updated_at` in `ReportCard.tsx`:
+The "3" lives on the SyncPulse dot and on the cloud chip, both of which display `totalUnsynced = unsyncedCount + unsyncedPhotoCount`. Both numbers are computed from IndexedDB by *separate* queries with *different* "still pending" rules. After last cycle's drift fix, `unsyncedCount` (reports) is reliable. The leftover phantom is now coming from **`unsyncedPhotoCount`** — and there are 3 specific reasons photos can sit in IDB forever as "pending" with nothing the auto-sync loop can do about them.
 
-```ts
-const getLastActivity = () => {
-  const updatedAt = report.updated_at;
-  if (!updatedAt) return null;
-  return formatDistanceToNow(new Date(updatedAt), { addSuffix: true });
-};
-```
+### Root cause #1 — Photos that exhausted retries stay "uploaded: false" forever
 
-Three independent issues keep that string frozen on the iPad while the HP shows the right value:
+`syncPhotos` (`src/lib/sync-manager.ts:68`) filters out any photo whose `retryCount >= MAX_PHOTO_RETRIES (5)` and **never touches them again**. They keep `uploaded: false` and a non-null `blob`, so `getUnuploadedPhotos` (`src/lib/offline-storage.ts:1274`) keeps returning them in every count cycle. Every periodic sync silently skips them; every count refresh re-reports them as "pending." This is the number-one source of permanent ghost pendings — a single failed upload (network blip on first try, RLS hiccup, blob corruption) becomes a permanent "X pending" badge after 5 quick retries.
 
-### Root cause #1 — Dashboard state is not refreshed by Realtime
+### Root cause #2 — Photos pointing at orphaned/temp inspections
 
-`Dashboard.tsx` keeps its lists in plain `useState` (`inspections`, `trainings`, `dailyAssessments`) populated by `refreshReports()`. That function only runs on:
+`syncPhotos` also early-returns for any photo whose `inspectionId` starts with `temp-` (line 97–101). If an inspection was created offline, then deleted before it ever synced, its photos remain in IDB pointing at the dead temp-ID. They will never upload — there's no parent row to attach them to — but they keep counting toward `unsyncedPhotoCount` forever.
 
-- `online` event, `focus`, `visibilitychange`, `pageshow` (bfcache), the `dashboard-stale` event, and `onSyncComplete`.
+### Root cause #3 — Photos with null blob that aren't marked uploaded
 
-`useAutoSync.handleRemoteChange` (the Realtime hook) does two things on a remote UPDATE:
+A partial success path exists where the storage upload succeeds but the DB insert fails (or the page navigates mid-upload). `markPhotoAsUploaded` sets `blob = null`. The `getUnuploadedPhotos` query at line 1285 filters those out (`p.blob != null`), so they won't show. **But** if a photo got its blob nulled by a different path (e.g., storage-pressure eviction touching the wrong record, or a quota trim) without setting `uploaded = true`, it would slip through this filter — actually we're safe here, the filter handles it. Discount this one.
 
-1. Writes the new payload to IndexedDB.
-2. Calls `queryClient.invalidateQueries({ queryKey: ['inspections'] })` — but **the Dashboard never subscribes to that React Query key**; its lists are local state.
+### Root cause #4 — `unsyncedPhotoCount` never refreshes on its own
 
-So when the HP edits Solid Rock and the iPad receives the Realtime UPDATE, IDB updates silently, the Dashboard's in-memory `inspections` array keeps the old `updated_at`, and the pill keeps saying "19 days ago" until the user backgrounds and re-foregrounds the tab.
+`useUnsyncedPhotos` (`src/hooks/useUnsyncedPhotos.tsx`) only recomputes the count when:
+- the hook mounts, or
+- `useAutoSync` dispatches `sync-photos-updated` after a successful sync cycle.
 
-### Root cause #2 — The relative string never re-renders on its own
+If the periodic sync skips the heavy pipeline (the "early exit" path at `useAutoSync.tsx:271` when `hasUnsyncedItems = unsyncedCountRef.current > 0` is false but `unsyncedPhotoCount` is non-zero), the `sync-photos-updated` event never fires, and even after photos are silently abandoned, the count stays stuck for the entire session. The HP has been on all day — no remount, no event — so the badge never re-evaluates.
 
-`formatDistanceToNow` is computed once per render and never refreshed. A dashboard left open shows a fixed "Edited 19 days ago" indefinitely because nothing forces ReportCard to re-render as wall-clock time advances. After yesterday's edit and an idle 24 hours, the pill should say "20 days ago" but still says "19".
+### What to fix
 
-### Root cause #3 — Stale-while-revalidate paints an old `updated_at` first
+**P1 — Stop counting permanently-failed photos as "pending"** *(the actual bug fix)*
 
-In `loadInspections`, IDB data is rendered before the Supabase query returns (lines 641–648). If the local IDB row was last written by a Realtime payload, its `updated_at` is correct. But if it was written by `saveInspectionOffline` after a previous sync where only `synced_at` was aligned (via `align_synced_at` RPC), the local copy can hold an older `updated_at` than the server. The pill then shows the older time until the network call resolves and overwrites it. On flaky networks this older value sticks.
+In `getUnuploadedPhotos`, add a filter that excludes photos with `(retryCount || 0) >= MAX_PHOTO_RETRIES` and photos whose `inspectionId` starts with `temp-` and the parent inspection no longer exists in IDB (orphan check via `db.get('inspections', photo.inspectionId)`). Move `MAX_PHOTO_RETRIES` to a shared constant exported from `offline-storage.ts` so the count and the sync loop agree. Photos in this state are effectively dead — they should not light up the badge.
 
-There is also a related bug: the `dashboard-stale` event is dispatched after `align_synced_at` finishes, but only on the *originating* device. Other devices have to wait for their own next focus/visibility tick.
+These photos are still preserved in IDB (not deleted) so admins can recover them via the Data Recovery panel. They just stop polluting the live counter.
 
----
+**P2 — Surface dead-letter photos in the SyncPulse sheet**
 
-## Fix
+When the SyncPulse dialog opens, count "skipped" photos (`retryCount >= MAX || orphaned temp parent`) separately and show them under a new `FAILED_PHOTOS` row with a "Retry" action that resets `retryCount` to 0 and triggers a sync. This keeps visibility without keeping a fake "pending" number on screen 24/7.
 
-### F1 — Wire Realtime updates into Dashboard state (the actual cross-device bug)
+**P3 — Photo count needs its own refresh trigger**
 
-Add a Realtime subscription inside `Dashboard.tsx` that listens for `postgres_changes` UPDATE events on `inspections`, `trainings`, and `daily_assessments`, and merges the payload into the corresponding `useState` array by `id`. Write logic:
+In `useAutoSync.performSync`, also dispatch `sync-photos-updated` from the early-exit branch (line 271–280) and the finally block (line 469). Right now the event only fires after a full pipeline run. Add a 5-minute background tick in `useUnsyncedPhotos` as a safety net (cheap — single index query) so the badge self-corrects even if no sync runs.
 
-```ts
-const merge = (prev, row) =>
-  prev.some(r => r.id === row.id)
-    ? prev.map(r => r.id === row.id
-        ? { ...r, ...row, updated_at: row.updated_at, synced_at: row.updated_at }
-        : r)
-    : [row, ...prev];
-```
+**P4 — One-time cleanup on app boot**
 
-This guarantees `report.updated_at` in the rendered card matches the latest server value within ~1 second of any remote edit, on every connected device. Profile join data (`inspector`/`trainer`) is preserved by spreading existing fields first.
+On first load after this update, run a single migration pass that:
+- resets `retryCount = 0` on every photo (gives previously-dead photos one fresh chance to upload), then
+- after the next sync cycle, photos that still fail will hit the new MAX cap and drop off the badge.
 
-Also handle DELETE → filter the row out.
-
-### F2 — Re-render relative timestamps on a tick
-
-Add a small `useElapsedTick()` hook in `ReportCard.tsx` that forces a re-render once a minute (single shared interval, mounted via context or a module-level subscriber to avoid N intervals for N cards). This makes "19 days ago" advance to "20 days ago" without user interaction. Cost: one timer for the whole dashboard, ~one re-render/min.
-
-### F3 — Dashboard cache writeback must not regress `updated_at`
-
-In `loadInspections` (and the training/daily equivalents), when writing the network row to IDB, **always preserve the larger of `local.updated_at` vs. `server.updated_at`** — never let an older local value overwrite a newer server value. Currently the code writes `{ ...inspection, synced_at: preservedSyncedAt }` which is fine for `synced_at`, but doesn't guard against an IDB row with a stale `updated_at` shadowing a fresher server one in a follow-up read.
-
-Pair with: when `useAutoSync.handleRemoteChange` persists a Realtime payload to IDB, also dispatch a lightweight `dashboard-stale` event so the Dashboard's existing handler runs `refreshReports()` as a backstop. (Cheap; deduped by `lastRefreshTsRef`.)
-
-### F4 — Tooltip with absolute time
-
-Wrap the "Edited X" pill in a Tooltip that shows the absolute timestamp (`format(new Date(updated_at), 'PPpp')`). Eliminates ambiguity when the relative string is briefly out of date.
+This guarantees the user's currently-stuck "3" goes away within one sync cycle without losing any data.
 
 ### Files to change
 
-- **`src/pages/Dashboard.tsx`** — F1 (Realtime subscription with merge handler) + F3 (preserve `updated_at` in IDB writeback).
-- **`src/components/dashboard/ReportCard.tsx`** — F2 (minute-tick re-render) + F4 (tooltip on the Edited pill).
-- **`src/hooks/useAutoSync.tsx`** — F3 (dispatch `dashboard-stale` after persisting Realtime payload).
+- `src/lib/offline-storage.ts` — export `MAX_PHOTO_RETRIES`, update `getUnuploadedPhotos` to exclude exhausted/orphaned photos, add `getDeadLetterPhotos` for the sheet, add `resetPhotoRetryCounts` for boot migration.
+- `src/lib/sync-manager.ts` — import the shared `MAX_PHOTO_RETRIES` constant.
+- `src/hooks/useUnsyncedPhotos.tsx` — add a 5-minute interval as a safety net; expose `deadLetterCount`.
+- `src/hooks/useAutoSync.tsx` — dispatch `sync-photos-updated` from the early-exit branch and finally block.
+- `src/components/pwa/SyncPulse.tsx` — add a `FAILED_PHOTOS` row with Retry action when dead-letter count > 0.
+- `src/main.tsx` (or `App.tsx` boot path) — one-time `resetPhotoRetryCounts()` call gated by a `localStorage` flag so it runs once per device.
 
 No DB migrations, no edge functions. ~80 LOC net.
 
 ### Risk
 
-- **F1:** One extra Realtime subscription per dashboard mount, scoped to three tables. Same channel pattern already used by form pages — no new pressure.
-- **F2:** A single 60s timer for the whole dashboard. No measurable cost; immediately cleared on unmount.
-- **F3:** Stricter "local writeback" — if a future code path intentionally sets a backdated `updated_at` it will be ignored. No such path exists today.
+- **P1:** Photos stuck at retry cap stop counting. They're not deleted, just hidden from the live badge. Recoverable via the new Retry action in the sheet.
+- **P4:** Resetting retry counts gives every previously-failed photo one more upload attempt on next sync. If a photo is genuinely broken (corrupt blob), it'll fail 5 more times and drop off again. Worst case is 5 short bursts of upload errors in the console, then quiet.
+- **P2/P3:** Pure UI/event-dispatch changes, no data path touched.
+
+### Expected outcomes
+
+- HP's "3 pending" badge clears within one sync cycle after this ships.
+- Future photo-upload failures stop becoming permanent ghost counters.
+- Power users can see and manually retry failed photos from the SyncPulse sheet instead of reporting "still 3 pending" three weeks later.
 
 ### Verification
 
-1. iPad with dashboard open → HP edits Solid Rock → within ~1 s the iPad's Solid Rock card flips to "Edited a few seconds ago". (Today: stays at "19 days ago".)
-2. Leave dashboard open for 60 s → "a few seconds ago" advances to "a minute ago" without interaction. (Today: frozen.)
-3. Hover/long-press the Edited pill → tooltip shows full ISO date/time.
-4. Open dashboard offline → pill renders from IDB; reconnect → pill stays the same value (no flicker to an older time).
-5. HP creates a brand-new inspection → iPad's dashboard shows the new card via Realtime INSERT (already partially worked; now confirmed via merge path).
-6. Delete a record on HP → iPad's card disappears within ~1 s.
-7. Phantom-pending fix (last cycle) still works: pending count unchanged.
+1. HP after deploy: badge "3" → boot migration resets retries → next sync runs → genuinely-uploadable photos upload → unrecoverable photos hit cap → badge drops to 0 within 60s.
+2. Open SyncPulse sheet → dead-letter photos (if any) appear under FAILED_PHOTOS with a Retry button.
+3. Click Retry → retry counts reset → sync runs → photos either succeed (remove from list) or fail back to dead-letter.
+4. Create a new photo offline → reconnect → photo uploads → count goes to 0 (no regression).
+5. Delete an unsynced inspection that has photos → its orphaned photos stop counting toward the badge.
+6. Leave HP idle for an hour → 5-min safety tick keeps the count in sync with reality.
+7. Existing report-pending logic from the previous cycles unchanged (still uses 5s drift tolerance, still re-aligns on Realtime).
 
