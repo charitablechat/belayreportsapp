@@ -389,6 +389,9 @@ export function LocalSnapshotsPanel({ allowDelete = true }: SnapshotsPanelProps)
                           <RotateCcw className="h-4 w-4 mr-1.5" />
                           Restore
                         </Button>
+                        <Button size="sm" variant="outline" onClick={() => handlePreview(s)} title="Preview snapshot">
+                          <Eye className="h-4 w-4" />
+                        </Button>
                         {allowDelete && (
                           <>
                             <Button size="sm" variant="outline" onClick={() => handleExport(s.reportType, s.reportId)} title="Export">
@@ -436,6 +439,9 @@ export function LocalSnapshotsPanel({ allowDelete = true }: SnapshotsPanelProps)
                             <div className="flex justify-end gap-1">
                               <Button size="sm" variant="outline" onClick={() => handleRestore(s.reportType, s.reportId)} title="Restore to IndexedDB">
                                 <RotateCcw className="h-4 w-4" />
+                              </Button>
+                              <Button size="sm" variant="outline" onClick={() => handlePreview(s)} title="Preview snapshot contents">
+                                <Eye className="h-4 w-4" />
                               </Button>
                               {allowDelete && (
                                 <>
