@@ -496,6 +496,41 @@ export function CloudSnapshotsPanel({ allowDelete = true }: CloudSnapshotsPanelP
   const lastFetchedAt = useRef<number>(0);
   const STALE_TIME = 30000;
   const [searchQuery, setSearchQuery] = useState('');
+  const [previewState, setPreviewState] = useState<{ open: boolean; snapshot: any; loading: boolean; row: any | null }>({ open: false, snapshot: null, loading: false, row: null });
+  const previewCache = useRef<Map<string, any>>(new Map());
+
+  const handlePreview = useCallback(async (s: any) => {
+    if (previewCache.current.has(s.id)) {
+      setPreviewState({ open: true, snapshot: previewCache.current.get(s.id), loading: false, row: s });
+      return;
+    }
+    setPreviewState({ open: true, snapshot: null, loading: true, row: s });
+    try {
+      const { fetchCloudSnapshot } = await import('@/lib/cloud-backup');
+      const full = await fetchCloudSnapshot(s.id);
+      const data = full?.snapshot_data || null;
+      if (data) previewCache.current.set(s.id, data);
+      setPreviewState({ open: true, snapshot: data, loading: false, row: s });
+    } catch (e) {
+      toast.error("Failed to load snapshot preview");
+      setPreviewState({ open: false, snapshot: null, loading: false, row: null });
+    }
+  }, []);
+
+  const handlePreviewExport = useCallback(() => {
+    const row = previewState.row;
+    const data = previewState.snapshot;
+    if (!row || !data) return;
+    const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    const org = data?.parent?.organization || row.facility || 'snapshot';
+    a.download = formatReportFilename(org, (row.report_type || 'inspection') as any, 'json');
+    a.click();
+    URL.revokeObjectURL(url);
+    toast.success("Snapshot exported as JSON");
+  }, [previewState]);
 
   const loadSnapshots = useCallback(async (force = false) => {
     // Skip if data is fresh (stale-while-revalidate)
