@@ -1347,18 +1347,33 @@ export default function Dashboard() {
               {/* Minimal dot-based sync indicator */}
               <SyncPulse />
               
-              {/* Pending uploads chip - visible when items are queued */}
+              {/* Pending uploads chip - visible when items are queued. Click to sync now. */}
               {unsyncedCount > 0 && !isSyncing && (
-                <Badge variant="outline" className="bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-500/30 font-mono text-xs gap-1">
-                  <Cloud className="w-3 h-3" />
-                  {unsyncedCount} pending
-                </Badge>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <button
+                      type="button"
+                      onClick={() => forceSync()}
+                      disabled={isSyncing || !isOnline}
+                      className="inline-flex items-center gap-1 rounded-full border border-primary/30 bg-primary/10 px-2.5 py-0.5 font-mono text-xs text-primary transition-colors hover:bg-primary/20 disabled:cursor-not-allowed disabled:opacity-60"
+                      aria-label={`${unsyncedCount} item${unsyncedCount === 1 ? '' : 's'} pending sync. Tap to sync now.`}
+                    >
+                      <Cloud className="w-3 h-3" />
+                      {unsyncedCount} pending
+                    </button>
+                  </TooltipTrigger>
+                  <TooltipContent>
+                    <p className="text-xs">
+                      {unsyncedCount} item{unsyncedCount === 1 ? '' : 's'} queued. {isOnline ? "Will sync automatically — tap to sync now." : "Will sync when you're back online."}
+                    </p>
+                  </TooltipContent>
+                </Tooltip>
               )}
               
-              <div className="hidden sm:flex">
+              <div className="hidden lg:flex">
                 <NetworkQualityIndicator />
               </div>
-              
+
               
               
               {isSuperAdmin && (

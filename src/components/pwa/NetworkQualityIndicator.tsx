@@ -4,7 +4,7 @@ import { Badge } from '@/components/ui/badge';
 import { Wifi, WifiOff, Signal, SignalHigh, SignalLow, SignalMedium } from 'lucide-react';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 
-type NetworkQuality = 'excellent' | 'good' | 'fair' | 'poor' | 'offline';
+type NetworkQuality = 'excellent' | 'good' | 'fair' | 'poor' | 'offline' | 'unknown';
 
 const getNetworkQuality = (
   isOnline: boolean,
@@ -13,6 +13,12 @@ const getNetworkQuality = (
   rtt: number | null
 ): NetworkQuality => {
   if (!isOnline) return 'offline';
+
+  // Network Information API not available (Safari/iOS, some Firefox).
+  // Browser says we're online — trust it instead of falsely reporting "Poor".
+  if (effectiveType === null && downlink === null && rtt === null) {
+    return 'unknown';
+  }
 
   // Use effective type as primary indicator
   if (effectiveType === '4g' || (downlink && downlink > 5)) {
@@ -79,6 +85,14 @@ const getQualityConfig = (quality: NetworkQuality) => {
         color: 'text-muted-foreground',
         description: 'No connection - changes will sync when online',
       };
+    case 'unknown':
+      return {
+        icon: Wifi,
+        label: 'Online',
+        variant: 'secondary' as const,
+        color: 'text-muted-foreground',
+        description: 'Connected. Detailed connection quality is unavailable on this browser.',
+      };
   }
 };
 
@@ -98,6 +112,12 @@ export const NetworkQualityIndicator = () => {
   );
   
   const Icon = config.icon;
+
+  // Hide entirely when status is uninteresting (unknown = online but no API detail).
+  // Offline / fair / poor / good / excellent all still render.
+  if (quality === 'unknown') {
+    return null;
+  }
 
   return (
     <TooltipProvider>
