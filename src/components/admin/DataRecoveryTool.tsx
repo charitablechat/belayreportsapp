@@ -627,6 +627,7 @@ export function CloudSnapshotsPanel({ allowDelete = true }: CloudSnapshotsPanelP
   });
 
   return (
+    <>
     <Card className="backdrop-blur-md bg-white/5 dark:bg-white/[0.03] border border-white/10 rounded-xl shadow-lg shadow-black/5 overflow-hidden">
       <CardHeader className="px-3 md:px-6 py-4 md:p-6">
         <div className="flex items-center justify-between">
@@ -725,6 +726,9 @@ export function CloudSnapshotsPanel({ allowDelete = true }: CloudSnapshotsPanelP
                       <RotateCcw className="h-4 w-4 mr-1.5" />
                       Restore
                     </Button>
+                    <Button size="sm" variant="outline" onClick={() => handlePreview(s)} title="Preview snapshot" disabled={previewState.loading && previewState.row?.id === s.id}>
+                      {previewState.loading && previewState.row?.id === s.id ? <Loader2 className="h-4 w-4 animate-spin" /> : <Eye className="h-4 w-4" />}
+                    </Button>
                     {allowDelete && (
                       <Button size="sm" variant="ghost" className="text-destructive" onClick={() => handleDelete(s.id)} title="Delete">
                         <Trash2 className="h-4 w-4" />
@@ -767,6 +771,9 @@ export function CloudSnapshotsPanel({ allowDelete = true }: CloudSnapshotsPanelP
                         <div className="flex justify-end gap-1">
                           <Button size="sm" variant="outline" onClick={() => handleRestore(s.id)} title="Restore to IndexedDB">
                             <RotateCcw className="h-4 w-4" />
+                          </Button>
+                          <Button size="sm" variant="outline" onClick={() => handlePreview(s)} title="Preview snapshot contents" disabled={previewState.loading && previewState.row?.id === s.id}>
+                            {previewState.loading && previewState.row?.id === s.id ? <Loader2 className="h-4 w-4 animate-spin" /> : <Eye className="h-4 w-4" />}
                           </Button>
                           {allowDelete && (
                             <Button size="sm" variant="ghost" className="text-destructive" onClick={() => handleDelete(s.id)} title="Delete cloud backup">
