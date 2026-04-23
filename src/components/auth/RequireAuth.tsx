@@ -5,6 +5,12 @@ import {
   hasCachedSessionForOffline,
   getOfflineUserId,
 } from "@/lib/cached-auth";
+import { useAuthState } from "@/hooks/useAuthState";
+import {
+  isAuthFsmEnabled,
+  isAuthenticated,
+  transition,
+} from "@/lib/auth-state-machine";
 
 interface RequireAuthProps {
   children: ReactNode;
@@ -13,17 +19,52 @@ interface RequireAuthProps {
 /**
  * H1: Route guard for authenticated pages.
  *
- * Renders children when an authenticated session exists (online or
- * offline/synthetic). Redirects to "/" when no identity can be resolved.
- * Renders null while resolving to avoid flash redirects.
+ * Phase 2: when the auth state machine is enabled (default), reads from the
+ * FSM directly so transitions (offline→online reconcile, sign-out) are
+ * reflected without re-polling localStorage. Falls back to the legacy
+ * cached-auth probe when `localStorage.AUTH_FSM === "0"`.
  */
 export function RequireAuth({ children }: RequireAuthProps) {
   const navigate = useNavigate();
-  const [status, setStatus] = useState<"checking" | "ok" | "redirect">(
-    "checking"
-  );
+  const fsmEnabled = isAuthFsmEnabled();
+  const fsmSnapshot = useAuthState();
+  const [legacyStatus, setLegacyStatus] = useState<
+    "checking" | "ok" | "redirect"
+  >("checking");
 
+  // ── FSM PATH ─────────────────────────────────────────────────────────
   useEffect(() => {
+    if (!fsmEnabled) return;
+
+    // While BOOTING, do nothing — render null so we don't flash-redirect.
+    if (fsmSnapshot.state === "BOOTING") return;
+
+    if (isAuthenticated(fsmSnapshot)) return;
+
+    if (fsmSnapshot.state === "TRANSITIONING") return;
+
+    // UNAUTHENTICATED — but double-check offline fallbacks before redirecting,
+    // because the FSM seed runs before React mounts and a slow first read of
+    // IndexedDB credentials might not have promoted us yet.
+    if (
+      !navigator.onLine &&
+      (hasCachedSessionForOffline() || getOfflineUserId())
+    ) {
+      // Promote the FSM so we don't keep redirecting.
+      transition({
+        to: "OFFLINE_AUTHENTICATED",
+        reason: "RequireAuth:offline-fallback",
+        userId: getOfflineUserId(),
+      });
+      return;
+    }
+
+    navigate("/", { replace: true });
+  }, [fsmEnabled, fsmSnapshot, navigate]);
+
+  // ── LEGACY PATH (feature flag off) ───────────────────────────────────
+  useEffect(() => {
+    if (fsmEnabled) return;
     let cancelled = false;
 
     const check = async () => {
@@ -32,27 +73,25 @@ export function RequireAuth({ children }: RequireAuthProps) {
         if (cancelled) return;
 
         if (user) {
-          setStatus("ok");
+          setLegacyStatus("ok");
           return;
         }
 
-        // No user from cache/network — check offline fallback paths
         if (!navigator.onLine) {
           if (hasCachedSessionForOffline() || getOfflineUserId()) {
-            setStatus("ok");
+            setLegacyStatus("ok");
             return;
           }
         }
 
-        setStatus("redirect");
+        setLegacyStatus("redirect");
         navigate("/", { replace: true });
-      } catch (err) {
+      } catch {
         if (cancelled) return;
-        // Be resilient — only redirect if we truly have nothing cached
         if (hasCachedSessionForOffline() || getOfflineUserId()) {
-          setStatus("ok");
+          setLegacyStatus("ok");
         } else {
-          setStatus("redirect");
+          setLegacyStatus("redirect");
           navigate("/", { replace: true });
         }
       }
@@ -62,9 +101,17 @@ export function RequireAuth({ children }: RequireAuthProps) {
     return () => {
       cancelled = true;
     };
-  }, [navigate]);
+  }, [fsmEnabled, navigate]);
 
-  if (status !== "ok") return null;
+  if (fsmEnabled) {
+    if (fsmSnapshot.state === "BOOTING" || fsmSnapshot.state === "TRANSITIONING") {
+      return null;
+    }
+    if (!isAuthenticated(fsmSnapshot)) return null;
+    return <>{children}</>;
+  }
+
+  if (legacyStatus !== "ok") return null;
   return <>{children}</>;
 }
 

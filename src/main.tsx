@@ -81,4 +81,11 @@ import('@/lib/auth-resilience').then(({ validateAuthStateOnBoot }) => {
   }).catch(() => {});
 }).catch(() => {});
 
+// Phase 2 — auth state machine bridge: subscribe to Supabase auth events
+// and browser online/offline so the FSM stays in sync. Synchronous import
+// so the seed transition runs before React mounts and RequireAuth sees a
+// real state on first render.
+import { initAuthBridge } from '@/lib/auth-bridge';
+initAuthBridge();
+
 createRoot(document.getElementById("root")!).render(<App />);
