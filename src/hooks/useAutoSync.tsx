@@ -11,7 +11,7 @@ import { useQueryClient } from '@tanstack/react-query';
 import { isMobile, isIOS } from '@/lib/mobile-detection';
 import { useIsMobile } from '@/hooks/use-mobile';
 import { addSyncNotification } from '@/lib/notification-center';
-import { emitSyncComplete, setSyncInProgress } from '@/lib/sync-events';
+import { emitSyncComplete, setSyncInProgress, isRecentSelfWrite } from '@/lib/sync-events';
 import { clearPendingSyncs } from '@/lib/background-sync';
 import { toast } from '@/components/ui/sonner';
 import { markSnapshotSynced } from '@/lib/local-backup-ledger';
@@ -508,9 +508,11 @@ export const useAutoSync = () => {
       }
       // Desktop toast is not needed here since errors are usually transient and auto-retry handles them
     } finally {
+      // S6: Set completed-at BEFORE clearing the in-progress gate so any Realtime
+      // event that races past `syncInProgressRef` immediately hits the cooldown gate.
+      lastSyncCompletedAtRef.current = Date.now();
       syncInProgressRef.current = false;
       setSyncInProgress(false);
-      lastSyncCompletedAtRef.current = Date.now();
       // CRITICAL: Always reset isSyncing state in finally block to prevent stuck spinner
       setState(prev => ({ ...prev, isSyncing: false }));
       // Always refresh unsynced counts so the badge is accurate after every sync attempt

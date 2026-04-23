@@ -669,6 +669,7 @@ export async function syncInspectionAtomic(inspectionId: string, preValidatedUse
     // POST-SYNC ALIGNMENT: Call align_synced_at RPC to set synced_at = updated_at on server
     // The updated trigger now preserves updated_at for metadata-only changes,
     // and this RPC ensures synced_at >= updated_at, eliminating the re-sync race condition.
+    registerSelfWrite(inspectionId); // S6: align_synced_at is a separate server write
     const { data: aligned, error: alignError } = await supabase.rpc('align_synced_at', {
       p_table_name: 'inspections',
       p_record_id: inspectionId,
@@ -1486,6 +1487,7 @@ export async function syncTrainingAtomic(trainingId: string, preValidatedUser?: 
     const inspectorProfile = await getCachedProfile(user.id);
     
     // POST-SYNC ALIGNMENT: Call align_synced_at RPC to set synced_at = updated_at on server
+    registerSelfWrite(trainingId); // S6: align_synced_at is a separate server write
     const { data: aligned, error: alignError } = await supabase.rpc('align_synced_at', {
       p_table_name: 'trainings',
       p_record_id: trainingId,
@@ -2234,6 +2236,7 @@ export async function syncDailyAssessmentAtomic(assessmentId: string, preValidat
     const inspectorProfile = await getCachedProfile(user.id);
     
     // POST-SYNC ALIGNMENT: Call align_synced_at RPC to set synced_at = updated_at on server
+    registerSelfWrite(assessmentId); // S6: align_synced_at is a separate server write
     const { data: aligned, error: alignError } = await supabase.rpc('align_synced_at', {
       p_table_name: 'daily_assessments',
       p_record_id: assessmentId,
