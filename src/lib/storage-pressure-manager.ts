@@ -157,3 +157,122 @@ export async function manageStoragePressure(): Promise<{
 
   return result;
 }
+
+// ────────────────────────────────────────────────────────────────────────────
+// Phase 3 — Auth-priority storage safety
+// ────────────────────────────────────────────────────────────────────────────
+
+/**
+ * Reserve 1 MB headroom for auth writes. Auth credentials are tiny (a few KB)
+ * but we keep generous slack for the redundant primary+backup slots, the
+ * tx-log ring buffer, and any in-flight `.tmp` rows.
+ */
+const AUTH_RESERVED_BYTES = 1 * 1024 * 1024;
+
+/**
+ * Logical keys/prefixes that hold auth credentials. The eviction paths must
+ * never delete records that match these — `isAuthEvictionSafe()` exposes the
+ * check so other modules can guard their own cleanup loops.
+ */
+const PINNED_AUTH_KEYS: ReadonlyArray<string> = [
+  'offline-auth',                  // resilience-store logicalKey prefix
+  'synthetic-session',             // resilience-store logicalKey
+  'offline_synthetic_session',     // localStorage key
+  'offline_auth_pending',          // localStorage flag
+  'auth-resilience-store',         // entire IndexedDB
+  'auth-tx-log',                   // legacy alias
+  'cached-admin-status:',          // namespaced admin cache
+  'cached-true-super-admin:',      // namespaced super-admin cache
+];
+
+/**
+ * True when the given storage key/prefix belongs to the auth subsystem and
+ * therefore must NOT be evicted under storage pressure.
+ *
+ * Eviction loops should call this before deleting any key they don't own.
+ */
+export function isAuthEvictionSafe(key: string): boolean {
+  if (!key) return false;
+  return !PINNED_AUTH_KEYS.some((pinned) =>
+    pinned.endsWith(':') ? key.startsWith(pinned) : key === pinned || key.startsWith(`${pinned}::`) || key.startsWith(`${pinned}:`)
+  );
+}
+
+export interface EnsureSpaceResult {
+  ok: boolean;
+  /** Bytes freed by aggressive eviction, if any. */
+  freedBytes: number;
+  /** Final usage after any eviction we triggered. */
+  estimate: StorageEstimate;
+  /** True when the device truly has no headroom and the caller should warn. */
+  exhausted: boolean;
+}
+
+/**
+ * Pre-flight quota check for an auth write. Returns `ok=true` when there's
+ * either enough free quota OR enough non-auth data we can evict to make room.
+ *
+ * On TIER ≥ 2 devices we proactively evict synced reports + old backups
+ * BEFORE the auth write so the write doesn't race against the quota.
+ *
+ * Never throws — failure to estimate is treated as `ok=true` (best-effort) so
+ * we don't block sign-in on browsers that don't expose the storage API.
+ */
+export async function ensureSpaceForAuth(
+  requiredBytes: number = AUTH_RESERVED_BYTES
+): Promise<EnsureSpaceResult> {
+  let estimate = await getStorageEstimate();
+  let freedBytes = 0;
+
+  // No quota info → assume fine (older Safari, some private modes).
+  if (estimate.quotaBytes === 0) {
+    return { ok: true, freedBytes: 0, estimate, exhausted: false };
+  }
+
+  const freeBytes = Math.max(0, estimate.quotaBytes - estimate.usageBytes);
+  if (freeBytes >= requiredBytes && estimate.tier < 2) {
+    return { ok: true, freedBytes: 0, estimate, exhausted: false };
+  }
+
+  // Pressure detected — evict aggressively (non-auth only).
+  try {
+    const { evictSyncedReports, evictOldReportBackups, evictSyncedPhotoMetadata } =
+      await import('./offline-storage');
+
+    const beforeUsage = estimate.usageBytes;
+    // Evict short — synced reports older than 1 day, all old backups, all
+    // synced photo metadata older than 1 day. Auth keys are in a separate
+    // IndexedDB (`auth-resilience-store`) and a separate offline-auth DB,
+    // so these eviction loops can't touch them.
+    await evictOldReportBackups(7);
+    await evictSyncedReports(1);
+    await evictSyncedPhotoMetadata(1);
+
+    estimate = await getStorageEstimate();
+    freedBytes = Math.max(0, beforeUsage - estimate.usageBytes);
+  } catch (err) {
+    if (import.meta.env.DEV) {
+      console.warn('[StoragePressure] ensureSpaceForAuth eviction failed:', err);
+    }
+  }
+
+  const newFree = Math.max(0, estimate.quotaBytes - estimate.usageBytes);
+  const ok = newFree >= requiredBytes;
+  return { ok, freedBytes, estimate, exhausted: !ok };
+}
+
+/**
+ * Detect a `QuotaExceededError` regardless of which engine threw it.
+ * Chrome/Firefox throw a DOMException with `name === 'QuotaExceededError'`,
+ * Safari sometimes throws code 22 with a different name.
+ */
+export function isQuotaExceededError(err: unknown): boolean {
+  if (!err) return false;
+  const e = err as { name?: string; code?: number; message?: string };
+  if (e.name === 'QuotaExceededError') return true;
+  if (e.name === 'NS_ERROR_DOM_QUOTA_REACHED') return true;
+  if (e.code === 22 || e.code === 1014) return true;
+  const msg = (e.message || '').toLowerCase();
+  return msg.includes('quota') && (msg.includes('exceed') || msg.includes('exhaust'));
+}
+
