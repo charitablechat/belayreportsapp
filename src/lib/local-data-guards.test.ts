@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { isLocalDataNewer, shouldPreserveLocalRecord } from './local-data-guards';
+import { isLocalDataNewer, shouldPreserveLocalRecord, SYNC_DRIFT_TOLERANCE_MS } from './local-data-guards';
 
 describe('isLocalDataNewer', () => {
   it('returns false when offlineData is null', () => {
