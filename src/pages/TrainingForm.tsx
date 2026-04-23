@@ -918,7 +918,19 @@ export default function TrainingForm() {
           }
 
           // Execute all in parallel
-          await Promise.all(parallelOps);
+          try {
+            await Promise.all(parallelOps);
+          } catch (parErr) {
+            // C4: parallel upsert(s) failed — restore the rows reconcile already deleted.
+            if (trainingReconciledDeletes.length > 0) {
+              try {
+                await restoreReconciledDeletions(trainingReconciledDeletes, id!);
+              } catch (restoreErr) {
+                console.error('[C4] TrainingForm: restoreReconciledDeletions threw', restoreErr);
+              }
+            }
+            throw parErr;
+          }
 
           // DEFERRED: Set synced_at ONLY after all child data committed successfully
           const syncTimestamp = new Date().toISOString();
