@@ -2262,6 +2262,7 @@ export async function syncDailyAssessmentAtomic(assessmentId: string, preValidat
         table: 'daily_assessment_beginning_of_day',
         operation: 'upsert',
         data: beginning_of_day,
+        rollbackData: existingBeginning,
       });
     }
     
@@ -2270,6 +2271,7 @@ export async function syncDailyAssessmentAtomic(assessmentId: string, preValidat
         table: 'daily_assessment_end_of_day',
         operation: 'upsert',
         data: end_of_day,
+        rollbackData: existingEnd,
       });
     }
     
@@ -2278,6 +2280,7 @@ export async function syncDailyAssessmentAtomic(assessmentId: string, preValidat
         table: 'daily_assessment_operating_systems',
         operation: 'upsert',
         data: operating_systems,
+        rollbackData: existingSystems,
       });
     }
     
@@ -2286,6 +2289,7 @@ export async function syncDailyAssessmentAtomic(assessmentId: string, preValidat
         table: 'daily_assessment_equipment_checks',
         operation: 'upsert',
         data: equipment_checks,
+        rollbackData: existingEquipment,
       });
     }
     
@@ -2294,6 +2298,7 @@ export async function syncDailyAssessmentAtomic(assessmentId: string, preValidat
         table: 'daily_assessment_structure_checks',
         operation: 'upsert',
         data: structure_checks,
+        rollbackData: existingStructure,
       });
     }
     
@@ -2302,6 +2307,7 @@ export async function syncDailyAssessmentAtomic(assessmentId: string, preValidat
         table: 'daily_assessment_environment_checks',
         operation: 'upsert',
         data: environment_checks,
+        rollbackData: existingEnvironment,
       });
     }
     
