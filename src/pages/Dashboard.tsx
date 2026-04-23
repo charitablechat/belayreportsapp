@@ -750,15 +750,29 @@ export default function Dashboard() {
                 if (Date.now() - lastCleanup < ORPHAN_CLEANUP_COOLDOWN) {
                   if (import.meta.env.DEV) console.log('[Dashboard] Inspection orphan cleanup on cooldown -- skipping');
                 } else {
-                const serverIds = new Set(networkData.map((i: any) => i.id));
+                // H1: Fetch EXHAUSTIVE id list from server (no .limit) so the
+                // 500-row display cap doesn't cause records past page 1 to be
+                // treated as orphans and silently deleted from IDB.
+                let serverIds: Set<string>;
+                try {
+                  const idQuery = supabase.from('inspections').select('id').is('deleted_at', null);
+                  if (!isSuperAdmin) idQuery.eq('inspector_id', userId);
+                  const { data: idRows, error: idErr } = await idQuery;
+                  if (idErr) throw idErr;
+                  serverIds = new Set((idRows || []).map((r: any) => r.id));
+                } catch (e) {
+                  console.warn('[Dashboard] Inspection orphan id-fetch failed -- skipping cleanup', e);
+                  return;
+                }
                 const localInspections = await getOfflineInspections(userId);
                 const nonTempLocals = localInspections.filter(l => !l.id.startsWith('temp-'));
-                
-                // SAFETY: If server returned far fewer records than local, skip cleanup
-                // Increased threshold from 3 to 5 for additional safety
-                if (networkData.length < nonTempLocals.length * 0.5 && nonTempLocals.length > 5) {
+
+                // SAFETY: empty server set with non-empty local — likely RLS/network glitch
+                if (serverIds.size === 0 && nonTempLocals.length > 0) {
+                  console.warn('[Dashboard] Server returned 0 inspection ids but local has records -- skipping orphan cleanup');
+                } else if (serverIds.size < nonTempLocals.length * 0.5 && nonTempLocals.length > 5) {
                   console.warn('[Dashboard] Server returned far fewer inspections than local -- skipping orphan cleanup', {
-                    server: networkData.length,
+                    server: serverIds.size,
                     local: nonTempLocals.length,
                   });
                 } else if (isSyncInProgress()) {
@@ -925,13 +939,27 @@ export default function Dashboard() {
                 if (Date.now() - lastCleanup < ORPHAN_CLEANUP_COOLDOWN) {
                   if (import.meta.env.DEV) console.log('[Dashboard] Training orphan cleanup on cooldown -- skipping');
                 } else {
-                const serverIds = new Set(networkData.map((t: any) => t.id));
+                // H1: Exhaustive server id-fetch (no .limit) — the display query
+                // is capped at 500 and must not be the orphan source-of-truth.
+                let serverIds: Set<string>;
+                try {
+                  const idQuery = supabase.from('trainings').select('id').is('deleted_at', null);
+                  if (!isSuperAdmin) idQuery.eq('inspector_id', userId);
+                  const { data: idRows, error: idErr } = await idQuery;
+                  if (idErr) throw idErr;
+                  serverIds = new Set((idRows || []).map((r: any) => r.id));
+                } catch (e) {
+                  console.warn('[Dashboard] Training orphan id-fetch failed -- skipping cleanup', e);
+                  return;
+                }
                 const localTrainings = await getOfflineTrainings(userId);
                 const nonTempLocals = localTrainings.filter(l => !l.id.startsWith('temp-'));
-                
-                if (networkData.length < nonTempLocals.length * 0.5 && nonTempLocals.length > 5) {
+
+                if (serverIds.size === 0 && nonTempLocals.length > 0) {
+                  console.warn('[Dashboard] Server returned 0 training ids but local has records -- skipping orphan cleanup');
+                } else if (serverIds.size < nonTempLocals.length * 0.5 && nonTempLocals.length > 5) {
                   console.warn('[Dashboard] Server returned far fewer trainings than local -- skipping orphan cleanup', {
-                    server: networkData.length,
+                    server: serverIds.size,
                     local: nonTempLocals.length,
                   });
                 } else if (isSyncInProgress()) {
@@ -1088,13 +1116,27 @@ export default function Dashboard() {
                 if (Date.now() - lastCleanup < ORPHAN_CLEANUP_COOLDOWN) {
                   if (import.meta.env.DEV) console.log('[Dashboard] Assessment orphan cleanup on cooldown -- skipping');
                 } else {
-                const serverIds = new Set(networkData.map((a: any) => a.id));
+                // H1: Exhaustive server id-fetch (no .limit) — the display query
+                // is capped at 500 and must not be the orphan source-of-truth.
+                let serverIds: Set<string>;
+                try {
+                  const idQuery = supabase.from('daily_assessments').select('id').is('deleted_at', null);
+                  if (!isSuperAdmin) idQuery.eq('inspector_id', userId);
+                  const { data: idRows, error: idErr } = await idQuery;
+                  if (idErr) throw idErr;
+                  serverIds = new Set((idRows || []).map((r: any) => r.id));
+                } catch (e) {
+                  console.warn('[Dashboard] Assessment orphan id-fetch failed -- skipping cleanup', e);
+                  return;
+                }
                 const localAssessments = await getOfflineDailyAssessments(userId);
                 const nonTempLocals = localAssessments.filter(l => !l.id.startsWith('temp-'));
-                
-                if (networkData.length < nonTempLocals.length * 0.5 && nonTempLocals.length > 5) {
+
+                if (serverIds.size === 0 && nonTempLocals.length > 0) {
+                  console.warn('[Dashboard] Server returned 0 assessment ids but local has records -- skipping orphan cleanup');
+                } else if (serverIds.size < nonTempLocals.length * 0.5 && nonTempLocals.length > 5) {
                   console.warn('[Dashboard] Server returned far fewer assessments than local -- skipping orphan cleanup', {
-                    server: networkData.length,
+                    server: serverIds.size,
                     local: nonTempLocals.length,
                   });
                 } else if (isSyncInProgress()) {
