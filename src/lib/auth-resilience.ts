@@ -478,13 +478,33 @@ export interface ReadResult<T> {
 export async function readCredentialResilient<T>(
   logicalKey: AuthCredentialKey | string
 ): Promise<ReadResult<T>> {
+  // Phase 4a — payloads may be encrypted (`enc:v1:...`). Try to decrypt; if
+  // it's already plaintext (legacy), pass through. A null result from a
+  // tagged ciphertext means the key is gone or the blob was tampered with —
+  // treat as damaged so the user is forced back online.
+  const tryParse = async (raw: string): Promise<T | null> => {
+    const decrypted = await decryptFromStorage(raw);
+    if (decrypted === null) return null;
+    try {
+      return JSON.parse(decrypted) as T;
+    } catch {
+      return null;
+    }
+  };
+
   const primary = await readSlotRow(slotId(logicalKey, 'primary'));
   if (await verifyRow(primary)) {
-    try {
-      return { ok: true, value: JSON.parse(primary!.payload) as T, source: 'primary', damaged: false };
-    } catch {
-      // fall through to backup
+    const value = await tryParse(primary!.payload);
+    if (value !== null) {
+      // Self-heal: if the stored payload is still legacy plaintext, rewrite
+      // it through the encrypted path on next save. We don't force a write
+      // here — letting the next normal save migrate avoids an extra IO burst.
+      return { ok: true, value, source: 'primary', damaged: false };
     }
+    await recordRecovery(
+      'primary-failed-checksum',
+      `Primary slot for "${logicalKey}" decrypted to invalid JSON (key mismatch?)`
+    );
   } else if (primary) {
     await recordRecovery(
       'primary-failed-checksum',
@@ -494,8 +514,8 @@ export async function readCredentialResilient<T>(
 
   const backup = await readSlotRow(slotId(logicalKey, 'backup'));
   if (await verifyRow(backup)) {
-    try {
-      const value = JSON.parse(backup!.payload) as T;
+    const value = await tryParse(backup!.payload);
+    if (value !== null) {
       // Self-heal: rewrite primary from backup so future reads are fast.
       writeCredentialAtomic(logicalKey, value).catch(() => {});
       await recordRecovery(
@@ -503,8 +523,6 @@ export async function readCredentialResilient<T>(
         `Restored "${logicalKey}" from backup slot after primary failure`
       );
       return { ok: true, value, source: 'backup', damaged: false };
-    } catch {
-      // fall through
     }
   } else if (backup) {
     await recordRecovery(
