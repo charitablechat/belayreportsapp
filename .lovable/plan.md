@@ -1,24 +1,28 @@
 
 
-## L8 — Per-user admin cache on shared device
+## 1.A — Rewrite queued photo paths at offline-auth reconciliation
 
-Investigated. **The original concern (User B inheriting User A's admin role) is already resolved.** No code change needed.
+When a user creates photos offline under a deterministic UUID and later signs in online for the first time, `verifyAndReconcileOfflineAuth()` migrates parent report rows (`inspector_id`) but intentionally leaves `photoUrl` alone (see `migrateUserData` C7 comment). For **already-uploaded** photos that's correct — the storage object lives at the old prefix forever and signed URLs work regardless. But for **pending (not-yet-uploaded)** photos, the path still encodes the old uid, so the next `syncPhotos()` call POSTs to `<oldUid>/...` and hits a storage RLS denial because the authenticated user is now `<newUid>`.
 
-### Why it's not exploitable today
+### Change
 
-1. **Cache keys are namespaced per user-id.** `getAdminCacheKey(userId)` returns `cached-admin-status:<userId>` (`src/lib/cached-auth.ts:38-40`). There is no longer a global `cached-admin-status` key — the legacy one is wiped on every boot (`:77-82`).
+In `src/lib/offline-auth.ts`:
 
-2. **`useRequireAdmin` reads the namespaced key for the *currently identified* user only.** The offline fallback path does `localStorage.getItem(getAdminCacheKey(getOfflineUserId()))`. `getOfflineUserId()` (`:590-604`) reads the user-id from the active Supabase session in localStorage (`sb-<ref>-auth-token`) or the synthetic offline session — *both of which belong to whoever last signed in on this device*. User B cannot read User A's `cached-admin-status:<userA>` entry because B's `getOfflineUserId()` returns B's id, which keys into `cached-admin-status:<userB>` (absent → falls through to `navigate("/dashboard")`).
+1. **Add `migratePendingPhotoPaths(oldUserId, newUserId)`** — a private helper that:
+   - Opens the `photos` store from `getDB()` (`./offline-storage`).
+   - Reads all photos in a `readonly` tx, filters in memory to those that are **unsynced/pending** AND whose `photoUrl` starts with `${oldUserId}/`.
+   - In a single `readwrite` tx, fires `put` for each rewritten record (`photoUrl = ${newUserId}/<rest>`), preserving every other field. Uses the same "fire all puts synchronously, await `Promise.all` + `tx.done`" pattern already used in `migrateUserData` so the tx doesn't auto-close.
+   - Wraps each store access in try/catch so a single bad row doesn't abort the migration.
+   - Logs `[OfflineAuth] Migrated N pending photo paths <old> → <new>` in dev.
 
-3. **Sign-in invalidates other users' cache entries.** The `SIGNED_IN`/`USER_UPDATED` listener (`:162-190`) sweeps every `cached-admin-status:*` and `cached-true-super-admin:*` key that doesn't end in `:<newUserId>`, and resets in-memory caches.
+2. **Pending detection** — match the project's existing semantics. Read `src/lib/offline-storage.ts` `Photo` shape to confirm the field name (likely `synced: false` / no `synced_at` / `uploaded: false`). Use whichever flag `syncPhotos` already treats as "needs upload" so we don't accidentally rewrite already-uploaded rows (those must keep the `<oldUid>/` path — their storage object is there, signed URLs depend on it; rewriting would 404 the gallery).
 
-4. **Sign-out wipes ALL admin cache entries.** `invalidateUserCache()` calls `clearAllAdminCacheKeys()` (`:355-369`), which removes every namespaced entry on the device.
+3. **Wire into the success branch of `verifyAndReconcileOfflineAuth`** — inside the existing `if (realUserId !== syntheticUserId)` block in `verifyAndReconcileOfflineAuth` (around lines 285-292), call `migratePendingPhotoPaths(syntheticUserId, realUserId)` immediately after `migrateUserData(...)` and before the `toast.success(...)`. This guarantees the rewrite happens **before** `useAutoSync` triggers the next `syncPhotos()` cycle (the hook only kicks sync after `verifyAndReconcileOfflineAuth` resolves).
 
-### Residual edge case (acknowledged, not a regression)
+4. **No change to `migrateUserData`'s C7 invariant** — uploaded photos are still untouched. Only the pending subset is rewritten. Update the C7 comment in `migrateUserData` to cross-reference the new helper so future readers understand the split.
 
-If User A signs in **offline**, becomes admin-cached, then User B signs in **offline** *without User A having signed out first*, User A's `cached-admin-status:<userA>` entry survives because the offline sign-in path doesn't invoke the online `SIGNED_IN` listener that does the cross-user sweep. However, this is **harmless** — User B's `useRequireAdmin` only reads the key matching B's user-id. A's entry is dead data, evicted on next online sign-in.
+### Files touched
+- `src/lib/offline-auth.ts` — add helper + one call site + comment update.
 
-### Recommendation
-
-Close as resolved. Confirmed by reading `src/lib/cached-auth.ts` (lines 34-82, 162-190, 355-369, 414-419, 590-604) and `src/hooks/useRequireAdmin.tsx`. The earlier audit predates the C7 namespacing refactor.
+No DB, no edge functions, no UI, no tests required (existing sync path will exercise it). No memory updates needed; behavior is internal to the existing offline-auth reconciliation memory.
 
