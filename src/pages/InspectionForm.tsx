@@ -1684,9 +1684,14 @@ export default function InspectionForm() {
       if (isOnline) {
         const syncWithRetry = async (retries = 2): Promise<void> => {
           try {
-            // Sanitize inspection data - remove joined/computed fields and handle nulls
+            // Sanitize inspection data - remove joined/computed fields and handle nulls.
+            // M10: Also strip `created_at` so neither update nor the upsert fallback
+            // can overwrite the server's original timestamp with a (possibly skewed)
+            // local clock value. The temp→real-UUID dedup key relies on
+            // (inspector_id, organization, created_at), so drift here can produce
+            // duplicate rows on the next sync.
             const sanitizeInspection = (insp: any) => {
-              const { id, inspector, ...rest } = insp; // Remove id and inspector (joined relation)
+              const { id, inspector, created_at, ...rest } = insp; // Remove id, joined inspector, and created_at
               return {
                 ...rest,
                 previous_inspection_date: rest.previous_inspection_date === "" ? null : rest.previous_inspection_date,
