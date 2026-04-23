@@ -1716,9 +1716,11 @@ export default function InspectionForm() {
             const parallelOperations: Promise<void>[] = [];
 
             // RECONCILE: Delete server rows removed locally before upserting
+            // C4: capture pre-images so we can restore them if the parallel upserts fail.
+            let inspReconciledDeletes: ReconciledTableDelete[] = [];
             const user = await getUserWithCache();
             if (user) {
-              await reconcileAllChildTables(
+              const reconcileResult = await reconcileAllChildTables(
                 [
                   { childTable: 'inspection_systems', parentIdColumn: 'inspection_id', localItems: systems },
                   { childTable: 'inspection_ziplines', parentIdColumn: 'inspection_id', localItems: ziplines },
@@ -1730,6 +1732,7 @@ export default function InspectionForm() {
                 'inspection',
                 user.id,
               );
+              inspReconciledDeletes = reconcileResult.deletedByTable;
             }
             
             // Helper to convert PromiseLike to proper Promise
