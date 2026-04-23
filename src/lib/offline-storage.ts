@@ -1837,17 +1837,18 @@ export async function getRelatedDataOfflineWithStatus(
   if (isCircuitBreakerOpen()) {
     return { items: [], readSucceeded: false };
   }
-  const READ_TIMEOUT_MS = IDB_TIMEOUTS.batch;
-  const TIMEOUT_SENTINEL: any = Symbol('with-status-timeout');
-  try {
-    const result = await Promise.race([
-      getRelatedDataOffline(type, inspectionId),
-      new Promise<any>((resolve) => setTimeout(() => resolve(TIMEOUT_SENTINEL), READ_TIMEOUT_MS)),
-    ]);
-    if (result === TIMEOUT_SENTINEL) {
-      console.warn(`[Offline Storage] getRelatedDataOfflineWithStatus(${type}) timed out — read marked unsuccessful`);
-      return { items: [], readSucceeded: false };
-    }
+  let ok = false;
+  const { data } = await withIDBTimeout(
+    `getRelatedDataOfflineWithStatus(${type})`,
+    'batch',
+    async () => {
+      const d = await getRelatedDataOffline(type, inspectionId);
+      ok = true;
+      return d;
+    },
+    [] as any[]
+  );
+  return { items: data || [], readSucceeded: ok };
     return { items: result || [], readSucceeded: true };
   } catch (err) {
     console.warn(`[Offline Storage] getRelatedDataOfflineWithStatus(${type}) failed:`, err);
