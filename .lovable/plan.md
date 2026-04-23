@@ -1,108 +1,189 @@
 
 
-## Phase 4 — Correctness Bugs (Versioning, Hooks, Race Conditions)
+## Phase 5 — High-leverage Medium Fixes
 
-Four findings, ~9 files touched. No DB migrations.
+Five findings. One DB migration, six edge-function edits, one new shared module, one client-side cleanup.
 
 ---
 
-### H4 — Drop the rollover scheme so `version-calculator.ts` stops fighting `vite-auto-version.ts`
+### M1 — Replace hardcoded `BACKUP_ADMIN_ID` with role-based check
 
-**Problem:** `version-calculator.ts` clamps PATCH and MINOR to 1–9 with rollover (e.g. `2.3.9 → 2.4.1`), but the active build pipeline in `vite-auto-version.ts` writes the *full git commit count* as PATCH (e.g. `4.7.142`). The two schemes are incompatible — the calculator would reject every real build as invalid.
+**Today:** Four files (`export-full-backup`, `restore-full-backup`, `sync-offsite-backup`, `SuperAdminDashboard.tsx`) hardcode `759e973e-2484-4db3-862a-0cb2ec6d6ea3`. The existing `public.is_backup_admin()` RPC also hardcodes the same UUID. If Kale's UUID ever changes or a second backup operator is needed, four files plus the function need surgery.
 
 **Fix:**
-- In `src/lib/version-calculator.ts`: remove `getNextVersion`, `calculateNextVersion`, `generateVersionSequence`, and `isValidSchemeVersion`. Keep `parseVersion`, `formatVersion`, and the `Version` type — they're still useful for parsing/formatting.
-- Update `src/lib/version-calculator.test.ts` to drop the deleted-function suites; keep `parseVersion` and `formatVersion` tests.
-- In `vite.config.ts` (lines 7–13): replace the rollover comment block with a one-liner pointing to `vite-auto-version.ts` as the canonical source.
-- **Audit `APP_VERSION` consumers:** verified that `attestation.ts`, `version-telemetry.ts`, `version-check.ts`, and `MinVersionEnforcer.tsx` all read `APP_VERSION` as an opaque string and never call any rollover helper. Stamps are unaffected. Existing attestation records with old version strings keep working — comparison is string-based via `isVersionNewer` which already handles SemVer correctly.
+
+DB migration:
+1. Add `'backup_operator'` to the `app_role` enum (alongside existing `super_admin`, `admin`, `inspector`, `trainer`).
+2. `INSERT INTO public.user_roles (user_id, role, organization_id) VALUES ('759e973e-2484-4db3-862a-0cb2ec6d6ea3', 'backup_operator', NULL) ON CONFLICT DO NOTHING;`
+3. Replace `is_backup_admin()` body with `SELECT EXISTS (SELECT 1 FROM public.user_roles WHERE user_id = auth.uid() AND role = 'backup_operator')`. Keeps the same name + signature so existing RLS policies on `backup_history` and `storage.objects` keep working.
+
+Edge functions (`export-full-backup`, `restore-full-backup`, `sync-offsite-backup`):
+- Replace `if (userId !== BACKUP_ADMIN_ID)` with an RPC call: `const { data: isBackupAdmin } = await userClient.rpc('is_backup_admin'); if (!isBackupAdmin) return 403;`
+- Delete the hardcoded constant.
+
+Frontend (`SuperAdminDashboard.tsx`):
+- Replace `currentUserId === BACKUP_ADMIN_ID` with a one-shot `supabase.rpc('is_backup_admin')` call cached in state. Result drives `<AdminTabsSection showBackupTab={...} />`.
+- Delete the constant.
+
+The hardcoded UUID in `migrate-orphaned-photos/index.ts` is unrelated (it's a target inspector_id for legacy photo re-parenting, not an auth check) — left alone.
 
 ---
 
-### H5 — Move the unsaved-changes guard *inside* the Realtime UPDATE handler
+### M3 — `convert-heic-photos`: update DB before deleting old storage object
 
-**Problem:** All three form pages (`InspectionForm`, `TrainingForm`, `DailyAssessmentForm`) include `hasUnsavedChanges` in the Realtime effect deps. Every keystroke flips that flag, causing `supabase.removeChannel` + `supabase.channel(...).subscribe()` to churn — wasteful, and creates a brief window where remote updates are missed.
+**Today** (lines ~120–145): the function uploads the new `.jpg` path, updates the DB row, *then* removes the old HEIC. If the storage delete fails after the DB update, you get an orphan blob — annoying but not corrupting. But if the DB update fails *after* the upload, the old row still points at the HEIC; if a separate retry then deletes the HEIC, the row is broken.
 
-**Fix (applied identically to all three files):**
-- Replace the `hasUnsavedChanges` state read inside the handler with a ref read: `hasUnsavedRef.current` (already exists in all three components; verified).
-- Drop `hasUnsavedChanges` from the effect deps array. Final deps: `[id, loadInspection]` (or equivalent loader for the other two).
-- Drop `inspection?.updated_at` / `training?.updated_at` / `assessment?.updated_at` from deps too, and read those via a ref pattern as well — same churn problem at lower frequency. Add `lastLoadedUpdatedAtRef` updated by the loader functions.
-- Keep the `eslint-disable-next-line react-hooks/exhaustive-deps` comment.
+**Fix:** Reorder so the DB update and the new-path upload happen first (already the case), then wrap the delete in its own try/catch. If delete fails, log and continue — never propagate to the caller.
 
-Files: `src/pages/InspectionForm.tsx` (lines 517–542), `src/pages/TrainingForm.tsx` (lines 601–626), `src/pages/DailyAssessmentForm.tsx` (lines 379–404).
-
----
-
-### H6 — Single-flight lock around session refresh + abort on sign-out
-
-**Problem:** `cached-auth.ts` calls `supabase.auth.refreshSession()` from at least four sites (lines 203, 631, 683, 714) without coordination. Concurrent refreshes race the Supabase auth-js LockManager and can cause the documented "LockManager timeout" fallback path. On sign-out, an in-flight refresh can also re-hydrate the session moments after `signOut()` clears it.
-
-**Fix:**
-- Add module-level `let pendingRefreshPromise: Promise<...> | null = null;` and `let refreshAborted = false;`.
-- New helper `refreshSessionSingleFlight()` that:
-  - Returns the existing `pendingRefreshPromise` if one is in flight.
-  - Otherwise calls `supabase.auth.refreshSession()`, stores the promise, clears it in `finally`.
-  - Checks `refreshAborted` before resolving — if true, treat as no-op (return null).
-- Replace all four direct `supabase.auth.refreshSession()` call sites with `refreshSessionSingleFlight()`.
-- New exported `signOutWithAbort()` helper:
-  - Sets `refreshAborted = true`.
-  - Awaits any `pendingRefreshPromise` with a short timeout (don't deadlock on a hung refresh).
-  - Calls `supabase.auth.signOut()`.
-  - Resets `refreshAborted = false`.
-- Wire `signOutWithAbort` into the existing online sign-out paths (`Dashboard.tsx`, `AuthenticatedHeader.tsx`) — these currently call `supabase.auth.signOut()` directly. Offline sign-out path (Phase 2) is unaffected; it never refreshes.
-
----
-
-### H10 (critical subset) — Fix the 3 hooks errors + 1 unsafe optional-chaining
-
-**`src/components/dev/OfflineSimulator.tsx`** (3 errors):
-The component returns `null` at line 15 (`if (!import.meta.env.DEV) return null;`) BEFORE the three `useEffect` hooks. Hooks must be called unconditionally.
-- Fix: move the `if (!import.meta.env.DEV) return null;` check to AFTER all three `useEffect` calls (just before the JSX `return`). Hooks then run in the same order on every render; production builds still render `null` as today. The component body is currently a stub (lines 87–94 render mostly empty divs), so this is a pure correctness fix.
-
-**`src/pages/Capabilities.tsx:47`** (1 unsafe optional-chaining + 1 `any`):
 ```ts
-supported: 'sync' in (navigator as any).serviceWorker?.register || false,
+try {
+  await supabase.storage.from(bucket).remove([photo.photo_url]);
+} catch (delErr) {
+  console.warn(`[convert-heic-photos] orphan blob left at ${photo.photo_url}: ${delErr}`);
+}
 ```
-If `serviceWorker` is undefined, `serviceWorker?.register` short-circuits to `undefined`, then `'sync' in undefined` throws `TypeError`.
-- Fix: `supported: 'serviceWorker' in navigator && 'SyncManager' in window`. This matches how the actual feature is detected elsewhere and avoids both the optional-chaining trap and the `any` cast.
 
-**Deferred (not in this phase):** the 42 `react-hooks/exhaustive-deps` warnings and 983 `@typescript-eslint/no-explicit-any` warnings. Captured as known cleanup work.
+The current code already swallows the delete error implicitly (no `await` check), but the explicit try/catch + log makes the contract obvious and future-proofs against await behaviour changes.
+
+---
+
+### M10 — `admin-manage-user`: `delete` becomes deactivate by default; hard-delete is opt-in
+
+**Today:** `case 'delete'` calls `supabaseAdmin.auth.admin.deleteUser(userId)` directly, which removes the auth user and cascades. Irreversible.
+
+**Discovery:** the function already has working `deactivate` and `reactivate` actions that ban the user (876,000h) + flip `profiles.is_active`. So the safer path already exists — we just need to redirect `delete` to it.
+
+**Fix in `case 'delete'`:**
+
+1. If `payload.hard !== true` (default): execute the existing deactivate logic (ban + `is_active=false`). Return `{ success: true, deactivated: true }`. Add `deactivated` flag to make the change visible to the client.
+2. If `payload.hard === true`: require an additional super-admin check. The current guard is `is_admin_or_above` (Admin OR Super Admin); harden the hard-delete branch to require *true* `is_super_admin()` via a fresh RPC call before falling through to `auth.admin.deleteUser`.
+3. Audit log line: `console.log(\`User \${userId} \${hard ? 'hard-deleted' : 'deactivated'} by \${user.id}\`);`
+
+No client changes required for the soft path — the existing UI's "Delete user" button keeps working but now safely deactivates. Hard-delete is exposed only by callers that explicitly pass `hard: true`.
+
+---
+
+### M11 — Extract `TABLES = [...]` into `_shared/backup-tables.ts`
+
+**Today:** `export-full-backup`, `restore-full-backup`, and `scheduled-backup-notify` each define the same ~45-row array, twice diverged (e.g. `restore-full-backup`'s `UPSERT_ORDER` is the same set in dependency order). Adding a new table to the schema today is a 3-file edit and easy to forget.
+
+**Fix:**
+
+New file `supabase/functions/_shared/backup-tables.ts`:
+```ts
+// Single source of truth for which tables get backed up / restored.
+// Order matters for restore: parents before children.
+export const BACKUP_TABLES = [
+  'organizations',
+  'profiles',
+  'organization_members',
+  'user_roles',
+  'admin_settings',
+  'app_announcements',
+  'notification_preferences',
+  'push_subscriptions',
+  'form_sections',
+  'form_fields',
+  'form_field_options',
+  'form_translations',
+  'form_versions',
+  'global_field_history',
+  'user_field_history',
+  'onboarding_resources',
+  'onboarding_progress',
+  'inspections',
+  'inspection_systems',
+  'inspection_equipment',
+  'inspection_standards',
+  'inspection_photos',
+  'inspection_ziplines',
+  'inspection_summary',
+  'inspection_reports',
+  'trainings',
+  'training_systems',
+  'training_equipment',
+  'training_photos',
+  'training_operating_systems',
+  'training_delivery_approaches',
+  'training_verifiable_items',
+  'training_immediate_attention',
+  'training_systems_in_place',
+  'training_summary',
+  'training_reports',
+  'daily_assessments',
+  'daily_assessment_beginning_of_day',
+  'daily_assessment_end_of_day',
+  'daily_assessment_environment_checks',
+  'daily_assessment_equipment_checks',
+  'daily_assessment_operating_systems',
+  'daily_assessment_structure_checks',
+  'daily_assessment_photos',
+  'audit_logs',
+] as const;
+
+export type BackupTable = typeof BACKUP_TABLES[number];
+```
+
+The order above (parents first) matches `restore-full-backup`'s current `UPSERT_ORDER` and is also valid for export (order doesn't matter for export). All three functions import `BACKUP_TABLES` and replace their local arrays. Local-only constants (`EXCLUDE_COLUMNS`, `REPORT_CONFIG`) stay in `scheduled-backup-notify`.
+
+---
+
+### M13 — Postgres-backed rate limiter for `send-contact-email`
+
+**Today:** `_shared/rate-limiter.ts` uses a `Map` that resets on every cold start. A bot hitting the contact form across cold starts can blow past the 3-per-hour cap.
+
+**Per project policy (see `<important-info>`)**, backend rate limiting is a known infrastructure gap that the platform plans to address centrally. Implementing an ad-hoc Postgres counter here would set a precedent we'd then have to maintain and migrate later.
+
+**Fix:** keep the existing in-memory limiter for `send-contact-email` *and* tighten the existing layered defenses already in the function:
+- The honeypot field (`website`) catches non-form-rendering bots → silently 200.
+- Strict input validation (subject allowlist, length caps, email regex) kills malformed payloads.
+- The Make.com webhook itself can be configured with its own rate limit (out-of-band of this codebase).
+
+We will leave M13 as **deferred** with a code comment in `_shared/rate-limiter.ts` explaining the cold-start limitation and pointing at the platform-level work. No DB table created. If you want an ad-hoc Postgres counter despite the policy, say so and I'll add a `rate_limit_buckets` table in a follow-up — but the default is to defer.
 
 ---
 
 ### Files touched (summary)
 
-- `src/lib/version-calculator.ts` — strip rollover helpers, keep parse/format
-- `src/lib/version-calculator.test.ts` — drop deleted-function suites
-- `vite.config.ts` — comment cleanup
-- `src/pages/InspectionForm.tsx` — Realtime deps fix (H5)
-- `src/pages/TrainingForm.tsx` — Realtime deps fix (H5)
-- `src/pages/DailyAssessmentForm.tsx` — Realtime deps fix (H5)
-- `src/lib/cached-auth.ts` — single-flight refresh + abort-on-signout (H6)
-- `src/pages/Dashboard.tsx` — call `signOutWithAbort()` instead of `supabase.auth.signOut()`
-- `src/components/AuthenticatedHeader.tsx` — same
-- `src/components/dev/OfflineSimulator.tsx` — hooks ordering (H10)
-- `src/pages/Capabilities.tsx` — replace unsafe `?.` with proper feature check (H10)
+**Migration** (`supabase/migrations/<timestamp>_phase5_backup_operator_role.sql`):
+- Add `backup_operator` to `app_role` enum.
+- Insert `(kale_uuid, 'backup_operator', NULL)` into `user_roles`.
+- Replace `is_backup_admin()` body with role-based `EXISTS` check.
 
-No DB migrations. No new secrets. No edge-function changes.
+**Edge functions:**
+- `supabase/functions/_shared/backup-tables.ts` — **new**
+- `supabase/functions/_shared/rate-limiter.ts` — comment documenting M13 deferral
+- `supabase/functions/export-full-backup/index.ts` — RPC check + import shared TABLES
+- `supabase/functions/restore-full-backup/index.ts` — RPC check + import shared TABLES (as UPSERT_ORDER)
+- `supabase/functions/sync-offsite-backup/index.ts` — RPC check, drop hardcoded UUID
+- `supabase/functions/scheduled-backup-notify/index.ts` — import shared TABLES
+- `supabase/functions/convert-heic-photos/index.ts` — explicit try/catch around storage delete (M3)
+- `supabase/functions/admin-manage-user/index.ts` — `delete` action becomes deactivate-by-default; `hard:true` opt-in (M10)
+
+**Frontend:**
+- `src/pages/SuperAdminDashboard.tsx` — replace `BACKUP_ADMIN_ID` with `is_backup_admin` RPC
 
 ---
 
 ### Risk
 
-- **H4**: Low. The deleted helpers were unused outside their test file and a stale comment in `vite.config.ts`. Existing attestation records remain valid (string-stored).
-- **H5**: Low. Moving `hasUnsavedChanges` from deps to a ref read inside the handler preserves the suppress-during-typing behavior with no churn. Tested pattern — `hasUnsavedRef` already exists in all three forms.
-- **H6**: Medium. The single-flight refactor touches a hot path. Mitigated by keeping each call site's behavior identical — only the underlying coordination changes. Sign-out abort uses a short timeout (1s) so a hung refresh can't block sign-out.
-- **H10**: Low. Both fixes are mechanical — moving a return statement and replacing an unsafe expression with a documented feature check.
+- **M1**: Low. Same RPC name, same RLS contract; only the implementation swaps from hardcoded UUID to role lookup. Migration grants the role to Kale before the function body changes, so there's no window where backup access breaks.
+- **M3**: Very low. Wrapping an already-fire-and-forget delete in try/catch + log.
+- **M10**: Medium UX change — admin clicks "Delete user" and gets a deactivation. Reversible via the existing `reactivate` action. The Admin user-management UI's labels may want to follow up (button copy → "Deactivate"), but functionally nothing breaks.
+- **M11**: Low. Pure refactor; behavior identical.
+- **M13**: No change. Documented deferral per project policy.
 
 ---
 
 ### Verification
 
-1. `npm run lint` reports 0 errors (warnings unchanged). The 4 specific errors disappear.
-2. Type a long burst into an Inspection form while a second device pushes an UPDATE → the form does not flicker, no `removeChannel`/`subscribe` log spam in the console (`[InspectionForm] Skipping remote refresh` still fires once per remote update during typing).
-3. Sign out while offline simulator is enabled → no LockManager warnings, no "session re-hydrated after signout" toast.
-4. `npm test` passes; `version-calculator.test.ts` covers the surviving `parseVersion`/`formatVersion` cases.
-5. Build a fresh deploy → `/version.json` shows `4.7.<commits>` exactly as before; `APP_VERSION` in attestation stamps matches.
-6. `OfflineSimulator` renders nothing in production builds and the same minimal stub in dev builds (no behavioral change).
-7. `/capabilities` page loads with no runtime errors on a browser without `serviceWorker`.
+1. Migration applied → `SELECT * FROM user_roles WHERE role = 'backup_operator';` returns Kale's row.
+2. `SELECT public.is_backup_admin();` returns `true` for Kale, `false` for any other authed user.
+3. `curl` `export-full-backup` as Kale → 200; as a different admin → 403 with "Backup access restricted".
+4. `SuperAdminDashboard` for Kale → Backup tab visible; for any other admin → tab hidden.
+5. `admin-manage-user` `{action:'delete', userId:X}` → user is deactivated (banned + `is_active=false`); response includes `deactivated: true`. User can no longer sign in. `reactivate` restores them.
+6. `admin-manage-user` `{action:'delete', userId:X, hard:true}` from a non-super-admin → 403. From a super-admin → user is auth-deleted.
+7. `convert-heic-photos` with a forced storage-delete failure → DB still updated to `.jpg`, warning logged, function returns 200.
+8. Add a fake table to `BACKUP_TABLES` only → all three backup-related functions pick it up on next deploy. Removing it from one place is impossible.
+9. Contact form: existing rate-limit behavior unchanged. Honeypot + validation tests still pass.
 
