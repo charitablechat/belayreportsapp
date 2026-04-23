@@ -63,6 +63,14 @@ import {
   resetRegressionSkipCount,
 } from "./regression-skip-store";
 import { wasClearedAfterLastSync } from "./clear-intent";
+import { mergeRecordFields, TRACKED_FIELDS } from "./field-merge";
+
+/**
+ * Conflict-detection threshold. Aligned with SYNC_DRIFT_TOLERANCE_MS (S14):
+ * any remote/local gap below this is treated as ordinary network/clock jitter
+ * rather than a real concurrent edit. Above it, S16's field-merge runs.
+ */
+const CONFLICT_THRESHOLD_MS = 30_000;
 
 /**
  * Adaptive batch size for sync cycles.
@@ -356,68 +364,58 @@ export async function syncInspectionAtomic(inspectionId: string, preValidatedUse
       };
     }
     
-    // Use recordStatus for conflict detection if available
+    // S16: Field-level merge instead of row-level last-writer-wins.
+    // When remote has changes our last sync didn't see, fetch the full remote
+    // row and merge per-field by `field_timestamps`. The merged record then
+    // flows through the normal sync path (so child reconciliation still runs).
     if (recordStatus?.record_exists && !recordStatus?.is_deleted) {
       const remoteUpdated = new Date(recordStatus.updated_at!).getTime();
       const localUpdated = new Date(inspection.updated_at).getTime();
       const timeDiff = Math.abs(remoteUpdated - localUpdated);
-      
-      // PREVENTIVE MEASURE: Skip conflict detection if local data was never synced
-      // or if the inspection has already been synced after the local update
       const localSyncedAt = inspection.synced_at ? new Date(inspection.synced_at).getTime() : 0;
       const isAlreadySynced = localSyncedAt >= localUpdated;
-      
-      // Only flag as conflict if:
-      // 1. Remote is significantly newer (>5 seconds)
-      // 2. Remote was updated AFTER our last sync (genuine concurrent edit)
-      // 3. Local changes haven't been synced yet
-      if (timeDiff > 5000 && remoteUpdated > localUpdated && !isAlreadySynced) {
-        // Additional check: verify remote was updated after our last known sync
-        const remoteUpdatedAfterOurSync = localSyncedAt === 0 || remoteUpdated > localSyncedAt;
-        
-        if (!remoteUpdatedAfterOurSync) {
-          // Remote change predates our last sync - not a real conflict, proceed with sync
+      const remoteUpdatedAfterOurSync = localSyncedAt === 0 || remoteUpdated > localSyncedAt;
+
+      if (
+        timeDiff > CONFLICT_THRESHOLD_MS &&
+        remoteUpdated > localUpdated &&
+        !isAlreadySynced &&
+        remoteUpdatedAfterOurSync
+      ) {
+        const { data: remoteRow } = await supabase
+          .from('inspections')
+          .select('*')
+          .eq('id', inspectionId)
+          .maybeSingle();
+
+        if (remoteRow) {
+          const merged = mergeRecordFields<any>(
+            inspection as any,
+            remoteRow as any,
+            TRACKED_FIELDS.inspection,
+          );
+          // Mutate in place so the existing transaction steps below upsert merged values.
+          Object.assign(inspection, merged);
+
           if (import.meta.env.DEV) {
-            console.log('[Atomic Sync] Skipping conflict - remote change predates our last sync');
+            console.log('[Atomic Sync] S16 field-merged inspection:', inspectionId);
           }
-        } else {
-          // Check if an unresolved conflict already exists for this inspection
-          const { data: existingConflict } = await supabase
-            .from('sync_conflicts')
-            .select('id')
-            .eq('inspection_id', inspectionId)
-            .eq('resolved', false)
-            .maybeSingle();
-          
-          if (!existingConflict) {
-            // Validate organization_id - must have a valid value
-            const organizationId = inspection.organization_id;
-            if (!organizationId) {
-              console.error('[Atomic Sync] Cannot record conflict - missing organization_id for inspection:', inspectionId);
-              throw new Error('Sync conflict detected but organization_id is missing');
-            }
-            
-            // No existing conflict - record a new one (will be auto-resolved silently)
-            const { error: conflictError } = await supabase.from('sync_conflicts').insert({
-              inspection_id: inspectionId,
-              organization_id: organizationId,
-              local_updated_at: inspection.updated_at,
-              remote_updated_at: recordStatus.updated_at!,
-              resolved: false,
-            });
-            
-            if (conflictError) {
-              console.error('[Atomic Sync] Failed to record conflict:', conflictError);
-            }
-            // No toast notifications - conflicts are resolved automatically via useConflicts hook
-          } else {
-            if (import.meta.env.DEV) {
-              console.log('[Atomic Sync] Conflict already exists for inspection:', inspectionId);
+
+          // Audit: log resolved conflict so the conflicts panel reflects the merge.
+          const organizationId = inspection.organization_id;
+          if (organizationId) {
+            try {
+              await supabase.from('sync_conflicts').insert({
+                inspection_id: inspectionId,
+                organization_id: organizationId,
+                local_updated_at: inspection.updated_at,
+                remote_updated_at: recordStatus.updated_at!,
+                resolved: true,
+              });
+            } catch (auditErr) {
+              console.warn('[Atomic Sync] S16 conflict audit insert failed:', auditErr);
             }
           }
-          
-          // Return success - the useConflicts hook will handle auto-resolution
-          return { success: true, conflict: true };
         }
       }
     }
@@ -1243,16 +1241,29 @@ export async function syncTrainingAtomic(trainingId: string, preValidatedUser?: 
       };
     }
     
-    // Use recordStatus for conflict detection if available
+    // S16: Field-level merge for trainings (matches inspections path).
     if (recordStatus?.record_exists && !recordStatus?.is_deleted) {
       const remoteUpdated = new Date(recordStatus.updated_at!).getTime();
       const localUpdated = new Date(training.updated_at).getTime();
       const timeDiff = Math.abs(remoteUpdated - localUpdated);
-      
-      if (timeDiff > 5000 && remoteUpdated > localUpdated) {
-        console.warn('[Atomic Sync] Training conflict detected:', trainingId);
-        // For trainings, we use local-wins strategy silently
-        // No toast notification - conflicts are resolved automatically
+
+      if (timeDiff > CONFLICT_THRESHOLD_MS && remoteUpdated > localUpdated) {
+        const { data: remoteRow } = await supabase
+          .from('trainings')
+          .select('*')
+          .eq('id', trainingId)
+          .maybeSingle();
+        if (remoteRow) {
+          const merged = mergeRecordFields<any>(
+            training as any,
+            remoteRow as any,
+            TRACKED_FIELDS.training,
+          );
+          Object.assign(training, merged);
+          if (import.meta.env.DEV) {
+            console.log('[Atomic Sync] S16 field-merged training:', trainingId);
+          }
+        }
       }
     }
     
@@ -2013,16 +2024,29 @@ export async function syncDailyAssessmentAtomic(assessmentId: string, preValidat
       };
     }
     
-    // Use recordStatus for conflict detection if available
+    // S16: Field-level merge for daily assessments (matches inspections path).
     if (recordStatus?.record_exists && !recordStatus?.is_deleted) {
       const remoteUpdated = new Date(recordStatus.updated_at!).getTime();
       const localUpdated = new Date(assessment.updated_at).getTime();
       const timeDiff = Math.abs(remoteUpdated - localUpdated);
-      
-      if (timeDiff > 5000 && remoteUpdated > localUpdated) {
-        console.warn('[Atomic Sync] Daily assessment conflict detected:', assessmentId);
-        // For daily assessments, we use local-wins strategy silently
-        // No toast notification - conflicts are resolved automatically
+
+      if (timeDiff > CONFLICT_THRESHOLD_MS && remoteUpdated > localUpdated) {
+        const { data: remoteRow } = await supabase
+          .from('daily_assessments')
+          .select('*')
+          .eq('id', assessmentId)
+          .maybeSingle();
+        if (remoteRow) {
+          const merged = mergeRecordFields<any>(
+            assessment as any,
+            remoteRow as any,
+            TRACKED_FIELDS.daily_assessment,
+          );
+          Object.assign(assessment, merged);
+          if (import.meta.env.DEV) {
+            console.log('[Atomic Sync] S16 field-merged assessment:', assessmentId);
+          }
+        }
       }
     }
     
