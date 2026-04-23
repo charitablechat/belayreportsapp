@@ -327,6 +327,26 @@ export async function writeCredentialAtomic<T>(
   const sha256 = await sha256Hex(payload);
   const writtenAt = Date.now();
 
+  // Phase 3 — pre-flight quota check. If storage is tight, evict non-auth
+  // caches FIRST so the credential write doesn't race the quota.
+  let quotaWarned = false;
+  try {
+    const { ensureSpaceForAuth } = await import('./storage-pressure-manager');
+    const space = await ensureSpaceForAuth();
+    if (!space.ok) {
+      quotaWarned = true;
+      // We still attempt the write — the auth payload is tiny and may fit
+      // in the slack the browser keeps, but we surface a recovery event so
+      // support can correlate later failures.
+      await recordRecovery(
+        'tmp-discarded',
+        `Pre-flight: insufficient quota for auth write (${space.estimate.tier} tier). Proceeding anyway.`
+      );
+    }
+  } catch {
+    // Storage API unavailable — fall through.
+  }
+
   const writeOneSlot = async (slot: 'primary' | 'backup'): Promise<boolean> => {
     for (let attempt = 1; attempt <= WRITE_VERIFY_MAX_ATTEMPTS; attempt++) {
       const tmpId = tmpSlotId(logicalKey, slot);
@@ -355,8 +375,28 @@ export async function writeCredentialAtomic<T>(
         await deleteSlotRow(tmpId);
         return true;
       } catch (err: any) {
+        // Phase 3 — Quota-exception handling: detect QuotaExceededError
+        // specifically and try one round of aggressive eviction before retry.
+        let isQuota = false;
+        try {
+          const { isQuotaExceededError, ensureSpaceForAuth } = await import('./storage-pressure-manager');
+          if (isQuotaExceededError(err)) {
+            isQuota = true;
+            quotaWarned = true;
+            await recordRecovery(
+              'tmp-discarded',
+              `QuotaExceededError on ${slot} attempt ${attempt} — running emergency eviction`
+            );
+            await ensureSpaceForAuth();
+          }
+        } catch {
+          // ignore
+        }
+
         if (attempt < WRITE_VERIFY_MAX_ATTEMPTS) {
-          await new Promise((r) => setTimeout(r, WRITE_VERIFY_BACKOFF_MS[attempt - 1] || 400));
+          // On quota errors, retry immediately after eviction; otherwise back off.
+          const delay = isQuota ? 0 : (WRITE_VERIFY_BACKOFF_MS[attempt - 1] || 400);
+          await new Promise((r) => setTimeout(r, delay));
           continue;
         }
         await appendTx({
@@ -377,6 +417,21 @@ export async function writeCredentialAtomic<T>(
   await appendTx({ op, phase: 'VERIFIED_TMP', ts: Date.now() });
   await appendTx({ op, phase: 'SWAPPED', ts: Date.now() });
 
+  // Phase 3 — surface a non-blocking warning when storage pressure was
+  // detected during this write so the user can free space.
+  if (quotaWarned) {
+    try {
+      // Toast helper is best-effort — never throw.
+      const { toast } = await import('sonner');
+      toast.warning(
+        'Device storage low — offline sign-in may be unreliable.',
+        { duration: 8000, id: 'auth-storage-low' }
+      );
+    } catch {
+      // ignore
+    }
+  }
+
   if (primaryOk && backupOk) {
     await appendTx({ op, phase: 'COMPLETE', ts: Date.now() });
     return { ok: true, attempts: 1, partial: false };
@@ -394,6 +449,7 @@ export async function writeCredentialAtomic<T>(
   await appendTx({ op, phase: 'FAILED', ts: Date.now(), detail: 'both-slots-failed' });
   return { ok: false, attempts: WRITE_VERIFY_MAX_ATTEMPTS, partial: false, error: 'both-slots-failed' };
 }
+
 
 // ────────────────────────────────────────────────────────────────────────────
 // Public API — read with fallback
