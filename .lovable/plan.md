@@ -1,31 +1,42 @@
 
 
-## S37 — Remove unused `CLOCK_SKEW_TOLERANCE_MS` alias
+## S38 — Standardize log id truncation to 8 chars
 
 ### Finding
 
-`src/lib/local-data-guards.ts` exports `SYNC_DRIFT_TOLERANCE_MS` as the canonical name. A repo-wide grep for `CLOCK_SKEW_TOLERANCE_MS` is needed to confirm zero callers — the user's ref hints it was kept "just in case" and is now unused.
+Sync logs overwhelmingly use `.substring(0, 8)` for id prefixes (24 sites in `src/lib/atomic-sync-manager.ts` alone, plus matching usage in `useAutoSync.tsx`, `sync-manager.ts`, and elsewhere). Two outliers truncate to 12:
 
-If confirmed unused, the alias is pure dead code: removing it can only convert a (currently impossible) runtime use into a TS compile error, strictly safer.
+- `src/lib/offline-storage.ts:1258` — `[Offline Storage] Inspection flagged unsynced` log.
+- `src/lib/offline-storage.ts:2800` — `[Offline Storage] ${storeName} flagged unsynced` log.
+
+Both are DEV-gated diagnostic logs. They're the only two `substring(0, 12)` calls in `src/lib/` and `src/hooks/`.
+
+Note: `syncProgressEmitter` itself does not truncate ids — it carries `currentItem` strings supplied by callers in `atomic-sync-manager.ts`, which already use `substring(0, 8)`. The inconsistency the user flagged lives in the surrounding sync log lines, not the emitter payload.
 
 ### Fix
 
-In `src/lib/local-data-guards.ts`, delete the `CLOCK_SKEW_TOLERANCE_MS` re-export line (around L46–50, per the user's reference). Leave `SYNC_DRIFT_TOLERANCE_MS`, `exceedsDriftTolerance`, `isUpdatedAheadOfSync`, `isLocalDataNewer`, and `shouldPreserveLocalRecord` untouched.
+In `src/lib/offline-storage.ts`, change both `String(...).substring(0, 12)` calls to `.substring(0, 8)` so every sync-related log prefix matches.
 
-If grep turns up any caller still importing the old name, switch that caller to `SYNC_DRIFT_TOLERANCE_MS` in the same change.
+```ts
+// L1258
+id: String(record.id).substring(0, 8),
+// L2800
+id: String(i.id).substring(0, 8),
+```
 
 ### Out of scope
 
-- Renaming or restructuring `local-data-guards.ts`.
-- Touching the drift tolerance value or any guard logic.
+- Introducing a shared `shortId(id)` helper. Worth doing eventually, but a 2-line tidy is the right scope for S38 — a helper-introduction touches ~25 sites and deserves its own ticket.
+- Touching the `og-share.ts` `toShortHash` function (8 chars, unrelated — used for public share URLs, not logs).
+- Truncations in non-sync code paths.
 
 ### Risk
 
-None. Pure dead-code removal, gated on grep confirmation.
+None. DEV-only logs; shorter prefix is still unique enough to correlate against the 8-char ids used by every other sync log.
 
 ### Verification
 
-- Pre-edit: `grep -r "CLOCK_SKEW_TOLERANCE_MS" src/` returns only the declaration line.
-- `npx tsc --noEmit` passes post-edit.
-- Existing tests in `src/lib/local-data-guards.test.ts` still pass.
+- `npx tsc --noEmit`.
+- `grep -rnE "substring\(0,\s*12\)" src/lib/ src/hooks/` returns zero matches post-edit.
+- Manual DEV: trigger a sync with an unsynced record, confirm `[Offline Storage]` and `[Atomic Sync]` log lines now show matching 8-char id prefixes for the same record.
 
