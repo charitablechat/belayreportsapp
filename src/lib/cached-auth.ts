@@ -1,5 +1,10 @@
 import { supabase } from "@/integrations/supabase/client";
-import { saveUserMapping, clearOfflineAuth } from "@/lib/offline-auth";
+import {
+  saveUserMapping,
+  clearOfflineAuth,
+  readSyntheticSession,
+} from "@/lib/offline-auth";
+import { isPlaceholderToken } from "@/lib/synthetic-session-guard";
 
 export interface CachedUser {
   id: string;
@@ -21,6 +26,9 @@ let pendingAdminPromise: Promise<boolean> | null = null;
 const ADMIN_CACHE_TTL = 120000; // 2 minutes
 const SESSION_REFRESH_BUFFER = 300; // P2 FIX: Refresh if within 5 minutes of expiry (matches pre-emptive window)
 const AUTH_NETWORK_TIMEOUT = 8000; // 8 seconds max for network auth fetch
+
+/** Supabase auth-token localStorage key — derived from project ref. */
+const SUPABASE_SESSION_KEY = `sb-${import.meta.env.VITE_SUPABASE_PROJECT_ID || 'ssgzcgvygnsrqalisshx'}-auth-token`;
 
 /**
  * Detects Navigator LockManager timeout errors from Supabase auth-js.
@@ -45,8 +53,19 @@ function initAuthListener() {
         // Offline SIGNED_OUT events are often transient token refresh failures.
         invalidateUserCache();
       }
-      // Forward fresh JWT to service worker on every auth event (login, refresh, etc.)
-      if (session?.access_token && 'serviceWorker' in navigator && navigator.serviceWorker.controller) {
+      // C4: capture refresh token whenever the auth state changes with a real session.
+      if (event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED') {
+        if (session?.user?.email && session?.refresh_token) {
+          saveUserMapping(session.user.email, session.user.id, session.refresh_token).catch(() => {});
+        }
+      }
+      // C5/C6: Only forward REAL JWTs to the SW. Never the offline placeholder.
+      if (
+        session?.access_token &&
+        !isPlaceholderToken(session.access_token) &&
+        'serviceWorker' in navigator &&
+        navigator.serviceWorker.controller
+      ) {
         navigator.serviceWorker.controller.postMessage({
           type: 'AUTH_TOKEN',
           accessToken: session.access_token,
@@ -89,7 +108,7 @@ export async function getUserWithCache(): Promise<CachedUser | null> {
     // Pre-emptive token refresh: if session is within 5 minutes of expiry,
     // trigger a non-blocking refresh to avoid 401 errors during form saves
     try {
-      const session = localStorage.getItem('sb-ssgzcgvygnsrqalisshx-auth-token');
+      const session = localStorage.getItem(SUPABASE_SESSION_KEY);
       if (session && navigator.onLine) {
         const parsed = JSON.parse(session);
         const expiresAt = parsed?.expires_at;
@@ -157,7 +176,8 @@ export async function getUserWithCache(): Promise<CachedUser | null> {
       if (result.user) {
         cachedUser = result.user;
         cacheTimestamp = Date.now();
-        // Save email-to-userId mapping for future offline logins (fire-and-forget)
+        // Save email-to-userId mapping for future offline logins (fire-and-forget).
+        // Note: refresh token is captured separately via the auth state listener.
         if (result.user.email) {
           saveUserMapping(result.user.email, result.user.id).catch(() => {});
         }
@@ -227,8 +247,39 @@ export function invalidateUserCache() {
   cachedTrueSuperAdmin = null;
   trueSuperAdminCacheTimestamp = 0;
   pendingTrueSuperAdminPromise = null;
-  // Clear offline auth credentials on sign-out
+  // Clear offline auth credentials on sign-out (online path)
   clearOfflineAuth().catch(() => {});
+}
+
+/**
+ * H11: Soft session-state clear used by the OFFLINE sign-out path.
+ *
+ * Clears in-memory caches and the synthetic session so the UI returns to the
+ * sign-in screen, but DOES NOT touch the captured offline_auth refresh-token
+ * entry — so the user can sign back in offline immediately.
+ *
+ * The caller is expected to also call `queueOfflineSignout()` from
+ * `offline-auth.ts` to schedule the full cleanup for the next reconnect.
+ */
+export function clearSessionStateForOfflineSignout(): void {
+  cachedUser = null;
+  cacheTimestamp = 0;
+  pendingUserPromise = null;
+  cachedAdminStatus = null;
+  adminCacheTimestamp = 0;
+  pendingAdminPromise = null;
+  cachedTrueSuperAdmin = null;
+  trueSuperAdminCacheTimestamp = 0;
+  pendingTrueSuperAdminPromise = null;
+  // Drop only the synthetic session — keep the offline_auth IDB entry and the
+  // cached admin/profile flags in localStorage so the next offline sign-in is
+  // instant.
+  try {
+    const { clearSyntheticSession } = require('@/lib/offline-auth');
+    clearSyntheticSession();
+  } catch {
+    // Synchronous import not available — handled separately by caller.
+  }
 }
 
 /**
@@ -304,11 +355,6 @@ const TRUE_SUPER_ADMIN_CACHE_TTL = 120000; // 2 minutes
  * checked via the is_super_admin RPC — which is the legacy name for the top-level role).
  * This distinguishes the super admin from regular admins who only have the 'admin' role
  * via is_admin_or_above.
- * 
- * Note: The DB function is_super_admin() checks for role='admin' in user_roles,
- * while is_admin_or_above() checks for role IN ('admin','super_admin').
- * In practice, only kale has the 'admin' role; Josh/Brenda have 'super_admin' role
- * (which is actually the "admin" tier, confusingly named).
  */
 export async function getIsTrueSuperAdmin(): Promise<boolean> {
   const now = Date.now();
@@ -357,28 +403,40 @@ export function invalidateTrueSuperAdminCache() {
 }
 
 /**
- * Gets the cached user from localStorage (Supabase session)
- * Returns null if no valid cached session exists
+ * Gets the cached user from localStorage (Supabase session OR synthetic offline session).
+ *
+ * Read priority:
+ *  - Online: Supabase real session key only.
+ *  - Offline: Supabase real session if present (and not the placeholder),
+ *    otherwise fall back to the dedicated synthetic-session slot.
+ *
+ * Never returns the placeholder token to network-using callers.
  */
 export function getCachedUserFromStorage(): CachedUser | null {
   try {
-    const cachedSession = localStorage.getItem('sb-ssgzcgvygnsrqalisshx-auth-token');
-    if (!cachedSession) return null;
-
-    const parsed = JSON.parse(cachedSession);
-    if (!parsed || !parsed.access_token) return null;
-
-    // Check if session is expired (skip when offline -- we only need user identity for IndexedDB)
-    const expiresAt = parsed.expires_at;
-    if (navigator.onLine) {
-      if (!expiresAt || expiresAt * 1000 <= Date.now()) {
-        return null;
+    const cachedSession = localStorage.getItem(SUPABASE_SESSION_KEY);
+    if (cachedSession) {
+      const parsed = JSON.parse(cachedSession);
+      // C5: refuse to surface a placeholder token from the real key (legacy data).
+      if (parsed?.access_token && !isPlaceholderToken(parsed.access_token)) {
+        const expiresAt = parsed.expires_at;
+        if (navigator.onLine) {
+          if (!expiresAt || expiresAt * 1000 > Date.now()) {
+            return parsed.user || null;
+          }
+        } else {
+          // Offline: ignore expiry — we only need user identity for IndexedDB.
+          return parsed.user || null;
+        }
       }
     }
 
-    // Extract user from session
-    if (parsed.user) {
-      return parsed.user;
+    // Offline fallback: dedicated synthetic session slot.
+    if (!navigator.onLine) {
+      const synthetic = readSyntheticSession();
+      if (synthetic?.user?.id) {
+        return synthetic.user as CachedUser;
+      }
     }
 
     return null;
@@ -403,14 +461,19 @@ export const getCachedUser = getCachedUserFromStorage;
 
 /**
  * Emergency fallback: extract userId directly from localStorage session.
- * Used when getUserWithCache() returns null while offline (e.g., synthetic session).
+ * Used when getUserWithCache() returns null while offline.
  */
 export function getOfflineUserId(): string | null {
   try {
-    const session = localStorage.getItem('sb-ssgzcgvygnsrqalisshx-auth-token');
-    if (!session) return null;
-    const parsed = JSON.parse(session);
-    return parsed?.user?.id || null;
+    const session = localStorage.getItem(SUPABASE_SESSION_KEY);
+    if (session) {
+      const parsed = JSON.parse(session);
+      if (parsed?.user?.id && !isPlaceholderToken(parsed?.access_token)) {
+        return parsed.user.id;
+      }
+    }
+    const synthetic = readSyntheticSession();
+    return synthetic?.user?.id || null;
   } catch {
     return null;
   }
@@ -418,15 +481,18 @@ export function getOfflineUserId(): string | null {
 
 /**
  * Offline-aware session check that ignores token expiry.
- * When offline, the JWT is irrelevant (no server calls happen).
- * We only need proof that a user previously authenticated.
+ * Either a real Supabase session OR a synthetic offline session counts.
  */
 export function hasCachedSessionForOffline(): boolean {
   try {
-    const cachedSession = localStorage.getItem('sb-ssgzcgvygnsrqalisshx-auth-token');
-    if (!cachedSession) return false;
-    const parsed = JSON.parse(cachedSession);
-    return !!(parsed?.user?.id || parsed?.access_token);
+    const cachedSession = localStorage.getItem(SUPABASE_SESSION_KEY);
+    if (cachedSession) {
+      const parsed = JSON.parse(cachedSession);
+      if (parsed?.user?.id && !isPlaceholderToken(parsed?.access_token)) {
+        return true;
+      }
+    }
+    return !!readSyntheticSession();
   } catch {
     return false;
   }
@@ -435,11 +501,6 @@ export function hasCachedSessionForOffline(): boolean {
 /**
  * Ensures the Supabase client has a valid session before database operations.
  * This is critical for sync operations that rely on RLS policies.
- * 
- * Unlike getUserWithCache() which reads from localStorage, this actually
- * validates the session with the Supabase client and refreshes if needed.
- * 
- * @returns The current user if session is valid, null otherwise
  */
 export async function ensureValidSession(): Promise<CachedUser | null> {
   // Initialize auth listener on first use
@@ -449,39 +510,44 @@ export async function ensureValidSession(): Promise<CachedUser | null> {
     // FAST PATH: Check localStorage first — avoid LockManager entirely
     // if we have a token that isn't near expiry
     try {
-      const storedSession = localStorage.getItem('sb-ssgzcgvygnsrqalisshx-auth-token');
+      const storedSession = localStorage.getItem(SUPABASE_SESSION_KEY);
       if (storedSession) {
         const parsed = JSON.parse(storedSession);
-        const expiresAt = parsed?.expires_at || 0;
-        const now = Math.floor(Date.now() / 1000);
-        const timeUntilExpiry = expiresAt - now;
-        
-        // If token is valid and not within 5-min refresh buffer, skip network call
-        if (parsed?.user && timeUntilExpiry > SESSION_REFRESH_BUFFER) {
-          cachedUser = parsed.user;
-          cacheTimestamp = Date.now();
-          return parsed.user;
-        }
-        
-        // Token near expiry but user exists — return user, refresh in background
-        if (parsed?.user && timeUntilExpiry > 0) {
-          cachedUser = parsed.user;
-          cacheTimestamp = Date.now();
-          // Non-blocking refresh
-          if (navigator.onLine) {
-            setTimeout(() => {
-              supabase.auth.refreshSession().catch(() => {});
-            }, 0);
+        // C5: never let the placeholder token reach network callers.
+        if (isPlaceholderToken(parsed?.access_token)) {
+          // Skip the fast path — fall through to the slow path which will
+          // attempt a real refresh.
+        } else {
+          const expiresAt = parsed?.expires_at || 0;
+          const now = Math.floor(Date.now() / 1000);
+          const timeUntilExpiry = expiresAt - now;
+          
+          // If token is valid and not within 5-min refresh buffer, skip network call
+          if (parsed?.user && timeUntilExpiry > SESSION_REFRESH_BUFFER) {
+            cachedUser = parsed.user;
+            cacheTimestamp = Date.now();
+            return parsed.user;
           }
-          return parsed.user;
-        }
-        
-        // Token expired but user exists AND we're offline — trust it
-        // (same logic as getCachedUserFromStorage: skip expiry when offline)
-        if (parsed?.user && !navigator.onLine) {
-          cachedUser = parsed.user;
-          cacheTimestamp = Date.now();
-          return parsed.user;
+          
+          // Token near expiry but user exists — return user, refresh in background
+          if (parsed?.user && timeUntilExpiry > 0) {
+            cachedUser = parsed.user;
+            cacheTimestamp = Date.now();
+            // Non-blocking refresh
+            if (navigator.onLine) {
+              setTimeout(() => {
+                supabase.auth.refreshSession().catch(() => {});
+              }, 0);
+            }
+            return parsed.user;
+          }
+          
+          // Token expired but user exists AND we're offline — trust it
+          if (parsed?.user && !navigator.onLine) {
+            cachedUser = parsed.user;
+            cacheTimestamp = Date.now();
+            return parsed.user;
+          }
         }
       }
     } catch {
@@ -489,7 +555,6 @@ export async function ensureValidSession(): Promise<CachedUser | null> {
     }
     
     // SLOW PATH: No valid localStorage token — must use Supabase client
-    // First, try to get the current session from Supabase client
     let session;
     let sessionError;
     try {
@@ -561,7 +626,6 @@ export async function ensureValidSession(): Promise<CachedUser | null> {
         return null;
       }
       
-      // Update in-memory cache with refreshed user
       cachedUser = refreshedSession.user;
       cacheTimestamp = Date.now();
       
@@ -572,7 +636,6 @@ export async function ensureValidSession(): Promise<CachedUser | null> {
       return refreshedSession.user;
     }
     
-    // Session is valid - update cache and return user
     cachedUser = session.user;
     cacheTimestamp = Date.now();
     return session.user;
