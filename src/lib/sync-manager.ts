@@ -290,6 +290,24 @@ export async function syncPhotos(signal?: AbortSignal): Promise<{ remaining: num
           for (let i = 0; i < MAX_PHOTO_RETRIES; i++) {
             await incrementPhotoRetryCount(photo.id);
           }
+          // 1.C — Persist to dead-letter store immediately (saturating
+          // retryCount is a permanent state, not a transient one).
+          try {
+            await recordPhotoUploadFailure({
+              id: photo.id,
+              inspectionId: photo.inspectionId,
+              fileName: photo.fileName,
+              photoUrl: photo.photoUrl,
+              section: photo.section,
+              retryCount: MAX_PHOTO_RETRIES,
+              lastError: 'Photo data missing (no blob and no storage path). Re-capture required.',
+              lastErrorAt: Date.now(),
+              capturedByUserId: photo.capturedByUserId ?? null,
+            });
+            newlyDeadLettered++;
+          } catch (e) {
+            console.warn('[Sync Manager] Failed to persist no-blob failure:', e);
+          }
           changedCount++;
           return;
         }
@@ -377,8 +395,8 @@ export async function syncPhotos(signal?: AbortSignal): Promise<{ remaining: num
           } else {
             // permanent
             console.error('[Sync Manager] Permanent upload error for photo:', photo.id, cls.message);
-            await setPhotoLastError(photo.id, cls.message);
-            await incrementPhotoRetryCount(photo.id);
+            const r = await handlePermanentPhotoFailure(photo, cls.message);
+            if (r.crossedThreshold) newlyDeadLettered++;
             changedCount++;
             return;
           }
@@ -419,8 +437,8 @@ export async function syncPhotos(signal?: AbortSignal): Promise<{ remaining: num
               return;
             } else {
               console.error('[Sync Manager] Permanent DB insert error for photo:', photo.id, cls.message);
-              await setPhotoLastError(photo.id, cls.message);
-              await incrementPhotoRetryCount(photo.id);
+              const r = await handlePermanentPhotoFailure(photo, cls.message);
+              if (r.crossedThreshold) newlyDeadLettered++;
               changedCount++;
               return;
             }
@@ -447,16 +465,26 @@ export async function syncPhotos(signal?: AbortSignal): Promise<{ remaining: num
           // Retry next cycle without counting toward the dead-letter ceiling.
           return;
         }
-        await setPhotoLastError(photo.id, cls.message);
-        await incrementPhotoRetryCount(photo.id);
+        const r = await handlePermanentPhotoFailure(photo, cls.message);
+        if (r.crossedThreshold) newlyDeadLettered++;
         changedCount++;
       }
     });
 
     if (import.meta.env.DEV) {
-      console.log(`[Sync Manager] Photo sync completed: ${successCount} photos, ${remaining} remaining (changed=${changedCount})`);
+      console.log(`[Sync Manager] Photo sync completed: ${successCount} photos, ${remaining} remaining (changed=${changedCount}, newlyDeadLettered=${newlyDeadLettered})`);
     }
-    
+
+    // 1.C — Surface dead-letter crossings to the in-app notification center
+    // so the user sees they have stuck photos to review (one notification per
+    // cycle, not per photo).
+    if (newlyDeadLettered > 0) {
+      const word = newlyDeadLettered === 1 ? 'photo' : 'photos';
+      addSyncNotification(
+        `${newlyDeadLettered} ${word} failed to upload and may be lost — open Sync Diagnostics to review.`
+      );
+    }
+
     return { remaining, changed: changedCount };
   } catch (error) {
     console.error('[Sync Manager] Photo sync error:', error);
