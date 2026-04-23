@@ -50,7 +50,7 @@ import { shouldPreserveLocalRecord } from "@/lib/local-data-guards";
 import { ContactDeveloperSheet } from "@/components/ContactDeveloperSheet";
 import { onSyncComplete, isSyncInProgress, consumePendingDashboardRefresh, consumeDashboardStaleTimestamp } from "@/lib/sync-events";
 import { InspectionsEmptyState, TrainingsEmptyState, DailyAssessmentsEmptyState } from "@/components/EmptyState";
-import { getUserWithCache, getSuperAdminStatusWithCache, invalidateSuperAdminCache, ensureValidSession, getOfflineUserId } from "@/lib/cached-auth";
+import { getUserWithCache, getSuperAdminStatusWithCache, invalidateSuperAdminCache, ensureValidSession, getOfflineUserId, getAdminCacheKey } from "@/lib/cached-auth";
 /* Holiday Theme Components - DISABLED */
 // import { OlympicRings } from "@/components/christmas/OlympicRings";
 // UserProfileDropdown moved to AuthenticatedHeader (global)
@@ -191,8 +191,10 @@ export default function Dashboard() {
   const { data: isSuperAdmin, isLoading: isSuperAdminLoading } = useQuery({
     queryKey: ["is-super-admin"],
     queryFn: async () => {
-      const cachedValue = localStorage.getItem('cached-admin-status');
-      
+      const offlineId = getOfflineUserId();
+      const namespacedKey = offlineId ? getAdminCacheKey(offlineId) : null;
+      const cachedValue = namespacedKey ? localStorage.getItem(namespacedKey) : null;
+
       if (!navigator.onLine) {
         return cachedValue === 'true';
       }
@@ -200,15 +202,11 @@ export default function Dashboard() {
       const user = await getUserWithCache();
       if (!user) {
         // P0 FIX: Do NOT write "false" to cache on transient auth failure.
-        // getUserWithCache() can return null due to network timeouts or
-        // LockManager contention — not necessarily a real sign-out.
         console.warn('[Dashboard] getUserWithCache returned null — preserving cached admin status');
         return cachedValue === 'true';
       }
 
       try {
-        // P3 FIX: Use SECURITY DEFINER RPC instead of direct table query
-        // to match useRequireAdmin and avoid silent RLS failures.
         const { data, error } = await supabase.rpc('is_admin_or_above');
 
         if (error) {
@@ -217,9 +215,9 @@ export default function Dashboard() {
         }
 
         const isAdmin = !!data;
-        
-        localStorage.setItem('cached-admin-status', isAdmin.toString());
-        
+
+        localStorage.setItem(getAdminCacheKey(user.id), isAdmin.toString());
+
         return isAdmin;
       } catch (err) {
         console.warn('[Dashboard] Exception checking admin status:', err);
@@ -230,7 +228,9 @@ export default function Dashboard() {
     retry: 2,
     retryDelay: 1000,
     placeholderData: () => {
-      const cached = localStorage.getItem('cached-admin-status');
+      const offlineId = getOfflineUserId();
+      if (!offlineId) return false;
+      const cached = localStorage.getItem(getAdminCacheKey(offlineId));
       return cached === 'true';
     },
   });
