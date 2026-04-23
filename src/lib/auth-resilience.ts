@@ -323,7 +323,10 @@ export async function writeCredentialAtomic<T>(
 
   let payload: string;
   try {
-    payload = JSON.stringify(value);
+    const json = JSON.stringify(value);
+    // Phase 4a — encrypt at rest. If crypto is unavailable this passes
+    // through and we store plaintext (legacy behaviour).
+    payload = await encryptForStorage(json);
   } catch (err: any) {
     await appendTx({ op, phase: 'FAILED', ts: Date.now(), detail: 'serialize-failed' });
     return { ok: false, attempts: 0, partial: false, error: err?.message || 'serialize-failed' };
