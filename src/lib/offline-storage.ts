@@ -841,7 +841,7 @@ export async function getDB() {
     // Version 8: Add report_versions store for append-only versioning
     // DB_NAME and DB_VERSION shared with public/db-config.js for SW consistency
     const DB_NAME = 'rope-works-inspections';
-    const DB_VERSION = 11;
+    const DB_VERSION = 12;
 
     // Phase 5 — Schema Migration Safety. Lazy-load to avoid circular imports
     // and to keep the boot path resilient if this module ever fails to parse.
@@ -1028,6 +1028,15 @@ export async function getDB() {
             (db as any).createObjectStore('sync_regression_counters', { keyPath: 'id' });
             if (import.meta.env.DEV) {
               console.log('[Offline Storage] Created sync_regression_counters store (v11 upgrade)');
+            }
+          }
+          // === NEW in v12: dead_letter_soft_deletes store (S28) ===
+          // Holds soft-delete queue ops that exhausted MAX_SOFT_DELETE_ATTEMPTS.
+          // Operator-visible only — never auto-retried.
+          if (!db.objectStoreNames.contains('dead_letter_soft_deletes' as any)) {
+            (db as any).createObjectStore('dead_letter_soft_deletes', { keyPath: 'id' });
+            if (import.meta.env.DEV) {
+              console.log('[Offline Storage] Created dead_letter_soft_deletes store (v12 upgrade)');
             }
           }
         },
