@@ -1,136 +1,108 @@
 
 
-## Phase 3 — Authorization Gaps (Route + Endpoint Guards)
+## Phase 4 — Correctness Bugs (Versioning, Hooks, Race Conditions)
 
-Five findings, six files touched. No DB migrations.
-
----
-
-### C7 — Per-user-namespaced admin cache keys
-
-**Today:** `cached-admin-status` and `cached-true-super-admin` are global localStorage keys. On a shared device, User B inherits User A's admin badge between sign-in and the first RPC roundtrip — and offline, User B can be permanently treated as admin.
-
-**Fix:** Switch to `cached-admin-status:${userId}` and `cached-true-super-admin:${userId}` everywhere they're read or written.
-
-- New helpers in `src/lib/cached-auth.ts`:
-  - `getAdminCacheKey(userId)` / `getTrueSuperAdminCacheKey(userId)` — return the namespaced key.
-  - `clearAllAdminCacheKeys()` — sweeps every `cached-admin-status:*` and `cached-true-super-admin:*` key on `SIGNED_OUT`. Used by `invalidateUserCache()`.
-  - `clearAdminCacheForUser(userId)` — targeted clear when a single user's role changes.
-- `invalidateUserCache()` calls `clearAllAdminCacheKeys()`.
-- The auth listener in `cached-auth.ts` adds handling for `USER_UPDATED` and `SIGNED_IN` events: clear cached entries for any user-id that doesn't match the new session's user-id, then re-fetch fresh.
-- One-time migration on module load: if the legacy unscoped `cached-admin-status` / `cached-true-super-admin` keys exist, delete them. They're stale by definition.
-
-**Read sites updated** (all switch to namespaced reads, falling back to a fresh RPC if the namespaced key is missing — never the legacy global key):
-- `src/lib/cached-auth.ts` — `getAdminStatusWithCache`, `getIsTrueSuperAdmin`.
-- `src/hooks/useRequireAdmin.tsx` — both offline-fallback branches.
-- `src/hooks/useReportEditPermission.tsx` — both cached-admin reads.
-- `src/components/AuthenticatedHeader.tsx` — `is-super-admin-global` query (cached value + placeholder).
-- `src/pages/Dashboard.tsx` — `is-super-admin` query (cached value + placeholder).
-
-Each read site needs a `userId` in scope before it can build the key. Sites that don't have one yet (`useRequireAdmin`'s offline fallback) call `getOfflineUserId()` first.
+Four findings, ~9 files touched. No DB migrations.
 
 ---
 
-### H1 — `<RequireAuth>` route guard for authenticated pages
+### H4 — Drop the rollover scheme so `version-calculator.ts` stops fighting `vite-auto-version.ts`
 
-**New file:** `src/components/auth/RequireAuth.tsx`
-- Calls `getUserWithCache()` on mount.
-- If a user exists (online session OR cached/synthetic offline session), renders `children`.
-- If no user and `navigator.onLine`, redirects to `/`.
-- If no user and offline, renders `children` only when `hasCachedSessionForOffline()` returns true; otherwise redirects to `/`.
-- Renders `null` (no flash) until the auth check resolves.
-- Mirrors the resilience patterns already in `useRequireAdmin` (no flash redirects on transient null).
+**Problem:** `version-calculator.ts` clamps PATCH and MINOR to 1–9 with rollover (e.g. `2.3.9 → 2.4.1`), but the active build pipeline in `vite-auto-version.ts` writes the *full git commit count* as PATCH (e.g. `4.7.142`). The two schemes are incompatible — the calculator would reject every real build as invalid.
 
-**`src/App.tsx`:** wrap the following routes with `<RequireAuth>`:
-- `/dashboard`, `/profile`, `/onboarding`
-- `/inspection/new`, `/inspection/:id`
-- `/training/new`, `/training/:id`
-- `/daily-assessment/new`, `/daily-assessment/:id`
-
-Public routes left untouched: `/`, `/welcome`, `/install`, `/capabilities`, `/unsubscribe`, `/base64-converter`.
+**Fix:**
+- In `src/lib/version-calculator.ts`: remove `getNextVersion`, `calculateNextVersion`, `generateVersionSequence`, and `isValidSchemeVersion`. Keep `parseVersion`, `formatVersion`, and the `Version` type — they're still useful for parsing/formatting.
+- Update `src/lib/version-calculator.test.ts` to drop the deleted-function suites; keep `parseVersion` and `formatVersion` tests.
+- In `vite.config.ts` (lines 7–13): replace the rollover comment block with a one-liner pointing to `vite-auto-version.ts` as the canonical source.
+- **Audit `APP_VERSION` consumers:** verified that `attestation.ts`, `version-telemetry.ts`, `version-check.ts`, and `MinVersionEnforcer.tsx` all read `APP_VERSION` as an opaque string and never call any rollover helper. Stamps are unaffected. Existing attestation records with old version strings keep working — comparison is string-based via `isVersionNewer` which already handles SemVer correctly.
 
 ---
 
-### H2 — Admin-gate the logo/admin pages
+### H5 — Move the unsaved-changes guard *inside* the Realtime UPDATE handler
 
-Three pages currently registered as public routes touch privileged storage or admin tooling. Wrap them in `useRequireAdmin()` (mirrors `AdminLogoManagement.tsx` which already uses it):
-- `src/pages/UploadLogos.tsx` — add `const { loading } = useRequireAdmin();` at the top of the component, render `null` while loading.
-- `src/pages/UploadLogosToStorage.tsx` — same.
-- `src/pages/AdminLogoManagement.tsx` — already gated, no change needed (verified).
-- `src/pages/SuperAdminDashboard.tsx` — already gated, no change needed.
+**Problem:** All three form pages (`InspectionForm`, `TrainingForm`, `DailyAssessmentForm`) include `hasUnsavedChanges` in the Realtime effect deps. Every keystroke flips that flag, causing `supabase.removeChannel` + `supabase.channel(...).subscribe()` to churn — wasteful, and creates a brief window where remote updates are missed.
 
-Routes left in `App.tsx` with the same paths; the gate lives inside the page so deep-linking still works.
+**Fix (applied identically to all three files):**
+- Replace the `hasUnsavedChanges` state read inside the handler with a ref read: `hasUnsavedRef.current` (already exists in all three components; verified).
+- Drop `hasUnsavedChanges` from the effect deps array. Final deps: `[id, loadInspection]` (or equivalent loader for the other two).
+- Drop `inspection?.updated_at` / `training?.updated_at` / `assessment?.updated_at` from deps too, and read those via a ref pattern as well — same churn problem at lower frequency. Add `lastLoadedUpdatedAtRef` updated by the loader functions.
+- Keep the `eslint-disable-next-line react-hooks/exhaustive-deps` comment.
 
----
-
-### H3 — Authentication gate inside `convert-heic-photos`
-
-**File:** `supabase/functions/convert-heic-photos/index.ts`
-
-Currently uses the service-role client unconditionally. Add a JWT-validated auth check at the top of the `try` block, before any photo iteration:
-- Read `Authorization` header; reject with 401 if missing.
-- Build a second client with the anon key + the user's `Authorization` header.
-- Call `supabase.auth.getUser()`; reject with 401 on null/error.
-- Proceed with the existing service-role client for the actual conversion work.
-
-No admin gate — all authenticated users keep full access (per your revised spec). Unauthenticated external requests are blocked.
+Files: `src/pages/InspectionForm.tsx` (lines 517–542), `src/pages/TrainingForm.tsx` (lines 601–626), `src/pages/DailyAssessmentForm.tsx` (lines 379–404).
 
 ---
 
-### H7 — Conditional role re-write in `admin-manage-user` update
+### H6 — Single-flight lock around session refresh + abort on sign-out
 
-**File:** `supabase/functions/admin-manage-user/index.ts`, `case 'update'` block (lines 215–240).
+**Problem:** `cached-auth.ts` calls `supabase.auth.refreshSession()` from at least four sites (lines 203, 631, 683, 714) without coordination. Concurrent refreshes race the Supabase auth-js LockManager and can cause the documented "LockManager timeout" fallback path. On sign-out, an in-flight refresh can also re-hydrate the session moments after `signOut()` clears it.
 
-Today: any update payload that includes `role` deletes ALL `user_roles` rows for that user, then inserts one. This wipes multi-org role assignments even when the admin only meant to change a name.
+**Fix:**
+- Add module-level `let pendingRefreshPromise: Promise<...> | null = null;` and `let refreshAborted = false;`.
+- New helper `refreshSessionSingleFlight()` that:
+  - Returns the existing `pendingRefreshPromise` if one is in flight.
+  - Otherwise calls `supabase.auth.refreshSession()`, stores the promise, clears it in `finally`.
+  - Checks `refreshAborted` before resolving — if true, treat as no-op (return null).
+- Replace all four direct `supabase.auth.refreshSession()` call sites with `refreshSessionSingleFlight()`.
+- New exported `signOutWithAbort()` helper:
+  - Sets `refreshAborted = true`.
+  - Awaits any `pendingRefreshPromise` with a short timeout (don't deadlock on a hung refresh).
+  - Calls `supabase.auth.signOut()`.
+  - Resets `refreshAborted = false`.
+- Wire `signOutWithAbort` into the existing online sign-out paths (`Dashboard.tsx`, `AuthenticatedHeader.tsx`) — these currently call `supabase.auth.signOut()` directly. Offline sign-out path (Phase 2) is unaffected; it never refreshes.
 
-Fix:
-1. Only run the delete + insert when `role !== undefined` in the *parsed payload* (already the case) AND the value differs from the user's current top-level role.
-2. Before deleting: `SELECT role FROM user_roles WHERE user_id = $1 AND organization_id IS NULL` to read the current top-level role.
-3. If `currentRole === role`: skip the delete and insert entirely. Log "role unchanged, skipping".
-4. If `currentRole !== role`: scope the delete to top-level rows only — `.delete().eq('user_id', userId).is('organization_id', null)` — so per-org role rows survive. Then insert the new top-level role.
+---
 
-This preserves multi-org assignments and avoids destructive churn on no-op updates.
+### H10 (critical subset) — Fix the 3 hooks errors + 1 unsafe optional-chaining
+
+**`src/components/dev/OfflineSimulator.tsx`** (3 errors):
+The component returns `null` at line 15 (`if (!import.meta.env.DEV) return null;`) BEFORE the three `useEffect` hooks. Hooks must be called unconditionally.
+- Fix: move the `if (!import.meta.env.DEV) return null;` check to AFTER all three `useEffect` calls (just before the JSX `return`). Hooks then run in the same order on every render; production builds still render `null` as today. The component body is currently a stub (lines 87–94 render mostly empty divs), so this is a pure correctness fix.
+
+**`src/pages/Capabilities.tsx:47`** (1 unsafe optional-chaining + 1 `any`):
+```ts
+supported: 'sync' in (navigator as any).serviceWorker?.register || false,
+```
+If `serviceWorker` is undefined, `serviceWorker?.register` short-circuits to `undefined`, then `'sync' in undefined` throws `TypeError`.
+- Fix: `supported: 'serviceWorker' in navigator && 'SyncManager' in window`. This matches how the actual feature is detected elsewhere and avoids both the optional-chaining trap and the `any` cast.
+
+**Deferred (not in this phase):** the 42 `react-hooks/exhaustive-deps` warnings and 983 `@typescript-eslint/no-explicit-any` warnings. Captured as known cleanup work.
 
 ---
 
 ### Files touched (summary)
 
-- `src/lib/cached-auth.ts` — namespaced cache helpers, listener updates, legacy migration
-- `src/hooks/useRequireAdmin.tsx` — namespaced reads
-- `src/hooks/useReportEditPermission.tsx` — namespaced reads
-- `src/components/AuthenticatedHeader.tsx` — namespaced reads in admin query
-- `src/pages/Dashboard.tsx` — namespaced reads in admin query
-- `src/components/auth/RequireAuth.tsx` — **new**
-- `src/App.tsx` — wrap authenticated routes
-- `src/pages/UploadLogos.tsx` — `useRequireAdmin()`
-- `src/pages/UploadLogosToStorage.tsx` — `useRequireAdmin()`
-- `supabase/functions/convert-heic-photos/index.ts` — JWT auth gate
-- `supabase/functions/admin-manage-user/index.ts` — conditional role rewrite
+- `src/lib/version-calculator.ts` — strip rollover helpers, keep parse/format
+- `src/lib/version-calculator.test.ts` — drop deleted-function suites
+- `vite.config.ts` — comment cleanup
+- `src/pages/InspectionForm.tsx` — Realtime deps fix (H5)
+- `src/pages/TrainingForm.tsx` — Realtime deps fix (H5)
+- `src/pages/DailyAssessmentForm.tsx` — Realtime deps fix (H5)
+- `src/lib/cached-auth.ts` — single-flight refresh + abort-on-signout (H6)
+- `src/pages/Dashboard.tsx` — call `signOutWithAbort()` instead of `supabase.auth.signOut()`
+- `src/components/AuthenticatedHeader.tsx` — same
+- `src/components/dev/OfflineSimulator.tsx` — hooks ordering (H10)
+- `src/pages/Capabilities.tsx` — replace unsafe `?.` with proper feature check (H10)
 
-No DB migrations. No new secrets. No `config.toml` changes.
+No DB migrations. No new secrets. No edge-function changes.
 
 ---
 
 ### Risk
 
-- **C7**: Existing sessions will see one extra RPC call after deploy because the legacy unscoped key gets wiped. Acceptable; no UX change beyond a sub-second cache miss.
-- **H1**: The route guard renders `null` while resolving, mirroring the `useRequireAdmin` pattern. No flash redirects on cached sessions. Offline users with a cached session pass through unchanged.
-- **H2**: `UploadLogos*` pages were effectively unusable for non-admins anyway (RLS rejects writes). The visible change is a redirect instead of a "permission denied" toast.
-- **H3**: Existing in-app callers already attach a JWT via `supabase.functions.invoke()`. No client changes needed.
-- **H7**: Admins editing a user's name without changing role no longer wipe the user's role rows. This is a strict improvement.
+- **H4**: Low. The deleted helpers were unused outside their test file and a stale comment in `vite.config.ts`. Existing attestation records remain valid (string-stored).
+- **H5**: Low. Moving `hasUnsavedChanges` from deps to a ref read inside the handler preserves the suppress-during-typing behavior with no churn. Tested pattern — `hasUnsavedRef` already exists in all three forms.
+- **H6**: Medium. The single-flight refactor touches a hot path. Mitigated by keeping each call site's behavior identical — only the underlying coordination changes. Sign-out abort uses a short timeout (1s) so a hung refresh can't block sign-out.
+- **H10**: Low. Both fixes are mechanical — moving a return statement and replacing an unsafe expression with a documented feature check.
 
 ---
 
 ### Verification
 
-1. User A (admin) signs out on a shared device → User B (regular) signs in → `/admin` redirects to `/dashboard` immediately, no admin-flash.
-2. Offline-only User B with no cached admin entry → `/admin` redirects to `/dashboard`.
-3. Direct nav to `/dashboard` while signed out → redirected to `/`.
-4. Direct nav to `/inspection/some-id` while signed out → redirected to `/`.
-5. Offline user with cached session → `/dashboard`, `/inspection/:id`, `/profile` all load normally.
-6. Direct nav to `/upload-logos` as a regular user → redirected to `/dashboard`.
-7. `curl -X POST https://…/convert-heic-photos` with no auth header → 401.
-8. Same call with a valid user JWT → proceeds normally.
-9. Admin updates a user's first name (no role change) → `user_roles` rows untouched (verify via DB query).
-10. Admin updates a user's role from `inspector` → `admin` → top-level role row replaced; per-org role rows preserved.
+1. `npm run lint` reports 0 errors (warnings unchanged). The 4 specific errors disappear.
+2. Type a long burst into an Inspection form while a second device pushes an UPDATE → the form does not flicker, no `removeChannel`/`subscribe` log spam in the console (`[InspectionForm] Skipping remote refresh` still fires once per remote update during typing).
+3. Sign out while offline simulator is enabled → no LockManager warnings, no "session re-hydrated after signout" toast.
+4. `npm test` passes; `version-calculator.test.ts` covers the surviving `parseVersion`/`formatVersion` cases.
+5. Build a fresh deploy → `/version.json` shows `4.7.<commits>` exactly as before; `APP_VERSION` in attestation stamps matches.
+6. `OfflineSimulator` renders nothing in production builds and the same minimal stub in dev builds (no behavioral change).
+7. `/capabilities` page loads with no runtime errors on a browser without `serviceWorker`.
 
