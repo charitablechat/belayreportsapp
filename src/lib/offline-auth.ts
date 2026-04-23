@@ -291,21 +291,50 @@ export function readSyntheticSession(): null | {
   expires_at: number;
   __synthetic: true;
   __capturedAt: number;
+  __offlineExpiresAt?: number;
 } {
   try {
     const raw = localStorage.getItem(SYNTHETIC_SESSION_KEY);
     if (!raw) return null;
     const parsed = JSON.parse(raw);
     if (!parsed?.user?.id) return null;
-    // Expiry check: synthetic sessions die after 30 days regardless of network state.
+    // Hard cap: synthetic sessions die 30 days after capture regardless.
     if (parsed.expires_at && parsed.expires_at * 1000 < Date.now()) {
       localStorage.removeItem(SYNTHETIC_SESSION_KEY);
+      return null;
+    }
+    // Phase 4b — bounded offline window. If we've been offline longer than
+    // the configured window, force the user back online to re-verify.
+    if (
+      typeof parsed.__offlineExpiresAt === 'number' &&
+      parsed.__offlineExpiresAt < Date.now()
+    ) {
+      localStorage.removeItem(SYNTHETIC_SESSION_KEY);
+      localStorage.removeItem(LEGACY_PENDING_FLAG);
       return null;
     }
     return parsed;
   } catch {
     return null;
   }
+}
+
+/**
+ * Phase 4b — return ms remaining in the bounded offline window, or `null`
+ * if there is no active synthetic session or no bound was set.
+ */
+export function getOfflineWindowRemainingMs(): number | null {
+  const s = readSyntheticSession();
+  if (!s || typeof s.__offlineExpiresAt !== 'number') return null;
+  return Math.max(0, s.__offlineExpiresAt - Date.now());
+}
+
+/** True when the synthetic session is within the soft-warning window (T-2 days). */
+export function isOfflineWindowExpiringSoon(): boolean {
+  const remaining = getOfflineWindowRemainingMs();
+  if (remaining === null) return false;
+  const warningMs = OFFLINE_WINDOW_WARNING_DAYS * 24 * 60 * 60 * 1000;
+  return remaining > 0 && remaining <= warningMs;
 }
 
 export function clearSyntheticSession(): void {
