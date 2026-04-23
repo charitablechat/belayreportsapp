@@ -2122,8 +2122,16 @@ async function recomputeInspectionChildCountHint(
     const otherTotal = counts.reduce((a, b) => a + b, 0);
     // Summary contributes 1 if any row exists; align with old "summary?.length > 0 ? 1 : 0" semantics.
     const newHint = otherTotal + (justSavedType === 'summary' ? (justSavedCount > 0 ? 1 : 0) : justSavedCount);
-    if (inspection.child_count_hint !== newHint) {
-      inspection.child_count_hint = newHint;
+
+    // H2: Bump parent updated_at on every child mutation. Without this, an
+    // edit to a child row (e.g. zipline_name) leaves the parent's
+    // updated_at == synced_at and `shouldPreserveLocalRecord` returns false,
+    // so the Dashboard's network pipeline overwrites the parent and
+    // downstream "empty-vs-populated" guards see a parent/child mismatch.
+    const hintChanged = inspection.child_count_hint !== newHint;
+    inspection.child_count_hint = newHint;
+    inspection.updated_at = new Date().toISOString();
+    if (hintChanged || true) {
       await db.put('inspections', inspection);
     }
   } catch {
@@ -2154,10 +2162,10 @@ async function recomputeAssessmentChildCountHint(
       })
     );
     const newHint = counts.reduce((a, b) => a + b, 0) + justSavedCount;
-    if (assessment.child_count_hint !== newHint) {
-      assessment.child_count_hint = newHint;
-      await db.put('daily_assessments', assessment);
-    }
+    // H2: Always bump parent updated_at on child mutation (see Inspection note).
+    assessment.child_count_hint = newHint;
+    assessment.updated_at = new Date().toISOString();
+    await db.put('daily_assessments', assessment);
   } catch {
     // non-fatal
   }
