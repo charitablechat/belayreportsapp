@@ -863,7 +863,7 @@ export async function getDB() {
     // Version 8: Add report_versions store for append-only versioning
     // DB_NAME and DB_VERSION shared with public/db-config.js for SW consistency
     const DB_NAME = 'rope-works-inspections';
-    const DB_VERSION = 14;
+    const DB_VERSION = 15;
 
     // Phase 5 — Schema Migration Safety. Lazy-load to avoid circular imports
     // and to keep the boot path resilient if this module ever fails to parse.
@@ -1059,6 +1059,18 @@ export async function getDB() {
             (db as any).createObjectStore('dead_letter_soft_deletes', { keyPath: 'id' });
             if (import.meta.env.DEV) {
               console.log('[Offline Storage] Created dead_letter_soft_deletes store (v12 upgrade)');
+            }
+          }
+          // === NEW in v15: photo_upload_failures store (1.C) ===
+          // Persistent dead-letter for photos that crossed MAX_PHOTO_RETRIES.
+          // Surfaces in SyncDiagnosticsSheet so failures aren't silent orphans.
+          if (!db.objectStoreNames.contains('photo_upload_failures' as any)) {
+            const pufStore = (db as any).createObjectStore('photo_upload_failures', {
+              keyPath: 'id',
+            });
+            pufStore.createIndex('by-failed-at', 'lastErrorAt');
+            if (import.meta.env.DEV) {
+              console.log('[Offline Storage] Created photo_upload_failures store (v15 upgrade)');
             }
           }
           // === NEW in v13: sync_empty_local_conflicts store (C2) ===
