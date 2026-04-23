@@ -510,8 +510,21 @@ export async function syncInspectionAtomic(inspectionId: string, preValidatedUse
     let existingEquipment: any[] = [];
     let existingStandards: any[] = [];
     let existingSummary: any[] = [];
-    
-    if (recordStatus?.record_exists && !recordStatus?.is_deleted) {
+
+    // S25: When the server row is at exactly our last-known baseline, skip the
+    // 5x rollback pre-fetch. reconcileChildTable will fall back to its own
+    // single-table fetch only if it actually needs to compute a delete; the
+    // empty-local-guard here only matters when server has child data we don't
+    // know about, which can't be the case if updated_at hasn't moved.
+    // Trade-off: rollbackData is missing for mid-transaction failures, but
+    // synced_at won't advance unless the final step succeeds, so the next
+    // cycle re-syncs idempotently against the same upsert IDs.
+    const serverUnchangedSinceBaseline =
+      !!inspection.synced_at &&
+      !!recordStatus?.updated_at &&
+      recordStatus.updated_at === inspection.synced_at;
+
+    if (recordStatus?.record_exists && !recordStatus?.is_deleted && !serverUnchangedSinceBaseline) {
       [
         existingSystems,
         existingZiplines,
@@ -603,13 +616,16 @@ export async function syncInspectionAtomic(inspectionId: string, preValidatedUse
     // Step 2: RECONCILE then UPSERT child data
     // Delete server rows that were removed locally, then upsert current local data
     if (recordStatus?.record_exists && !recordStatus?.is_deleted) {
+      // S25: when prefetch was skipped, pass `undefined` (not `[]`) so
+      // reconcileChildTable falls back to its own live fetch when needed.
+      const pf = (arr: any[]) => (serverUnchangedSinceBaseline ? undefined : arr);
       const reconcileResult = await reconcileAllChildTables(
         [
-          { childTable: 'inspection_systems', parentIdColumn: 'inspection_id', localItems: systems, prefetchedServerRows: existingSystems, expectedNonEmpty: idbReadFlags.systems },
-          { childTable: 'inspection_ziplines', parentIdColumn: 'inspection_id', localItems: ziplines, prefetchedServerRows: existingZiplines, expectedNonEmpty: idbReadFlags.ziplines },
-          { childTable: 'inspection_equipment', parentIdColumn: 'inspection_id', localItems: equipment, prefetchedServerRows: existingEquipment, expectedNonEmpty: idbReadFlags.equipment },
-          { childTable: 'inspection_standards', parentIdColumn: 'inspection_id', localItems: standards, prefetchedServerRows: existingStandards, expectedNonEmpty: idbReadFlags.standards },
-          { childTable: 'inspection_summary', parentIdColumn: 'inspection_id', localItems: summary ? [summary] : [], prefetchedServerRows: existingSummary, expectedNonEmpty: idbReadFlags.summary },
+          { childTable: 'inspection_systems', parentIdColumn: 'inspection_id', localItems: systems, prefetchedServerRows: pf(existingSystems), expectedNonEmpty: idbReadFlags.systems },
+          { childTable: 'inspection_ziplines', parentIdColumn: 'inspection_id', localItems: ziplines, prefetchedServerRows: pf(existingZiplines), expectedNonEmpty: idbReadFlags.ziplines },
+          { childTable: 'inspection_equipment', parentIdColumn: 'inspection_id', localItems: equipment, prefetchedServerRows: pf(existingEquipment), expectedNonEmpty: idbReadFlags.equipment },
+          { childTable: 'inspection_standards', parentIdColumn: 'inspection_id', localItems: standards, prefetchedServerRows: pf(existingStandards), expectedNonEmpty: idbReadFlags.standards },
+          { childTable: 'inspection_summary', parentIdColumn: 'inspection_id', localItems: summary ? [summary] : [], prefetchedServerRows: pf(existingSummary), expectedNonEmpty: idbReadFlags.summary },
         ],
         inspectionId,
         'inspection',
@@ -1365,8 +1381,14 @@ export async function syncTrainingAtomic(trainingId: string, preValidatedUser?: 
     let existingVerifiable: any[] = [];
     let existingSystemsInPlace: any[] = [];
     let existingSummary: any[] = [];
-    
-    if (recordStatus?.record_exists && !recordStatus?.is_deleted) {
+
+    // S25: skip 6x rollback prefetch when server row is at our last-known baseline
+    const serverUnchangedSinceBaseline =
+      !!training.synced_at &&
+      !!recordStatus?.updated_at &&
+      recordStatus.updated_at === training.synced_at;
+
+    if (recordStatus?.record_exists && !recordStatus?.is_deleted && !serverUnchangedSinceBaseline) {
       [
         existingApproaches,
         existingSystems,
@@ -1456,14 +1478,15 @@ export async function syncTrainingAtomic(trainingId: string, preValidatedUser?: 
     // Step 2: RECONCILE then UPSERT child data
     // Delete server rows that were removed locally, then upsert current local data
     if (recordStatus?.record_exists && !recordStatus?.is_deleted) {
+      const pf = (arr: any[]) => (serverUnchangedSinceBaseline ? undefined : arr);
       const reconcileResult = await reconcileAllChildTables(
         [
-          { childTable: 'training_delivery_approaches', parentIdColumn: 'training_id', localItems: delivery_approaches, prefetchedServerRows: existingApproaches, expectedNonEmpty: trainingIdbReadFlags.delivery_approaches },
-          { childTable: 'training_operating_systems', parentIdColumn: 'training_id', localItems: operating_systems, prefetchedServerRows: existingSystems, expectedNonEmpty: trainingIdbReadFlags.operating_systems },
-          { childTable: 'training_immediate_attention', parentIdColumn: 'training_id', localItems: immediate_attention, prefetchedServerRows: existingAttention, expectedNonEmpty: trainingIdbReadFlags.immediate_attention },
-          { childTable: 'training_verifiable_items', parentIdColumn: 'training_id', localItems: verifiable_items, prefetchedServerRows: existingVerifiable, expectedNonEmpty: trainingIdbReadFlags.verifiable_items },
-          { childTable: 'training_systems_in_place', parentIdColumn: 'training_id', localItems: systems_in_place, prefetchedServerRows: existingSystemsInPlace, expectedNonEmpty: trainingIdbReadFlags.systems_in_place },
-          { childTable: 'training_summary', parentIdColumn: 'training_id', localItems: summary ? [summary] : [], prefetchedServerRows: existingSummary, expectedNonEmpty: trainingIdbReadFlags.summary },
+          { childTable: 'training_delivery_approaches', parentIdColumn: 'training_id', localItems: delivery_approaches, prefetchedServerRows: pf(existingApproaches), expectedNonEmpty: trainingIdbReadFlags.delivery_approaches },
+          { childTable: 'training_operating_systems', parentIdColumn: 'training_id', localItems: operating_systems, prefetchedServerRows: pf(existingSystems), expectedNonEmpty: trainingIdbReadFlags.operating_systems },
+          { childTable: 'training_immediate_attention', parentIdColumn: 'training_id', localItems: immediate_attention, prefetchedServerRows: pf(existingAttention), expectedNonEmpty: trainingIdbReadFlags.immediate_attention },
+          { childTable: 'training_verifiable_items', parentIdColumn: 'training_id', localItems: verifiable_items, prefetchedServerRows: pf(existingVerifiable), expectedNonEmpty: trainingIdbReadFlags.verifiable_items },
+          { childTable: 'training_systems_in_place', parentIdColumn: 'training_id', localItems: systems_in_place, prefetchedServerRows: pf(existingSystemsInPlace), expectedNonEmpty: trainingIdbReadFlags.systems_in_place },
+          { childTable: 'training_summary', parentIdColumn: 'training_id', localItems: summary ? [summary] : [], prefetchedServerRows: pf(existingSummary), expectedNonEmpty: trainingIdbReadFlags.summary },
         ],
         trainingId,
         'training',
@@ -2156,8 +2179,14 @@ export async function syncDailyAssessmentAtomic(assessmentId: string, preValidat
     let existingEquipment: any[] = [];
     let existingStructure: any[] = [];
     let existingEnvironment: any[] = [];
-    
-    if (recordStatus?.record_exists && !recordStatus?.is_deleted) {
+
+    // S25: skip 6x rollback prefetch when server row is at our last-known baseline
+    const serverUnchangedSinceBaseline =
+      !!assessment.synced_at &&
+      !!recordStatus?.updated_at &&
+      recordStatus.updated_at === assessment.synced_at;
+
+    if (recordStatus?.record_exists && !recordStatus?.is_deleted && !serverUnchangedSinceBaseline) {
       [
         existingBeginning,
         existingEnd,
@@ -2250,14 +2279,15 @@ export async function syncDailyAssessmentAtomic(assessmentId: string, preValidat
     // Step 2: RECONCILE then UPSERT child data
     // Delete server rows that were removed locally, then upsert current local data
     if (recordStatus?.record_exists && !recordStatus?.is_deleted) {
+      const pf = (arr: any[]) => (serverUnchangedSinceBaseline ? undefined : arr);
       const reconcileResult = await reconcileAllChildTables(
         [
-          { childTable: 'daily_assessment_beginning_of_day', parentIdColumn: 'assessment_id', localItems: beginning_of_day, prefetchedServerRows: existingBeginning, expectedNonEmpty: assessmentIdbReadFlags.beginning_of_day },
-          { childTable: 'daily_assessment_end_of_day', parentIdColumn: 'assessment_id', localItems: end_of_day, prefetchedServerRows: existingEnd, expectedNonEmpty: assessmentIdbReadFlags.end_of_day },
-          { childTable: 'daily_assessment_operating_systems', parentIdColumn: 'assessment_id', localItems: operating_systems, prefetchedServerRows: existingSystems, expectedNonEmpty: assessmentIdbReadFlags.operating_systems },
-          { childTable: 'daily_assessment_equipment_checks', parentIdColumn: 'assessment_id', localItems: equipment_checks, prefetchedServerRows: existingEquipment, expectedNonEmpty: assessmentIdbReadFlags.equipment_checks },
-          { childTable: 'daily_assessment_structure_checks', parentIdColumn: 'assessment_id', localItems: structure_checks, prefetchedServerRows: existingStructure, expectedNonEmpty: assessmentIdbReadFlags.structure_checks },
-          { childTable: 'daily_assessment_environment_checks', parentIdColumn: 'assessment_id', localItems: environment_checks, prefetchedServerRows: existingEnvironment, expectedNonEmpty: assessmentIdbReadFlags.environment_checks },
+          { childTable: 'daily_assessment_beginning_of_day', parentIdColumn: 'assessment_id', localItems: beginning_of_day, prefetchedServerRows: pf(existingBeginning), expectedNonEmpty: assessmentIdbReadFlags.beginning_of_day },
+          { childTable: 'daily_assessment_end_of_day', parentIdColumn: 'assessment_id', localItems: end_of_day, prefetchedServerRows: pf(existingEnd), expectedNonEmpty: assessmentIdbReadFlags.end_of_day },
+          { childTable: 'daily_assessment_operating_systems', parentIdColumn: 'assessment_id', localItems: operating_systems, prefetchedServerRows: pf(existingSystems), expectedNonEmpty: assessmentIdbReadFlags.operating_systems },
+          { childTable: 'daily_assessment_equipment_checks', parentIdColumn: 'assessment_id', localItems: equipment_checks, prefetchedServerRows: pf(existingEquipment), expectedNonEmpty: assessmentIdbReadFlags.equipment_checks },
+          { childTable: 'daily_assessment_structure_checks', parentIdColumn: 'assessment_id', localItems: structure_checks, prefetchedServerRows: pf(existingStructure), expectedNonEmpty: assessmentIdbReadFlags.structure_checks },
+          { childTable: 'daily_assessment_environment_checks', parentIdColumn: 'assessment_id', localItems: environment_checks, prefetchedServerRows: pf(existingEnvironment), expectedNonEmpty: assessmentIdbReadFlags.environment_checks },
         ],
         assessmentId,
         'daily_assessment',
