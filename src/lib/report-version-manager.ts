@@ -37,6 +37,51 @@ const RECENT_WINDOW_MS = 24 * 60 * 60 * 1000;
 const KEYFRAME_RETENTION_DAYS = 30;
 const MAX_VERSIONS_PER_REPORT = 100;
 
+// ─── M9: Versioning health tracker ───────────────────────────────────
+// Surfaces silent appendVersion failures so UI can warn the user before
+// they actually need recovery and find the version list empty.
+export interface VersioningHealth {
+  consecutiveFailures: number;
+  lastFailureAt: number | null;
+  lastError: string | null;
+  lastSuccessAt: number | null;
+}
+
+const versioningHealth: VersioningHealth = {
+  consecutiveFailures: 0,
+  lastFailureAt: null,
+  lastError: null,
+  lastSuccessAt: null,
+};
+
+type HealthListener = (h: VersioningHealth) => void;
+const healthListeners = new Set<HealthListener>();
+
+function emitHealth() {
+  for (const fn of healthListeners) {
+    try { fn({ ...versioningHealth }); } catch { /* ignore listener errors */ }
+  }
+}
+
+export function getVersioningHealth(): VersioningHealth {
+  return { ...versioningHealth };
+}
+
+export function subscribeVersioningHealth(fn: HealthListener): () => void {
+  healthListeners.add(fn);
+  return () => healthListeners.delete(fn);
+}
+
+/**
+ * Manually reset the failure counter (e.g. after the user dismisses a
+ * persistent banner or successfully restores from a recovery flow).
+ */
+export function resetVersioningHealth(): void {
+  versioningHealth.consecutiveFailures = 0;
+  versioningHealth.lastError = null;
+  emitHealth();
+}
+
 /**
  * Count non-empty fields across parent + children for integrity checking
  */
@@ -142,9 +187,24 @@ export async function appendVersion(
     // Async prune — never blocks
     pruneVersions(reportId).catch(() => {});
 
+    // M9: Record success — clear any prior failure streak.
+    if (versioningHealth.consecutiveFailures > 0 || versioningHealth.lastSuccessAt === null) {
+      versioningHealth.consecutiveFailures = 0;
+      versioningHealth.lastError = null;
+      versioningHealth.lastSuccessAt = Date.now();
+      emitHealth();
+    } else {
+      versioningHealth.lastSuccessAt = Date.now();
+    }
+
     return version;
   } catch (error) {
     console.warn('[Version Manager] Failed to append version:', error);
+    // M9: Track consecutive failures so the UI can warn the user.
+    versioningHealth.consecutiveFailures += 1;
+    versioningHealth.lastFailureAt = Date.now();
+    versioningHealth.lastError = error instanceof Error ? error.message : String(error);
+    emitHealth();
     return null;
   }
 }

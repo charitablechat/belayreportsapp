@@ -78,7 +78,7 @@ import { useReportEditPermission } from "@/hooks/useReportEditPermission";
 import { CompletionLockDialog } from "@/components/CompletionLockDialog";
 import { SaveBeforeLeaveDialog } from "@/components/SaveBeforeLeaveDialog";
 import { Lock } from "lucide-react";
-import { appendVersion } from "@/lib/report-version-manager";
+import { appendVersion, subscribeVersioningHealth, getVersioningHealth, resetVersioningHealth } from "@/lib/report-version-manager";
 import { showHardSavedToast } from "@/lib/toast-helpers";
 import { DataIntegrityBadge, type IntegrityStatus } from "@/components/ui/data-integrity-badge";
 import { VersionHistoryPanel } from "@/components/admin/VersionHistoryPanel";
@@ -146,6 +146,10 @@ export default function InspectionForm() {
   const [lastVersionNumber, setLastVersionNumber] = useState<number | undefined>(undefined);
   const [lastFieldCount, setLastFieldCount] = useState<number | undefined>(undefined);
   const [saveError, setSaveError] = useState<string | null>(null);
+  // M9: Versioning health — surface a banner when version writes silently fail.
+  const [versioningFailures, setVersioningFailures] = useState<number>(
+    () => getVersioningHealth().consecutiveFailures
+  );
   const saveDebounceTimerRef = useRef<NodeJS.Timeout | null>(null);
   const isInternalUpdateRef = useRef(false);
   const anySaveInProgressRef = useRef(false);
@@ -580,6 +584,11 @@ export default function InspectionForm() {
 
   // Clear save error when background sync completes successfully
   useEffect(() => {
+    // M9: Subscribe to versioning health so the banner reflects live state.
+    const unsubHealth = subscribeVersioningHealth((h) => {
+      setVersioningFailures(h.consecutiveFailures);
+    });
+
     const unsubscribe = onSyncComplete(() => {
       // Clear pending_sync and any sync-related errors
       setSaveError(prev => {
@@ -603,7 +612,10 @@ export default function InspectionForm() {
       });
     });
     
-    return () => unsubscribe();
+    return () => {
+      unsubscribe();
+      unsubHealth();
+    };
   }, []); // Empty dependency array to avoid stale closures
 
   // Fetch inspector profile (the report owner, not current user)
@@ -2727,6 +2739,24 @@ export default function InspectionForm() {
                 <Badge variant="secondary" className="gap-2 text-xs">
                   <WifiOff className="w-3 h-3" />
                   <span className="hidden sm:inline">Offline Mode</span>
+                </Badge>
+              )}
+              {/* M9: Versioning health warning — surfaces silent appendVersion failures
+                  so the user knows recovery snapshots aren't being captured. */}
+              {versioningFailures >= 3 && (
+                <Badge
+                  variant="destructive"
+                  className="gap-1.5 text-xs cursor-pointer"
+                  onClick={() => {
+                    toast.warning("Recovery snapshots are failing", {
+                      description: `Your last ${versioningFailures} version snapshots could not be saved. Your current work is still saved, but earlier-state recovery may be unavailable. Try reloading the page.`,
+                      duration: 8000,
+                    });
+                    resetVersioningHealth();
+                  }}
+                  title="Tap for details"
+                >
+                  <span>Recovery snapshots failing ({versioningFailures})</span>
                 </Badge>
               )}
               {/* Pending sync indicator with retry option */}
