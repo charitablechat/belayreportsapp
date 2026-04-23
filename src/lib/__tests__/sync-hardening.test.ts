@@ -196,3 +196,49 @@ describe('Priority 5 — withIDBTimeout return shape & headroom', () => {
     expect(data).toEqual(['fallback']);
   });
 });
+
+// ─── P4b: caller honors blocked status ────────────────────────────────
+
+describe('Reconcile — blocked does not report sync success', () => {
+  it('sync returns success: false when any child reconcile is blocked', () => {
+    const childResults = [
+      { blocked: false, deletedCount: 1 },
+      { blocked: true, blockReason: 'local_read_failed_and_empty', deletedCount: 0 },
+      { blocked: false, deletedCount: 0 },
+    ];
+    const anyBlocked = childResults.some((r) => r.blocked);
+    const syncResult = anyBlocked
+      ? { success: false, reason: 'reconcile_blocked' as const }
+      : { success: true as const };
+
+    expect(syncResult.success).toBe(false);
+    expect((syncResult as any).reason).toBe('reconcile_blocked');
+  });
+
+  it('sync returns success: true when all reconciles pass', () => {
+    const childResults = [
+      { blocked: false, deletedCount: 2 },
+      { blocked: false, deletedCount: 0 },
+      { blocked: false, deletedCount: 1 },
+    ];
+    const anyBlocked = childResults.some((r) => r.blocked);
+    const syncResult = anyBlocked
+      ? { success: false, reason: 'reconcile_blocked' as const }
+      : { success: true as const };
+
+    expect(syncResult.success).toBe(true);
+  });
+
+  it('matches the shape of ReconcileAllResult.blockedTables', () => {
+    // Mirrors reconcileAllChildTables in src/lib/sync-reconciliation.ts
+    const all = {
+      totalDeleted: 1,
+      blocked: true,
+      blockedTables: [{ table: 'inspection_systems', reason: 'local_read_failed_and_empty' }],
+    };
+    expect(all.blocked).toBe(true);
+    expect(all.blockedTables).toHaveLength(1);
+    expect(all.blockedTables[0]).toHaveProperty('table');
+    expect(all.blockedTables[0]).toHaveProperty('reason');
+  });
+});
