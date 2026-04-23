@@ -58,43 +58,6 @@ export function classifyPhotoError(err: unknown): { kind: PhotoErrorClass; messa
 }
 
 
-/**
- * @deprecated Use syncAllInspectionsAtomic from atomic-sync-manager.ts instead
- * This function does not handle soft-deleted records correctly for regular users
- * due to RLS policies blocking SELECT on deleted records.
- */
-export async function syncInspections(): Promise<never> {
-  throw new Error(
-    '[Sync Manager] BLOCKED: syncInspections() is deprecated and disabled. ' +
-    'Use syncAllInspectionsAtomic() from atomic-sync-manager.ts instead. ' +
-    'This function bypasses atomic sync integrity safeguards.'
-  );
-}
-
-/**
- * @deprecated Use syncAllDailyAssessmentsAtomic from atomic-sync-manager.ts instead
- * This function does not handle soft-deleted records correctly for regular users.
- */
-export async function syncDailyAssessments(): Promise<never> {
-  throw new Error(
-    '[Sync Manager] BLOCKED: syncDailyAssessments() is deprecated and disabled. ' +
-    'Use syncAllDailyAssessmentsAtomic() from atomic-sync-manager.ts instead. ' +
-    'This function bypasses atomic sync integrity safeguards.'
-  );
-}
-
-/**
- * @deprecated Use syncAllTrainingsAtomic from atomic-sync-manager.ts instead
- * This function does not handle soft-deleted records correctly for regular users.
- */
-export async function syncTrainings(): Promise<never> {
-  throw new Error(
-    '[Sync Manager] BLOCKED: syncTrainings() is deprecated and disabled. ' +
-    'Use syncAllTrainingsAtomic() from atomic-sync-manager.ts instead. ' +
-    'This function bypasses atomic sync integrity safeguards.'
-  );
-}
-
 // Photo sync manager - still valid, not deprecated
 import { runWithConcurrency } from './concurrency';
 import { isMobile } from './mobile-detection';
