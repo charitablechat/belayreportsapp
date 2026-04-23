@@ -1544,8 +1544,11 @@ export default function InspectionForm() {
       try {
         // Guard: Only write child data if it was successfully loaded OR has items
         // This prevents timeout-sourced empty arrays from overwriting real IndexedDB data
+        const inspectionChildHint =
+          systems.length + ziplines.length + equipment.length + standards.length +
+          (currentSummary && (currentSummary.critical_actions || currentSummary.repairs_performed || currentSummary.future_considerations || currentSummary.next_inspection_date) ? 1 : 0);
         const childSaveOps: Promise<void>[] = [
-          saveInspectionOffline(inspectionToSave),
+          saveInspectionOffline(inspectionToSave, { childCountHint: inspectionChildHint }),
         ];
         if (systems.length > 0 || childDataLoadedRef.current.systems) {
           childSaveOps.push(saveRelatedDataOffline('systems', id!, systems.map((s, i) => ({ ...s, display_order: i })), { allowEmpty: true }));
