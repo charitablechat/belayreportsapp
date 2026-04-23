@@ -314,6 +314,14 @@ export const useAutoSync = () => {
               if (deleteResult.processed > 0) {
                 console.log(`[AutoSync] Processed ${deleteResult.processed} queued soft-deletes`);
               }
+              if (deleteResult.deadLettered > 0) {
+                try {
+                  const { toast } = await import('sonner');
+                  toast.error(
+                    `${deleteResult.deadLettered} deletion${deleteResult.deadLettered > 1 ? 's' : ''} failed permanently — see Sync Diagnostics`
+                  );
+                } catch { /* ignore */ }
+              }
             } catch (e) {
               console.warn('[AutoSync] Queued soft-delete processing failed (non-blocking):', e);
             }
@@ -362,6 +370,14 @@ export const useAutoSync = () => {
             const deleteResult = await processQueuedSoftDeletes(signal);
             if (deleteResult.processed > 0) {
               console.log(`[AutoSync] Processed ${deleteResult.processed} queued soft-deletes`);
+            }
+            if (deleteResult.deadLettered > 0) {
+              try {
+                const { toast } = await import('sonner');
+                toast.error(
+                  `${deleteResult.deadLettered} deletion${deleteResult.deadLettered > 1 ? 's' : ''} failed permanently — see Sync Diagnostics`
+                );
+              } catch { /* ignore */ }
             }
           } catch (e) {
             console.warn('[AutoSync] Queued soft-delete processing failed (non-blocking):', e);
