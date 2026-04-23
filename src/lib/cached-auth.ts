@@ -104,6 +104,38 @@ function initAuthListener() {
         // Offline SIGNED_OUT events are often transient token refresh failures.
         invalidateUserCache();
       }
+      // C7: When a different user signs in or current user changes, drop any
+      // namespaced admin cache entries that don't belong to the new user-id
+      // and invalidate in-memory caches so the next read re-fetches fresh.
+      if (event === 'SIGNED_IN' || event === 'USER_UPDATED') {
+        try {
+          const newId = session?.user?.id;
+          if (newId) {
+            const stale: string[] = [];
+            for (let i = 0; i < localStorage.length; i++) {
+              const k = localStorage.key(i);
+              if (
+                k &&
+                (k.startsWith('cached-admin-status:') ||
+                  k.startsWith('cached-true-super-admin:')) &&
+                !k.endsWith(`:${newId}`)
+              ) {
+                stale.push(k);
+              }
+            }
+            stale.forEach((k) => localStorage.removeItem(k));
+          }
+          // In-memory caches are user-agnostic — wipe them so next call re-fetches
+          cachedAdminStatus = null;
+          adminCacheTimestamp = 0;
+          pendingAdminPromise = null;
+          cachedTrueSuperAdmin = null;
+          trueSuperAdminCacheTimestamp = 0;
+          pendingTrueSuperAdminPromise = null;
+        } catch {
+          // ignore
+        }
+      }
       // C4: capture refresh token whenever the auth state changes with a real session.
       if (event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED') {
         if (session?.user?.email && session?.refresh_token) {
