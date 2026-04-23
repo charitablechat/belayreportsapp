@@ -103,4 +103,11 @@ import('@/lib/auth-resilience').then(({ validateAuthStateOnBoot }) => {
 import { initAuthBridge } from '@/lib/auth-bridge';
 initAuthBridge();
 
+// Fix 1.D — one-time storage RLS probe (non-blocking, runs after mount).
+Promise.resolve().then(() => {
+  import('@/lib/storage-rls-probe').then(({ runStorageRlsProbeOnce }) => {
+    runStorageRlsProbeOnce().catch(() => {});
+  }).catch(() => {});
+});
+
 createRoot(document.getElementById("root")!).render(<App />);
