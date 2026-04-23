@@ -22,6 +22,11 @@ import { openDB } from 'idb';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import { OFFLINE_PLACEHOLDER_TOKEN } from '@/lib/synthetic-session-guard';
+import {
+  writeCredentialAtomic,
+  readCredentialResilient,
+  deleteCredentialResilient,
+} from '@/lib/auth-resilience';
 
 const OFFLINE_AUTH_DB = 'offline-auth-store';
 const OFFLINE_AUTH_DB_VERSION = 2; // bumped to add `offline_auth` store
@@ -109,12 +114,16 @@ export async function saveUserMapping(
     });
 
     if (refreshToken) {
-      await db.put('offline_auth', {
+      const entry = {
         email: normalizedEmail,
         userId,
         refreshToken,
         capturedAt: Date.now(),
-      });
+      };
+      await db.put('offline_auth', entry);
+      // Phase 1: mirror to redundant + checksummed slots so a crash or
+      // partial-write that corrupts the legacy entry can still be recovered.
+      writeCredentialAtomic(`offline-auth:${normalizedEmail}`, entry).catch(() => {});
     }
 
     if (import.meta.env.DEV) {
@@ -138,12 +147,39 @@ export async function getStoredUserId(email: string): Promise<string | null> {
 
 /** Look up a captured offline-auth entry (refresh token + userId) for an email. */
 export async function getOfflineAuthEntry(email: string) {
+  const normalizedEmail = email.toLowerCase().trim();
   try {
     const db = await getAuthDB();
-    return (await db.get('offline_auth', email.toLowerCase().trim())) || null;
+    const entry = await db.get('offline_auth', normalizedEmail);
+    if (entry) return entry;
+
+    // Phase 1: legacy entry missing/corrupt — try the resilient mirror.
+    const resilient = await readCredentialResilient<{
+      email: string;
+      userId: string;
+      refreshToken: string;
+      capturedAt: number;
+    }>(`offline-auth:${normalizedEmail}`);
+    if (resilient.ok && resilient.value) {
+      // Self-heal the legacy store so subsequent reads are fast.
+      try { await db.put('offline_auth', resilient.value); } catch { /* ignore */ }
+      return resilient.value;
+    }
+    return null;
   } catch (error) {
     console.warn('[OfflineAuth] Failed to read offline_auth entry:', error);
-    return null;
+    // Last-resort: try the resilient mirror even if the legacy DB is broken.
+    try {
+      const resilient = await readCredentialResilient<{
+        email: string;
+        userId: string;
+        refreshToken: string;
+        capturedAt: number;
+      }>(`offline-auth:${normalizedEmail}`);
+      return resilient.ok ? resilient.value : null;
+    } catch {
+      return null;
+    }
   }
 }
 
@@ -208,12 +244,15 @@ export async function createOfflineSession(email: string, _password: string): Pr
  * or after an explicit online sign-out).
  */
 export async function deleteOfflineAuthEntry(email: string): Promise<void> {
+  const normalizedEmail = email.toLowerCase().trim();
   try {
     const db = await getAuthDB();
-    await db.delete('offline_auth', email.toLowerCase().trim());
+    await db.delete('offline_auth', normalizedEmail);
   } catch (error) {
     console.warn('[OfflineAuth] Failed to delete offline_auth entry:', error);
   }
+  // Phase 1: also clear the redundant slots so a stale token can't be revived.
+  deleteCredentialResilient(`offline-auth:${normalizedEmail}`).catch(() => {});
 }
 
 /** Read the synthetic session (or null) from the dedicated slot. */

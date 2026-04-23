@@ -13,6 +13,7 @@ const ropeWorksLogo = "/rope-works-logo.avif";
 import authVideo from "@/assets/auth-background.mp4";
 import { hasCachedSessionForOffline } from "@/lib/cached-auth";
 import { createOfflineSession } from "@/lib/offline-auth";
+import { isCredentialsDamaged, clearCredentialsDamagedFlag } from "@/lib/auth-resilience";
 import { triggerHaptic } from "@/lib/haptics";
 import { toast } from "sonner";
 
@@ -48,6 +49,7 @@ export default function Auth() {
   const [showPassword, setShowPassword] = useState(false);
   const [isForgotPassword, setIsForgotPassword] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [credentialsDamaged] = useState<boolean>(() => isCredentialsDamaged());
 
   const handleGoToDashboard = () => {
     navigate("/dashboard");
@@ -85,6 +87,9 @@ export default function Auth() {
       });
 
       if (error) throw error;
+
+      // Successful online sign-in clears any prior "damaged" warning.
+      if (credentialsDamaged) clearCredentialsDamagedFlag();
 
       // C4: capture refresh token for future offline sign-ins.
       if (data.session?.user?.email && data.session?.refresh_token) {
@@ -166,6 +171,15 @@ export default function Auth() {
           </CardDescription>
         </CardHeader>
         <CardContent>
+          {credentialsDamaged && (
+            <Alert className="mb-4 border-destructive/50 bg-destructive/10">
+              <AlertDescription className="text-sm text-destructive">
+                <span className="font-semibold">Offline credentials damaged.</span>{" "}
+                Your saved offline sign-in data could not be verified. Please
+                connect to the internet and sign in again to restore offline access.
+              </AlertDescription>
+            </Alert>
+          )}
           {error && (
             <Alert className="mb-4 border-destructive/50 bg-destructive/10">
               <AlertDescription className="text-sm text-destructive">

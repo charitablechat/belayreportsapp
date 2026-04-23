@@ -70,4 +70,15 @@ if (typeof localStorage !== 'undefined' && !localStorage.getItem(PHOTO_RETRY_RES
   }).catch(() => {});
 }
 
+// Phase 1 — auth resilience: validate stored credential slots and discard
+// any half-written `.tmp` rows from a previous crash. Non-blocking; runs in
+// the background so React can mount immediately.
+import('@/lib/auth-resilience').then(({ validateAuthStateOnBoot }) => {
+  validateAuthStateOnBoot().then((result) => {
+    if (import.meta.env.DEV && (result.recovered || !result.ok)) {
+      console.log('[AuthResilience] Boot validation:', result);
+    }
+  }).catch(() => {});
+}).catch(() => {});
+
 createRoot(document.getElementById("root")!).render(<App />);
