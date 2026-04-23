@@ -1849,11 +1849,6 @@ export async function getRelatedDataOfflineWithStatus(
     [] as any[]
   );
   return { items: data || [], readSucceeded: ok };
-    return { items: result || [], readSucceeded: true };
-  } catch (err) {
-    console.warn(`[Offline Storage] getRelatedDataOfflineWithStatus(${type}) failed:`, err);
-    return { items: [], readSucceeded: false };
-  }
 }
 
 export async function clearRelatedDataOffline(
