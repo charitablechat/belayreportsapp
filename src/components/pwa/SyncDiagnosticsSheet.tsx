@@ -109,6 +109,41 @@ export const SyncDiagnosticsSheet = () => {
     if (open) void refresh();
   }, [open]);
 
+  // S39: best-effort resolve organization/title labels for held-back records.
+  useEffect(() => {
+    if (!open || regressionSkipEntries.length === 0) return;
+    let cancelled = false;
+    (async () => {
+      const next: Record<string, string> = {};
+      for (const entry of regressionSkipEntries) {
+        const id = entry.id;
+        try {
+          const ins = await getOfflineInspection(id).catch(() => null);
+          if (ins) {
+            next[id] = (ins as any).organization || (ins as any).location || '';
+            continue;
+          }
+          const trn = await getOfflineTraining(id).catch(() => null);
+          if (trn) {
+            next[id] = (trn as any).organization || '';
+            continue;
+          }
+          const asm = await getOfflineDailyAssessment(id).catch(() => null);
+          if (asm) {
+            next[id] = (asm as any).organization || (asm as any).site || '';
+            continue;
+          }
+        } catch {
+          /* ignore */
+        }
+      }
+      if (!cancelled) setHeldBackLabels(next);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [open, regressionSkipEntries]);
+
   const caps = getMobileCapabilities();
 
   return (
