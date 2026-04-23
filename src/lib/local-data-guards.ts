@@ -6,13 +6,20 @@
  * dashboard cache write (`shouldPreserveLocalRecord`), and the unsynced-counts
  * query in `offline-storage.ts`. When those answers disagree, you get phantom
  * "X pending" badges that never clear AND stale local copies overriding fresh
- * server payloads. Unifying on 5s eliminates both failure modes.
+ * server payloads. Unifying on a single value eliminates both failure modes.
  *
- * 5 seconds comfortably absorbs Postgres-trigger / network / clock-skew jitter
- * without masking real edits (which always produce drift in the tens of seconds
- * or more).
+ * Why 30 seconds (raised from 5s in S14): on slow mobile networks the gap
+ * between local `updated_at = clientNow()` and the server-side `synced_at`
+ * (set when the round-trip lands) routinely exceeded 5s, causing the
+ * "sync keeps showing 1 pending" symptom — the record was re-flagged as dirty
+ * immediately after a successful upload and re-uploaded next cycle. 30s
+ * comfortably covers slow-3G round-trips, push-notification-deferred wakes,
+ * and Postgres-trigger jitter. Real user edits virtually always produce drift
+ * in the minute-plus range, so masking risk is negligible. Part B of S14 also
+ * anchors local `updated_at` to the server response, so post-sync drift is
+ * effectively zero — this 30s window only protects the brief observation gap.
  */
-export const SYNC_DRIFT_TOLERANCE_MS = 5000;
+export const SYNC_DRIFT_TOLERANCE_MS = 30_000;
 
 /**
  * Determines whether local (IndexedDB) data should take priority over server data.
