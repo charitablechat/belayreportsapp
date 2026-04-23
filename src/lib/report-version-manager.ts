@@ -37,9 +37,6 @@ const RECENT_WINDOW_MS = 24 * 60 * 60 * 1000;
 const KEYFRAME_RETENTION_DAYS = 30;
 const MAX_VERSIONS_PER_REPORT = 100;
 
-// In-memory monotonic counter per report — eliminates async read-before-write race
-const versionCounters = new Map<string, number>();
-
 /**
  * Count non-empty fields across parent + children for integrity checking
  */

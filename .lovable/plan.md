@@ -1,36 +1,27 @@
-## H6: Expand version-history retention
+## H8: Make version numbering atomic across tabs
 
-**Problem:** `MAX_VERSIONS_PER_REPORT = 5` in `src/lib/report-version-manager.ts` makes the immutable version ring fill in well under a minute given typical auto-save cadence. Any data-loss spanning more than ~5 saves is unrecoverable. The docstring even claims "last 10 per report" — code and docs disagree.
+**Problem:** `versionCounters` in `src/lib/report-version-manager.ts` is a per-tab in-memory `Map`. With the same report open in two tabs, both seed from IDB, both compute the same `nextVersion`, and both write rows with identical `versionNumber`. The rows survive (UUID keys), but the UI shows duplicate "v4" entries and "Restore v4" becomes ambiguous.
 
 ## Fix
 
-Switch from a fixed-count ring to a **hybrid time-windowed + count-capped** retention policy that keeps recovery useful across a real working day while still bounding storage growth (snapshots already strip `latest_report_html`, so each entry is small).
+Drop the in-memory counter and assign `versionNumber` inside the same `readwrite` transaction that writes the new row. IDB transactions serialize within an origin across tabs, so a read-then-write inside one `readwrite` tx is atomic against any other tab doing the same.
 
-**Policy:**
-- Keep **all versions from the last 24 hours**, regardless of count.
-- Beyond 24h, keep **one keyframe per day for the last 30 days** (the newest version of each day).
-- Hard ceiling of **100 versions per report** as a safety cap (in case a runaway loop creates thousands in a day).
+### Changes — `src/lib/report-version-manager.ts`
 
-**Storage impact:** A heavy day of editing might leave ~50–80 versions; older days collapse to 1/day. Worst case ~100 small JSON snapshots per report — well within IDB budget given the existing `pruneAllVersionsToMax` pressure-relief path.
+1. **Remove** the module-level `versionCounters` Map and all reads/writes to it.
+2. **Rewrite** the version-assignment block in `appendVersion`:
+   - Open a single `readwrite` transaction on `report_versions`.
+   - Inside it, call `index('by-report').getAll(reportId)` (or iterate the index with a cursor in reverse for efficiency) to find the current max `versionNumber`.
+   - Compute `nextVersion = max + 1`.
+   - `put` the new version row in the same transaction.
+   - `await tx.done`.
+3. Keep everything else (HTML stripping, prune call, dev logging) unchanged.
 
-## Changes
+### Why this works
 
-### `src/lib/report-version-manager.ts`
-1. Replace `MAX_VERSIONS_PER_REPORT = 5` with three constants:
-   - `RECENT_WINDOW_MS = 24 * 60 * 60 * 1000`
-   - `KEYFRAME_RETENTION_DAYS = 30`
-   - `MAX_VERSIONS_PER_REPORT = 100` (hard ceiling)
-2. Rewrite `pruneVersions(reportId)` to apply the hybrid policy:
-   - Partition versions by `timestamp` into `recent` (within 24h) and `older`.
-   - Group `older` by local-date (`YYYY-MM-DD`); keep only the highest-versionNumber entry per day.
-   - Drop any keyframe whose day is older than `KEYFRAME_RETENTION_DAYS`.
-   - If the resulting set still exceeds `MAX_VERSIONS_PER_REPORT`, drop oldest keyframes first (recent window is sacrosanct).
-3. Update the file's top-of-file docstring to describe the new policy accurately.
-4. Leave `pruneAllVersionsToMax(maxVersions)` unchanged — storage-pressure manager continues to force a tighter cap when needed.
+`indexedDB` guarantees that two `readwrite` transactions on the same object store run serially. Tab A's read+write completes before Tab B's transaction starts, so Tab B sees A's row when computing its own max. No collisions, no extra coordination layer (BroadcastChannel, locks) needed.
 
-### `src/components/admin/VersionHistoryPanel.tsx`
-- No functional changes required; the panel already renders whatever versions exist, sorted newest-first. Older entries will naturally appear as one-per-day after pruning.
+### Verification
 
-## Verification
-- `npx tsc --noEmit` after edits.
-- Manual: open a report, save 6+ times, confirm Version History panel shows all of them (not capped at 5).
+- `npx tsc --noEmit`.
+- Manual: open the same report in two browser tabs, save in both rapidly, confirm Version History shows distinct sequential version numbers (no duplicate "vN").
