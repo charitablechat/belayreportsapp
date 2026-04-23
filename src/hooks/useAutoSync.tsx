@@ -667,6 +667,18 @@ export const useAutoSync = () => {
       queryClient.invalidateQueries({ queryKey: ['daily-assessments'] });
     }
     
+    // S6: per-record self-write suppression — if this Realtime event was emitted by
+    // our own recent transaction or align_synced_at write, skip the sync re-trigger
+    // entirely. IDB persist + query invalidation above still ran (it's a no-op for
+    // self-writes since shouldPreserveLocalRecord short-circuits).
+    const recordId = payload?.new?.id || payload?.old?.id;
+    if (recordId && isRecentSelfWrite(recordId)) {
+      if (import.meta.env.DEV) {
+        console.log('[AutoSync] Skipping Realtime-triggered sync (self-write suppression)', { recordId });
+      }
+      return;
+    }
+
     // Only trigger sync if we're NOT currently syncing -- prevents the loop where
     // align_synced_at RPC fires a Realtime UPDATE that re-triggers sync
     if (!syncInProgressRef.current) {
