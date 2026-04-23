@@ -144,7 +144,43 @@ export function getAdaptiveBatchSize(): number { return currentBatchSize; }
  * tab refresh / PWA wake / SW restart. The helpers there maintain an in-memory
  * hot cache; we just call them directly.
  */
-const MAX_REGRESSION_SKIPS = 3;
+export const MAX_REGRESSION_SKIPS = 3;
+
+/**
+ * S39: Notify the in-app notification center the first time a record is blocked
+ * by the regression guard, and dispatch a `sync-records-updated` event so any
+ * subscribed UI (SyncDiagnosticsSheet, SyncPulse via useUnsyncedPhotos) can
+ * refresh its held-back list. Best-effort — never throws into sync hot path.
+ */
+function notifyRegressionBlock(
+  kind: 'inspection' | 'training' | 'assessment',
+  recordId: string,
+  label: string,
+  skipCount: number,
+): void {
+  try {
+    window.dispatchEvent(new CustomEvent('sync-records-updated'));
+  } catch {
+    /* ignore */
+  }
+  if (skipCount !== 1) return; // only on first block in a chain
+  void import('./notification-center')
+    .then(({ addWarningNotification }) => {
+      const safeLabel = label?.trim() || `${kind} ${recordId.substring(0, 8)}`;
+      addWarningNotification(
+        `Sync paused: ${safeLabel} — large drop in data detected (auto-resumes after ${MAX_REGRESSION_SKIPS} cycles)`,
+      );
+    })
+    .catch(() => {});
+}
+
+function notifyRegressionRelease(): void {
+  try {
+    window.dispatchEvent(new CustomEvent('sync-records-updated'));
+  } catch {
+    /* ignore */
+  }
+}
 
 /**
  * Interface for record status returned by check_record_status RPC
