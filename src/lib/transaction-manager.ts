@@ -108,7 +108,7 @@ export async function executeTransaction(
         case 'insert':
           // Support both single item and batch insert (arrays)
           result = await withStepTimeout(
-            (supabase as any).from(step.table).insert(step.data).select('id').abortSignal(signal as any),
+            maybeAbort((supabase as any).from(step.table).insert(step.data).select('id'), signal),
             `insert:${step.table}`,
             signal
           );
@@ -116,7 +116,7 @@ export async function executeTransaction(
           
         case 'update':
           result = await withStepTimeout(
-            (supabase as any).from(step.table).update(step.data).match(step.filter).select('id').abortSignal(signal as any),
+            maybeAbort((supabase as any).from(step.table).update(step.data).match(step.filter).select('id'), signal),
             `update:${step.table}`,
             signal
           );
@@ -124,7 +124,7 @@ export async function executeTransaction(
           
         case 'upsert':
           result = await withStepTimeout(
-            (supabase as any).from(step.table).upsert(step.data).select('id').abortSignal(signal as any),
+            maybeAbort((supabase as any).from(step.table).upsert(step.data).select('id'), signal),
             `upsert:${step.table}`,
             signal
           );
@@ -141,11 +141,10 @@ export async function executeTransaction(
             const fkCol = step.filter ? Object.keys(step.filter)[0] : null;
             const fkVal = fkCol ? step.filter[fkCol] : null;
             if (fkCol && fkVal) {
-              const { data: targetRows } = await (supabase as any)
-                .from(step.table)
-                .select('id')
-                .match(step.filter)
-                .abortSignal(signal as any);
+              const { data: targetRows } = await maybeAbort(
+                (supabase as any).from(step.table).select('id').match(step.filter),
+                signal
+              );
               const targetIds = (targetRows || []).map((r: any) => r.id);
               if (targetIds.length > 0) {
                 const tw = await assertSafeToDeleteChildRows({
@@ -164,7 +163,7 @@ export async function executeTransaction(
             }
           }
           result = await withStepTimeout(
-            (supabase as any).from(step.table).delete().match(step.filter).abortSignal(signal as any),
+            maybeAbort((supabase as any).from(step.table).delete().match(step.filter), signal),
             `delete:${step.table}`,
             signal
           );
