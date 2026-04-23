@@ -244,6 +244,43 @@ function notifyRegressionRelease(): void {
 }
 
 /**
+ * C2: Record an empty-local-guard conflict and, on first detection, surface a
+ * user-visible warning so the user can resolve it from SyncDiagnosticsSheet.
+ * Best-effort — never throws into the sync hot path.
+ */
+function recordEmptyLocalConflictAndNotify(
+  reportType: EmptyLocalReportType,
+  recordId: string,
+  serverCounts: Record<string, number>,
+  organizationLabel: string | undefined,
+): void {
+  void recordEmptyLocalConflict({
+    id: recordId,
+    reportType,
+    detectedAt: Date.now(),
+    serverCounts,
+    organizationLabel,
+  }).catch(() => {});
+
+  try {
+    window.dispatchEvent(new CustomEvent('sync-records-updated'));
+  } catch {
+    /* ignore */
+  }
+
+  if (!shouldNotifyForEmptyLocalConflict(recordId)) return;
+  void import('./notification-center')
+    .then(({ addWarningNotification }) => {
+      const safeLabel =
+        organizationLabel?.trim() || `${reportType} ${recordId.substring(0, 8)}`;
+      addWarningNotification(
+        `Sync paused: ${safeLabel} — local cache is empty but server has data. Open Sync Diagnostics to resolve.`,
+      );
+    })
+    .catch(() => {});
+}
+
+/**
  * Interface for record status returned by check_record_status RPC
  * Used to bypass RLS and check if a record was soft-deleted
  */
