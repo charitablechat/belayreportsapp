@@ -1,74 +1,119 @@
-## H1 — Stop orphan-cleanup from silently deleting local records past the 500-row display cap
+## H3 — Stop the global Realtime handler from clobbering a form that's currently editing the record
 
 ### Finding
 
-`src/pages/Dashboard.tsx` fetches at most 500 rows from the server for each of the three report types (inspections at line 684, trainings at line 864, daily assessments at line 1027). Each of those code paths then derives `serverIds = new Set(networkData.map(...))` and treats *any* local IDB record not in that set as an orphan to delete (gated only by a 60s "recently modified" / 5min "recently created" grace window).
+`useAutoSync.tsx` ~lines 804–840: the global Realtime subscription writes `payload.new` into IDB via `saveInspectionOffline(enriched)` (and the training/assessment equivalents), gated only by `shouldPreserveLocalRecord(record)`. That guard compares the *server* timestamp against the *IDB* timestamp — but in-flight React form state hasn't been written to IDB yet (autosave is debounced 1500 ms). So if User A is mid-keystroke on inspection X and User B (or A on another device) saves X, the Realtime UPDATE arrives, IDB silently swaps to B's row, A's next 1500 ms autosave writes A's React state on top of B's IDB row, and the reconcile/empty-local-guard pipeline downstream sees a parent/child timestamp mismatch and ends up clobbering one side's edits.
 
-For a super-admin viewing an org with >500 records, the 501st-Nth records always fall off the page. Once they're older than the grace window, every dashboard load that runs orphan cleanup deletes them locally — including any with unsynced edits. Symptom: "my edits from last night are gone" on super-admin / power-user devices.
+The form-level subscriptions in `InspectionForm.tsx` / `TrainingForm.tsx` / `DailyAssessmentForm.tsx` already correctly suppress reload when `hasUnsavedRef.current` is true — but the global IDB writer in `useAutoSync` has no equivalent gate. That's the gap.
 
-The 500-cap exists for *render* performance, not for correctness of the orphan reconciliation. Conflating "what we display" with "what exists on the server" is the bug.
+### Fix — active-form registry consulted by the global Realtime IDB writer
 
-### Fix — separate the orphan-id source from the display query
+1. **Add an in-memory active-form registry** in `src/lib/sync-events.ts` (it already hosts the self-write registry and remote-deleted bus, so it's the natural home):
 
-Inside each `runOrphanCleanup` block (inspections / trainings / daily assessments), before computing `serverIds`, run a second lightweight query against the same table that returns **only `id`** (and `inspector_id` for the non-super-admin owner filter) with **no `.limit()`** — Postgres + Supabase will happily return tens of thousands of UUIDs in a single request, and over the wire it's ~40 bytes per row.
+   ```ts
+   // H3: forms register the (table, id) they are currently mounted-and-editing.
+   // The global Realtime IDB writer in useAutoSync skips overwriting a record
+   // that is in this set, since the form has unsaved React state that is not
+   // yet flushed to IDB and an IDB swap would be silently clobbered on the
+   // next debounced autosave.
+   type ActiveFormTable = 'inspections' | 'trainings' | 'daily_assessments';
+   const activeFormRecords = new Map<string, ActiveFormTable>(); // id -> table
 
-Then build `serverIds` from that exhaustive id-set instead of from `networkData`. The 500-row display query stays exactly as-is.
+   export function registerActiveFormRecord(table, id) { ... }
+   export function unregisterActiveFormRecord(id) { ... }
+   export function isActiveFormRecord(table, id): boolean { ... }
+   ```
 
-Skeleton (one block per report type):
+   Plus a parallel `pendingRemoteUpdates` bus so the form can show a "Updates available — reload" banner when the writer skipped an overwrite:
 
-```ts
-// Inside runOrphanCleanup, replace:
-//   const serverIds = new Set(networkData.map((i: any) => i.id));
-// with:
+   ```ts
+   export interface PendingRemoteUpdate {
+     table: ActiveFormTable;
+     recordId: string;
+     remoteUpdatedAt: string;
+   }
+   export function emitPendingRemoteUpdate(p: PendingRemoteUpdate): void { ... }
+   export function onPendingRemoteUpdate(cb): () => void { ... }
+   ```
 
-let exhaustiveServerIds: Set<string> | null = null;
-try {
-  const idQuery = supabase
-    .from('inspections')
-    .select('id')
-    .is('deleted_at', null);
-  // Match the visibility scope of the display query — super-admins see all,
-  // others see only their own (mirrors existing display-query filters above).
-  if (!isSuperAdmin) idQuery.eq('inspector_id', userId);
-  const { data: idRows, error: idErr } = await idQuery;
-  if (idErr) throw idErr;
-  exhaustiveServerIds = new Set((idRows || []).map(r => r.id));
-} catch (e) {
-  console.warn('[Dashboard] Orphan id-fetch failed — skipping cleanup this cycle', e);
-  return; // Bail out of cleanup; never delete on incomplete server view.
-}
+2. **Gate the IDB writer in `useAutoSync.handleRemoteChange`** (~line 814):
 
-// Then use exhaustiveServerIds where networkData-derived serverIds was used.
-```
+   ```ts
+   const persistToIDB = async () => {
+     try {
+       // H3: if the form for this record is currently mounted and editing,
+       // skip the IDB overwrite. The form holds the truth in React state;
+       // an IDB swap here would be silently clobbered by the next debounced
+       // autosave and trigger downstream parent/child timestamp mismatches.
+       if (isActiveFormRecord(payload.table, record.id)) {
+         emitPendingRemoteUpdate({
+           table: payload.table,
+           recordId: record.id,
+           remoteUpdatedAt: record.updated_at,
+         });
+         return;
+       }
+       if (shouldPreserveLocalRecord(record)) return;
+       // ... existing enriched save ...
+     } catch (e) { ... }
+   };
+   ```
 
-Two additional safety belts (cheap to add at the same time):
+   Note: still allow `scheduleFullRefetch` and the queryClient invalidation to run as today — those refresh the in-memory dashboard list (which doesn't touch the form's React state) and will re-arm IDB the moment the form unregisters.
 
-1. **Hard guard on empty id-set:** if the id query somehow returns an empty array but `nonTempLocals.length > 0`, skip cleanup. This catches a transient RLS / network glitch that would otherwise nuke every local row.
-2. **Sanity guard on huge negative deltas:** keep the existing 50% / >5 rows guard, but apply it against `exhaustiveServerIds.size` instead of `networkData.length`. With the new exhaustive count this guard becomes mostly a no-op for legitimate cases, which is the goal.
+3. **Register/unregister in the three forms** — one effect each in `InspectionForm.tsx`, `TrainingForm.tsx`, `DailyAssessmentForm.tsx`:
+
+   ```ts
+   useEffect(() => {
+     if (!id || id.startsWith('temp-')) return;
+     registerActiveFormRecord('inspections', id);
+     return () => unregisterActiveFormRecord(id);
+   }, [id]);
+   ```
+
+   Place adjacent to the existing form-level Realtime subscription effect so the lifecycles match exactly. Temp-id records are excluded — they aren't in the server yet, so cross-device Realtime can't target them.
+
+4. **Surface the deferred update in the form** — extend the existing form-level Realtime effect to also subscribe to `onPendingRemoteUpdate` for this `id`. When fired *and* `hasUnsavedRef.current` is true, set a small `pendingRemoteUpdate` state. Render the existing "Remote update detected" banner pattern (already used by `CollaboratorPresence`) with two actions:
+   - **Reload from server** — calls the existing `loadInspection()` / equivalent (will discard local React edits; the user explicitly chose this).
+   - **Keep my changes** — clears the banner; next autosave proceeds normally; field-merge on the next sync (per the existing silent-merge memory) handles per-field reconciliation.
+
+   If the user has no unsaved changes when the pending update arrives, fall through to the form's existing reload path immediately (matches today's behavior).
+
+5. **Cleanup edge cases:**
+   - Form unmounts → `unregisterActiveFormRecord` runs in cleanup → next Realtime event writes IDB normally.
+   - User saves and the form is still mounted → after the save flushes IDB, the form stays registered; that's correct, because the form still holds React state and a Realtime event from another device is still ambiguous. The pending-update banner is the right UX.
+   - HMR / fast refresh in dev → registry is module-scoped; cleanup runs in StrictMode double-mount. Harmless.
 
 ### Files changed
 
-- **`src/pages/Dashboard.tsx`** — three near-identical edits, one per report type (`loadInspections`, `loadTrainingReports`, `loadDailyAssessments`). Each replaces the `serverIds = new Set(networkData...)` line with the exhaustive id-fetch above and updates the existing safety guard to use the exhaustive count.
+- **`src/lib/sync-events.ts`** — add `registerActiveFormRecord` / `unregisterActiveFormRecord` / `isActiveFormRecord` and the `pendingRemoteUpdate` bus.
+- **`src/hooks/useAutoSync.tsx`** — consult `isActiveFormRecord` in `handleRemoteChange`'s `persistToIDB`, emit `pendingRemoteUpdate` when skipping.
+- **`src/pages/InspectionForm.tsx`** — register on mount with `id`; add `onPendingRemoteUpdate` subscription + banner.
+- **`src/pages/TrainingForm.tsx`** — same.
+- **`src/pages/DailyAssessmentForm.tsx`** — same.
 
-No other files need changes. The display query, the `.limit(500)`, the cooldown, the deletedOrphans recovery log, and the recency grace windows all stay untouched.
+No new components needed; reuse the existing inline banner pattern that the form-level Realtime subscription already uses for the "remote-detected, no unsaved" reload path.
 
-### Edge cases
+### Why this is safe
 
-- **Offline / network failure during the id-fetch:** caught by the `try/catch`; we return without deleting. Display data already rendered is unaffected.
-- **Filtered views (non-super-admin):** the id query mirrors the same visibility filter the display query uses (`inspector_id = userId`), so a regular user only ever orphan-cleans their own records — same as today.
-- **Soft-deleted records:** `.is('deleted_at', null)` matches the display query, so a soft-deleted-on-server record will be absent from `exhaustiveServerIds` and cleanup will treat it as an orphan locally — same behavior as today, and correct (the C9 quarantine path handles the "unsynced edits + remote-delete" case independently in the sync manager, not here).
-- **Very large orgs (10k+ records):** `select id` over 10k rows is well under 500 KB. Acceptable.
-- **Cooldown:** the existing 1-hour cooldown still applies, so the second query only fires at most once per hour per report type.
+- The change is *more conservative* than today: today we always overwrite IDB; after the fix we sometimes skip.
+- The gate is precise (`isActiveFormRecord(table, id)`) — it doesn't suppress overwrites for other records on other tabs or for records the user isn't actively editing.
+- The skip path still emits a pending-update event, so the user is never silently denied the remote change. If the form is unmounted before the user reacts, the next sync cycle (or the next form open) reconciles via the existing per-field merge.
+- No interaction with C8/C9: those operate inside the sync transaction; this change only gates the side-effect IDB writer in the cross-device Realtime listener.
+
+### Out of scope
+
+- A multi-device "live" co-editing view (operational transform / CRDT). The existing field-level merge and the new banner are sufficient.
+- Realtime gating for child-row events (zipline_name etc.). Those don't have their own Realtime subscriptions today; `scheduleFullRefetch` already debounces and the form-mounted gate above transitively protects them.
 
 ### Risk
 
-Low. Adds one read query per report type per cleanup cycle (≤1/hour). The behavior change is "orphan cleanup now sees the truth instead of the first 500 rows" — strictly safer. Worst-case bug (id-fetch fails) is "cleanup skipped this cycle" → no data loss.
+Low. Two-line gate in the writer, one effect added per form, one new module-scoped Map. Worst-case bug: the registry leaks an id after unmount (StrictMode oddity) → user gets a "pending update" banner they have to dismiss; no data loss.
 
 ### Verification
 
-- DEV scenario A (the bug): seed >500 inspections in the org, log in as super-admin, ensure ~10 of the older local inspections fall off the 500 cap. Open dashboard, wait for cleanup to run. Expect: those local inspections survive (today they're deleted).
-- DEV scenario B (legitimate orphan): create a local inspection, hard-delete it on the server via SQL, wait past the 5-min grace window. Open dashboard. Expect: cleanup removes it locally — same as today.
-- DEV scenario C (id-fetch failure): simulate a network error on the id query (e.g., temporarily offline mid-load). Expect: log line `Orphan id-fetch failed — skipping cleanup`, no local deletions, display data still renders.
-- DEV scenario D (regular user): same as A but as a non-super-admin with a peer's record locally cached. Expect: peer's record is treated as orphan only if it's not in the user's own id-set — i.e., same RLS-respecting behavior as the display query.
-- Repeat A across all three report types.
-- `npx tsc --noEmit`.
+- DEV scenario A (the bug): open inspection X on device 1 in InspectionForm, type 5 characters, then on device 2 (or a second tab) open the same inspection, change a field, save. Expect: device 1 shows a "Remote update available — reload?" banner; device 1's typed characters are still visible in the textarea; device 1's IDB row is unchanged. Today: device 1's IDB row silently swaps to device 2's copy and the next autosave clobbers one side's edits.
+- DEV scenario B (passive viewer): device 1 is on Dashboard (form unmounted); device 2 saves X. Expect: identical to today — IDB updates, dashboard list refreshes.
+- DEV scenario C (form mounted, no unsaved edits): device 1 has the form open but hasn't typed anything; device 2 saves. Expect: form auto-reloads from server (existing path, since `hasUnsavedRef` is false).
+- DEV scenario D (training + daily assessment): repeat A.
+- Regression: `npx tsc --noEmit`; existing form-level realtime subscription behavior is unchanged when no remote events arrive; existing self-write suppression still functions (the active-form gate runs *before* `shouldPreserveLocalRecord` but doesn't interact with `isRecentSelfWrite`).
