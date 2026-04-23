@@ -56,6 +56,7 @@ import {
 import { appendVersion, getLatestFieldCount, calculateFieldCount } from "./report-version-manager";
 import { runWithConcurrency } from "./concurrency";
 import { assertNoTempIds, assertNoTempIdsInArray } from "./sw-sync-validators";
+import { registerSelfWrite } from "./sync-events";
 
 /**
  * Maximum number of items to process per sync cycle.
@@ -651,6 +652,8 @@ export async function syncInspectionAtomic(inspectionId: string, preValidatedUse
     });
     
     // 5. Execute transaction
+    // S6: register self-write so the Realtime handler doesn't re-trigger sync from our own writes
+    registerSelfWrite(inspectionId);
     const result = await executeTransaction(steps);
     
     if (!result.success) {
