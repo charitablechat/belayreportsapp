@@ -392,6 +392,13 @@ export const useAutoSync = () => {
           
            // Hybrid cleanup: prune old synced photo blobs (non-blocking)
            pruneOldSyncedPhotoBlobs().catch(() => {});
+
+           // S13: GC photos stuck on temp-* parents > 30 days (non-blocking).
+           // Covers temp-parents that never sync (validation/RLS failures) so
+           // their blobs don't accumulate forever in IDB.
+           import('@/lib/offline-storage').then(({ evictStuckTempPhotos }) => {
+             evictStuckTempPhotos(30).catch(() => {});
+           }).catch(() => {});
            
            // Storage pressure management (non-blocking)
            import('@/lib/storage-pressure-manager').then(({ manageStoragePressure }) => {
