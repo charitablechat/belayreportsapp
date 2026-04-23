@@ -356,13 +356,15 @@ Deno.serve(async (req) => {
     console.log("[scheduled-backup-notify] Starting photo storage backup...");
     let photoBackupResult: any = null;
     try {
+      // M5: Authenticate via x-webhook-secret instead of leaking the
+      // service-role key in an outbound Authorization header.
       const photoBackupRes = await fetch(
         `${supabaseUrl}/functions/v1/backup-photo-storage`,
         {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
-            "Authorization": `Bearer ${serviceRoleKey}`,
+            "x-webhook-secret": secretRow.key_value,
           },
           body: JSON.stringify({ timestamp }),
         },
@@ -411,13 +413,15 @@ Deno.serve(async (req) => {
     let pdfBackupResult: any = null;
     try {
       console.log("[scheduled-backup-notify] Starting incremental PDF generation...");
+      // M5: Authenticate via x-webhook-secret instead of leaking the
+      // service-role key in an outbound Authorization header.
       const pdfRes = await fetch(
         `${supabaseUrl}/functions/v1/generate-backup-pdfs`,
         {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
-            "Authorization": `Bearer ${serviceRoleKey}`,
+            "x-webhook-secret": secretRow.key_value,
           },
           body: JSON.stringify({ mode: "incremental" }),
         },

@@ -124,9 +124,12 @@ export default function Auth() {
     setLoading(true);
 
     try {
-      // iOS PWA quirk: redirect URLs always open in Safari, not the standalone shell.
-      // Mark the redirect so we can show appropriate guidance after reset.
+      // M18: PWA reset-link quirk affects BOTH iOS and Windows installed PWAs —
+      // the reset link opens in the system browser (Safari / Edge), not the
+      // installed standalone shell. Detect either standalone mode and tag the
+      // redirect so we can surface guidance after reset.
       const isStandalone = window.matchMedia('(display-mode: standalone)').matches
+        || window.matchMedia('(display-mode: window-controls-overlay)').matches
         || (window.navigator as any).standalone === true;
       const redirectTo = `${window.location.origin}/${isStandalone ? '?from=pwa' : ''}`;
       const { error } = await supabase.auth.resetPasswordForEmail(email, {
@@ -134,7 +137,10 @@ export default function Auth() {
       });
 
       if (error) throw error;
-      toast.success("Password reset email sent! Check your inbox.");
+      const successMsg = isStandalone
+        ? "Password reset email sent! Note: the reset link will open in your browser, not the installed app."
+        : "Password reset email sent! Check your inbox.";
+      toast.success(successMsg);
       setIsForgotPassword(false);
     } catch (error: any) {
       console.error("Password reset error:", error);

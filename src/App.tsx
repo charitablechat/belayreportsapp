@@ -95,7 +95,11 @@ const RootLayout = () => {
   // Enable scroll restoration
   useScrollRestoration(true);
   
-  // History exit guard + haptic feedback + depth sync — single popstate listener
+  // History exit guard + haptic feedback + depth sync — single popstate listener.
+  // L8: pushState seeds a sentinel history entry on every router mount so we can
+  // intercept the user's last "Back" press and redirect them to /dashboard
+  // instead of leaving the SPA. This means a deep-linked boot lands the user
+  // one Back away from the landing route — intentional, not a bug.
   useEffect(() => {
     window.history.pushState({ lovableGuard: true }, "");
 
@@ -198,10 +202,15 @@ const router = createBrowserRouter([
       { path: "/profile", element: <RequireAuth><Profile /></RequireAuth> },
       { path: "/onboarding", element: <RequireAuth><Onboarding /></RequireAuth> },
       { path: "/admin", element: <RequireAuth><SuperAdminDashboard /></RequireAuth> },
-      { path: "/base64-converter", element: <RequireAuth><Base64Converter /></RequireAuth> },
-      { path: "/upload-logos", element: <UploadLogos /> },
-      { path: "/upload-logos-storage", element: <UploadLogosToStorage /> },
-      { path: "/admin/logos", element: <AdminLogoManagement /> },
+      // H2/M19 — admin-only utility routes. Components also call useRequireAdmin
+      // for defense-in-depth; the RequireAuth wrapper prevents anonymous access
+      // and the dev-only gate keeps /base64-converter out of production.
+      ...(import.meta.env.DEV
+        ? [{ path: "/base64-converter", element: <RequireAuth><Base64Converter /></RequireAuth> }]
+        : []),
+      { path: "/upload-logos", element: <RequireAuth><UploadLogos /></RequireAuth> },
+      { path: "/upload-logos-storage", element: <RequireAuth><UploadLogosToStorage /></RequireAuth> },
+      { path: "/admin/logos", element: <RequireAuth><AdminLogoManagement /></RequireAuth> },
       { path: "/unsubscribe", element: <Unsubscribe /> },
       { path: "*", element: <NotFound /> },
     ],

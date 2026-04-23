@@ -197,7 +197,9 @@ serve(async (req) => {
     // Fetch logo and convert to base64
     let logoBase64 = '';
     try {
-      const logoResponse = await fetch('https://ssgzcgvygnsrqalisshx.supabase.co/storage/v1/object/public/pdf-templates/rope-works-logo.png');
+      // L4 / PDF logos: derive base URL from env (project-ref rotation safety)
+      const _supabaseUrl = Deno.env.get('SUPABASE_URL') ?? 'https://ssgzcgvygnsrqalisshx.supabase.co';
+      const logoResponse = await fetch(`${_supabaseUrl}/storage/v1/object/public/pdf-templates/rope-works-logo.png`);
       if (logoResponse.ok) {
         const logoBlob = await logoResponse.arrayBuffer();
         const logoArray = new Uint8Array(logoBlob);

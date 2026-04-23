@@ -14,10 +14,12 @@ serve(async (req) => {
 
     console.log('Starting logo initialization...');
 
-    // Fetch logos from public folder in the deployed app
+    // L4: derive base URL from env (project-ref rotation safety) and use the
+    // correct Supabase storage URL shape (/storage/v1/object/public/...).
+    const storageBase = `${supabaseUrl}/storage/v1/object/public/pdf-templates`;
     const publicAssetUrls = [
-      'https://ssgzcgvygnsrqalisshx.supabase.co/pdf-templates/rope-works-logo.png',
-      'https://ssgzcgvygnsrqalisshx.supabase.co/pdf-templates/acct-accredited-vendor.png'
+      `${storageBase}/rope-works-logo.png`,
+      `${storageBase}/acct-accredited-vendor.png`,
     ];
 
     const results = [];
