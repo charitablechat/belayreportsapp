@@ -504,6 +504,22 @@ export const useAutoSync = () => {
               }
             }, drainDelay);
           }
+          } else {
+            // S7: Reports are clean. If photos are still draining, schedule a
+            // photo-only cycle so we don't wait for the next periodic tick.
+            const photoRemaining = results[3]?.remaining || 0;
+            if (photoRemaining > 0) {
+              if (import.meta.env.DEV) {
+                console.log(`[AutoSync] ${photoRemaining} photos remaining - scheduling photo-only drain`);
+              }
+              lastSyncAttemptRef.current = Date.now() - MIN_SYNC_INTERVAL;
+              setTimeout(() => {
+                if (navigator.onLine && !syncInProgressRef.current) {
+                  performSync(true);
+                }
+              }, 0);
+            }
+          }
         } else {
           // All fetches timed out - don't report success, will retry next cycle
           console.warn('[AutoSync] All IndexedDB fetches timed out - not reporting success');
