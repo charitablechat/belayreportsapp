@@ -1673,6 +1673,7 @@ export async function syncTrainingAtomic(trainingId: string, preValidatedUser?: 
 
     // Step 2: RECONCILE then UPSERT child data
     // Delete server rows that were removed locally, then upsert current local data
+    let trainingReconciledDeletes: ReconciledTableDelete[] = [];
     if (recordStatus?.record_exists && !recordStatus?.is_deleted) {
       const pf = (arr: any[]) => (serverUnchangedSinceBaseline ? undefined : arr);
       const reconcileResult = await reconcileAllChildTables(
@@ -1688,6 +1689,8 @@ export async function syncTrainingAtomic(trainingId: string, preValidatedUser?: 
         'training',
         user.id,
       );
+      // C4: capture per-table pre-images for restore-on-failure.
+      trainingReconciledDeletes = reconcileResult.deletedByTable;
       if (reconcileResult.blocked) {
         console.warn('[Atomic Sync] Training reconcile blocked — marking sync as failed so user can retry', {
           trainingId: trainingId.substring(0, 8),
