@@ -2,7 +2,7 @@ import { useState, useEffect } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { useQuery } from "@tanstack/react-query";
-import { getUserWithCache, getAdminCacheKey } from "@/lib/cached-auth";
+import { getUserWithCache, getAdminCacheKey, signOutWithAbort } from "@/lib/cached-auth";
 import { UserProfileDropdown } from "@/components/UserProfileDropdown";
 // UpdateBadge intentionally omitted from header — update affordance lives in the profile dropdown.
 import { usePWA } from "@/hooks/usePWA";
@@ -126,7 +126,7 @@ export function AuthenticatedHeader() {
           toast.dismiss('sign-out-sync');
         }
       }
-      await supabase.auth.signOut();
+      await signOutWithAbort();
     } catch (error) {
       console.error("Error signing out:", error);
     } finally {
