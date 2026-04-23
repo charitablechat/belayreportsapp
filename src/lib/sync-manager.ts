@@ -53,7 +53,7 @@ import { isMobile } from './mobile-detection';
 // 200+ photos take 20+ sync cycles to drain.
 const MAX_PHOTO_BATCH_SIZE = 30;
 
-export async function syncPhotos(): Promise<{ remaining: number }> {
+export async function syncPhotos(): Promise<{ remaining: number; error?: string }> {
   if (!navigator.onLine) {
     if (import.meta.env.DEV) {
       console.log('[Sync Manager] Offline - skipping photo sync');
@@ -66,7 +66,13 @@ export async function syncPhotos(): Promise<{ remaining: number }> {
   }
 
   try {
-    const unuploadedPhotos = await getUnuploadedPhotos();
+    const { isIdbReadFailure } = await import('./offline-storage');
+    const unuploadedPhotosResult = await getUnuploadedPhotos();
+    if (isIdbReadFailure(unuploadedPhotosResult)) {
+      console.warn('[Sync Manager] IDB read failure for unuploaded photos:', unuploadedPhotosResult.error);
+      return { remaining: -1, error: unuploadedPhotosResult.error };
+    }
+    const unuploadedPhotos = unuploadedPhotosResult;
     // Skip photos that have exceeded retry limit
     const eligiblePhotos = unuploadedPhotos.filter(p => (p.retryCount || 0) < MAX_PHOTO_RETRIES);
     const skippedCount = unuploadedPhotos.length - eligiblePhotos.length;

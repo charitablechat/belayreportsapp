@@ -67,15 +67,13 @@ export interface AutoSyncState {
   unsyncedInspections: any[];
   unsyncedTrainings: any[];
   unsyncedAssessments: any[];
+  // S11: surfaces IDB read failures so the badge keeps last-known counts
+  // and the user gets a real error instead of a silent 0.
+  syncError: string | null;
 }
 
 /**
  * Unified hook for fully automatic background synchronization
- * - Debounced sync after local data changes
- * - Immediate sync on network reconnection
- * - Sync on app visibility changes
- * - Periodic polling as fallback
- * - Realtime subscriptions for multi-device sync
  */
 export const useAutoSync = () => {
   const queryClient = useQueryClient();
@@ -83,8 +81,6 @@ export const useAutoSync = () => {
   const isIOSDevice = isIOS();
   const isMobileViewport = useIsMobile();
   
-  // Compute sync interval based on viewport (mobile vs desktop)
-  // Active interval is used when there are unsynced items, idle interval when everything is synced
   const activeSyncInterval = isMobileViewport ? MOBILE_SYNC_INTERVAL : DESKTOP_SYNC_INTERVAL;
   const idleSyncInterval = isMobileViewport ? MOBILE_IDLE_SYNC_INTERVAL : DESKTOP_IDLE_SYNC_INTERVAL;
   
@@ -96,6 +92,7 @@ export const useAutoSync = () => {
     unsyncedInspections: [],
     unsyncedTrainings: [],
     unsyncedAssessments: [],
+    syncError: null,
   });
   
   // Refs for debouncing and preventing duplicate syncs
@@ -550,24 +547,45 @@ export const useAutoSync = () => {
   }, [queryClient, isMobileDevice, isIOSDevice]);
   
   /**
-   * Update unsynced counts from IndexedDB - uses cached auth
+   * Update unsynced counts from IndexedDB.
+   * S11: When the IDB read fails, preserve the last-known counts and surface
+   * a syncError instead of silently zeroing the badge.
    */
   const updateUnsyncedCounts = useCallback(async () => {
     try {
       const user = await getUserWithCache();
       if (!user) return;
       
-      // Use batched read — single IndexedDB transaction instead of 3 separate calls
-      const counts = await getUnsyncedCounts(user.id);
+      const { isIdbReadFailure } = await import('@/lib/offline-storage');
+      const [insp, train, assess] = await Promise.all([
+        getUnsyncedInspections(user.id),
+        getUnsyncedTrainings(user.id),
+        getUnsyncedDailyAssessments(user.id),
+      ]);
       
-      const total = counts.inspections.length + counts.trainings.length + counts.assessments.length;
+      const anyFailed = isIdbReadFailure(insp) || isIdbReadFailure(train) || isIdbReadFailure(assess);
+      if (anyFailed) {
+        const failure = [insp, train, assess].find(isIdbReadFailure) as { error: string } | undefined;
+        console.warn('[AutoSync] IDB read failure during count refresh — preserving last-known count');
+        setState(prev => ({
+          ...prev,
+          syncError: `Local data unreadable — refreshing may help${failure?.error ? ` (${failure.error})` : ''}`,
+        }));
+        return;
+      }
+      
+      const inspections = insp as any[];
+      const trainings = train as any[];
+      const assessments = assess as any[];
+      const total = inspections.length + trainings.length + assessments.length;
       
       setState(prev => ({
         ...prev,
         unsyncedCount: total,
-        unsyncedInspections: counts.inspections,
-        unsyncedTrainings: counts.trainings,
-        unsyncedAssessments: counts.assessments,
+        unsyncedInspections: inspections,
+        unsyncedTrainings: trainings,
+        unsyncedAssessments: assessments,
+        syncError: null,
       }));
       
       if (import.meta.env.DEV && total > 0) {

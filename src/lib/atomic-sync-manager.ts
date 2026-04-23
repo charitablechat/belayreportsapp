@@ -818,33 +818,41 @@ export async function syncAllInspectionsAtomic(preValidatedUser?: CachedUser) {
   }
   
   // Only get unsynced inspections for the current user (with extended timeout for mobile)
-  // Note: getUnsyncedInspections already has internal timeout via withIndexedDBErrorBoundary
-  // The outer timeout here is a safety net for very slow mobile networks
-  // Increased to 15s to avoid racing with inner 5s timeout + 3s health check
+  // Note: getUnsyncedInspections has its own internal timeout via withIndexedDBReadBoundary;
+  // the outer 15s timeout here is a safety net for very slow mobile networks.
+  // S11: getUnsyncedInspections now returns IdbReadFailure on failure (silent [] fallback removed).
   let unsynced: any[];
-  let fetchTimedOut = false;
+  let fetchFailureReason: string | null = null;
   try {
     const timeoutPromise = new Promise<never>((_, reject) => 
       setTimeout(() => reject(new Error('IndexedDB timeout')), 15000)
     );
     
-    unsynced = await Promise.race([
+    const result = await Promise.race([
       getUnsyncedInspections(user.id),
       timeoutPromise
     ]);
+    const { isIdbReadFailure } = await import('./offline-storage');
+    if (isIdbReadFailure(result)) {
+      fetchFailureReason = result.error;
+      unsynced = [];
+    } else {
+      unsynced = result;
+    }
   } catch (e: any) {
     if (e.message === 'IndexedDB timeout') {
       console.warn('[Atomic Sync] IndexedDB timeout getting unsynced inspections - will retry next cycle');
-      fetchTimedOut = true;
+      fetchFailureReason = 'idb_outer_timeout';
     } else {
       console.warn('[Atomic Sync] Failed to get unsynced inspections:', e);
+      fetchFailureReason = e?.message || 'unknown';
     }
     unsynced = [];
   }
   
   // Don't report success if we failed to fetch data (total: -1 signals fetch failure)
-  if (fetchTimedOut) {
-    return { total: -1, success: 0, failed: 0, errors: [{ id: 'indexeddb', error: 'Timeout fetching inspections' }] };
+  if (fetchFailureReason) {
+    return { total: -1, success: 0, failed: 0, errors: [{ id: 'idb_read_failure', error: fetchFailureReason }] };
   }
   
   // Early return for empty batch (consistent with trainings/assessments)
@@ -1640,32 +1648,39 @@ export async function syncAllTrainingsAtomic(preValidatedUser?: CachedUser) {
     return { total: 0, success: 0, failed: 0, errors: [] };
   }
   
-  // Get unsynced trainings with extended timeout for mobile networks
-  // Increased to 15s to avoid racing with inner 5s timeout + 3s health check
+  // S11: getUnsyncedTrainings now returns IdbReadFailure on failure
   let unsynced: any[];
-  let fetchTimedOut = false;
+  let fetchFailureReason: string | null = null;
   try {
     const timeoutPromise = new Promise<never>((_, reject) => 
       setTimeout(() => reject(new Error('IndexedDB timeout')), 15000)
     );
     
-    unsynced = await Promise.race([
+    const result = await Promise.race([
       getUnsyncedTrainings(user.id),
       timeoutPromise
     ]);
+    const { isIdbReadFailure } = await import('./offline-storage');
+    if (isIdbReadFailure(result)) {
+      fetchFailureReason = result.error;
+      unsynced = [];
+    } else {
+      unsynced = result;
+    }
   } catch (e: any) {
     if (e.message === 'IndexedDB timeout') {
       console.warn('[Atomic Sync] IndexedDB timeout getting unsynced trainings - will retry next cycle');
-      fetchTimedOut = true;
+      fetchFailureReason = 'idb_outer_timeout';
     } else {
       console.warn('[Atomic Sync] Failed to get unsynced trainings:', e);
+      fetchFailureReason = e?.message || 'unknown';
     }
     unsynced = [];
   }
   
   // Don't report success if we failed to fetch data (total: -1 signals fetch failure)
-  if (fetchTimedOut) {
-    return { total: -1, success: 0, failed: 0, errors: [{ id: 'indexeddb', error: 'Timeout fetching trainings' }] };
+  if (fetchFailureReason) {
+    return { total: -1, success: 0, failed: 0, errors: [{ id: 'idb_read_failure', error: fetchFailureReason }] };
   }
   
   if (unsynced.length === 0) {
@@ -2390,32 +2405,38 @@ export async function syncAllDailyAssessmentsAtomic(preValidatedUser?: CachedUse
     return { total: 0, success: 0, failed: 0, errors: [] };
   }
   
-  // Get unsynced assessments with extended timeout for mobile networks
-  // Increased to 15s to avoid racing with inner 5s timeout + 3s health check
+  // S11: getUnsyncedDailyAssessments now returns IdbReadFailure on failure
   let unsynced: any[];
-  let fetchTimedOut = false;
+  let fetchFailureReason: string | null = null;
   try {
     const timeoutPromise = new Promise<never>((_, reject) => 
       setTimeout(() => reject(new Error('IndexedDB timeout')), 15000)
     );
     
-    unsynced = await Promise.race([
+    const result = await Promise.race([
       getUnsyncedDailyAssessments(user.id),
       timeoutPromise
     ]);
+    const { isIdbReadFailure } = await import('./offline-storage');
+    if (isIdbReadFailure(result)) {
+      fetchFailureReason = result.error;
+      unsynced = [];
+    } else {
+      unsynced = result;
+    }
   } catch (e: any) {
     if (e.message === 'IndexedDB timeout') {
       console.warn('[Atomic Sync] IndexedDB timeout getting unsynced assessments - will retry next cycle');
-      fetchTimedOut = true;
+      fetchFailureReason = 'idb_outer_timeout';
     } else {
       console.warn('[Atomic Sync] Failed to get unsynced assessments:', e);
+      fetchFailureReason = e?.message || 'unknown';
     }
     unsynced = [];
   }
   
-  // Don't report success if we failed to fetch data (total: -1 signals fetch failure)
-  if (fetchTimedOut) {
-    return { total: -1, success: 0, failed: 0, errors: [{ id: 'indexeddb', error: 'Timeout fetching assessments' }] };
+  if (fetchFailureReason) {
+    return { total: -1, success: 0, failed: 0, errors: [{ id: 'idb_read_failure', error: fetchFailureReason }] };
   }
   
   if (unsynced.length === 0) {
@@ -2516,11 +2537,106 @@ export async function syncAllDailyAssessmentsAtomic(preValidatedUser?: CachedUse
     failed: failCount,
   });
   
-  return {
-    total: totalUnsynced,
-    success: successCount,
-    failed: failCount,
-    remaining,
-    errors,
-  };
+}
+
+// ============================================================================
+// S12: Full-package refetch helpers.
+// When a parent-row Realtime event survives shouldPreserveLocalRecord, we
+// schedule a single round-trip that pulls parent + all child collections from
+// the server and writes the package atomically into IDB. This keeps cross-
+// device child-row edits in sync without subscribing to every child table.
+// Self-write registration suppresses the resulting Realtime echo (S6).
+// ============================================================================
+
+async function fetchAllRows(table: string, parentColumn: string, parentId: string): Promise<any[]> {
+  const { data, error } = await (supabase.from(table as any) as any)
+    .select('*')
+    .eq(parentColumn, parentId);
+  if (error) throw error;
+  return (data as any[]) || [];
+}
+
+export async function refetchInspectionPackage(inspectionId: string): Promise<void> {
+  if (!navigator.onLine) return;
+  try {
+    const [{ data: inspection, error }, systems, ziplines, equipment, standards, summaryRows] = await Promise.all([
+      supabase.from('inspections').select('*').eq('id', inspectionId).maybeSingle(),
+      fetchAllRows('inspection_systems', 'inspection_id', inspectionId),
+      fetchAllRows('inspection_ziplines', 'inspection_id', inspectionId),
+      fetchAllRows('inspection_equipment', 'inspection_id', inspectionId),
+      fetchAllRows('inspection_standards', 'inspection_id', inspectionId),
+      fetchAllRows('inspection_summary', 'inspection_id', inspectionId),
+    ]);
+    if (error || !inspection) return;
+    registerSelfWrite(inspectionId);
+    await saveInspectionOffline({ ...inspection, synced_at: inspection.updated_at });
+    await Promise.all([
+      clearRelatedDataOffline('systems', inspectionId).then(() => systems.length > 0 ? saveRelatedDataOffline('systems', inspectionId, systems) : null),
+      clearRelatedDataOffline('ziplines', inspectionId).then(() => ziplines.length > 0 ? saveRelatedDataOffline('ziplines', inspectionId, ziplines) : null),
+      clearRelatedDataOffline('equipment', inspectionId).then(() => equipment.length > 0 ? saveRelatedDataOffline('equipment', inspectionId, equipment) : null),
+      clearRelatedDataOffline('standards', inspectionId).then(() => standards.length > 0 ? saveRelatedDataOffline('standards', inspectionId, standards) : null),
+      clearRelatedDataOffline('summary', inspectionId).then(() => summaryRows.length > 0 ? saveRelatedDataOffline('summary', inspectionId, summaryRows) : null),
+    ]);
+    if (import.meta.env.DEV) console.log('[Atomic Sync] Refetched inspection package:', inspectionId);
+  } catch (e) {
+    console.warn('[Atomic Sync] refetchInspectionPackage failed (non-fatal):', e);
+  }
+}
+
+export async function refetchTrainingPackage(trainingId: string): Promise<void> {
+  if (!navigator.onLine) return;
+  try {
+    const [{ data: training, error }, da, os, ia, vi, sip, summary] = await Promise.all([
+      supabase.from('trainings').select('*').eq('id', trainingId).maybeSingle(),
+      fetchAllRows('training_delivery_approaches', 'training_id', trainingId),
+      fetchAllRows('training_operating_systems', 'training_id', trainingId),
+      fetchAllRows('training_immediate_attention', 'training_id', trainingId),
+      fetchAllRows('training_verifiable_items', 'training_id', trainingId),
+      fetchAllRows('training_systems_in_place', 'training_id', trainingId),
+      fetchAllRows('training_summary', 'training_id', trainingId),
+    ]);
+    if (error || !training) return;
+    registerSelfWrite(trainingId);
+    await saveTrainingOffline({ ...training, synced_at: training.updated_at });
+    await Promise.all([
+      clearTrainingDataOffline('delivery_approaches', trainingId).then(() => da.length > 0 ? saveTrainingDataOffline('delivery_approaches', trainingId, da) : null),
+      clearTrainingDataOffline('operating_systems', trainingId).then(() => os.length > 0 ? saveTrainingDataOffline('operating_systems', trainingId, os) : null),
+      clearTrainingDataOffline('immediate_attention', trainingId).then(() => ia.length > 0 ? saveTrainingDataOffline('immediate_attention', trainingId, ia) : null),
+      clearTrainingDataOffline('verifiable_items', trainingId).then(() => vi.length > 0 ? saveTrainingDataOffline('verifiable_items', trainingId, vi) : null),
+      clearTrainingDataOffline('systems_in_place', trainingId).then(() => sip.length > 0 ? saveTrainingDataOffline('systems_in_place', trainingId, sip) : null),
+      clearTrainingDataOffline('summary', trainingId).then(() => summary.length > 0 ? saveTrainingDataOffline('summary', trainingId, summary) : null),
+    ]);
+    if (import.meta.env.DEV) console.log('[Atomic Sync] Refetched training package:', trainingId);
+  } catch (e) {
+    console.warn('[Atomic Sync] refetchTrainingPackage failed (non-fatal):', e);
+  }
+}
+
+export async function refetchAssessmentPackage(assessmentId: string): Promise<void> {
+  if (!navigator.onLine) return;
+  try {
+    const [{ data: assessment, error }, bod, eod, opSys, eq, st, env] = await Promise.all([
+      supabase.from('daily_assessments').select('*').eq('id', assessmentId).maybeSingle(),
+      fetchAllRows('daily_assessment_beginning_of_day', 'assessment_id', assessmentId),
+      fetchAllRows('daily_assessment_end_of_day', 'assessment_id', assessmentId),
+      fetchAllRows('daily_assessment_operating_systems', 'assessment_id', assessmentId),
+      fetchAllRows('daily_assessment_equipment_checks', 'assessment_id', assessmentId),
+      fetchAllRows('daily_assessment_structure_checks', 'assessment_id', assessmentId),
+      fetchAllRows('daily_assessment_environment_checks', 'assessment_id', assessmentId),
+    ]);
+    if (error || !assessment) return;
+    registerSelfWrite(assessmentId);
+    await saveDailyAssessmentOffline({ ...assessment, synced_at: assessment.updated_at });
+    await Promise.all([
+      clearAssessmentDataOffline('beginning_of_day', assessmentId).then(() => bod.length > 0 ? saveAssessmentDataOffline('beginning_of_day', assessmentId, bod) : null),
+      clearAssessmentDataOffline('end_of_day', assessmentId).then(() => eod.length > 0 ? saveAssessmentDataOffline('end_of_day', assessmentId, eod) : null),
+      clearAssessmentDataOffline('operating_systems', assessmentId).then(() => opSys.length > 0 ? saveAssessmentDataOffline('operating_systems', assessmentId, opSys) : null),
+      clearAssessmentDataOffline('equipment_checks', assessmentId).then(() => eq.length > 0 ? saveAssessmentDataOffline('equipment_checks', assessmentId, eq) : null),
+      clearAssessmentDataOffline('structure_checks', assessmentId).then(() => st.length > 0 ? saveAssessmentDataOffline('structure_checks', assessmentId, st) : null),
+      clearAssessmentDataOffline('environment_checks', assessmentId).then(() => env.length > 0 ? saveAssessmentDataOffline('environment_checks', assessmentId, env) : null),
+    ]);
+    if (import.meta.env.DEV) console.log('[Atomic Sync] Refetched assessment package:', assessmentId);
+  } catch (e) {
+    console.warn('[Atomic Sync] refetchAssessmentPackage failed (non-fatal):', e);
+  }
 }
