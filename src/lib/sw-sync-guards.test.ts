@@ -1,5 +1,10 @@
 import { describe, it, expect } from 'vitest';
-import { validateInspectionData, shouldSkipUpsert } from './sw-sync-validators';
+import {
+  validateInspectionData,
+  shouldSkipUpsert,
+  assertNoTempIds,
+  assertNoTempIdsInArray,
+} from './sw-sync-validators';
 
 describe('validateInspectionData', () => {
   it('returns invalid when inspection missing required fields', () => {
