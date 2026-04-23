@@ -346,8 +346,64 @@ async function checkRemoteRecordStatus(
 }
 
 /**
- * Sync inspection with all related data atomically
+ * C9: Handle a sync-time detection of `remote_deleted` for a parent record.
+ *
+ * Behavior:
+ * - If the local record has unsynced edits (synced_at < updated_at, or never
+ *   synced), QUARANTINE the local row in IDB (set `_remote_deleted_at` and
+ *   `_quarantine_reason`) and emit a `remote-deleted-conflict` event for the
+ *   UI to surface RemoteDeletedConflictDialog. Children are NOT touched.
+ * - If the local record has no unsynced edits, the local copy already matches
+ *   the server's pre-delete state — safe to hard-delete locally as before
+ *   (no version-ring snapshot needed; nothing to recover).
+ *
+ * Returns `{ quarantined: true }` when we held the local data, or
+ * `{ quarantined: false }` when we performed the legacy hard-delete.
  */
+async function handleRemoteDeleted(
+  table: 'inspections' | 'trainings' | 'daily_assessments',
+  recordId: string,
+  localRecord: { synced_at?: string | null; updated_at?: string | null; organization?: string | null } | null,
+  remoteDeletedAt: string,
+  legacyHardDelete: () => Promise<void>,
+): Promise<{ quarantined: boolean }> {
+  const hasUnsyncedEdits = (() => {
+    if (!localRecord) return false;
+    if (!localRecord.synced_at) return true;
+    const upd = localRecord.updated_at ? Date.parse(localRecord.updated_at) : NaN;
+    const syn = Date.parse(localRecord.synced_at);
+    if (!Number.isFinite(upd) || !Number.isFinite(syn)) return false;
+    return upd > syn;
+  })();
+
+  if (hasUnsyncedEdits) {
+    const ok = await quarantineRecord(table, recordId, remoteDeletedAt, 'remote_soft_delete');
+    if (ok) {
+      emitRemoteDeletedConflict({
+        table,
+        recordId,
+        remoteDeletedAt,
+        organizationLabel: localRecord?.organization ?? null,
+      });
+      syncLog.log('[C9] Quarantined local record with unsynced edits (remote was deleted):', {
+        table,
+        id: recordId.substring(0, 8),
+      });
+      return { quarantined: true };
+    }
+    // Quarantine failed (record vanished mid-flight) — fall through to legacy.
+  }
+
+  try {
+    await legacyHardDelete();
+    syncLog.log('[Atomic Sync] Cleaned up local copy for remote-deleted record (no unsynced edits):', {
+      table,
+      id: recordId.substring(0, 8),
+    });
+  } catch (err) {
+    console.error('[Atomic Sync] Failed to clean up orphaned local data:', err);
+  }
+  return { quarantined: false };
 export async function syncInspectionAtomic(inspectionId: string, preValidatedUser?: CachedUser, signal?: AbortSignal) {
   if (signal?.aborted) return { success: false, skipped: true, reason: 'aborted' as const };
   if (!navigator.onLine) {
