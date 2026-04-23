@@ -276,8 +276,41 @@ export async function syncPhotos(signal?: AbortSignal): Promise<{ remaining: num
           ? crypto.randomUUID().slice(0, 8)
           : Math.random().toString(36).slice(2, 10);
         const fallbackFileName = `${user.id}/${photo.inspectionId}/${Date.now()}-${randomSuffix}.${fileExt}`;
-        const fileName = photo.photoUrl || fallbackFileName;
-        
+        let fileName = photo.photoUrl || fallbackFileName;
+
+        // 1.B — Defensive re-key at upload time (belt-and-braces). If the
+        // first path segment doesn't match the currently authenticated uid
+        // (e.g. a queued offline photo whose deterministic-uid prefix wasn't
+        // rewritten by 1.A reconciliation, or a cross-account edge case),
+        // rewrite to the real auth.uid() folder so the upload passes storage
+        // RLS. Persist the rewrite so subsequent SELECT/sync uses the new
+        // path. Skip rewrite if the photo was captured by a *different*
+        // signed-in user (already filtered above), or if `user.id` is empty.
+        try {
+          const pathParts = fileName.split('/');
+          if (
+            user.id &&
+            pathParts.length > 1 &&
+            pathParts[0] !== user.id &&
+            pathParts[0] !== 'pending' // legacy pending/ rewrite is handled earlier
+          ) {
+            const oldFileName = fileName;
+            pathParts[0] = user.id;
+            const rekeyed = pathParts.join('/');
+            console.warn('[Sync Manager] Rekeying photo path', oldFileName, '→', rekeyed);
+            fileName = rekeyed;
+            photo.photoUrl = rekeyed;
+            try {
+              await updatePhotoPath(photo.id, rekeyed);
+            } catch (e) {
+              console.warn('[Sync Manager] Failed to persist re-keyed photo path:', e);
+            }
+          }
+        } catch (e) {
+          // Re-key is best-effort; a parsing edge case shouldn't block upload.
+          console.warn('[Sync Manager] Re-key check failed (continuing):', e);
+        }
+
         // Upload to storage. M7: upsert: false — refuse silent overwrites.
         // The existing `classifyPhotoError` ("success-equivalent" branch) treats
         // a duplicate-object 409 as success and proceeds to the DB insert path,
