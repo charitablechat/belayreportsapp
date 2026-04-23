@@ -151,7 +151,8 @@ async function checkRemoteRecordStatus(
 /**
  * Sync inspection with all related data atomically
  */
-export async function syncInspectionAtomic(inspectionId: string, preValidatedUser?: CachedUser) {
+export async function syncInspectionAtomic(inspectionId: string, preValidatedUser?: CachedUser, signal?: AbortSignal) {
+  if (signal?.aborted) return { success: false, skipped: true, reason: 'aborted' as const };
   if (!navigator.onLine) {
     throw new Error("Cannot sync while offline");
   }
@@ -678,7 +679,7 @@ export async function syncInspectionAtomic(inspectionId: string, preValidatedUse
     // 5. Execute transaction
     // S6: register self-write so the Realtime handler doesn't re-trigger sync from our own writes
     registerSelfWrite(inspectionId);
-    const result = await executeTransaction(steps);
+    const result = await executeTransaction(steps, { signal });
     
     if (!result.success) {
       throw new Error(`Transaction failed after ${result.completedSteps}/${result.totalSteps} steps. Rollback: ${result.rollbackSuccess ? 'successful' : 'failed'}`);
@@ -798,7 +799,7 @@ export async function syncInspectionAtomic(inspectionId: string, preValidatedUse
 /**
  * Sync all unsynced inspections atomically
  */
-export async function syncAllInspectionsAtomic(preValidatedUser?: CachedUser) {
+export async function syncAllInspectionsAtomic(preValidatedUser?: CachedUser, signal?: AbortSignal) {
   const capabilities = getMobileCapabilities();
   const ITEM_SYNC_TIMEOUT = 25000; // 25 seconds per item max (increased for mobile networks)
   
@@ -1038,7 +1039,8 @@ function transformTempIds<T extends { id?: string }>(items: T[]): T[] {
 /**
  * Sync training with all related data atomically
  */
-export async function syncTrainingAtomic(trainingId: string, preValidatedUser?: CachedUser) {
+export async function syncTrainingAtomic(trainingId: string, preValidatedUser?: CachedUser, signal?: AbortSignal) {
+  if (signal?.aborted) return { success: false, skipped: true, reason: 'aborted' as const };
   if (!navigator.onLine) {
     throw new Error("Cannot sync while offline");
   }
@@ -1537,7 +1539,7 @@ export async function syncTrainingAtomic(trainingId: string, preValidatedUser?: 
     // 5. Execute transaction
     // S6: register self-write so the Realtime handler doesn't re-trigger sync from our own writes
     registerSelfWrite(trainingId);
-    const result = await executeTransaction(steps);
+    const result = await executeTransaction(steps, { signal });
     
     if (!result.success) {
       throw new Error(`Transaction failed after ${result.completedSteps}/${result.totalSteps} steps. Rollback: ${result.rollbackSuccess ? 'successful' : 'failed'}`);
@@ -1657,7 +1659,7 @@ export async function syncTrainingAtomic(trainingId: string, preValidatedUser?: 
 /**
  * Sync all unsynced trainings atomically
  */
-export async function syncAllTrainingsAtomic(preValidatedUser?: CachedUser) {
+export async function syncAllTrainingsAtomic(preValidatedUser?: CachedUser, signal?: AbortSignal) {
   const capabilities = getMobileCapabilities();
   const ITEM_SYNC_TIMEOUT = 25000; // 25 seconds per item max (increased for mobile networks)
   
@@ -1833,7 +1835,8 @@ export async function syncAllTrainingsAtomic(preValidatedUser?: CachedUser) {
 /**
  * Sync daily assessment with all related data atomically
  */
-export async function syncDailyAssessmentAtomic(assessmentId: string, preValidatedUser?: CachedUser) {
+export async function syncDailyAssessmentAtomic(assessmentId: string, preValidatedUser?: CachedUser, signal?: AbortSignal) {
+  if (signal?.aborted) return { success: false, skipped: true, reason: 'aborted' as const };
   if (!navigator.onLine) {
     throw new Error("Cannot sync while offline");
   }
@@ -2323,7 +2326,7 @@ export async function syncDailyAssessmentAtomic(assessmentId: string, preValidat
     // 5. Execute transaction
     // S6: register self-write so the Realtime handler doesn't re-trigger sync from our own writes
     registerSelfWrite(assessmentId);
-    const result = await executeTransaction(steps);
+    const result = await executeTransaction(steps, { signal });
     
     if (!result.success) {
       throw new Error(`Transaction failed after ${result.completedSteps}/${result.totalSteps} steps. Rollback: ${result.rollbackSuccess ? 'successful' : 'failed'}`);
@@ -2442,7 +2445,7 @@ export async function syncDailyAssessmentAtomic(assessmentId: string, preValidat
 /**
  * Sync all unsynced daily assessments atomically
  */
-export async function syncAllDailyAssessmentsAtomic(preValidatedUser?: CachedUser) {
+export async function syncAllDailyAssessmentsAtomic(preValidatedUser?: CachedUser, signal?: AbortSignal) {
   const capabilities = getMobileCapabilities();
   const ITEM_SYNC_TIMEOUT = 25000; // 25 seconds per item max (increased for mobile networks)
   
