@@ -14,6 +14,33 @@ function formatProgressLabel(
     .filter((p) => p.length > 0);
   return cleaned.length > 0 ? cleaned.join(' - ') : fallback;
 }
+
+/**
+ * Resolve an organization id suitable for the `sync_conflicts` audit insert.
+ * Prefers the row's own `organization_id`; falls back to a one-shot lookup
+ * against `organizations` by name (case-insensitive) when only the legacy
+ * text field is set. Returns null if neither resolves — caller should skip
+ * the audit insert and warn.
+ */
+async function resolveOrgIdForAudit(inspection: {
+  organization_id?: string | null;
+  organization?: string | null;
+}): Promise<string | null> {
+  if (inspection.organization_id) return inspection.organization_id;
+  const name = inspection.organization?.trim();
+  if (!name) return null;
+  try {
+    const { data } = await supabase
+      .from('organizations')
+      .select('id')
+      .ilike('name', name)
+      .limit(1)
+      .maybeSingle();
+    return data?.id ?? null;
+  } catch {
+    return null;
+  }
+}
 import { getUserWithCache, ensureValidSession, type CachedUser } from "@/lib/cached-auth";
 import { 
   getUnsyncedInspections,
