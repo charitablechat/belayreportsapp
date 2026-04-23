@@ -151,7 +151,8 @@ async function checkRemoteRecordStatus(
 /**
  * Sync inspection with all related data atomically
  */
-export async function syncInspectionAtomic(inspectionId: string, preValidatedUser?: CachedUser) {
+export async function syncInspectionAtomic(inspectionId: string, preValidatedUser?: CachedUser, signal?: AbortSignal) {
+  if (signal?.aborted) return { success: false, skipped: true, reason: 'aborted' as const };
   if (!navigator.onLine) {
     throw new Error("Cannot sync while offline");
   }
@@ -678,7 +679,7 @@ export async function syncInspectionAtomic(inspectionId: string, preValidatedUse
     // 5. Execute transaction
     // S6: register self-write so the Realtime handler doesn't re-trigger sync from our own writes
     registerSelfWrite(inspectionId);
-    const result = await executeTransaction(steps);
+    const result = await executeTransaction(steps, { signal });
     
     if (!result.success) {
       throw new Error(`Transaction failed after ${result.completedSteps}/${result.totalSteps} steps. Rollback: ${result.rollbackSuccess ? 'successful' : 'failed'}`);
@@ -798,7 +799,7 @@ export async function syncInspectionAtomic(inspectionId: string, preValidatedUse
 /**
  * Sync all unsynced inspections atomically
  */
-export async function syncAllInspectionsAtomic(preValidatedUser?: CachedUser) {
+export async function syncAllInspectionsAtomic(preValidatedUser?: CachedUser, signal?: AbortSignal) {
   const capabilities = getMobileCapabilities();
   const ITEM_SYNC_TIMEOUT = 25000; // 25 seconds per item max (increased for mobile networks)
   
@@ -922,10 +923,11 @@ export async function syncAllInspectionsAtomic(preValidatedUser?: CachedUser) {
   let progressCounter = 0;
 
   await runWithConcurrency(batch, itemConcurrency, async (inspection, i) => {
+    if (signal?.aborted) return;
     let retryCount = 0;
     let synced = false;
 
-    while (retryCount < maxRetries && !synced) {
+    while (retryCount < maxRetries && !synced && !signal?.aborted) {
       // Emit progress for current item
       progressCounter++;
       syncProgressEmitter.emit({
@@ -940,7 +942,7 @@ export async function syncAllInspectionsAtomic(preValidatedUser?: CachedUser) {
         // Per-item timeout to prevent single item from blocking entire sync
         // Pass pre-validated user to skip redundant session validation per item
         const itemResult = await Promise.race([
-          syncInspectionAtomic(inspection.id, user as CachedUser),
+          syncInspectionAtomic(inspection.id, user as CachedUser, signal),
           new Promise<never>((_, reject) => setTimeout(() => reject(new Error('Item sync timeout')), ITEM_SYNC_TIMEOUT))
         ]);
         // Only count as success if item was actually synced (not skipped)
@@ -1038,7 +1040,8 @@ function transformTempIds<T extends { id?: string }>(items: T[]): T[] {
 /**
  * Sync training with all related data atomically
  */
-export async function syncTrainingAtomic(trainingId: string, preValidatedUser?: CachedUser) {
+export async function syncTrainingAtomic(trainingId: string, preValidatedUser?: CachedUser, signal?: AbortSignal) {
+  if (signal?.aborted) return { success: false, skipped: true, reason: 'aborted' as const };
   if (!navigator.onLine) {
     throw new Error("Cannot sync while offline");
   }
@@ -1537,7 +1540,7 @@ export async function syncTrainingAtomic(trainingId: string, preValidatedUser?: 
     // 5. Execute transaction
     // S6: register self-write so the Realtime handler doesn't re-trigger sync from our own writes
     registerSelfWrite(trainingId);
-    const result = await executeTransaction(steps);
+    const result = await executeTransaction(steps, { signal });
     
     if (!result.success) {
       throw new Error(`Transaction failed after ${result.completedSteps}/${result.totalSteps} steps. Rollback: ${result.rollbackSuccess ? 'successful' : 'failed'}`);
@@ -1657,7 +1660,7 @@ export async function syncTrainingAtomic(trainingId: string, preValidatedUser?: 
 /**
  * Sync all unsynced trainings atomically
  */
-export async function syncAllTrainingsAtomic(preValidatedUser?: CachedUser) {
+export async function syncAllTrainingsAtomic(preValidatedUser?: CachedUser, signal?: AbortSignal) {
   const capabilities = getMobileCapabilities();
   const ITEM_SYNC_TIMEOUT = 25000; // 25 seconds per item max (increased for mobile networks)
   
@@ -1765,10 +1768,11 @@ export async function syncAllTrainingsAtomic(preValidatedUser?: CachedUser) {
   let progressCounter = 0;
 
   await runWithConcurrency(batch, itemConcurrency, async (training, i) => {
+    if (signal?.aborted) return;
     let retryCount = 0;
     let synced = false;
 
-    while (retryCount < maxRetries && !synced) {
+    while (retryCount < maxRetries && !synced && !signal?.aborted) {
       // Emit progress for current item
       progressCounter++;
       syncProgressEmitter.emit({
@@ -1782,7 +1786,7 @@ export async function syncAllTrainingsAtomic(preValidatedUser?: CachedUser) {
       try {
         // Per-item timeout - pass pre-validated user to skip redundant session validation
         const itemResult = await Promise.race([
-          syncTrainingAtomic(training.id, user as CachedUser),
+          syncTrainingAtomic(training.id, user as CachedUser, signal),
           new Promise<never>((_, reject) => setTimeout(() => reject(new Error('Item sync timeout')), ITEM_SYNC_TIMEOUT))
         ]);
         if (itemResult && typeof itemResult === 'object' && (itemResult as any).skipped) {
@@ -1833,7 +1837,8 @@ export async function syncAllTrainingsAtomic(preValidatedUser?: CachedUser) {
 /**
  * Sync daily assessment with all related data atomically
  */
-export async function syncDailyAssessmentAtomic(assessmentId: string, preValidatedUser?: CachedUser) {
+export async function syncDailyAssessmentAtomic(assessmentId: string, preValidatedUser?: CachedUser, signal?: AbortSignal) {
+  if (signal?.aborted) return { success: false, skipped: true, reason: 'aborted' as const };
   if (!navigator.onLine) {
     throw new Error("Cannot sync while offline");
   }
@@ -2323,7 +2328,7 @@ export async function syncDailyAssessmentAtomic(assessmentId: string, preValidat
     // 5. Execute transaction
     // S6: register self-write so the Realtime handler doesn't re-trigger sync from our own writes
     registerSelfWrite(assessmentId);
-    const result = await executeTransaction(steps);
+    const result = await executeTransaction(steps, { signal });
     
     if (!result.success) {
       throw new Error(`Transaction failed after ${result.completedSteps}/${result.totalSteps} steps. Rollback: ${result.rollbackSuccess ? 'successful' : 'failed'}`);
@@ -2442,7 +2447,7 @@ export async function syncDailyAssessmentAtomic(assessmentId: string, preValidat
 /**
  * Sync all unsynced daily assessments atomically
  */
-export async function syncAllDailyAssessmentsAtomic(preValidatedUser?: CachedUser) {
+export async function syncAllDailyAssessmentsAtomic(preValidatedUser?: CachedUser, signal?: AbortSignal) {
   const capabilities = getMobileCapabilities();
   const ITEM_SYNC_TIMEOUT = 25000; // 25 seconds per item max (increased for mobile networks)
   
@@ -2549,10 +2554,11 @@ export async function syncAllDailyAssessmentsAtomic(preValidatedUser?: CachedUse
   let progressCounter = 0;
 
   await runWithConcurrency(batch, itemConcurrency, async (assessment, i) => {
+    if (signal?.aborted) return;
     let retryCount = 0;
     let synced = false;
 
-    while (retryCount < maxRetries && !synced) {
+    while (retryCount < maxRetries && !synced && !signal?.aborted) {
       // Emit progress for current item
       progressCounter++;
       syncProgressEmitter.emit({
@@ -2566,7 +2572,7 @@ export async function syncAllDailyAssessmentsAtomic(preValidatedUser?: CachedUse
       try {
         // Per-item timeout - pass pre-validated user to skip redundant session validation
         const itemResult = await Promise.race([
-          syncDailyAssessmentAtomic(assessment.id, user as CachedUser),
+          syncDailyAssessmentAtomic(assessment.id, user as CachedUser, signal),
           new Promise<never>((_, reject) => setTimeout(() => reject(new Error('Item sync timeout')), ITEM_SYNC_TIMEOUT))
         ]);
         if (itemResult && typeof itemResult === 'object' && (itemResult as any).skipped) {

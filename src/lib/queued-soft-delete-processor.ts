@@ -41,13 +41,15 @@ function isSoftDeleteOp(op: any): boolean {
  * Process all queued soft-delete operations from IndexedDB and apply them to the server.
  * Called at the start of each auto-sync cycle when online.
  */
-export async function processQueuedSoftDeletes(): Promise<SoftDeleteProcessorResult> {
+export async function processQueuedSoftDeletes(signal?: AbortSignal): Promise<SoftDeleteProcessorResult> {
   const result: SoftDeleteProcessorResult = { processed: 0, failed: 0, errors: [] };
+  if (signal?.aborted) return result;
 
   try {
     // 1. Process inspection operations queue
     const inspOps = await getQueuedOperations();
     for (const op of inspOps) {
+      if (signal?.aborted) return result;
       if (!isSoftDeleteOp(op)) continue;
       const table = resolveTable(op.data);
       if (!table) continue;
@@ -83,6 +85,7 @@ export async function processQueuedSoftDeletes(): Promise<SoftDeleteProcessorRes
     // 2. Process assessment operations queue
     const assessOps = await getQueuedAssessmentOperations();
     for (const op of assessOps) {
+      if (signal?.aborted) return result;
       if (!isSoftDeleteOp(op)) continue;
       const recordId = (op as any).assessmentId || op.data?.id;
       if (!recordId) continue;
@@ -115,6 +118,7 @@ export async function processQueuedSoftDeletes(): Promise<SoftDeleteProcessorRes
     // 3. Process training operations queue
     const trainOps = await getQueuedTrainingOperations();
     for (const op of trainOps) {
+      if (signal?.aborted) return result;
       if (!isSoftDeleteOp(op)) continue;
       const recordId = (op as any).trainingId || op.data?.id;
       if (!recordId) continue;

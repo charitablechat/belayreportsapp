@@ -5,15 +5,47 @@ import { assertSafeToDeleteChildRows } from "./child-row-deletion-tripwire";
 const STEP_TIMEOUT = 15000; // 15 seconds per step (allows large ~2MB records to sync on slower connections)
 
 /**
- * Wrap a promise with a timeout to prevent individual steps from blocking
+ * S20: throw an AbortError if the provided signal has been aborted.
  */
-function withStepTimeout<T>(promise: Promise<T>, stepName: string): Promise<T> {
-  return Promise.race([
-    promise,
-    new Promise<T>((_, reject) => 
-      setTimeout(() => reject(new Error(`Step timeout: ${stepName}`)), STEP_TIMEOUT)
-    )
-  ]);
+function throwIfAborted(signal?: AbortSignal): void {
+  if (signal?.aborted) {
+    throw new DOMException('Operation aborted', 'AbortError');
+  }
+}
+
+/**
+ * Wrap a promise with a timeout to prevent individual steps from blocking.
+ * S20: also rejects early when an external AbortSignal fires.
+ */
+function withStepTimeout<T>(promise: Promise<T>, stepName: string, signal?: AbortSignal): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const timeout = setTimeout(
+      () => reject(new Error(`Step timeout: ${stepName}`)),
+      STEP_TIMEOUT
+    );
+    const onAbort = () => {
+      clearTimeout(timeout);
+      reject(new DOMException(`Step aborted: ${stepName}`, 'AbortError'));
+    };
+    if (signal) {
+      if (signal.aborted) { onAbort(); return; }
+      signal.addEventListener('abort', onAbort, { once: true });
+    }
+    promise.then(
+      (v) => { clearTimeout(timeout); signal?.removeEventListener('abort', onAbort); resolve(v); },
+      (e) => { clearTimeout(timeout); signal?.removeEventListener('abort', onAbort); reject(e); }
+    );
+  });
+}
+
+/**
+ * S20: conditionally attach an AbortSignal to a PostgREST builder chain.
+ * Returns the builder unchanged when no signal is provided so existing
+ * non-cancellable callers are unaffected.
+ */
+function maybeAbort<T>(builder: T, signal?: AbortSignal): T {
+  if (!signal) return builder;
+  return (builder as any).abortSignal(signal);
 }
 
 // Tables that are NEVER allowed to have delete operations via the transaction manager
@@ -52,13 +84,17 @@ export interface TransactionResult {
  * Supports batch inserts (arrays) for better performance on mobile
  */
 export async function executeTransaction(
-  steps: TransactionStep[]
+  steps: TransactionStep[],
+  options?: { signal?: AbortSignal }
 ): Promise<TransactionResult> {
   const completedSteps: TransactionStep[] = [];
+  const signal = options?.signal;
   
   try {
     // Execute each step in order
     for (let i = 0; i < steps.length; i++) {
+      // S20: bail before starting any new step if we've been aborted
+      throwIfAborted(signal);
       const step = steps[i];
       
       if (import.meta.env.DEV) {
@@ -72,22 +108,25 @@ export async function executeTransaction(
         case 'insert':
           // Support both single item and batch insert (arrays)
           result = await withStepTimeout(
-            (supabase as any).from(step.table).insert(step.data).select('id'),
-            `insert:${step.table}`
+            maybeAbort((supabase as any).from(step.table).insert(step.data).select('id'), signal),
+            `insert:${step.table}`,
+            signal
           );
           break;
           
         case 'update':
           result = await withStepTimeout(
-            (supabase as any).from(step.table).update(step.data).match(step.filter).select('id'),
-            `update:${step.table}`
+            maybeAbort((supabase as any).from(step.table).update(step.data).match(step.filter).select('id'), signal),
+            `update:${step.table}`,
+            signal
           );
           break;
           
         case 'upsert':
           result = await withStepTimeout(
-            (supabase as any).from(step.table).upsert(step.data).select('id'),
-            `upsert:${step.table}`
+            maybeAbort((supabase as any).from(step.table).upsert(step.data).select('id'), signal),
+            `upsert:${step.table}`,
+            signal
           );
           break;
           
@@ -102,10 +141,10 @@ export async function executeTransaction(
             const fkCol = step.filter ? Object.keys(step.filter)[0] : null;
             const fkVal = fkCol ? step.filter[fkCol] : null;
             if (fkCol && fkVal) {
-              const { data: targetRows } = await (supabase as any)
-                .from(step.table)
-                .select('id')
-                .match(step.filter);
+              const { data: targetRows } = await maybeAbort(
+                (supabase as any).from(step.table).select('id').match(step.filter),
+                signal
+              );
               const targetIds = (targetRows || []).map((r: any) => r.id);
               if (targetIds.length > 0) {
                 const tw = await assertSafeToDeleteChildRows({
@@ -124,8 +163,9 @@ export async function executeTransaction(
             }
           }
           result = await withStepTimeout(
-            (supabase as any).from(step.table).delete().match(step.filter),
-            `delete:${step.table}`
+            maybeAbort((supabase as any).from(step.table).delete().match(step.filter), signal),
+            `delete:${step.table}`,
+            signal
           );
           break;
       }
