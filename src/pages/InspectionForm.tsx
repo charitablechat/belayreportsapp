@@ -2741,6 +2741,24 @@ export default function InspectionForm() {
                   <span className="hidden sm:inline">Offline Mode</span>
                 </Badge>
               )}
+              {/* M9: Versioning health warning — surfaces silent appendVersion failures
+                  so the user knows recovery snapshots aren't being captured. */}
+              {versioningFailures >= 3 && (
+                <Badge
+                  variant="destructive"
+                  className="gap-1.5 text-xs cursor-pointer"
+                  onClick={() => {
+                    toast.warning("Recovery snapshots are failing", {
+                      description: `Your last ${versioningFailures} version snapshots could not be saved. Your current work is still saved, but earlier-state recovery may be unavailable. Try reloading the page.`,
+                      duration: 8000,
+                    });
+                    resetVersioningHealth();
+                  }}
+                  title="Tap for details"
+                >
+                  <span>Recovery snapshots failing ({versioningFailures})</span>
+                </Badge>
+              )}
               {/* Pending sync indicator with retry option */}
               {saveError === 'pending_sync' && isOnline && (
                 <div className="flex items-center gap-1.5">
