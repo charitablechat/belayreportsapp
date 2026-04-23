@@ -70,6 +70,21 @@ if (typeof localStorage !== 'undefined' && !localStorage.getItem(PHOTO_RETRY_RES
   }).catch(() => {});
 }
 
+// S23: One-time backfill of `capturedByUserId` for legacy `pending/` photos.
+// Safe to run on every boot — the helper is idempotent and only acts when
+// exactly one user-id is known on this device.
+const PHOTO_CAPTURED_BY_BACKFILL_FLAG = 'photo-captured-by-backfill-v1';
+if (typeof localStorage !== 'undefined' && !localStorage.getItem(PHOTO_CAPTURED_BY_BACKFILL_FLAG)) {
+  import('@/lib/offline-storage').then(({ backfillCapturedByUserIdForPendingPhotos }) => {
+    backfillCapturedByUserIdForPendingPhotos().then((count) => {
+      try { localStorage.setItem(PHOTO_CAPTURED_BY_BACKFILL_FLAG, String(Date.now())); } catch {}
+      if (import.meta.env.DEV) {
+        console.log(`[Boot] S23 capturedByUserId backfill ran (${count} photos tagged)`);
+      }
+    }).catch(() => {});
+  }).catch(() => {});
+}
+
 // Phase 1 — auth resilience: validate stored credential slots and discard
 // any half-written `.tmp` rows from a previous crash. Non-blocking; runs in
 // the background so React can mount immediately.
