@@ -39,23 +39,35 @@ const POST_SYNC_COOLDOWN = 10000; // 10s cooldown after sync completes to ignore
  * Returns { result, timedOut } to differentiate between timeout and successful null
  */
 function withSyncTimeout<T>(
-  promise: Promise<T>,
-  timeoutMs: number
+  run: (signal: AbortSignal) => Promise<T>,
+  timeoutMs: number,
 ): Promise<{ result: T | null; timedOut: boolean }> {
+  const controller = new AbortController();
   let timeoutHandle: ReturnType<typeof setTimeout>;
-  
+
   const timeoutPromise = new Promise<{ result: null; timedOut: true }>((resolve) => {
     timeoutHandle = setTimeout(() => {
-      console.warn('[AutoSync] Sync operation timed out after', timeoutMs, 'ms');
+      console.warn('[AutoSync] Sync operation timed out after', timeoutMs, 'ms — aborting in-flight work');
+      controller.abort();
       resolve({ result: null, timedOut: true });
     }, timeoutMs);
   });
-  
-  const wrappedPromise = promise.then((result) => {
-    clearTimeout(timeoutHandle);
-    return { result, timedOut: false as const };
-  });
-  
+
+  const wrappedPromise = run(controller.signal).then(
+    (result) => {
+      clearTimeout(timeoutHandle);
+      return { result, timedOut: false as const };
+    },
+    (err) => {
+      clearTimeout(timeoutHandle);
+      // Aborts surface as AbortError — treat as a timed-out skip rather than a hard failure
+      if (err?.name === 'AbortError') {
+        return { result: null, timedOut: true as const };
+      }
+      throw err;
+    }
+  );
+
   return Promise.race([wrappedPromise, timeoutPromise]);
 }
 
@@ -333,33 +345,35 @@ export const useAutoSync = () => {
       const yieldToUI = () => new Promise<void>(r => setTimeout(r, 0));
 
       const syncResult = await withSyncTimeout(
-        (async () => {
+        async (signal) => {
           // Process any queued offline soft-deletes before main sync
           try {
             const { processQueuedSoftDeletes } = await import('@/lib/queued-soft-delete-processor');
-            const deleteResult = await processQueuedSoftDeletes();
+            const deleteResult = await processQueuedSoftDeletes(signal);
             if (deleteResult.processed > 0) {
               console.log(`[AutoSync] Processed ${deleteResult.processed} queued soft-deletes`);
             }
           } catch (e) {
             console.warn('[AutoSync] Queued soft-delete processing failed (non-blocking):', e);
           }
+          if (signal.aborted) throw new DOMException('aborted', 'AbortError');
           await yieldToUI();
 
           // Run inspections / trainings / assessments concurrently — they touch independent tables
           const [inspSettled, trainSettled, assessSettled] = await Promise.allSettled([
-            syncAllInspectionsAtomic(validatedUser),
-            syncAllTrainingsAtomic(validatedUser),
-            syncAllDailyAssessmentsAtomic(validatedUser),
+            syncAllInspectionsAtomic(validatedUser, signal),
+            syncAllTrainingsAtomic(validatedUser, signal),
+            syncAllDailyAssessmentsAtomic(validatedUser, signal),
           ]);
           const inspResult = inspSettled.status === 'fulfilled' ? inspSettled.value : (console.error('[AutoSync] Inspections sync failed:', inspSettled.reason), null);
           const trainResult = trainSettled.status === 'fulfilled' ? trainSettled.value : (console.error('[AutoSync] Trainings sync failed:', trainSettled.reason), null);
           const assessResult = assessSettled.status === 'fulfilled' ? assessSettled.value : (console.error('[AutoSync] Assessments sync failed:', assessSettled.reason), null);
+          if (signal.aborted) throw new DOMException('aborted', 'AbortError');
           await yieldToUI();
           // Photos depend on real UUIDs assigned by the report syncs above
-          const photoResult = await syncPhotos().catch(e => { console.error('[AutoSync] Photos sync failed:', e); return null; });
+          const photoResult = await syncPhotos(signal).catch(e => { console.error('[AutoSync] Photos sync failed:', e); return null; });
           return [inspResult, trainResult, assessResult, photoResult];
-        })(),
+        },
         dynamicTimeout
       );
       
