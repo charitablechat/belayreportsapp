@@ -711,6 +711,13 @@ export const useAutoSync = () => {
           }
         };
         persistToIDB();
+
+        // S12: Debounced full-package refetch — covers cross-device child-row edits
+        // (which don't have their own Realtime subscriptions). Skip if this is a
+        // self-write echo to avoid redundant round-trips.
+        if (!isRecentSelfWrite(record.id)) {
+          scheduleFullRefetch(payload.table, record.id);
+        }
       }
     }
     
