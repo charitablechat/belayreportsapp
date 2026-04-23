@@ -1,108 +1,136 @@
 
 
-## Phase 1 — Externally-exploitable criticals
+## Phase 3 — Authorization Gaps (Route + Endpoint Guards)
 
-Five edge functions get auth and one secret gets added. ~150 LOC, no client changes, no migrations.
-
----
-
-### C1 — Webhook-secret auth on three unauthenticated edge functions
-
-For each of `backup-photo-storage`, `generate-backup-pdfs`, and `scheduled-backup-notify`: add a webhook-secret check at the very top of the `try` block, before any other work. Reuses the exact pattern already in `send-push-notification`, `check-overdue-reports`, and `send-notification-email`.
-
-Pattern inserted:
-```ts
-const webhookSecret = req.headers.get("x-webhook-secret");
-const { data: secretRow, error: secretError } = await adminClient
-  .from("webhook_config")
-  .select("key_value")
-  .eq("key_name", "WEBHOOK_SECRET")
-  .single();
-if (secretError || !secretRow?.key_value) {
-  return new Response(JSON.stringify({ error: "Server configuration error" }),
-    { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } });
-}
-if (!webhookSecret || webhookSecret !== secretRow.key_value) {
-  return new Response(JSON.stringify({ error: "Unauthorized" }),
-    { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } });
-}
-```
-
-`verify_jwt = false` stays in `supabase/config.toml` for all three so the existing pg_cron triggers (which call via pg_net and can't attach JWTs) keep working — they already pass `x-webhook-secret` via `internal_get_webhook_secret()`.
+Five findings, six files touched. No DB migrations.
 
 ---
 
-### C2 — Role allowlist in `admin-manage-user`
+### C7 — Per-user-namespaced admin cache keys
 
-Add a runtime allowlist immediately after `await req.json()` parses the payload, gating both `create` and `update` paths:
+**Today:** `cached-admin-status` and `cached-true-super-admin` are global localStorage keys. On a shared device, User B inherits User A's admin badge between sign-in and the first RPC roundtrip — and offline, User B can be permanently treated as admin.
 
-```ts
-const ALLOWED_ROLES = ['admin', 'inspector', 'trainer'] as const;
-if (payload.role !== undefined && !ALLOWED_ROLES.includes(payload.role)) {
-  return new Response(
-    JSON.stringify({ success: false, error: 'Invalid role. Allowed: admin, inspector, trainer' }),
-    { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-  );
-}
-```
+**Fix:** Switch to `cached-admin-status:${userId}` and `cached-true-super-admin:${userId}` everywhere they're read or written.
 
-This blocks the admin-→-super_admin escalation path because `super_admin` is no longer accepted at the function boundary, regardless of what value the TypeScript-typed payload claims to be.
+- New helpers in `src/lib/cached-auth.ts`:
+  - `getAdminCacheKey(userId)` / `getTrueSuperAdminCacheKey(userId)` — return the namespaced key.
+  - `clearAllAdminCacheKeys()` — sweeps every `cached-admin-status:*` and `cached-true-super-admin:*` key on `SIGNED_OUT`. Used by `invalidateUserCache()`.
+  - `clearAdminCacheForUser(userId)` — targeted clear when a single user's role changes.
+- `invalidateUserCache()` calls `clearAllAdminCacheKeys()`.
+- The auth listener in `cached-auth.ts` adds handling for `USER_UPDATED` and `SIGNED_IN` events: clear cached entries for any user-id that doesn't match the new session's user-id, then re-fetch fresh.
+- One-time migration on module load: if the legacy unscoped `cached-admin-status` / `cached-true-super-admin` keys exist, delete them. They're stale by definition.
 
-The destructive `DELETE FROM user_roles WHERE user_id = X` on update (H7) stays put for now — fixed in Phase 3.
+**Read sites updated** (all switch to namespaced reads, falling back to a fresh RPC if the namespaced key is missing — never the legacy global key):
+- `src/lib/cached-auth.ts` — `getAdminStatusWithCache`, `getIsTrueSuperAdmin`.
+- `src/hooks/useRequireAdmin.tsx` — both offline-fallback branches.
+- `src/hooks/useReportEditPermission.tsx` — both cached-admin reads.
+- `src/components/AuthenticatedHeader.tsx` — `is-super-admin-global` query (cached value + placeholder).
+- `src/pages/Dashboard.tsx` — `is-super-admin` query (cached value + placeholder).
 
----
-
-### C3 — `SITE_URL` runtime secret replaces hardcoded `.lovable.app`
-
-**`admin-manage-user/index.ts:140-144`** — the password-reset redirect:
-```ts
-const siteUrl = Deno.env.get('SITE_URL')
-  || (Deno.env.get('SUPABASE_URL') ?? '').replace('.supabase.co', '.lovable.app');
-await supabaseAdmin.auth.resetPasswordForEmail(email, { redirectTo: siteUrl });
-```
-
-**`og-meta/index.ts:37`** — the `spaBaseUrl` constant:
-```ts
-const spaBaseUrl = Deno.env.get('SITE_URL') || 'https://ropeworks.lovable.app';
-```
-
-Setting the `SITE_URL` secret to `https://rwreports.com` before deploy ensures password-reset emails land on the production custom domain. If the secret is unset, both functions fall back to the current behavior so nothing breaks.
+Each read site needs a `userId` in scope before it can build the key. Sites that don't have one yet (`useRequireAdmin`'s offline fallback) call `getOfflineUserId()` first.
 
 ---
 
-### Files touched
+### H1 — `<RequireAuth>` route guard for authenticated pages
 
-- `supabase/functions/backup-photo-storage/index.ts` — webhook-secret check
-- `supabase/functions/generate-backup-pdfs/index.ts` — webhook-secret check
-- `supabase/functions/scheduled-backup-notify/index.ts` — webhook-secret check
-- `supabase/functions/admin-manage-user/index.ts` — role allowlist + SITE_URL fallback
-- `supabase/functions/og-meta/index.ts` — SITE_URL fallback
+**New file:** `src/components/auth/RequireAuth.tsx`
+- Calls `getUserWithCache()` on mount.
+- If a user exists (online session OR cached/synthetic offline session), renders `children`.
+- If no user and `navigator.onLine`, redirects to `/`.
+- If no user and offline, renders `children` only when `hasCachedSessionForOffline()` returns true; otherwise redirects to `/`.
+- Renders `null` (no flash) until the auth check resolves.
+- Mirrors the resilience patterns already in `useRequireAdmin` (no flash redirects on transient null).
 
-No DB migrations. No client changes. No `config.toml` changes.
+**`src/App.tsx`:** wrap the following routes with `<RequireAuth>`:
+- `/dashboard`, `/profile`, `/onboarding`
+- `/inspection/new`, `/inspection/:id`
+- `/training/new`, `/training/:id`
+- `/daily-assessment/new`, `/daily-assessment/:id`
+
+Public routes left untouched: `/`, `/welcome`, `/install`, `/capabilities`, `/unsubscribe`, `/base64-converter`.
 
 ---
 
-### Action required from you
+### H2 — Admin-gate the logo/admin pages
 
-Add the `SITE_URL` runtime secret in Lovable Cloud settings before this deploys, otherwise password-reset emails will keep going to the `.lovable.app` URL (current behavior). Recommended value: `https://rwreports.com`.
+Three pages currently registered as public routes touch privileged storage or admin tooling. Wrap them in `useRequireAdmin()` (mirrors `AdminLogoManagement.tsx` which already uses it):
+- `src/pages/UploadLogos.tsx` — add `const { loading } = useRequireAdmin();` at the top of the component, render `null` while loading.
+- `src/pages/UploadLogosToStorage.tsx` — same.
+- `src/pages/AdminLogoManagement.tsx` — already gated, no change needed (verified).
+- `src/pages/SuperAdminDashboard.tsx` — already gated, no change needed.
 
-I'll request the secret as part of the implementation step.
+Routes left in `App.tsx` with the same paths; the gate lives inside the page so deep-linking still works.
+
+---
+
+### H3 — Authentication gate inside `convert-heic-photos`
+
+**File:** `supabase/functions/convert-heic-photos/index.ts`
+
+Currently uses the service-role client unconditionally. Add a JWT-validated auth check at the top of the `try` block, before any photo iteration:
+- Read `Authorization` header; reject with 401 if missing.
+- Build a second client with the anon key + the user's `Authorization` header.
+- Call `supabase.auth.getUser()`; reject with 401 on null/error.
+- Proceed with the existing service-role client for the actual conversion work.
+
+No admin gate — all authenticated users keep full access (per your revised spec). Unauthenticated external requests are blocked.
+
+---
+
+### H7 — Conditional role re-write in `admin-manage-user` update
+
+**File:** `supabase/functions/admin-manage-user/index.ts`, `case 'update'` block (lines 215–240).
+
+Today: any update payload that includes `role` deletes ALL `user_roles` rows for that user, then inserts one. This wipes multi-org role assignments even when the admin only meant to change a name.
+
+Fix:
+1. Only run the delete + insert when `role !== undefined` in the *parsed payload* (already the case) AND the value differs from the user's current top-level role.
+2. Before deleting: `SELECT role FROM user_roles WHERE user_id = $1 AND organization_id IS NULL` to read the current top-level role.
+3. If `currentRole === role`: skip the delete and insert entirely. Log "role unchanged, skipping".
+4. If `currentRole !== role`: scope the delete to top-level rows only — `.delete().eq('user_id', userId).is('organization_id', null)` — so per-org role rows survive. Then insert the new top-level role.
+
+This preserves multi-org assignments and avoids destructive churn on no-op updates.
+
+---
+
+### Files touched (summary)
+
+- `src/lib/cached-auth.ts` — namespaced cache helpers, listener updates, legacy migration
+- `src/hooks/useRequireAdmin.tsx` — namespaced reads
+- `src/hooks/useReportEditPermission.tsx` — namespaced reads
+- `src/components/AuthenticatedHeader.tsx` — namespaced reads in admin query
+- `src/pages/Dashboard.tsx` — namespaced reads in admin query
+- `src/components/auth/RequireAuth.tsx` — **new**
+- `src/App.tsx` — wrap authenticated routes
+- `src/pages/UploadLogos.tsx` — `useRequireAdmin()`
+- `src/pages/UploadLogosToStorage.tsx` — `useRequireAdmin()`
+- `supabase/functions/convert-heic-photos/index.ts` — JWT auth gate
+- `supabase/functions/admin-manage-user/index.ts` — conditional role rewrite
+
+No DB migrations. No new secrets. No `config.toml` changes.
 
 ---
 
 ### Risk
 
-Low. The three webhook-secret additions follow an already-working pattern in 3+ other edge functions. The role allowlist is a defensive 400 — it can only reject calls that should already be rejected. The `SITE_URL` change uses `||` fallback so an unset secret is a no-op.
+- **C7**: Existing sessions will see one extra RPC call after deploy because the legacy unscoped key gets wiped. Acceptable; no UX change beyond a sub-second cache miss.
+- **H1**: The route guard renders `null` while resolving, mirroring the `useRequireAdmin` pattern. No flash redirects on cached sessions. Offline users with a cached session pass through unchanged.
+- **H2**: `UploadLogos*` pages were effectively unusable for non-admins anyway (RLS rejects writes). The visible change is a redirect instead of a "permission denied" toast.
+- **H3**: Existing in-app callers already attach a JWT via `supabase.functions.invoke()`. No client changes needed.
+- **H7**: Admins editing a user's name without changing role no longer wipe the user's role rows. This is a strict improvement.
 
 ---
 
 ### Verification
 
-1. `curl -X POST` to `backup-photo-storage` / `generate-backup-pdfs` / `scheduled-backup-notify` without `x-webhook-secret` → 401.
-2. Same calls with the correct `x-webhook-secret` (pg_cron path) → 200, work proceeds normally.
-3. Admin user calls `admin-manage-user` with `{action:'create', role:'super_admin'}` → 400 with allowlist error.
-4. Admin user calls `admin-manage-user` with `{action:'update', role:'admin'}` → 200, role updated.
-5. After `SITE_URL=https://rwreports.com` is set: create a new user → password-reset email links to `https://rwreports.com/...`.
-6. With `SITE_URL` unset: behavior unchanged from today.
-7. Existing nightly cron runs (visible in edge-function logs) continue to succeed.
+1. User A (admin) signs out on a shared device → User B (regular) signs in → `/admin` redirects to `/dashboard` immediately, no admin-flash.
+2. Offline-only User B with no cached admin entry → `/admin` redirects to `/dashboard`.
+3. Direct nav to `/dashboard` while signed out → redirected to `/`.
+4. Direct nav to `/inspection/some-id` while signed out → redirected to `/`.
+5. Offline user with cached session → `/dashboard`, `/inspection/:id`, `/profile` all load normally.
+6. Direct nav to `/upload-logos` as a regular user → redirected to `/dashboard`.
+7. `curl -X POST https://…/convert-heic-photos` with no auth header → 401.
+8. Same call with a valid user JWT → proceeds normally.
+9. Admin updates a user's first name (no role change) → `user_roles` rows untouched (verify via DB query).
+10. Admin updates a user's role from `inspector` → `admin` → top-level role row replaced; per-org role rows preserved.
 
