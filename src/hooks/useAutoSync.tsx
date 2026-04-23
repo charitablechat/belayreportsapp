@@ -122,6 +122,9 @@ export const useAutoSync = () => {
   // Coalesces bursts of UPDATEs to the same record into one refetch (~300ms window).
   const refetchTimersRef = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map());
   const REFETCH_DEBOUNCE_MS = 300;
+  // S21: Shared completion promise for the in-flight sync run.
+  // Concurrent callers await this directly instead of polling syncInProgressRef.
+  const inFlightSyncRef = useRef<Promise<void> | null>(null);
   
   /**
    * Perform the actual sync operation
@@ -183,25 +186,19 @@ export const useAutoSync = () => {
       return;
     }
     
-    // Prevent duplicate sync calls
-    if (syncInProgressRef.current) {
+    // S21: Await the in-flight sync directly instead of polling syncInProgressRef.
+    // - Silent (background) callers: piggy-back on the in-flight run and return.
+    // - User-initiated callers (silent=false): wait for it to finish, then run a
+    //   fresh sync against post-sync state so the explicit tap is honored.
+    if (syncInProgressRef.current && inFlightSyncRef.current) {
       if (import.meta.env.DEV) {
-        console.log('[AutoSync] Sync already in progress - skipping');
+        console.log('[AutoSync] Sync already in progress - awaiting in-flight run');
       }
-      // Return a promise that resolves when current sync completes
-      return new Promise<void>((resolve) => {
-        const checkInterval = setInterval(() => {
-          if (!syncInProgressRef.current) {
-            clearInterval(checkInterval);
-            resolve();
-          }
-        }, 500);
-        // Safety: resolve after 15s regardless (reduced from 35s to prevent long hangs)
-        setTimeout(() => {
-          clearInterval(checkInterval);
-          resolve();
-        }, 15000);
-      });
+      try { await inFlightSyncRef.current; } catch {}
+      if (!silent) {
+        return performSync(false);
+      }
+      return;
     }
     
     // Debounce protection — only applies to background (silent) syncs.
@@ -219,6 +216,13 @@ export const useAutoSync = () => {
     syncInProgressRef.current = true;
     setSyncInProgress(true);
     setState(prev => ({ ...prev, isSyncing: true }));
+
+    // S21: Create a deferred promise that resolves when this run's `finally` clears it.
+    // Concurrent callers above await this directly instead of polling.
+    let resolveInFlight: () => void = () => {};
+    inFlightSyncRef.current = new Promise<void>((resolve) => {
+      resolveInFlight = resolve;
+    });
     
     // Calculate dynamic timeout based on BATCH size (not total unsynced)
     // With MAX_BATCH_SIZE=5: 30s + (5 x 8s) = 70s -- well within safe limits
@@ -235,6 +239,9 @@ export const useAutoSync = () => {
         syncInProgressRef.current = false;
         setSyncInProgress(false);
         setState(prev => ({ ...prev, isSyncing: false }));
+        // S21: unblock any awaiters piggy-backed on this run
+        inFlightSyncRef.current = null;
+        resolveInFlight();
       }
     }, dynamicTimeout + 2000); // 2 seconds after main timeout as final safety
     
@@ -258,6 +265,9 @@ export const useAutoSync = () => {
             syncInProgressRef.current = false;
             setSyncInProgress(false);
             setState(prev => ({ ...prev, isSyncing: false }));
+            // S21: unblock awaiters
+            inFlightSyncRef.current = null;
+            resolveInFlight();
             return;
           }
           liveUnsyncedCount =
@@ -565,6 +575,9 @@ export const useAutoSync = () => {
       setSyncInProgress(false);
       // CRITICAL: Always reset isSyncing state in finally block to prevent stuck spinner
       setState(prev => ({ ...prev, isSyncing: false }));
+      // S21: clear the in-flight ref and resolve awaiters before doing follow-up work
+      inFlightSyncRef.current = null;
+      resolveInFlight();
       // Always refresh unsynced counts so the badge is accurate after every sync attempt
       updateUnsyncedCounts().catch(() => {});
       // Always notify photo-count consumers so dead-letter / orphan filters re-evaluate
