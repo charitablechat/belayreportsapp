@@ -84,25 +84,28 @@ describe('shouldPreserveLocalRecord', () => {
     expect(shouldPreserveLocalRecord({ updated_at: '2025-01-01T00:00:00Z' })).toBe(true);
   });
 
-  it('returns true when updated_at is newer than synced_at by more than 5s tolerance', () => {
+  it('returns true when updated_at is newer than synced_at by more than tolerance', () => {
     expect(shouldPreserveLocalRecord({
       synced_at: '2025-01-01T00:00:00Z',
       updated_at: '2025-01-02T00:00:00Z'
     })).toBe(true);
   });
 
-  it('returns false when updated_at is only slightly ahead of synced_at (clock skew within 5s tolerance)', () => {
-    // 3 seconds ahead — within the 5-second clock-skew tolerance window
+  it('returns false when updated_at is only slightly ahead of synced_at (within tolerance)', () => {
+    const synced = new Date('2025-01-01T12:00:00.000Z');
+    const updated = new Date(synced.getTime() + 3_000); // 3s ahead
     expect(shouldPreserveLocalRecord({
-      synced_at: '2025-01-01T12:00:00.000Z',
-      updated_at: '2025-01-01T12:00:03.000Z'
+      synced_at: synced.toISOString(),
+      updated_at: updated.toISOString()
     })).toBe(false);
   });
 
-  it('returns true when updated_at is ahead of synced_at by exactly 6s (beyond tolerance)', () => {
+  it('returns true when updated_at is ahead of synced_at by tolerance + 1ms (beyond tolerance)', () => {
+    const synced = new Date('2025-01-01T12:00:00.000Z');
+    const updated = new Date(synced.getTime() + SYNC_DRIFT_TOLERANCE_MS + 1);
     expect(shouldPreserveLocalRecord({
-      synced_at: '2025-01-01T12:00:00.000Z',
-      updated_at: '2025-01-01T12:00:06.000Z'
+      synced_at: synced.toISOString(),
+      updated_at: updated.toISOString()
     })).toBe(true);
   });
 
