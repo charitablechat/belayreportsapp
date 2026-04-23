@@ -1,4 +1,5 @@
 import { supabase } from "@/integrations/supabase/client";
+import { syncLog } from "./sync-logger";
 
 /**
  * Build a user-facing label from a list of parts, skipping empty/nullish values.
@@ -238,7 +239,7 @@ export async function syncInspectionAtomic(inspectionId: string, preValidatedUse
           });
         }
         const serverId = dupRows[0].id;
-        console.log('[Atomic Sync] Found existing server record for temp inspection - adopting ID:', {
+        syncLog.log('[Atomic Sync] Found existing server record for temp inspection - adopting ID:', {
           tempId: inspection.id,
           serverId,
         });
@@ -248,7 +249,7 @@ export async function syncInspectionAtomic(inspectionId: string, preValidatedUse
       } else {
         const newId = crypto.randomUUID();
         inspectionIdMapping = { oldId: inspection.id, newId };
-        console.log('[Atomic Sync] Replacing temp inspection ID with real UUID:', {
+        syncLog.log('[Atomic Sync] Replacing temp inspection ID with real UUID:', {
           oldId: inspection.id,
           newId,
         });
@@ -271,7 +272,7 @@ export async function syncInspectionAtomic(inspectionId: string, preValidatedUse
     // Auto-fix ownership for locally-created records, skip only for server-origin records
     if (inspection.inspector_id !== user.id) {
       if (!inspection.synced_at) {
-        console.log('[Atomic Sync] Auto-fixing inspector_id for local inspection:', {
+        syncLog.log('[Atomic Sync] Auto-fixing inspector_id for local inspection:', {
           inspectionId,
           oldInspectorId: inspection.inspector_id?.substring(0, 8),
           newInspectorId: user.id.substring(0, 8),
@@ -351,7 +352,7 @@ export async function syncInspectionAtomic(inspectionId: string, preValidatedUse
     }
     
     if (import.meta.env.DEV) {
-      console.log('[Atomic Sync] Validation passed for:', inspectionId);
+      syncLog.log('[Atomic Sync] Validation passed for:', inspectionId);
     }
     
     // RC-5: Skip remote status check for new records (no synced_at = never been on server)
@@ -384,7 +385,7 @@ export async function syncInspectionAtomic(inspectionId: string, preValidatedUse
       
       try {
         await deleteOfflineInspection(inspectionId);
-        console.log('[Atomic Sync] Cleaned up orphaned local inspection:', inspectionId);
+        syncLog.log('[Atomic Sync] Cleaned up orphaned local inspection:', inspectionId);
       } catch (cleanupError) {
         console.error('[Atomic Sync] Failed to clean up orphaned local data:', cleanupError);
       }
@@ -431,7 +432,7 @@ export async function syncInspectionAtomic(inspectionId: string, preValidatedUse
           Object.assign(inspection, merged);
 
           if (import.meta.env.DEV) {
-            console.log('[Atomic Sync] S16 field-merged inspection:', inspectionId);
+            syncLog.log('[Atomic Sync] S16 field-merged inspection:', inspectionId);
           }
 
           // Audit: log resolved conflict so the conflicts panel reflects the merge.
@@ -581,7 +582,7 @@ export async function syncInspectionAtomic(inspectionId: string, preValidatedUse
         // RECOVERY: If this record was previously synced, pull server data into local
         // cache and re-align timestamps to stop the infinite retry loop
         if (inspection.synced_at) {
-          console.log('[SAFETY] Recovering: pulling server child data into local cache and re-aligning timestamps');
+          syncLog.log('[SAFETY] Recovering: pulling server child data into local cache and re-aligning timestamps');
           try {
             await Promise.all([
               existingSystems.length > 0 ? saveRelatedDataOffline('systems', inspectionId, existingSystems) : Promise.resolve(),
@@ -599,7 +600,7 @@ export async function syncInspectionAtomic(inspectionId: string, preValidatedUse
               updated_at: alignedTimestamp,
             });
             
-            console.log('[SAFETY] Recovery complete: local cache restored from server, timestamps aligned');
+            syncLog.log('[SAFETY] Recovery complete: local cache restored from server, timestamps aligned');
           } catch (recoveryError) {
             console.error('[SAFETY] Recovery failed:', recoveryError);
           }
@@ -623,12 +624,12 @@ export async function syncInspectionAtomic(inspectionId: string, preValidatedUse
       if (localIsCompletelyEmpty && wasEdited && ageMinutes > 5) {
         if (recordStatus?.record_exists && !recordStatus?.is_deleted) {
           // Guard 1 already ran and didn't block — server is also empty. Allow sync.
-          console.log('[SYNC] suspicious_empty_guard: both local and server are empty, allowing sync for genuinely blank inspection', {
+          syncLog.log('[SYNC] suspicious_empty_guard: both local and server are empty, allowing sync for genuinely blank inspection', {
             inspectionId: inspectionId.substring(0, 8),
           });
         } else {
           // Record doesn't exist on server yet — new blank form, allow sync
-          console.log('[SYNC] suspicious_empty_guard: new inspection with no server data, allowing sync', {
+          syncLog.log('[SYNC] suspicious_empty_guard: new inspection with no server data, allowing sync', {
             inspectionId: inspectionId.substring(0, 8),
           });
         }
@@ -776,7 +777,7 @@ export async function syncInspectionAtomic(inspectionId: string, preValidatedUse
         (steps[steps.length - 1].data as any).synced_at;
     } else {
       serverTimestamp = alignedData.updated_at;
-      console.log(
+      syncLog.log(
         '%c[SYNC_TERMINAL] align_synced_at CONFIRMED %c%s',
         'color: #4ade80; font-family: monospace; font-weight: bold',
         'color: #86efac; font-family: monospace',
@@ -796,7 +797,7 @@ export async function syncInspectionAtomic(inspectionId: string, preValidatedUse
     
     // 7. If we swapped a temp ID, clean up old IndexedDB entries
     if (inspectionIdMapping) {
-      console.log('[Atomic Sync] Cleaning up old temp-ID entries from IndexedDB:', inspectionIdMapping.oldId);
+      syncLog.log('[Atomic Sync] Cleaning up old temp-ID entries from IndexedDB:', inspectionIdMapping.oldId);
       
       // Delete old inspection entry keyed by temp ID
       await deleteOfflineInspection(inspectionIdMapping.oldId);
@@ -831,14 +832,14 @@ export async function syncInspectionAtomic(inspectionId: string, preValidatedUse
         await removeQueuedOperation(op.id!);
       }
       if (matchingOps.length > 0 && import.meta.env.DEV) {
-        console.log(`[Atomic Sync] Cleaned up ${matchingOps.length} orphaned operations entries for ${inspectionId}`);
+        syncLog.log(`[Atomic Sync] Cleaned up ${matchingOps.length} orphaned operations entries for ${inspectionId}`);
       }
     } catch (cleanupErr) {
       console.warn('[Atomic Sync] Non-blocking: failed to clean operations queue:', cleanupErr);
     }
     
     if (import.meta.env.DEV) {
-      console.log('[Atomic Sync] Successfully synced inspection:', inspectionId);
+      syncLog.log('[Atomic Sync] Successfully synced inspection:', inspectionId);
     }
     
     return { success: true };
@@ -858,7 +859,7 @@ export async function syncAllInspectionsAtomic(preValidatedUser?: CachedUser, si
   
   if (!navigator.onLine) {
     if (import.meta.env.DEV) {
-      console.log('[Atomic Sync] Offline - skipping sync');
+      syncLog.log('[Atomic Sync] Offline - skipping sync');
     }
     return;
   }
@@ -924,7 +925,7 @@ export async function syncAllInspectionsAtomic(preValidatedUser?: CachedUser, si
   // Early return for empty batch (consistent with trainings/assessments)
   if (unsynced.length === 0) {
     if (import.meta.env.DEV) {
-      console.log('[Atomic Sync] No inspections to sync');
+      syncLog.log('[Atomic Sync] No inspections to sync');
     }
     return { total: 0, success: 0, failed: 0, errors: [] };
   }
@@ -938,13 +939,13 @@ export async function syncAllInspectionsAtomic(preValidatedUser?: CachedUser, si
   // Log temp-ID items for sync debugging (always, not just DEV)
   const tempIdItems = batch.filter(i => i.id.startsWith('temp-'));
   if (tempIdItems.length > 0) {
-    console.log('[Atomic Sync] Batch includes temp-ID inspections:', 
+    syncLog.log('[Atomic Sync] Batch includes temp-ID inspections:', 
       tempIdItems.map(i => ({ id: i.id.substring(0, 20), org: i.organization }))
     );
   }
   
   if (import.meta.env.DEV) {
-    console.log('[Atomic Sync] Starting sync for unsynced inspections', {
+    syncLog.log('[Atomic Sync] Starting sync for unsynced inspections', {
       total: totalUnsynced,
       batchSize: batch.length,
       remaining,
@@ -1002,7 +1003,7 @@ export async function syncAllInspectionsAtomic(preValidatedUser?: CachedUser, si
         if (itemResult && typeof itemResult === 'object' && (itemResult as any).skipped) {
           // Skipped items don't count as success or failure
           if (import.meta.env.DEV) {
-            console.log(`[Atomic Sync] Skipped ${i + 1}/${unsynced.length}:`, inspection.id, (itemResult as any).reason);
+            syncLog.log(`[Atomic Sync] Skipped ${i + 1}/${unsynced.length}:`, inspection.id, (itemResult as any).reason);
           }
           synced = true; // Don't retry skipped items
         } else {
@@ -1011,7 +1012,7 @@ export async function syncAllInspectionsAtomic(preValidatedUser?: CachedUser, si
         }
 
         if (import.meta.env.DEV) {
-          console.log(`[Atomic Sync] Synced ${i + 1}/${batch.length} (${remaining} remaining):`, inspection.id);
+          syncLog.log(`[Atomic Sync] Synced ${i + 1}/${batch.length} (${remaining} remaining):`, inspection.id);
         }
       } catch (error: any) {
         retryCount++;
@@ -1020,7 +1021,7 @@ export async function syncAllInspectionsAtomic(preValidatedUser?: CachedUser, si
           // Reduced backoff for faster iteration
           const delay = Math.min(500 * retryCount, 2000);
           if (import.meta.env.DEV) {
-            console.log(`[Atomic Sync] Retry ${retryCount}/${maxRetries} for ${inspection.id} after ${delay}ms`);
+            syncLog.log(`[Atomic Sync] Retry ${retryCount}/${maxRetries} for ${inspection.id} after ${delay}ms`);
           }
           await new Promise(resolve => setTimeout(resolve, delay));
         } else {
@@ -1042,7 +1043,7 @@ export async function syncAllInspectionsAtomic(preValidatedUser?: CachedUser, si
   });
   
   // Log results (always, not just DEV - critical for mobile production diagnostics)
-  console.log('[Atomic Sync] Inspection sync results:', {
+  syncLog.log('[Atomic Sync] Inspection sync results:', {
     batch: batch.length,
     totalPending: totalUnsynced,
     remaining,
@@ -1129,7 +1130,7 @@ export async function syncTrainingAtomic(trainingId: string, preValidatedUser?: 
           });
         }
         const serverId = dupRows[0].id;
-        console.log('[Atomic Sync] Found existing server record for temp training - adopting ID:', {
+        syncLog.log('[Atomic Sync] Found existing server record for temp training - adopting ID:', {
           tempId: training.id,
           serverId,
         });
@@ -1139,7 +1140,7 @@ export async function syncTrainingAtomic(trainingId: string, preValidatedUser?: 
       } else {
         const newId = crypto.randomUUID();
         trainingIdMapping = { oldId: training.id, newId };
-        console.log('[Atomic Sync] Replacing temp training ID with real UUID:', {
+        syncLog.log('[Atomic Sync] Replacing temp training ID with real UUID:', {
           oldId: training.id,
           newId,
         });
@@ -1160,7 +1161,7 @@ export async function syncTrainingAtomic(trainingId: string, preValidatedUser?: 
     // Auto-fix ownership for locally-created records, skip only for server-origin records
     if (training.inspector_id !== user.id) {
       if (!training.synced_at) {
-        console.log('[Atomic Sync] Auto-fixing inspector_id for local training:', {
+        syncLog.log('[Atomic Sync] Auto-fixing inspector_id for local training:', {
           trainingId,
           oldInspectorId: training.inspector_id?.substring(0, 8),
           newInspectorId: user.id.substring(0, 8),
@@ -1242,7 +1243,7 @@ export async function syncTrainingAtomic(trainingId: string, preValidatedUser?: 
     }
     
     if (import.meta.env.DEV) {
-      console.log('[Atomic Sync] Training data gathered:', {
+      syncLog.log('[Atomic Sync] Training data gathered:', {
         trainingId,
         organization: training.organization,
         relatedData: {
@@ -1288,7 +1289,7 @@ export async function syncTrainingAtomic(trainingId: string, preValidatedUser?: 
       
       try {
         await deleteOfflineTraining(trainingId);
-        console.log('[Atomic Sync] Cleaned up orphaned local training:', trainingId);
+        syncLog.log('[Atomic Sync] Cleaned up orphaned local training:', trainingId);
       } catch (cleanupError) {
         console.error('[Atomic Sync] Failed to clean up orphaned local training:', cleanupError);
       }
@@ -1321,7 +1322,7 @@ export async function syncTrainingAtomic(trainingId: string, preValidatedUser?: 
           );
           Object.assign(training, merged);
           if (import.meta.env.DEV) {
-            console.log('[Atomic Sync] S16 field-merged training:', trainingId);
+            syncLog.log('[Atomic Sync] S16 field-merged training:', trainingId);
           }
         }
       }
@@ -1448,7 +1449,7 @@ export async function syncTrainingAtomic(trainingId: string, preValidatedUser?: 
         
         // RECOVERY: Pull server data into local cache and re-align timestamps
         if (training.synced_at) {
-          console.log('[SAFETY] Recovering training: pulling server child data into local cache');
+          syncLog.log('[SAFETY] Recovering training: pulling server child data into local cache');
           try {
             await Promise.all([
               existingApproaches.length > 0 ? saveTrainingDataOffline('delivery_approaches', trainingId, existingApproaches) : Promise.resolve(),
@@ -1460,7 +1461,7 @@ export async function syncTrainingAtomic(trainingId: string, preValidatedUser?: 
             ]);
             const alignedTimestamp = recordStatus.updated_at || new Date().toISOString();
             await saveTrainingOffline({ ...training, synced_at: alignedTimestamp, updated_at: alignedTimestamp });
-            console.log('[SAFETY] Training recovery complete');
+            syncLog.log('[SAFETY] Training recovery complete');
           } catch (recoveryError) {
             console.error('[SAFETY] Training recovery failed:', recoveryError);
           }
@@ -1484,12 +1485,12 @@ export async function syncTrainingAtomic(trainingId: string, preValidatedUser?: 
       if (localIsCompletelyEmpty && wasEdited && ageMinutes > 5) {
         if (recordStatus?.record_exists && !recordStatus?.is_deleted) {
           // Guard 1 already ran and didn't block — server is also empty. Allow sync.
-          console.log('[SYNC] suspicious_empty_guard: both local and server are empty, allowing sync for genuinely blank training', {
+          syncLog.log('[SYNC] suspicious_empty_guard: both local and server are empty, allowing sync for genuinely blank training', {
             trainingId: trainingId.substring(0, 8),
           });
         } else {
           // Record doesn't exist on server yet — new blank form, allow sync
-          console.log('[SYNC] suspicious_empty_guard: new training with no server data, allowing sync', {
+          syncLog.log('[SYNC] suspicious_empty_guard: new training with no server data, allowing sync', {
             trainingId: trainingId.substring(0, 8),
           });
         }
@@ -1638,7 +1639,7 @@ export async function syncTrainingAtomic(trainingId: string, preValidatedUser?: 
         (steps[steps.length - 1].data as any).synced_at;
     } else {
       serverTimestamp = alignedData.updated_at;
-      console.log(
+      syncLog.log(
         '%c[SYNC_TERMINAL] align_synced_at CONFIRMED %c%s',
         'color: #4ade80; font-family: monospace; font-weight: bold',
         'color: #86efac; font-family: monospace',
@@ -1657,7 +1658,7 @@ export async function syncTrainingAtomic(trainingId: string, preValidatedUser?: 
     
     // 7. If we swapped a temp ID, clean up old IndexedDB entries
     if (trainingIdMapping) {
-      console.log('[Atomic Sync] Cleaning up old temp-ID entries from IndexedDB:', trainingIdMapping.oldId);
+      syncLog.log('[Atomic Sync] Cleaning up old temp-ID entries from IndexedDB:', trainingIdMapping.oldId);
       
       // Delete old training entry keyed by temp ID
       await deleteOfflineTraining(trainingIdMapping.oldId);
@@ -1683,7 +1684,7 @@ export async function syncTrainingAtomic(trainingId: string, preValidatedUser?: 
     }
     
     if (import.meta.env.DEV) {
-      console.log('[Atomic Sync] Successfully synced training with related data:', {
+      syncLog.log('[Atomic Sync] Successfully synced training with related data:', {
         trainingId,
         stepsCompleted: result.completedSteps,
         totalSteps: result.totalSteps,
@@ -1702,7 +1703,7 @@ export async function syncTrainingAtomic(trainingId: string, preValidatedUser?: 
         await removeQueuedTrainingOperation(op.id!);
       }
       if (matchingOps.length > 0 && import.meta.env.DEV) {
-        console.log(`[Atomic Sync] Cleaned up ${matchingOps.length} orphaned training_operations entries for ${trainingId}`);
+        syncLog.log(`[Atomic Sync] Cleaned up ${matchingOps.length} orphaned training_operations entries for ${trainingId}`);
       }
     } catch (cleanupErr) {
       console.warn('[Atomic Sync] Non-blocking: failed to clean training_operations queue:', cleanupErr);
@@ -1725,7 +1726,7 @@ export async function syncAllTrainingsAtomic(preValidatedUser?: CachedUser, sign
   
   if (!navigator.onLine) {
     if (import.meta.env.DEV) {
-      console.log('[Atomic Sync] Offline - skipping training sync');
+      syncLog.log('[Atomic Sync] Offline - skipping training sync');
     }
     return { total: 0, success: 0, failed: 0, errors: [] };
   }
@@ -1787,7 +1788,7 @@ export async function syncAllTrainingsAtomic(preValidatedUser?: CachedUser, sign
   
   if (unsynced.length === 0) {
     if (import.meta.env.DEV) {
-      console.log('[Atomic Sync] No trainings to sync');
+      syncLog.log('[Atomic Sync] No trainings to sync');
     }
     return { total: 0, success: 0, failed: 0, errors: [] };
   }
@@ -1799,7 +1800,7 @@ export async function syncAllTrainingsAtomic(preValidatedUser?: CachedUser, sign
   const remaining = totalUnsynced - batch.length;
 
   if (import.meta.env.DEV) {
-    console.log('[Atomic Sync] Starting sync for unsynced trainings', {
+    syncLog.log('[Atomic Sync] Starting sync for unsynced trainings', {
       total: totalUnsynced,
       batchSize: batch.length,
       remaining,
@@ -1856,7 +1857,7 @@ export async function syncAllTrainingsAtomic(preValidatedUser?: CachedUser, sign
         }
 
         if (import.meta.env.DEV) {
-          console.log(`[Atomic Sync] Synced training ${i + 1}/${batch.length} (${remaining} remaining):`, training.id);
+          syncLog.log(`[Atomic Sync] Synced training ${i + 1}/${batch.length} (${remaining} remaining):`, training.id);
         }
       } catch (error: any) {
         retryCount++;
@@ -1864,7 +1865,7 @@ export async function syncAllTrainingsAtomic(preValidatedUser?: CachedUser, sign
         if (retryCount < maxRetries) {
           const delay = Math.min(500 * retryCount, 2000);
           if (import.meta.env.DEV) {
-            console.log(`[Atomic Sync] Retry ${retryCount}/${maxRetries} for training ${training.id} after ${delay}ms`);
+            syncLog.log(`[Atomic Sync] Retry ${retryCount}/${maxRetries} for training ${training.id} after ${delay}ms`);
           }
           await new Promise(resolve => setTimeout(resolve, delay));
         } else {
@@ -1876,7 +1877,7 @@ export async function syncAllTrainingsAtomic(preValidatedUser?: CachedUser, sign
     }
   });
   
-  console.log('[Atomic Sync] Training sync results:', {
+  syncLog.log('[Atomic Sync] Training sync results:', {
     batch: batch.length,
     totalPending: totalUnsynced,
     remaining,
@@ -1932,7 +1933,7 @@ export async function syncDailyAssessmentAtomic(assessmentId: string, preValidat
           });
         }
         const serverId = dupRows[0].id;
-        console.log('[Atomic Sync] Found existing server record for temp assessment - adopting ID:', {
+        syncLog.log('[Atomic Sync] Found existing server record for temp assessment - adopting ID:', {
           tempId: assessment.id,
           serverId,
         });
@@ -1942,7 +1943,7 @@ export async function syncDailyAssessmentAtomic(assessmentId: string, preValidat
       } else {
         const newId = crypto.randomUUID();
         assessmentIdMapping = { oldId: assessment.id, newId };
-        console.log('[Atomic Sync] Replacing temp assessment ID with real UUID:', {
+        syncLog.log('[Atomic Sync] Replacing temp assessment ID with real UUID:', {
           oldId: assessment.id,
           newId,
         });
@@ -1963,7 +1964,7 @@ export async function syncDailyAssessmentAtomic(assessmentId: string, preValidat
     // Auto-fix ownership for locally-created records, skip only for server-origin records
     if (assessment.inspector_id !== user.id) {
       if (!assessment.synced_at) {
-        console.log('[Atomic Sync] Auto-fixing inspector_id for local assessment:', {
+        syncLog.log('[Atomic Sync] Auto-fixing inspector_id for local assessment:', {
           assessmentId,
           oldInspectorId: assessment.inspector_id?.substring(0, 8),
           newInspectorId: user.id.substring(0, 8),
@@ -2039,7 +2040,7 @@ export async function syncDailyAssessmentAtomic(assessmentId: string, preValidat
     }
     
     if (import.meta.env.DEV) {
-      console.log('[Atomic Sync] Daily assessment data gathered:', {
+      syncLog.log('[Atomic Sync] Daily assessment data gathered:', {
         assessmentId,
         organization: assessment.organization,
         relatedData: {
@@ -2085,7 +2086,7 @@ export async function syncDailyAssessmentAtomic(assessmentId: string, preValidat
       
       try {
         await deleteOfflineDailyAssessment(assessmentId);
-        console.log('[Atomic Sync] Cleaned up orphaned local assessment:', assessmentId);
+        syncLog.log('[Atomic Sync] Cleaned up orphaned local assessment:', assessmentId);
       } catch (cleanupError) {
         console.error('[Atomic Sync] Failed to clean up orphaned local assessment:', cleanupError);
       }
@@ -2118,7 +2119,7 @@ export async function syncDailyAssessmentAtomic(assessmentId: string, preValidat
           );
           Object.assign(assessment, merged);
           if (import.meta.env.DEV) {
-            console.log('[Atomic Sync] S16 field-merged assessment:', assessmentId);
+            syncLog.log('[Atomic Sync] S16 field-merged assessment:', assessmentId);
           }
         }
       }
@@ -2245,7 +2246,7 @@ export async function syncDailyAssessmentAtomic(assessmentId: string, preValidat
         
         // RECOVERY: Pull server data into local cache and re-align timestamps
         if (assessment.synced_at) {
-          console.log('[SAFETY] Recovering assessment: pulling server child data into local cache');
+          syncLog.log('[SAFETY] Recovering assessment: pulling server child data into local cache');
           try {
             await Promise.all([
               existingBeginning.length > 0 ? saveAssessmentDataOffline('beginning_of_day', assessmentId, existingBeginning) : Promise.resolve(),
@@ -2257,7 +2258,7 @@ export async function syncDailyAssessmentAtomic(assessmentId: string, preValidat
             ]);
             const alignedTimestamp = recordStatus.updated_at || new Date().toISOString();
             await saveDailyAssessmentOffline({ ...assessment, synced_at: alignedTimestamp, updated_at: alignedTimestamp });
-            console.log('[SAFETY] Assessment recovery complete');
+            syncLog.log('[SAFETY] Assessment recovery complete');
           } catch (recoveryError) {
             console.error('[SAFETY] Assessment recovery failed:', recoveryError);
           }
@@ -2284,12 +2285,12 @@ export async function syncDailyAssessmentAtomic(assessmentId: string, preValidat
       if (localIsCompletelyEmpty && wasEdited && ageMinutes > 5) {
         if (recordStatus?.record_exists && !recordStatus?.is_deleted) {
           // Guard 1 already ran and didn't block — server is also empty. Allow sync.
-          console.log('[SYNC] suspicious_empty_guard: both local and server are empty, allowing sync for genuinely blank form', {
+          syncLog.log('[SYNC] suspicious_empty_guard: both local and server are empty, allowing sync for genuinely blank form', {
             assessmentId: assessmentId.substring(0, 8),
           });
         } else {
           // Record doesn't exist on server yet — new blank form, allow sync
-          console.log('[SYNC] suspicious_empty_guard: new record with no server data, allowing sync', {
+          syncLog.log('[SYNC] suspicious_empty_guard: new record with no server data, allowing sync', {
             assessmentId: assessmentId.substring(0, 8),
           });
         }
@@ -2432,7 +2433,7 @@ export async function syncDailyAssessmentAtomic(assessmentId: string, preValidat
         (steps[steps.length - 1].data as any).synced_at;
     } else {
       serverTimestamp = alignedData.updated_at;
-      console.log(
+      syncLog.log(
         '%c[SYNC_TERMINAL] align_synced_at CONFIRMED %c%s',
         'color: #4ade80; font-family: monospace; font-weight: bold',
         'color: #86efac; font-family: monospace',
@@ -2451,7 +2452,7 @@ export async function syncDailyAssessmentAtomic(assessmentId: string, preValidat
     
     // 7. If we swapped a temp ID, clean up old IndexedDB entries
     if (assessmentIdMapping) {
-      console.log('[Atomic Sync] Cleaning up old temp-ID entries from IndexedDB:', assessmentIdMapping.oldId);
+      syncLog.log('[Atomic Sync] Cleaning up old temp-ID entries from IndexedDB:', assessmentIdMapping.oldId);
       
       // Delete old assessment entry keyed by temp ID
       await deleteOfflineDailyAssessment(assessmentIdMapping.oldId);
@@ -2487,14 +2488,14 @@ export async function syncDailyAssessmentAtomic(assessmentId: string, preValidat
         await removeQueuedAssessmentOperation(op.id!);
       }
       if (matchingOps.length > 0 && import.meta.env.DEV) {
-        console.log(`[Atomic Sync] Cleaned up ${matchingOps.length} orphaned assessment_operations entries for ${assessmentId}`);
+        syncLog.log(`[Atomic Sync] Cleaned up ${matchingOps.length} orphaned assessment_operations entries for ${assessmentId}`);
       }
     } catch (cleanupErr) {
       console.warn('[Atomic Sync] Non-blocking: failed to clean assessment_operations queue:', cleanupErr);
     }
     
     if (import.meta.env.DEV) {
-      console.log('[Atomic Sync] Successfully synced daily assessment with related data:', {
+      syncLog.log('[Atomic Sync] Successfully synced daily assessment with related data:', {
         assessmentId,
         stepsCompleted: result.completedSteps,
         totalSteps: result.totalSteps,
@@ -2518,7 +2519,7 @@ export async function syncAllDailyAssessmentsAtomic(preValidatedUser?: CachedUse
   
   if (!navigator.onLine) {
     if (import.meta.env.DEV) {
-      console.log('[Atomic Sync] Offline - skipping daily assessment sync');
+      syncLog.log('[Atomic Sync] Offline - skipping daily assessment sync');
     }
     return { total: 0, success: 0, failed: 0, errors: [] };
   }
@@ -2579,7 +2580,7 @@ export async function syncAllDailyAssessmentsAtomic(preValidatedUser?: CachedUse
   
   if (unsynced.length === 0) {
     if (import.meta.env.DEV) {
-      console.log('[Atomic Sync] No daily assessments to sync');
+      syncLog.log('[Atomic Sync] No daily assessments to sync');
     }
     return { total: 0, success: 0, failed: 0, errors: [] };
   }
@@ -2591,7 +2592,7 @@ export async function syncAllDailyAssessmentsAtomic(preValidatedUser?: CachedUse
   const remaining = totalUnsynced - batch.length;
 
   if (import.meta.env.DEV) {
-    console.log('[Atomic Sync] Starting sync for unsynced daily assessments', {
+    syncLog.log('[Atomic Sync] Starting sync for unsynced daily assessments', {
       total: totalUnsynced,
       batchSize: batch.length,
       remaining,
@@ -2648,7 +2649,7 @@ export async function syncAllDailyAssessmentsAtomic(preValidatedUser?: CachedUse
         }
 
         if (import.meta.env.DEV) {
-          console.log(`[Atomic Sync] Synced daily assessment ${i + 1}/${batch.length} (${remaining} remaining):`, assessment.id);
+          syncLog.log(`[Atomic Sync] Synced daily assessment ${i + 1}/${batch.length} (${remaining} remaining):`, assessment.id);
         }
       } catch (error: any) {
         retryCount++;
@@ -2656,7 +2657,7 @@ export async function syncAllDailyAssessmentsAtomic(preValidatedUser?: CachedUse
         if (retryCount < maxRetries) {
           const delay = Math.min(500 * retryCount, 2000);
           if (import.meta.env.DEV) {
-            console.log(`[Atomic Sync] Retry ${retryCount}/${maxRetries} for assessment ${assessment.id} after ${delay}ms`);
+            syncLog.log(`[Atomic Sync] Retry ${retryCount}/${maxRetries} for assessment ${assessment.id} after ${delay}ms`);
           }
           await new Promise(resolve => setTimeout(resolve, delay));
         } else {
@@ -2668,7 +2669,7 @@ export async function syncAllDailyAssessmentsAtomic(preValidatedUser?: CachedUse
     }
   });
   
-  console.log('[Atomic Sync] Daily assessment sync results:', {
+  syncLog.log('[Atomic Sync] Daily assessment sync results:', {
     batch: batch.length,
     totalPending: totalUnsynced,
     remaining,
@@ -2716,7 +2717,7 @@ export async function refetchInspectionPackage(inspectionId: string): Promise<vo
       clearRelatedDataOffline('standards', inspectionId).then(() => standards.length > 0 ? saveRelatedDataOffline('standards', inspectionId, standards) : null),
       clearRelatedDataOffline('summary', inspectionId).then(() => summaryRows.length > 0 ? saveRelatedDataOffline('summary', inspectionId, summaryRows) : null),
     ]);
-    if (import.meta.env.DEV) console.log('[Atomic Sync] Refetched inspection package:', inspectionId);
+    syncLog.log('[Atomic Sync] Refetched inspection package:', inspectionId);
   } catch (e) {
     console.warn('[Atomic Sync] refetchInspectionPackage failed (non-fatal):', e);
   }
@@ -2745,7 +2746,7 @@ export async function refetchTrainingPackage(trainingId: string): Promise<void> 
       clearTrainingDataOffline('systems_in_place', trainingId).then(() => sip.length > 0 ? saveTrainingDataOffline('systems_in_place', trainingId, sip) : null),
       clearTrainingDataOffline('summary', trainingId).then(() => summary.length > 0 ? saveTrainingDataOffline('summary', trainingId, summary) : null),
     ]);
-    if (import.meta.env.DEV) console.log('[Atomic Sync] Refetched training package:', trainingId);
+    syncLog.log('[Atomic Sync] Refetched training package:', trainingId);
   } catch (e) {
     console.warn('[Atomic Sync] refetchTrainingPackage failed (non-fatal):', e);
   }
@@ -2774,7 +2775,7 @@ export async function refetchAssessmentPackage(assessmentId: string): Promise<vo
       clearAssessmentDataOffline('structure_checks', assessmentId).then(() => st.length > 0 ? saveAssessmentDataOffline('structure_checks', assessmentId, st) : null),
       clearAssessmentDataOffline('environment_checks', assessmentId).then(() => env.length > 0 ? saveAssessmentDataOffline('environment_checks', assessmentId, env) : null),
     ]);
-    if (import.meta.env.DEV) console.log('[Atomic Sync] Refetched assessment package:', assessmentId);
+    syncLog.log('[Atomic Sync] Refetched assessment package:', assessmentId);
   } catch (e) {
     console.warn('[Atomic Sync] refetchAssessmentPackage failed (non-fatal):', e);
   }
