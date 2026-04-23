@@ -796,7 +796,7 @@ export const useAutoSync = () => {
     } else if (import.meta.env.DEV) {
       console.log('[AutoSync] Skipping Realtime-triggered sync (sync in progress)');
     }
-  }, [queryClient, triggerDebouncedSync]);
+  }, [queryClient, performSync, scheduleFullRefetch]);
   
   // Initialize sync system
   useEffect(() => {
