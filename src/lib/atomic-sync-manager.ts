@@ -517,6 +517,12 @@ export async function syncInspectionAtomic(inspectionId: string, preValidatedUse
             skipCount,
             maxSkips: MAX_REGRESSION_SKIPS,
           });
+          notifyRegressionBlock(
+            'inspection',
+            inspectionId,
+            (inspection as any)?.organization || (inspection as any)?.location || '',
+            skipCount,
+          );
           return { success: false, skipped: true, reason: 'field_count_regression' };
         }
         console.warn('[SAFETY] Allowing inspection sync after max regression skips reached', {
@@ -524,9 +530,11 @@ export async function syncInspectionAtomic(inspectionId: string, preValidatedUse
           skipCount,
         });
         await resetRegressionSkipCount(inspectionId);
+        notifyRegressionRelease();
       } else {
         // Field count is healthy — clear any previous skip counter
         await resetRegressionSkipCount(inspectionId);
+        notifyRegressionRelease();
       }
     }
 
