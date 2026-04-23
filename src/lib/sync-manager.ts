@@ -265,6 +265,7 @@ export async function syncPhotos(signal?: AbortSignal): Promise<{ remaining: num
             console.warn('[Sync Manager] Skipping photo with null blob (already uploaded?):', photo.id);
           }
           await markPhotoAsUploaded(photo.id, photo.photoUrl || photo.id);
+          changedCount++;
           return;
         }
 
