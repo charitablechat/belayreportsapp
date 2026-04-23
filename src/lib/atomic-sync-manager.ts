@@ -57,6 +57,12 @@ import { appendVersion, getLatestFieldCount, calculateFieldCount } from "./repor
 import { runWithConcurrency } from "./concurrency";
 import { assertNoTempIds, assertNoTempIdsInArray } from "./sw-sync-validators";
 import { registerSelfWrite } from "./sync-events";
+import {
+  getRegressionSkipCount,
+  incrementRegressionSkipCount,
+  resetRegressionSkipCount,
+} from "./regression-skip-store";
+import { wasClearedAfterLastSync } from "./clear-intent";
 
 /**
  * Adaptive batch size for sync cycles.
@@ -82,8 +88,11 @@ export function getAdaptiveBatchSize(): number { return currentBatchSize; }
  * Tracks consecutive field_count_regression skips per record.
  * After MAX_REGRESSION_SKIPS consecutive skips, the guard allows sync to proceed.
  * This prevents legitimate large deletions from being blocked indefinitely.
+ *
+ * S10: counter is now persisted via regression-skip-store.ts so it survives
+ * tab refresh / PWA wake / SW restart. The helpers there maintain an in-memory
+ * hot cache; we just call them directly.
  */
-const regressionSkipCounter = new Map<string, number>();
 const MAX_REGRESSION_SKIPS = 3;
 
 /**
