@@ -11,9 +11,6 @@ export const OfflineSimulator = () => {
   const [simulatedOffline, setSimulatedOffline] = useState(false);
   const [networkSpeed, setNetworkSpeed] = useState<'fast' | 'slow'>('fast');
 
-  // Only show in development mode
-  if (!import.meta.env.DEV) return null;
-
   // Load persisted state
   useEffect(() => {
     const saved = localStorage.getItem('offline-simulator-state');
@@ -50,6 +47,10 @@ export const OfflineSimulator = () => {
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [isSimulating]);
+
+  // H10: Hooks must run unconditionally on every render — production gate
+  // lives AFTER all hook calls so React sees a stable hook order.
+  if (!import.meta.env.DEV) return null;
   const handleToggleSimulation = (enabled: boolean) => {
     setIsSimulating(enabled);
     if (!enabled) {

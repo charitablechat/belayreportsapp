@@ -81,6 +81,58 @@ try {
   // ignore (e.g. SSR / restricted storage)
 }
 
+// ── H6: Single-flight session refresh + abort-on-signout ──
+let pendingRefreshPromise: Promise<Awaited<ReturnType<typeof supabase.auth.refreshSession>> | null> | null = null;
+let refreshAborted = false;
+
+/**
+ * Coordinated wrapper around `supabase.auth.refreshSession()`.
+ * - Concurrent callers share the same in-flight promise (single-flight).
+ * - If sign-out flips `refreshAborted` mid-flight, the resolved value is
+ *   suppressed so a stale token cannot re-hydrate the session post-signout.
+ */
+export function refreshSessionSingleFlight() {
+  if (pendingRefreshPromise) return pendingRefreshPromise;
+  refreshAborted = false;
+  pendingRefreshPromise = (async () => {
+    try {
+      const result = await supabase.auth.refreshSession();
+      if (refreshAborted) return null;
+      return result;
+    } catch (err) {
+      if (refreshAborted) return null;
+      throw err;
+    } finally {
+      pendingRefreshPromise = null;
+    }
+  })();
+  return pendingRefreshPromise;
+}
+
+/**
+ * Sign out while aborting any in-flight refresh so a late refresh cannot
+ * re-create the session after `signOut()` clears it. Bounded wait (1s) so a
+ * hung refresh can't block sign-out.
+ */
+export async function signOutWithAbort(): Promise<void> {
+  refreshAborted = true;
+  if (pendingRefreshPromise) {
+    try {
+      await Promise.race([
+        pendingRefreshPromise,
+        new Promise((resolve) => setTimeout(resolve, 1000)),
+      ]);
+    } catch {
+      // ignore — we're tearing down regardless
+    }
+  }
+  try {
+    await supabase.auth.signOut();
+  } finally {
+    refreshAborted = false;
+  }
+}
+
 /**
  * Detects Navigator LockManager timeout errors from Supabase auth-js.
  * These occur when too many concurrent auth requests compete for the session lock.
@@ -200,7 +252,7 @@ export async function getUserWithCache(): Promise<CachedUser | null> {
           // Session expiring soon — refresh non-blocking
           if (!pendingUserPromise) {
             setTimeout(() => {
-              supabase.auth.refreshSession().catch((e) => {
+              refreshSessionSingleFlight()?.catch?.((e) => {
                 if (import.meta.env.DEV) {
                   console.log('[CachedAuth] Pre-emptive refresh failed (non-critical):', e);
                 }
@@ -628,7 +680,7 @@ export async function ensureValidSession(): Promise<CachedUser | null> {
             // Non-blocking refresh
             if (navigator.onLine) {
               setTimeout(() => {
-                supabase.auth.refreshSession().catch(() => {});
+                refreshSessionSingleFlight()?.catch?.(() => {});
               }, 0);
             }
             return parsed.user;
@@ -679,8 +731,9 @@ export async function ensureValidSession(): Promise<CachedUser | null> {
           console.log('[CachedAuth] No active session — attempting refresh via stored token');
         }
         try {
-          const { data: { session: refreshedSession }, error: refreshError } = 
-            await supabase.auth.refreshSession();
+          const refreshResult = await refreshSessionSingleFlight();
+          const refreshedSession = refreshResult?.data?.session ?? null;
+          const refreshError = refreshResult?.error ?? null;
           if (refreshedSession && !refreshError) {
             cachedUser = refreshedSession.user;
             cacheTimestamp = Date.now();
@@ -710,8 +763,9 @@ export async function ensureValidSession(): Promise<CachedUser | null> {
         });
       }
       
-      const { data: { session: refreshedSession }, error: refreshError } = 
-        await supabase.auth.refreshSession();
+      const refreshResult = await refreshSessionSingleFlight();
+      const refreshedSession = refreshResult?.data?.session ?? null;
+      const refreshError = refreshResult?.error ?? null;
       
       if (refreshError || !refreshedSession) {
         console.error('[CachedAuth] Failed to refresh session:', refreshError);

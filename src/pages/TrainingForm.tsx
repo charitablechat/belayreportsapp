@@ -598,6 +598,12 @@ export default function TrainingForm() {
   }, [loadTraining]);
 
   // F4: Realtime refresh for THIS training. Suppressed while user has unsaved edits.
+  // H5: read `hasUnsavedChanges` and the latest `updated_at` via refs so the
+  // channel doesn't churn on every keystroke.
+  const lastLoadedUpdatedAtRef = useRef<string | null>(null);
+  useEffect(() => {
+    lastLoadedUpdatedAtRef.current = (training as any)?.updated_at ?? null;
+  }, [training]);
   useEffect(() => {
     if (!id || id.startsWith('temp-')) return;
     const channel = supabase
@@ -608,11 +614,11 @@ export default function TrainingForm() {
         (payload) => {
           const remoteUpdated = (payload.new as any)?.updated_at;
           if (!remoteUpdated) return;
-          const localUpdated = (training as any)?.updated_at;
+          const localUpdated = lastLoadedUpdatedAtRef.current;
           const remoteMs = new Date(remoteUpdated).getTime();
           const localMs = localUpdated ? new Date(localUpdated).getTime() : 0;
           if (remoteMs - localMs <= 5000) return;
-          if (hasUnsavedChanges) {
+          if (hasUnsavedRef.current) {
             if (import.meta.env.DEV) console.log('[TrainingForm] Skipping remote refresh — unsaved local changes');
             return;
           }
@@ -623,7 +629,7 @@ export default function TrainingForm() {
       .subscribe();
     return () => { supabase.removeChannel(channel); };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [id, training?.updated_at, hasUnsavedChanges, loadTraining]);
+  }, [id, loadTraining]);
 
   // Listen for JSON import events — reload form state from IndexedDB to prevent
   // stale React state from overwriting imported data on next save
