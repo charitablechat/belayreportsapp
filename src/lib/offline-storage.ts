@@ -214,6 +214,27 @@ interface InspectionDB extends DBSchema {
     };
     indexes: { 'by-category': string };
   };
+  /**
+   * 1.C — Persistent dead-letter store for photos that crossed the upload
+   * retry threshold. Keyed by photo id. Surfaced in SyncDiagnosticsSheet
+   * (and consumable by an admin panel) so failures are never silent orphans.
+   */
+  photo_upload_failures: {
+    key: string;
+    value: {
+      id: string;            // photo id (matches `photos` keyPath)
+      inspectionId: string;
+      fileName: string;
+      photoUrl?: string;
+      section?: string;
+      retryCount: number;
+      lastError: string;
+      lastErrorAt: number;
+      firstFailedAt: number;
+      capturedByUserId?: string | null;
+    };
+    indexes: { 'by-failed-at': number };
+  };
 }
 
 let dbPromise: Promise<IDBPDatabase<InspectionDB>> | null = null;
