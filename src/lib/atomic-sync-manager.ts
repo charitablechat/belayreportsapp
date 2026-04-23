@@ -59,11 +59,24 @@ import { assertNoTempIds, assertNoTempIdsInArray } from "./sw-sync-validators";
 import { registerSelfWrite } from "./sync-events";
 
 /**
- * Maximum number of items to process per sync cycle.
- * Prevents timeout cascades when many items are queued (e.g., 22 reports).
- * Remaining items will be picked up in subsequent sync cycles.
+ * Adaptive batch size for sync cycles.
+ * Starts at MIN_BATCH_SIZE; after each cycle that completes with zero failures
+ * we ramp up to MAX_BATCH_SIZE. Any failure resets back to MIN_BATCH_SIZE.
+ * This drains a backlog of 22 reports in ~2 cycles instead of ~5 while still
+ * protecting timeout budgets when the network is unhealthy.
  */
-const MAX_BATCH_SIZE = 5;
+const MIN_BATCH_SIZE = 5;
+const MAX_BATCH_SIZE = 20; // exported for back-compat with useAutoSync timeout calc
+let currentBatchSize = MIN_BATCH_SIZE;
+function getCurrentBatchSize(): number { return currentBatchSize; }
+export function noteBatchOutcome(failed: number): void {
+  if (failed > 0) {
+    currentBatchSize = MIN_BATCH_SIZE;
+  } else {
+    currentBatchSize = Math.min(MAX_BATCH_SIZE, currentBatchSize + 5);
+  }
+}
+export function getAdaptiveBatchSize(): number { return currentBatchSize; }
 
 /**
  * Tracks consecutive field_count_regression skips per record.
@@ -831,11 +844,12 @@ export async function syncAllInspectionsAtomic(preValidatedUser?: CachedUser) {
     return { total: 0, success: 0, failed: 0, errors: [] };
   }
   
-  // Batch limiting: only process MAX_BATCH_SIZE items per cycle
+  // S7: Adaptive batch — grows on success, resets on failure
+  const adaptiveSize = getCurrentBatchSize();
   const totalUnsynced = unsynced.length;
-  const batch = unsynced.slice(0, MAX_BATCH_SIZE);
+  const batch = unsynced.slice(0, adaptiveSize);
   const remaining = totalUnsynced - batch.length;
-  
+
   // Log temp-ID items for sync debugging (always, not just DEV)
   const tempIdItems = batch.filter(i => i.id.startsWith('temp-'));
   if (tempIdItems.length > 0) {
@@ -1649,11 +1663,12 @@ export async function syncAllTrainingsAtomic(preValidatedUser?: CachedUser) {
     return { total: 0, success: 0, failed: 0, errors: [] };
   }
   
-  // Batch limiting: only process MAX_BATCH_SIZE items per cycle
+  // S7: Adaptive batch — grows on success, resets on failure
+  const adaptiveSize = getCurrentBatchSize();
   const totalUnsynced = unsynced.length;
-  const batch = unsynced.slice(0, MAX_BATCH_SIZE);
+  const batch = unsynced.slice(0, adaptiveSize);
   const remaining = totalUnsynced - batch.length;
-  
+
   if (import.meta.env.DEV) {
     console.log('[Atomic Sync] Starting sync for unsynced trainings', {
       total: totalUnsynced,
@@ -2397,11 +2412,12 @@ export async function syncAllDailyAssessmentsAtomic(preValidatedUser?: CachedUse
     return { total: 0, success: 0, failed: 0, errors: [] };
   }
   
-  // Batch limiting: only process MAX_BATCH_SIZE items per cycle
+  // S7: Adaptive batch — grows on success, resets on failure
+  const adaptiveSize = getCurrentBatchSize();
   const totalUnsynced = unsynced.length;
-  const batch = unsynced.slice(0, MAX_BATCH_SIZE);
+  const batch = unsynced.slice(0, adaptiveSize);
   const remaining = totalUnsynced - batch.length;
-  
+
   if (import.meta.env.DEV) {
     console.log('[Atomic Sync] Starting sync for unsynced daily assessments', {
       total: totalUnsynced,

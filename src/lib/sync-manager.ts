@@ -48,7 +48,10 @@ export async function syncTrainings(): Promise<never> {
 import { runWithConcurrency } from './concurrency';
 import { isMobile } from './mobile-detection';
 
-const MAX_PHOTO_BATCH_SIZE = 10;
+// S7: Raised from 10 → 30. Photo upload is bounded-parallel (3 mobile / 5 desktop)
+// and Storage handles concurrent PUTs fine; the previous 10/cycle made backlogs of
+// 200+ photos take 20+ sync cycles to drain.
+const MAX_PHOTO_BATCH_SIZE = 30;
 
 export async function syncPhotos(): Promise<{ remaining: number }> {
   if (!navigator.onLine) {

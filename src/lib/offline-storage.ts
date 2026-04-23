@@ -1188,12 +1188,8 @@ export async function queueOperation(type: 'create' | 'update' | 'delete', inspe
         console.log('[Offline Storage] Queued operation:', { type, inspectionId });
       }
       
-      try {
-        const { registerInspectionSync } = await import('./background-sync');
-        await registerInspectionSync();
-      } catch (e) {
-        console.warn('[Offline Storage] Background sync registration failed:', e);
-      }
+      // S8: registerInspectionSync removed — SW sync is disabled and the
+      // main-thread useAutoSync hook is the sole consumer of queued operations.
     },
     undefined,
     'queueOperation'
@@ -1328,12 +1324,8 @@ export async function savePhotoOffline(photo: {
           console.log('[Offline Storage] Saved photo:', photo.id);
         }
         
-        // Background sync registration (also non-blocking)
-        if (!photo.uploaded) {
-          import('./background-sync').then(({ registerPhotoSync }) => {
-            registerPhotoSync().catch(() => {});
-          }).catch(() => {});
-        }
+        // S8: registerPhotoSync removed — SW background sync is disabled;
+        // useAutoSync schedules photo uploads from the main thread.
         
         return true;
       } catch (error: any) {
@@ -2037,12 +2029,7 @@ export async function queueAssessmentOperation(type: 'create' | 'update' | 'dele
         console.log('[Offline Storage] Queued assessment operation:', { type, assessmentId });
       }
       
-      try {
-        const { registerInspectionSync } = await import('./background-sync');
-        await registerInspectionSync();
-      } catch (e) {
-        console.warn('[Offline Storage] Background sync registration failed:', e);
-      }
+      // S8: registerInspectionSync removed (no-op since SW sync is disabled).
     },
     undefined,
     'queueAssessmentOperation'
@@ -2442,12 +2429,7 @@ export async function queueTrainingOperation(type: 'create' | 'update' | 'delete
         console.log('[Offline Storage] Queued training operation:', { type, trainingId });
       }
       
-      try {
-        const { registerInspectionSync } = await import('./background-sync');
-        await registerInspectionSync();
-      } catch (e) {
-        console.warn('[Offline Storage] Background sync registration failed:', e);
-      }
+      // S8: registerInspectionSync removed (no-op since SW sync is disabled).
     },
     undefined,
     'queueTrainingOperation'
