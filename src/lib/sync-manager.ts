@@ -5,8 +5,11 @@ import {
   markPhotoAsUploaded,
   incrementPhotoRetryCount,
   setPhotoLastError,
+  updatePhotoPath,
+  recordPhotoUploadFailure,
   MAX_PHOTO_RETRIES,
 } from "./offline-storage";
+import { addSyncNotification } from "./notification-center";
 
 /**
  * S22: Classify a photo upload / DB error into a sync-policy bucket.
@@ -67,6 +70,42 @@ import { isMobile } from './mobile-detection';
 // 200+ photos take 20+ sync cycles to drain.
 const MAX_PHOTO_BATCH_SIZE = 30;
 
+/**
+ * 1.C — Centralized "permanent failure" handler. Stamps lastError, bumps the
+ * retry counter, and when the photo crosses the dead-letter threshold persists
+ * a record to `photo_upload_failures` so it can be surfaced to the user/admin
+ * instead of becoming a silent orphan. Returns the new retry count, and a
+ * boolean indicating whether the photo just crossed the threshold (caller
+ * uses this to decide whether to emit a sync-center notification once per
+ * cycle).
+ */
+async function handlePermanentPhotoFailure(
+  photo: any,
+  message: string
+): Promise<{ retryCount: number; crossedThreshold: boolean }> {
+  await setPhotoLastError(photo.id, message);
+  const retryCount = await incrementPhotoRetryCount(photo.id);
+  const crossedThreshold = retryCount >= MAX_PHOTO_RETRIES;
+  if (crossedThreshold) {
+    try {
+      await recordPhotoUploadFailure({
+        id: photo.id,
+        inspectionId: photo.inspectionId,
+        fileName: photo.fileName,
+        photoUrl: photo.photoUrl,
+        section: photo.section,
+        retryCount,
+        lastError: message,
+        lastErrorAt: Date.now(),
+        capturedByUserId: photo.capturedByUserId ?? null,
+      });
+    } catch (e) {
+      console.warn('[Sync Manager] Failed to persist photo upload failure:', e);
+    }
+  }
+  return { retryCount, crossedThreshold };
+}
+
 export async function syncPhotos(signal?: AbortSignal): Promise<{ remaining: number; changed?: number; error?: string }> {
   if (signal?.aborted) return { remaining: 0, changed: 0 };
   if (!navigator.onLine) {
@@ -107,6 +146,10 @@ export async function syncPhotos(signal?: AbortSignal): Promise<{ remaining: num
     // bump) so the per-cycle dispatch in useAutoSync can stay quiet on
     // truly idle cycles.
     let changedCount = 0;
+    // 1.C — Per-cycle count of photos that JUST crossed the dead-letter
+    // threshold this cycle. Drives a single user-facing notification at end
+    // of cycle (instead of one per photo).
+    let newlyDeadLettered = 0;
     // Track IDs already processed in this batch to skip duplicates without N+1 queries.
     // Read-then-await pattern below makes this safe under bounded concurrency.
     const processedIds = new Set<string>();
@@ -149,8 +192,8 @@ export async function syncPhotos(signal?: AbortSignal): Promise<{ remaining: num
           if (ageMs > SEVEN_DAYS) {
             // Surface to dead-letter UI via S22 plumbing.
             console.warn('[Sync Manager] Photo belongs to a different signed-in user (>7d old) — dead-lettering:', photo.id);
-            await setPhotoLastError(photo.id, 'Photo belongs to a different signed-in user');
-            await incrementPhotoRetryCount(photo.id);
+            const r = await handlePermanentPhotoFailure(photo, 'Photo belongs to a different signed-in user');
+            if (r.crossedThreshold) newlyDeadLettered++;
             changedCount++;
           } else if (import.meta.env.DEV) {
             console.log('[Sync Manager] Skipping photo captured by different user:', photo.id, 'capturedBy=', capturedBy, 'currentUser=', currentUserId);
@@ -167,8 +210,8 @@ export async function syncPhotos(signal?: AbortSignal): Promise<{ remaining: num
             const parentOwnerId = parent?.inspector_id || parent?.user_id || null;
             if (parentOwnerId && parentOwnerId !== capturedBy) {
               console.warn('[Sync Manager] Photo capturer does not match inspection owner — dead-lettering:', photo.id);
-              await setPhotoLastError(photo.id, 'Photo belongs to a different signed-in user');
-              await incrementPhotoRetryCount(photo.id);
+              const r = await handlePermanentPhotoFailure(photo, 'Photo belongs to a different signed-in user');
+              if (r.crossedThreshold) newlyDeadLettered++;
               changedCount++;
               return;
             }
@@ -201,8 +244,8 @@ export async function syncPhotos(signal?: AbortSignal): Promise<{ remaining: num
           }
           if (parentOwnerId && parentOwnerId !== currentUserId) {
             console.warn('[Sync Manager] Legacy pending photo belongs to a different user — dead-lettering:', photo.id);
-            await setPhotoLastError(photo.id, 'Photo belongs to a different signed-in user');
-            await incrementPhotoRetryCount(photo.id);
+            const r = await handlePermanentPhotoFailure(photo, 'Photo belongs to a different signed-in user');
+            if (r.crossedThreshold) newlyDeadLettered++;
             changedCount++;
             return;
           }
@@ -247,6 +290,24 @@ export async function syncPhotos(signal?: AbortSignal): Promise<{ remaining: num
           for (let i = 0; i < MAX_PHOTO_RETRIES; i++) {
             await incrementPhotoRetryCount(photo.id);
           }
+          // 1.C — Persist to dead-letter store immediately (saturating
+          // retryCount is a permanent state, not a transient one).
+          try {
+            await recordPhotoUploadFailure({
+              id: photo.id,
+              inspectionId: photo.inspectionId,
+              fileName: photo.fileName,
+              photoUrl: photo.photoUrl,
+              section: photo.section,
+              retryCount: MAX_PHOTO_RETRIES,
+              lastError: 'Photo data missing (no blob and no storage path). Re-capture required.',
+              lastErrorAt: Date.now(),
+              capturedByUserId: photo.capturedByUserId ?? null,
+            });
+            newlyDeadLettered++;
+          } catch (e) {
+            console.warn('[Sync Manager] Failed to persist no-blob failure:', e);
+          }
           changedCount++;
           return;
         }
@@ -273,8 +334,41 @@ export async function syncPhotos(signal?: AbortSignal): Promise<{ remaining: num
           ? crypto.randomUUID().slice(0, 8)
           : Math.random().toString(36).slice(2, 10);
         const fallbackFileName = `${user.id}/${photo.inspectionId}/${Date.now()}-${randomSuffix}.${fileExt}`;
-        const fileName = photo.photoUrl || fallbackFileName;
-        
+        let fileName = photo.photoUrl || fallbackFileName;
+
+        // 1.B — Defensive re-key at upload time (belt-and-braces). If the
+        // first path segment doesn't match the currently authenticated uid
+        // (e.g. a queued offline photo whose deterministic-uid prefix wasn't
+        // rewritten by 1.A reconciliation, or a cross-account edge case),
+        // rewrite to the real auth.uid() folder so the upload passes storage
+        // RLS. Persist the rewrite so subsequent SELECT/sync uses the new
+        // path. Skip rewrite if the photo was captured by a *different*
+        // signed-in user (already filtered above), or if `user.id` is empty.
+        try {
+          const pathParts = fileName.split('/');
+          if (
+            user.id &&
+            pathParts.length > 1 &&
+            pathParts[0] !== user.id &&
+            pathParts[0] !== 'pending' // legacy pending/ rewrite is handled earlier
+          ) {
+            const oldFileName = fileName;
+            pathParts[0] = user.id;
+            const rekeyed = pathParts.join('/');
+            console.warn('[Sync Manager] Rekeying photo path', oldFileName, '→', rekeyed);
+            fileName = rekeyed;
+            photo.photoUrl = rekeyed;
+            try {
+              await updatePhotoPath(photo.id, rekeyed);
+            } catch (e) {
+              console.warn('[Sync Manager] Failed to persist re-keyed photo path:', e);
+            }
+          }
+        } catch (e) {
+          // Re-key is best-effort; a parsing edge case shouldn't block upload.
+          console.warn('[Sync Manager] Re-key check failed (continuing):', e);
+        }
+
         // Upload to storage. M7: upsert: false — refuse silent overwrites.
         // The existing `classifyPhotoError` ("success-equivalent" branch) treats
         // a duplicate-object 409 as success and proceeds to the DB insert path,
@@ -301,8 +395,8 @@ export async function syncPhotos(signal?: AbortSignal): Promise<{ remaining: num
           } else {
             // permanent
             console.error('[Sync Manager] Permanent upload error for photo:', photo.id, cls.message);
-            await setPhotoLastError(photo.id, cls.message);
-            await incrementPhotoRetryCount(photo.id);
+            const r = await handlePermanentPhotoFailure(photo, cls.message);
+            if (r.crossedThreshold) newlyDeadLettered++;
             changedCount++;
             return;
           }
@@ -343,8 +437,8 @@ export async function syncPhotos(signal?: AbortSignal): Promise<{ remaining: num
               return;
             } else {
               console.error('[Sync Manager] Permanent DB insert error for photo:', photo.id, cls.message);
-              await setPhotoLastError(photo.id, cls.message);
-              await incrementPhotoRetryCount(photo.id);
+              const r = await handlePermanentPhotoFailure(photo, cls.message);
+              if (r.crossedThreshold) newlyDeadLettered++;
               changedCount++;
               return;
             }
@@ -371,16 +465,26 @@ export async function syncPhotos(signal?: AbortSignal): Promise<{ remaining: num
           // Retry next cycle without counting toward the dead-letter ceiling.
           return;
         }
-        await setPhotoLastError(photo.id, cls.message);
-        await incrementPhotoRetryCount(photo.id);
+        const r = await handlePermanentPhotoFailure(photo, cls.message);
+        if (r.crossedThreshold) newlyDeadLettered++;
         changedCount++;
       }
     });
 
     if (import.meta.env.DEV) {
-      console.log(`[Sync Manager] Photo sync completed: ${successCount} photos, ${remaining} remaining (changed=${changedCount})`);
+      console.log(`[Sync Manager] Photo sync completed: ${successCount} photos, ${remaining} remaining (changed=${changedCount}, newlyDeadLettered=${newlyDeadLettered})`);
     }
-    
+
+    // 1.C — Surface dead-letter crossings to the in-app notification center
+    // so the user sees they have stuck photos to review (one notification per
+    // cycle, not per photo).
+    if (newlyDeadLettered > 0) {
+      const word = newlyDeadLettered === 1 ? 'photo' : 'photos';
+      addSyncNotification(
+        `${newlyDeadLettered} ${word} failed to upload and may be lost — open Sync Diagnostics to review.`
+      );
+    }
+
     return { remaining, changed: changedCount };
   } catch (error) {
     console.error('[Sync Manager] Photo sync error:', error);

@@ -214,6 +214,27 @@ interface InspectionDB extends DBSchema {
     };
     indexes: { 'by-category': string };
   };
+  /**
+   * 1.C — Persistent dead-letter store for photos that crossed the upload
+   * retry threshold. Keyed by photo id. Surfaced in SyncDiagnosticsSheet
+   * (and consumable by an admin panel) so failures are never silent orphans.
+   */
+  photo_upload_failures: {
+    key: string;
+    value: {
+      id: string;            // photo id (matches `photos` keyPath)
+      inspectionId: string;
+      fileName: string;
+      photoUrl?: string;
+      section?: string;
+      retryCount: number;
+      lastError: string;
+      lastErrorAt: number;
+      firstFailedAt: number;
+      capturedByUserId?: string | null;
+    };
+    indexes: { 'by-failed-at': number };
+  };
 }
 
 let dbPromise: Promise<IDBPDatabase<InspectionDB>> | null = null;
@@ -842,7 +863,7 @@ export async function getDB() {
     // Version 8: Add report_versions store for append-only versioning
     // DB_NAME and DB_VERSION shared with public/db-config.js for SW consistency
     const DB_NAME = 'rope-works-inspections';
-    const DB_VERSION = 14;
+    const DB_VERSION = 15;
 
     // Phase 5 — Schema Migration Safety. Lazy-load to avoid circular imports
     // and to keep the boot path resilient if this module ever fails to parse.
@@ -1063,6 +1084,18 @@ export async function getDB() {
             aeqStore.createIndex('by-report', ['reportType', 'reportId']);
             if (import.meta.env.DEV) {
               console.log('[Offline Storage] Created admin_edit_snapshot_queue store (v14 upgrade)');
+            }
+          }
+          // === NEW in v15: photo_upload_failures store (1.C) ===
+          // Persistent dead-letter for photos that crossed MAX_PHOTO_RETRIES.
+          // Surfaces in SyncDiagnosticsSheet so failures aren't silent orphans.
+          if (!db.objectStoreNames.contains('photo_upload_failures' as any)) {
+            const pufStore = (db as any).createObjectStore('photo_upload_failures', {
+              keyPath: 'id',
+            });
+            pufStore.createIndex('by-failed-at', 'lastErrorAt');
+            if (import.meta.env.DEV) {
+              console.log('[Offline Storage] Created photo_upload_failures store (v15 upgrade)');
             }
           }
         },
@@ -1956,6 +1989,88 @@ export async function setPhotoCapturedBy(id: string, userId: string): Promise<vo
     },
     undefined,
     'setPhotoCapturedBy'
+  );
+}
+
+/**
+ * 1.C — Persist a photo upload failure to the dead-letter store. Idempotent
+ * on photo id; updates retryCount/lastError on each call. Preserves
+ * `firstFailedAt` from the existing entry if present.
+ */
+export interface PhotoUploadFailureEntry {
+  id: string;
+  inspectionId: string;
+  fileName: string;
+  photoUrl?: string;
+  section?: string;
+  retryCount: number;
+  lastError: string;
+  lastErrorAt: number;
+  firstFailedAt: number;
+  capturedByUserId?: string | null;
+}
+
+export async function recordPhotoUploadFailure(
+  entry: Omit<PhotoUploadFailureEntry, 'firstFailedAt'> & { firstFailedAt?: number }
+): Promise<void> {
+  return withIndexedDBErrorBoundary(
+    async () => {
+      const db = await getDB();
+      const existing = await (db as any).get('photo_upload_failures', entry.id).catch(() => null);
+      const merged: PhotoUploadFailureEntry = {
+        id: entry.id,
+        inspectionId: entry.inspectionId,
+        fileName: entry.fileName,
+        photoUrl: entry.photoUrl,
+        section: entry.section,
+        retryCount: entry.retryCount,
+        lastError: (entry.lastError || '').slice(0, 500),
+        lastErrorAt: entry.lastErrorAt,
+        firstFailedAt: existing?.firstFailedAt ?? entry.firstFailedAt ?? entry.lastErrorAt,
+        capturedByUserId: entry.capturedByUserId ?? null,
+      };
+      await (db as any).put('photo_upload_failures', merged);
+      if (import.meta.env.DEV) {
+        console.warn('[Offline Storage] Photo upload failure recorded:', merged.id, merged.lastError);
+      }
+    },
+    undefined,
+    'recordPhotoUploadFailure'
+  );
+}
+
+export async function listPhotoUploadFailures(): Promise<PhotoUploadFailureEntry[]> {
+  return withIndexedDBErrorBoundary(
+    async () => {
+      const db = await getDB();
+      const all: PhotoUploadFailureEntry[] = await (db as any).getAll('photo_upload_failures');
+      // Newest failures first.
+      return (all || []).sort((a, b) => (b.lastErrorAt || 0) - (a.lastErrorAt || 0));
+    },
+    [],
+    'listPhotoUploadFailures'
+  );
+}
+
+export async function removePhotoUploadFailure(id: string): Promise<void> {
+  return withIndexedDBErrorBoundary(
+    async () => {
+      const db = await getDB();
+      await (db as any).delete('photo_upload_failures', id);
+    },
+    undefined,
+    'removePhotoUploadFailure'
+  );
+}
+
+export async function getPhotoUploadFailureCount(): Promise<number> {
+  return withIndexedDBErrorBoundary(
+    async () => {
+      const db = await getDB();
+      return await (db as any).count('photo_upload_failures');
+    },
+    0,
+    'getPhotoUploadFailureCount'
   );
 }
 

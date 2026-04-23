@@ -15,7 +15,10 @@ import {
   deleteOfflinePhoto,
   getDeadLetterSoftDeletes,
   removeDeadLetterSoftDelete,
+  listPhotoUploadFailures,
+  removePhotoUploadFailure,
   type DeadLetterSoftDelete,
+  type PhotoUploadFailureEntry,
 } from '@/lib/offline-storage';
 import { retryDeadLetterSoftDelete } from '@/lib/queued-soft-delete-processor';
 import {
@@ -81,6 +84,8 @@ export const SyncDiagnosticsSheet = () => {
   const [heldBackLabels, setHeldBackLabels] = useState<Record<string, string>>({});
   const [emptyLocalConflicts, setEmptyLocalConflicts] = useState<EmptyLocalConflictEntry[]>([]);
   const [busyConflictId, setBusyConflictId] = useState<string | null>(null);
+  const [photoFailures, setPhotoFailures] = useState<PhotoUploadFailureEntry[]>([]);
+  const [busyPhotoFailureId, setBusyPhotoFailureId] = useState<string | null>(null);
   const [diag, setDiag] = useState<DiagnosticsState>({
     swRegistered: false,
     swController: false,
@@ -111,6 +116,8 @@ export const SyncDiagnosticsSheet = () => {
     setDeadLetterDeletes(dlDeletes);
     const conflicts = await listEmptyLocalConflicts().catch(() => [] as EmptyLocalConflictEntry[]);
     setEmptyLocalConflicts(conflicts);
+    const failures = await listPhotoUploadFailures().catch(() => [] as PhotoUploadFailureEntry[]);
+    setPhotoFailures(failures);
     setDiag({
       swRegistered,
       swController,
@@ -246,6 +253,54 @@ export const SyncDiagnosticsSheet = () => {
                         await updatePhotoCount();
                       } finally {
                         setBusyPhotoId(null);
+                      }
+                    }}
+                  />
+                ))}
+              </div>
+            </div>
+          )}
+
+          {photoFailures.length > 0 && (
+            <div>
+              <h3 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-2 flex items-center gap-1.5">
+                <AlertTriangle className="h-3.5 w-3.5 text-destructive" />
+                Failed Uploads ({photoFailures.length})
+              </h3>
+              <p className="text-xs text-muted-foreground mb-2">
+                These photos exceeded the upload retry limit. They may be lost
+                unless you retry or re-capture.
+              </p>
+              <div className="rounded-md border border-border divide-y divide-border">
+                {photoFailures.map((entry) => (
+                  <PhotoFailureRow
+                    key={entry.id}
+                    entry={entry}
+                    busy={busyPhotoFailureId === entry.id}
+                    onRetry={async () => {
+                      setBusyPhotoFailureId(entry.id);
+                      try {
+                        const ok = await resetPhotoForRetry(entry.id);
+                        await removePhotoUploadFailure(entry.id);
+                        if (ok) {
+                          toast.success('Photo queued for retry');
+                        } else {
+                          toast('Failure record cleared');
+                        }
+                        await refresh();
+                        await updatePhotoCount();
+                      } finally {
+                        setBusyPhotoFailureId(null);
+                      }
+                    }}
+                    onDismiss={async () => {
+                      setBusyPhotoFailureId(entry.id);
+                      try {
+                        await removePhotoUploadFailure(entry.id);
+                        toast('Failure dismissed');
+                        await refresh();
+                      } finally {
+                        setBusyPhotoFailureId(null);
                       }
                     }}
                   />
@@ -794,6 +849,58 @@ const EmptyLocalConflictRow = ({
           className="h-7 px-2 text-destructive hover:text-destructive"
         >
           Confirm local empty
+        </Button>
+        <Button
+          size="sm"
+          variant="ghost"
+          onClick={onDismiss}
+          disabled={busy}
+          className="h-7 px-2"
+        >
+          <X className="h-3 w-3 mr-1" />
+          Dismiss
+        </Button>
+      </div>
+    </div>
+  );
+};
+
+interface PhotoFailureRowProps {
+  entry: PhotoUploadFailureEntry;
+  busy: boolean;
+  onRetry: () => void | Promise<void>;
+  onDismiss: () => void | Promise<void>;
+}
+
+const PhotoFailureRow = ({ entry, busy, onRetry, onDismiss }: PhotoFailureRowProps) => {
+  const failedAgo = entry.lastErrorAt
+    ? formatDistanceToNow(new Date(entry.lastErrorAt), { addSuffix: true })
+    : '—';
+  return (
+    <div className="p-3 space-y-2">
+      <div className="flex items-start justify-between gap-2">
+        <div className="min-w-0 flex-1">
+          <p className="text-xs font-medium text-foreground truncate">
+            {entry.section || entry.fileName || entry.id}
+          </p>
+          <p className="text-[11px] text-muted-foreground truncate">
+            {entry.lastError}
+          </p>
+          <p className="text-[10px] text-muted-foreground mt-1">
+            {entry.retryCount} attempts · failed {failedAgo}
+          </p>
+        </div>
+      </div>
+      <div className="flex gap-2">
+        <Button
+          size="sm"
+          variant="outline"
+          onClick={onRetry}
+          disabled={busy}
+          className="h-7 px-2"
+        >
+          <RefreshCw className="h-3 w-3 mr-1" />
+          Retry
         </Button>
         <Button
           size="sm"
