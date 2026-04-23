@@ -49,6 +49,7 @@ export async function processQueuedSoftDeletes(signal?: AbortSignal): Promise<So
     // 1. Process inspection operations queue
     const inspOps = await getQueuedOperations();
     for (const op of inspOps) {
+      if (signal?.aborted) return result;
       if (!isSoftDeleteOp(op)) continue;
       const table = resolveTable(op.data);
       if (!table) continue;
@@ -84,6 +85,7 @@ export async function processQueuedSoftDeletes(signal?: AbortSignal): Promise<So
     // 2. Process assessment operations queue
     const assessOps = await getQueuedAssessmentOperations();
     for (const op of assessOps) {
+      if (signal?.aborted) return result;
       if (!isSoftDeleteOp(op)) continue;
       const recordId = (op as any).assessmentId || op.data?.id;
       if (!recordId) continue;
@@ -116,6 +118,7 @@ export async function processQueuedSoftDeletes(signal?: AbortSignal): Promise<So
     // 3. Process training operations queue
     const trainOps = await getQueuedTrainingOperations();
     for (const op of trainOps) {
+      if (signal?.aborted) return result;
       if (!isSoftDeleteOp(op)) continue;
       const recordId = (op as any).trainingId || op.data?.id;
       if (!recordId) continue;
