@@ -831,7 +831,10 @@ export default function TrainingForm() {
         // Gap 2.1: re-throw IdbSaveError so the outer save handler keeps the dirty flag set
         const { isIdbSaveError } = await import('@/lib/offline-storage');
         if (isIdbSaveError(offlineError)) {
-          setSaveError('Local save failed — your changes are NOT stored. Tap to retry.');
+          toast.error("Save failed — your changes are NOT stored", {
+            description: "Tap Save again to retry. Do not close this page.",
+            duration: 8000,
+          });
           throw offlineError;
         }
         toast.warning("Saved to backup — retrying storage", {
