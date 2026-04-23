@@ -620,6 +620,7 @@ export async function syncInspectionAtomic(inspectionId: string, preValidatedUse
         table: 'inspection_systems',
         operation: 'upsert',
         data: systems,
+        rollbackData: existingSystems,
       });
     }
     
@@ -628,6 +629,7 @@ export async function syncInspectionAtomic(inspectionId: string, preValidatedUse
         table: 'inspection_ziplines',
         operation: 'upsert',
         data: ziplines,
+        rollbackData: existingZiplines,
       });
     }
     
@@ -636,6 +638,7 @@ export async function syncInspectionAtomic(inspectionId: string, preValidatedUse
         table: 'inspection_equipment',
         operation: 'upsert',
         data: equipment,
+        rollbackData: existingEquipment,
       });
     }
     
@@ -644,6 +647,7 @@ export async function syncInspectionAtomic(inspectionId: string, preValidatedUse
         table: 'inspection_standards',
         operation: 'upsert',
         data: standards,
+        rollbackData: existingStandards,
       });
     }
     
@@ -658,6 +662,7 @@ export async function syncInspectionAtomic(inspectionId: string, preValidatedUse
         table: 'inspection_summary',
         operation: 'upsert',
         data: [sanitizedSummary],
+        rollbackData: existingSummary,
       });
     }
     
