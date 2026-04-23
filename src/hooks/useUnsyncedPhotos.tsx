@@ -1,11 +1,21 @@
-import { useState, useEffect, useCallback } from 'react';
-import { getUnuploadedPhotos, getDeadLetterPhotos } from '@/lib/offline-storage';
+import { useState, useEffect, useCallback, useRef } from 'react';
+import {
+  getUnuploadedPhotos,
+  getDeadLetterPhotos,
+  isIdbReadFailure,
+} from '@/lib/offline-storage';
 import { getUserWithCache } from '@/lib/cached-auth';
 
 export interface UnsyncedPhotosStatus {
   unsyncedPhotoCount: number;
   photosByInspection: Record<string, number>;
   deadLetterCount: number;
+  /**
+   * S11: Set when an IDB read failure prevents us from getting a fresh photo
+   * count. Last-known counts are preserved (don't zero the badge) and this
+   * message bubbles up via PWAContextType.syncError.
+   */
+  idbReadError: string | null;
 }
 
 const SAFETY_REFRESH_MS = 5 * 60 * 1000; // 5 minutes
@@ -15,6 +25,15 @@ export const useUnsyncedPhotos = () => {
     unsyncedPhotoCount: 0,
     photosByInspection: {},
     deadLetterCount: 0,
+    idbReadError: null,
+  });
+
+  // Keep a ref of last-known counts so we can preserve them on a transient
+  // IDB read failure instead of dropping the badge to 0.
+  const lastKnownRef = useRef<{ count: number; byInspection: Record<string, number>; deadLetter: number }>({
+    count: 0,
+    byInspection: {},
+    deadLetter: 0,
   });
 
   const updatePhotoCount = useCallback(async () => {
@@ -27,14 +46,32 @@ export const useUnsyncedPhotos = () => {
           unsyncedPhotoCount: 0,
           photosByInspection: {},
           deadLetterCount: 0,
+          idbReadError: null,
         });
         return;
       }
       
-      const [unuploaded, deadLetter] = await Promise.all([
+      const [unuploadedResult, deadLetterResult] = await Promise.all([
         getUnuploadedPhotos(user.id),
         getDeadLetterPhotos(),
       ]);
+
+      // S11: If the read failed, preserve the last-known counts and surface an
+      // error rather than silently zeroing the badge.
+      if (isIdbReadFailure(unuploadedResult)) {
+        console.warn('[Unsynced Photos] IDB read failed for unuploaded photos:', unuploadedResult.error);
+        setStatus({
+          unsyncedPhotoCount: lastKnownRef.current.count,
+          photosByInspection: lastKnownRef.current.byInspection,
+          deadLetterCount: lastKnownRef.current.deadLetter,
+          idbReadError: 'Local data unreadable — refreshing may help',
+        });
+        return;
+      }
+
+      const unuploaded = unuploadedResult;
+      // getDeadLetterPhotos still uses the silent boundary; treat its absence as 0.
+      const deadLetter = Array.isArray(deadLetterResult) ? deadLetterResult : [];
       
       // Group by inspection
       const byInspection: Record<string, number> = {};
@@ -42,10 +79,17 @@ export const useUnsyncedPhotos = () => {
         byInspection[photo.inspectionId] = (byInspection[photo.inspectionId] || 0) + 1;
       });
 
+      lastKnownRef.current = {
+        count: unuploaded.length,
+        byInspection,
+        deadLetter: deadLetter.length,
+      };
+
       setStatus({
         unsyncedPhotoCount: unuploaded.length,
         photosByInspection: byInspection,
         deadLetterCount: deadLetter.length,
+        idbReadError: null,
       });
 
       if (import.meta.env.DEV) {
