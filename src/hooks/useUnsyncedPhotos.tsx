@@ -5,6 +5,10 @@ import {
   isIdbReadFailure,
 } from '@/lib/offline-storage';
 import { getUserWithCache } from '@/lib/cached-auth';
+import {
+  listRegressionSkips,
+  type RegressionSkipEntry,
+} from '@/lib/regression-skip-store';
 
 export interface DeadLetterPhotoInfo {
   id: string;
@@ -28,6 +32,9 @@ export interface UnsyncedPhotosStatus {
    * message bubbles up via PWAContextType.syncError.
    */
   idbReadError: string | null;
+  /** S39: Records currently held back by the >50% field-count regression guard. */
+  regressionSkipCount: number;
+  regressionSkipEntries: RegressionSkipEntry[];
 }
 
 const SAFETY_REFRESH_MS = 5 * 60 * 1000; // 5 minutes
@@ -39,15 +46,26 @@ export const useUnsyncedPhotos = () => {
     deadLetterCount: 0,
     deadLetterPhotos: [],
     idbReadError: null,
+    regressionSkipCount: 0,
+    regressionSkipEntries: [],
   });
 
   // Keep a ref of last-known counts so we can preserve them on a transient
   // IDB read failure instead of dropping the badge to 0.
-  const lastKnownRef = useRef<{ count: number; byInspection: Record<string, number>; deadLetter: number; deadLetterPhotos: DeadLetterPhotoInfo[] }>({
+  const lastKnownRef = useRef<{
+    count: number;
+    byInspection: Record<string, number>;
+    deadLetter: number;
+    deadLetterPhotos: DeadLetterPhotoInfo[];
+    regressionSkipCount: number;
+    regressionSkipEntries: RegressionSkipEntry[];
+  }>({
     count: 0,
     byInspection: {},
     deadLetter: 0,
     deadLetterPhotos: [],
+    regressionSkipCount: 0,
+    regressionSkipEntries: [],
   });
 
   const updatePhotoCount = useCallback(async () => {
@@ -62,13 +80,16 @@ export const useUnsyncedPhotos = () => {
           deadLetterCount: 0,
           deadLetterPhotos: [],
           idbReadError: null,
+          regressionSkipCount: 0,
+          regressionSkipEntries: [],
         });
         return;
       }
       
-      const [unuploadedResult, deadLetterResult] = await Promise.all([
+      const [unuploadedResult, deadLetterResult, regressionEntries] = await Promise.all([
         getUnuploadedPhotos(user.id),
         getDeadLetterPhotos(),
+        listRegressionSkips().catch(() => [] as RegressionSkipEntry[]),
       ]);
 
       // S11: If the read failed, preserve the last-known counts and surface an
@@ -81,6 +102,8 @@ export const useUnsyncedPhotos = () => {
           deadLetterCount: lastKnownRef.current.deadLetter,
           deadLetterPhotos: lastKnownRef.current.deadLetterPhotos,
           idbReadError: 'Local data unreadable — refreshing may help',
+          regressionSkipCount: regressionEntries.length,
+          regressionSkipEntries: regressionEntries,
         });
         return;
       }
@@ -111,6 +134,8 @@ export const useUnsyncedPhotos = () => {
         byInspection,
         deadLetter: deadLetter.length,
         deadLetterPhotos,
+        regressionSkipCount: regressionEntries.length,
+        regressionSkipEntries: regressionEntries,
       };
 
       setStatus({
@@ -119,10 +144,12 @@ export const useUnsyncedPhotos = () => {
         deadLetterCount: deadLetter.length,
         deadLetterPhotos,
         idbReadError: null,
+        regressionSkipCount: regressionEntries.length,
+        regressionSkipEntries: regressionEntries,
       });
 
       if (import.meta.env.DEV) {
-        console.log('[Unsynced Photos] Count updated:', unuploaded.length, 'dead-letter:', deadLetter.length);
+        console.log('[Unsynced Photos] Count updated:', unuploaded.length, 'dead-letter:', deadLetter.length, 'held-back:', regressionEntries.length);
       }
     } catch (error) {
       console.error('[Unsynced Photos] Error getting count:', error);
@@ -135,6 +162,8 @@ export const useUnsyncedPhotos = () => {
     
     const handleSyncUpdate = () => updatePhotoCount();
     window.addEventListener('sync-photos-updated', handleSyncUpdate);
+    // S39: refresh held-back records when atomic-sync-manager dispatches.
+    window.addEventListener('sync-records-updated', handleSyncUpdate);
 
     const intervalId = window.setInterval(() => {
       updatePhotoCount();
@@ -142,6 +171,7 @@ export const useUnsyncedPhotos = () => {
 
     return () => {
       window.removeEventListener('sync-photos-updated', handleSyncUpdate);
+      window.removeEventListener('sync-records-updated', handleSyncUpdate);
       window.clearInterval(intervalId);
     };
   }, [updatePhotoCount]);

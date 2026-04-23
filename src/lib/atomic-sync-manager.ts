@@ -144,7 +144,43 @@ export function getAdaptiveBatchSize(): number { return currentBatchSize; }
  * tab refresh / PWA wake / SW restart. The helpers there maintain an in-memory
  * hot cache; we just call them directly.
  */
-const MAX_REGRESSION_SKIPS = 3;
+export const MAX_REGRESSION_SKIPS = 3;
+
+/**
+ * S39: Notify the in-app notification center the first time a record is blocked
+ * by the regression guard, and dispatch a `sync-records-updated` event so any
+ * subscribed UI (SyncDiagnosticsSheet, SyncPulse via useUnsyncedPhotos) can
+ * refresh its held-back list. Best-effort — never throws into sync hot path.
+ */
+function notifyRegressionBlock(
+  kind: 'inspection' | 'training' | 'assessment',
+  recordId: string,
+  label: string,
+  skipCount: number,
+): void {
+  try {
+    window.dispatchEvent(new CustomEvent('sync-records-updated'));
+  } catch {
+    /* ignore */
+  }
+  if (skipCount !== 1) return; // only on first block in a chain
+  void import('./notification-center')
+    .then(({ addWarningNotification }) => {
+      const safeLabel = label?.trim() || `${kind} ${recordId.substring(0, 8)}`;
+      addWarningNotification(
+        `Sync paused: ${safeLabel} — large drop in data detected (auto-resumes after ${MAX_REGRESSION_SKIPS} cycles)`,
+      );
+    })
+    .catch(() => {});
+}
+
+function notifyRegressionRelease(): void {
+  try {
+    window.dispatchEvent(new CustomEvent('sync-records-updated'));
+  } catch {
+    /* ignore */
+  }
+}
 
 /**
  * Interface for record status returned by check_record_status RPC
@@ -481,6 +517,12 @@ export async function syncInspectionAtomic(inspectionId: string, preValidatedUse
             skipCount,
             maxSkips: MAX_REGRESSION_SKIPS,
           });
+          notifyRegressionBlock(
+            'inspection',
+            inspectionId,
+            (inspection as any)?.organization || (inspection as any)?.location || '',
+            skipCount,
+          );
           return { success: false, skipped: true, reason: 'field_count_regression' };
         }
         console.warn('[SAFETY] Allowing inspection sync after max regression skips reached', {
@@ -488,9 +530,11 @@ export async function syncInspectionAtomic(inspectionId: string, preValidatedUse
           skipCount,
         });
         await resetRegressionSkipCount(inspectionId);
+        notifyRegressionRelease();
       } else {
         // Field count is healthy — clear any previous skip counter
         await resetRegressionSkipCount(inspectionId);
+        notifyRegressionRelease();
       }
     }
 
@@ -1353,6 +1397,12 @@ export async function syncTrainingAtomic(trainingId: string, preValidatedUser?: 
             skipCount,
             maxSkips: MAX_REGRESSION_SKIPS,
           });
+          notifyRegressionBlock(
+            'training',
+            trainingId,
+            (training as any)?.organization || (training as any)?.location || '',
+            skipCount,
+          );
           return { success: false, skipped: true, reason: 'field_count_regression' };
         }
         console.warn('[SAFETY] Allowing training sync after max regression skips reached', {
@@ -1360,8 +1410,10 @@ export async function syncTrainingAtomic(trainingId: string, preValidatedUser?: 
           skipCount,
         });
         await resetRegressionSkipCount(trainingId);
+        notifyRegressionRelease();
       } else {
         await resetRegressionSkipCount(trainingId);
+        notifyRegressionRelease();
       }
     }
 
@@ -2150,6 +2202,12 @@ export async function syncDailyAssessmentAtomic(assessmentId: string, preValidat
             skipCount,
             maxSkips: MAX_REGRESSION_SKIPS,
           });
+          notifyRegressionBlock(
+            'assessment',
+            assessmentId,
+            (assessment as any)?.organization || (assessment as any)?.site || '',
+            skipCount,
+          );
           return { success: false, skipped: true, reason: 'field_count_regression' };
         }
         console.warn('[SAFETY] Allowing assessment sync after max regression skips reached', {
@@ -2157,8 +2215,10 @@ export async function syncDailyAssessmentAtomic(assessmentId: string, preValidat
           skipCount,
         });
         await resetRegressionSkipCount(assessmentId);
+        notifyRegressionRelease();
       } else {
         await resetRegressionSkipCount(assessmentId);
+        notifyRegressionRelease();
       }
     }
 

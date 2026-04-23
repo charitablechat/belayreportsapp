@@ -10,6 +10,7 @@ import {
   SheetDescription,
 } from '@/components/ui/sheet';
 import { getDeadLetterPhotos, resetPhotoRetryCounts } from '@/lib/offline-storage';
+import { useUnsyncedPhotos } from '@/hooks/useUnsyncedPhotos';
 
 type Phase = 'idle' | 'syncing' | 'synced' | 'unsynced' | 'error';
 
@@ -32,6 +33,7 @@ export const SyncPulse = ({ className }: { className?: string }) => {
     forceSync,
     updatePhotoCount,
   } = usePWA();
+  const { regressionSkipCount } = useUnsyncedPhotos();
 
   const isIOSDevice = isIOS();
   const [justSynced, setJustSynced] = useState(false);
@@ -179,6 +181,19 @@ export const SyncPulse = ({ className }: { className?: string }) => {
               <div className="flex items-center justify-between text-green-300/80">
                 <span>PENDING_PHOTOS</span>
                 <span className="text-amber-400">{unsyncedPhotoCount}</span>
+              </div>
+            )}
+
+            {/* S39: Held-back records (regression guard). Read-only here; deep actions live in SyncDiagnosticsSheet. */}
+            {regressionSkipCount > 0 && (
+              <div className="space-y-1 border-t border-green-900/40 pt-2">
+                <div className="flex items-center justify-between text-green-300/80">
+                  <span>HELD_BACK</span>
+                  <span className="text-amber-400">{regressionSkipCount}</span>
+                </div>
+                <p className="text-green-700 text-[10px] italic">
+                  ▸ Tap diagnostics for details
+                </p>
               </div>
             )}
 

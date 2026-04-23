@@ -25,6 +25,13 @@ interface CounterRow {
   lastIncrementAt: number;
 }
 
+/** Public-facing shape used by diagnostics UI (S39). */
+export interface RegressionSkipEntry {
+  id: string;
+  count: number;
+  lastIncrementAt: number;
+}
+
 // In-memory hot cache so the existing call sites don't pay the IDB cost on
 // every guard hit. Writes go through to IDB AND update the cache.
 const cache = new Map<string, number>();
@@ -127,5 +134,35 @@ export async function resetRegressionSkipCount(id: string): Promise<void> {
     if (import.meta.env.DEV) {
       console.warn('[regression-skip-store] delete failed for', id, err);
     }
+  }
+}
+
+/**
+ * S39: List all active (non-expired) skip counters for the diagnostics UI.
+ * Best-effort — returns [] if the store is unavailable.
+ */
+export async function listRegressionSkips(): Promise<RegressionSkipEntry[]> {
+  const db = await getDB();
+  if (!db) {
+    // Surface whatever we have hot-cached.
+    return Array.from(cache.entries())
+      .filter(([, count]) => count > 0)
+      .map(([id, count]) => ({ id, count, lastIncrementAt: Date.now() }));
+  }
+  try {
+    const rows = (await db.getAll(STORE_NAME)) as CounterRow[];
+    const fresh = rows.filter((r) => !isExpired(r) && r.count > 0);
+    // Refresh hot cache opportunistically.
+    fresh.forEach((r) => cache.set(r.id, r.count));
+    return fresh.map((r) => ({
+      id: r.id,
+      count: r.count,
+      lastIncrementAt: r.lastIncrementAt,
+    }));
+  } catch (err) {
+    if (import.meta.env.DEV) {
+      console.warn('[regression-skip-store] list failed:', err);
+    }
+    return [];
   }
 }

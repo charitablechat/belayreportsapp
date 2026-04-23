@@ -18,6 +18,16 @@ import {
   type DeadLetterSoftDelete,
 } from '@/lib/offline-storage';
 import { retryDeadLetterSoftDelete } from '@/lib/queued-soft-delete-processor';
+import {
+  resetRegressionSkipCount,
+  type RegressionSkipEntry,
+} from '@/lib/regression-skip-store';
+import { MAX_REGRESSION_SKIPS } from '@/lib/atomic-sync-manager';
+import {
+  getOfflineInspection,
+  getOfflineTraining,
+  getOfflineDailyAssessment,
+} from '@/lib/offline-storage';
 
 interface DiagnosticsState {
   swRegistered: boolean;
@@ -48,11 +58,14 @@ export const SyncDiagnosticsSheet = () => {
     isCheckingForUpdate,
     checkForUpdates,
   } = usePWA();
-  const { deadLetterPhotos, updatePhotoCount } = useUnsyncedPhotos();
+  const { deadLetterPhotos, regressionSkipEntries, updatePhotoCount } = useUnsyncedPhotos();
+  const { forceSync } = usePWA();
   const [open, setOpen] = useState(false);
   const [busyPhotoId, setBusyPhotoId] = useState<string | null>(null);
   const [deadLetterDeletes, setDeadLetterDeletes] = useState<DeadLetterSoftDelete[]>([]);
   const [busyDeadLetterId, setBusyDeadLetterId] = useState<string | null>(null);
+  const [busyHeldBackId, setBusyHeldBackId] = useState<string | null>(null);
+  const [heldBackLabels, setHeldBackLabels] = useState<Record<string, string>>({});
   const [diag, setDiag] = useState<DiagnosticsState>({
     swRegistered: false,
     swController: false,
@@ -95,6 +108,41 @@ export const SyncDiagnosticsSheet = () => {
   useEffect(() => {
     if (open) void refresh();
   }, [open]);
+
+  // S39: best-effort resolve organization/title labels for held-back records.
+  useEffect(() => {
+    if (!open || regressionSkipEntries.length === 0) return;
+    let cancelled = false;
+    (async () => {
+      const next: Record<string, string> = {};
+      for (const entry of regressionSkipEntries) {
+        const id = entry.id;
+        try {
+          const ins = await getOfflineInspection(id).catch(() => null);
+          if (ins) {
+            next[id] = (ins as any).organization || (ins as any).location || '';
+            continue;
+          }
+          const trn = await getOfflineTraining(id).catch(() => null);
+          if (trn) {
+            next[id] = (trn as any).organization || '';
+            continue;
+          }
+          const asm = await getOfflineDailyAssessment(id).catch(() => null);
+          if (asm) {
+            next[id] = (asm as any).organization || (asm as any).site || '';
+            continue;
+          }
+        } catch {
+          /* ignore */
+        }
+      }
+      if (!cancelled) setHeldBackLabels(next);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [open, regressionSkipEntries]);
 
   const caps = getMobileCapabilities();
 
@@ -223,6 +271,47 @@ export const SyncDiagnosticsSheet = () => {
                         await refresh();
                       } finally {
                         setBusyDeadLetterId(null);
+                      }
+                    }}
+                  />
+                ))}
+              </div>
+            </div>
+          )}
+
+          {regressionSkipEntries.length > 0 && (
+            <div>
+              <h3 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-2">
+                Held-Back Records ({regressionSkipEntries.length})
+              </h3>
+              <div className="rounded-md border border-border divide-y divide-border">
+                {regressionSkipEntries.map((entry) => (
+                  <HeldBackRow
+                    key={entry.id}
+                    entry={entry}
+                    label={heldBackLabels[entry.id]}
+                    busy={busyHeldBackId === entry.id}
+                    onForceRetry={async () => {
+                      setBusyHeldBackId(entry.id);
+                      try {
+                        await resetRegressionSkipCount(entry.id);
+                        await updatePhotoCount();
+                        await forceSync();
+                        toast.success('Force retry queued');
+                      } catch {
+                        toast.error('Could not force retry');
+                      } finally {
+                        setBusyHeldBackId(null);
+                      }
+                    }}
+                    onResetCounter={async () => {
+                      setBusyHeldBackId(entry.id);
+                      try {
+                        await resetRegressionSkipCount(entry.id);
+                        await updatePhotoCount();
+                        toast.success('Counter reset');
+                      } finally {
+                        setBusyHeldBackId(null);
                       }
                     }}
                   />
@@ -402,3 +491,55 @@ const DeadLetterDeleteRow = ({
     </div>
   </div>
 );
+
+const HeldBackRow = ({
+  entry,
+  label,
+  busy,
+  onForceRetry,
+  onResetCounter,
+}: {
+  entry: RegressionSkipEntry;
+  label?: string;
+  busy: boolean;
+  onForceRetry: () => void;
+  onResetCounter: () => void;
+}) => {
+  const display = label?.trim() || entry.id.substring(0, 8);
+  return (
+    <div className="flex flex-col gap-2 px-3 py-2">
+      <div className="flex items-start justify-between gap-2">
+        <div className="min-w-0 flex-1">
+          <div className="text-xs font-medium text-foreground truncate">{display}</div>
+          <div className="text-xs text-muted-foreground">
+            Attempts: {entry.count} of {MAX_REGRESSION_SKIPS}
+          </div>
+          <div className="text-xs text-muted-foreground mt-1">
+            Sync paused — large data drop detected. Will auto-retry.
+          </div>
+        </div>
+        <div className="flex shrink-0 gap-1">
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={onForceRetry}
+            disabled={busy}
+            className="h-7 px-2"
+          >
+            <RefreshCw className="h-3 w-3 mr-1" />
+            Force retry
+          </Button>
+          <Button
+            size="sm"
+            variant="ghost"
+            onClick={onResetCounter}
+            disabled={busy}
+            className="h-7 px-2"
+          >
+            Reset
+          </Button>
+        </div>
+      </div>
+    </div>
+  );
+};
