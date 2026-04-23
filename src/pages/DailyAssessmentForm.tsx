@@ -409,6 +409,36 @@ export default function DailyAssessmentForm() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [id]);
 
+  // H3: Register this record as actively edited so the global Realtime IDB
+  // writer in useAutoSync doesn't silently overwrite our IDB row while we
+  // hold unsaved React state.
+  useEffect(() => {
+    if (!id || id.startsWith('temp-')) return;
+    registerActiveFormRecord('daily_assessments', id);
+    const unsub = onPendingRemoteUpdate((p) => {
+      if (p.table !== 'daily_assessments' || p.recordId !== id) return;
+      if (!hasUnsavedRef.current) {
+        if (import.meta.env.DEV) console.log('[DailyAssessmentForm] Pending remote update — reloading (no unsaved changes)');
+        loadAssessment();
+        return;
+      }
+      toast.warning('Remote update available', {
+        description: 'Another device updated this report. Reload from server (your unsaved edits will be lost) or keep your changes.',
+        duration: 30000,
+        action: {
+          label: 'Reload',
+          onClick: () => { loadAssessment(); },
+        },
+        cancel: { label: 'Keep my changes', onClick: () => {} },
+      });
+    });
+    return () => {
+      unsub();
+      unregisterActiveFormRecord(id);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [id]);
+
   // Debounced auto-save on data changes (3-second debounce) - immediate persistence
   // Watches ALL data sections: Beginning/End of Day, Operating Systems, Equipment/Structure/Environment Checks
   // Also watches assessment-level fields like section comments
