@@ -41,7 +41,9 @@ export const SyncDiagnosticsSheet = () => {
     isCheckingForUpdate,
     checkForUpdates,
   } = usePWA();
+  const { deadLetterPhotos, updatePhotoCount } = useUnsyncedPhotos();
   const [open, setOpen] = useState(false);
+  const [busyPhotoId, setBusyPhotoId] = useState<string | null>(null);
   const [diag, setDiag] = useState<DiagnosticsState>({
     swRegistered: false,
     swController: false,
