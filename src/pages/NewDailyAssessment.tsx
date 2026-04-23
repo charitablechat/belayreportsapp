@@ -158,7 +158,9 @@ export default function NewDailyAssessment() {
 
       const assessmentId = crypto.randomUUID();
       const now = new Date().toISOString();
-      
+      // S5: stable client idempotency key for sync dedup (server-enforced)
+      const clientIdempotencyKey = crypto.randomUUID();
+
       const newAssessment = {
         id: assessmentId,
         inspector_id: user.id,
@@ -172,6 +174,7 @@ export default function NewDailyAssessment() {
         created_at: now,
         updated_at: now,
         synced_at: null as string | null,
+        client_idempotency_key: clientIdempotencyKey,
       };
 
       // Save offline first
