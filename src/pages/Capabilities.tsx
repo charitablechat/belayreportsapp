@@ -44,7 +44,7 @@ export default function Capabilities() {
         {
           name: 'Background Sync',
           description: 'Sync data in the background',
-          supported: 'sync' in (navigator as any).serviceWorker?.register || false,
+          supported: 'serviceWorker' in navigator && 'SyncManager' in window,
           category: 'core',
         },
         

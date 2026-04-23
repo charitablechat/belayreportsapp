@@ -5,11 +5,8 @@ import { componentTagger } from "lovable-tagger";
 import { pwaConfig } from "./vite-pwa-config";
 import { viteAutoVersion } from "./vite-auto-version";
 
-// Version follows non-standard vX.Y.Z rollover scheme:
-// - PATCH resets to .1 when reaching .10 (e.g., v2.3.9 → v2.4.1)
-// - MINOR resets to .1 when reaching .10 (e.g., v2.9.9 → v3.1.1)
-// See src/lib/version-calculator.ts for implementation
-// Version is auto-incremented on every build via vite-auto-version plugin
+// App version is auto-generated on every build by vite-auto-version.ts
+// (PATCH = git commit count). See that plugin for the canonical scheme.
 
 // https://vitejs.dev/config/
 export default defineConfig(({ mode }) => ({
