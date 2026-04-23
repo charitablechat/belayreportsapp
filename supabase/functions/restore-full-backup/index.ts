@@ -1,13 +1,8 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { BACKUP_TABLES } from "../_shared/backup-tables.ts";
 
-const corsHeaders = {
-  "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers":
-    "authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version",
-};
-
 // Upsert order: parents first, then children (BACKUP_TABLES is already in that order)
+import { corsHeaders } from "../_shared/cors.ts";
 const UPSERT_ORDER = BACKUP_TABLES;
 
 Deno.serve(async (req) => {

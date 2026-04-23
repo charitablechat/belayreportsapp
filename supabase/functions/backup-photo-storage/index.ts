@@ -1,11 +1,6 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
-const corsHeaders = {
-  "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers":
-    "authorization, x-client-info, apikey, content-type",
-};
-
+import { corsHeaders } from "../_shared/cors.ts";
 const PHOTO_BUCKETS = [
   "inspection-photos",
   "training-photos",
@@ -75,16 +70,23 @@ async function getSoftDeletedPaths(supabase: any, table: string): Promise<Set<st
  */
 function extractStoragePath(url: string): string {
   if (!url) return "";
-  // If it's a full URL, extract path after bucket name
-  for (const bucket of PHOTO_BUCKETS) {
-    const marker = `/${bucket}/`;
-    const idx = url.indexOf(marker);
-    if (idx !== -1) {
-      return url.substring(idx + marker.length);
-    }
+  // Already a relative path (no scheme) → return as-is
+  if (!/^https?:\/\//i.test(url)) return url;
+  try {
+    const u = new URL(url);
+    // Storage URLs: /storage/v1/object/{public|authenticated|sign}/{bucket}/{path}
+    const parts = u.pathname.split("/").filter(Boolean);
+    const objIdx = parts.indexOf("object");
+    if (objIdx === -1) return "";
+    // Skip "object" + access-mode (public/authenticated/sign) → bucket index
+    const bucketIdx = objIdx + 2;
+    if (parts.length <= bucketIdx + 1) return "";
+    const bucket = parts[bucketIdx];
+    if (!PHOTO_BUCKETS.includes(bucket as any)) return "";
+    return parts.slice(bucketIdx + 1).join("/");
+  } catch {
+    return "";
   }
-  // Already a relative path
-  return url;
 }
 
 /**

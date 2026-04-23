@@ -4,12 +4,7 @@ import mammoth from "npm:mammoth@1.8.0";
 import WordExtractor from "npm:word-extractor@1.0.4";
 import pdfParse from "npm:pdf-parse@1.1.1";
 
-const corsHeaders = {
-  "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers":
-    "authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version",
-};
-
+import { corsHeaders } from "../_shared/cors.ts";
 /** Strip Markdown syntax and return clean text */
 function extractTextFromMarkdown(buffer: ArrayBuffer): string {
   let text = new TextDecoder().decode(buffer);

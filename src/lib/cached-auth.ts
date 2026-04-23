@@ -240,31 +240,11 @@ export async function getUserWithCache(): Promise<CachedUser | null> {
     cachedUser = storedUser;
     cacheTimestamp = now;
     
-    // Pre-emptive token refresh: if session is within 5 minutes of expiry,
-    // trigger a non-blocking refresh to avoid 401 errors during form saves
-    try {
-      const session = localStorage.getItem(SUPABASE_SESSION_KEY);
-      if (session && navigator.onLine) {
-        const parsed = JSON.parse(session);
-        const expiresAt = parsed?.expires_at;
-        const PRE_EMPTIVE_REFRESH_WINDOW = 300; // 5 minutes in seconds
-        if (expiresAt && (expiresAt - Math.floor(now / 1000)) < PRE_EMPTIVE_REFRESH_WINDOW) {
-          // Session expiring soon — refresh non-blocking
-          if (!pendingUserPromise) {
-            setTimeout(() => {
-              refreshSessionSingleFlight()?.catch?.((e) => {
-                if (import.meta.env.DEV) {
-                  console.log('[CachedAuth] Pre-emptive refresh failed (non-critical):', e);
-                }
-              });
-            }, 0);
-          }
-        }
-      }
-    } catch {
-      // Ignore parse errors — non-critical optimization
-    }
-    
+    // L9: Removed manual pre-emptive refresh — Supabase v2 handles this via
+    // `autoRefreshToken: true` (set in client.ts), which refreshes ~5 min
+    // before expiry. `refreshSessionSingleFlight` remains exported for
+    // explicit-refresh paths and the sign-out abort machinery.
+
     // Background refresh: non-blocking network call to keep cache fresh
     // Uses setTimeout to ensure it doesn't block the sync caller
     if (navigator.onLine && !pendingUserPromise) {

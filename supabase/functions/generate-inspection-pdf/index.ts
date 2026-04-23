@@ -4,11 +4,7 @@ import { jsPDF } from "https://esm.sh/jspdf@2.5.2";
 import "https://esm.sh/jspdf-autotable@3.8.2";
 import { checkRateLimit, createRateLimitResponse } from "../_shared/rate-limiter.ts";
 
-const corsHeaders = {
-  'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version',
-};
-
+import { corsHeaders } from "../_shared/cors.ts";
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
