@@ -631,6 +631,36 @@ export default function TrainingForm() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [id, loadTraining]);
 
+  // H3: Register this record as actively edited so the global Realtime IDB
+  // writer in useAutoSync doesn't silently overwrite our IDB row while we
+  // hold unsaved React state.
+  useEffect(() => {
+    if (!id || id.startsWith('temp-')) return;
+    registerActiveFormRecord('trainings', id);
+    const unsub = onPendingRemoteUpdate((p) => {
+      if (p.table !== 'trainings' || p.recordId !== id) return;
+      if (!hasUnsavedRef.current) {
+        if (import.meta.env.DEV) console.log('[TrainingForm] Pending remote update — reloading (no unsaved changes)');
+        loadTraining();
+        return;
+      }
+      toast.warning('Remote update available', {
+        description: 'Another device updated this report. Reload from server (your unsaved edits will be lost) or keep your changes.',
+        duration: 30000,
+        action: {
+          label: 'Reload',
+          onClick: () => { loadTraining(); },
+        },
+        cancel: { label: 'Keep my changes', onClick: () => {} },
+      });
+    });
+    return () => {
+      unsub();
+      unregisterActiveFormRecord(id);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [id]);
+
   // Listen for JSON import events — reload form state from IndexedDB to prevent
   // stale React state from overwriting imported data on next save
   useEffect(() => {
