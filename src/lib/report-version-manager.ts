@@ -101,25 +101,21 @@ export async function appendVersion(
       return null;
     }
 
-    // Use in-memory counter to avoid async read race; seed from IndexedDB on first call
-    let nextVersion: number;
-    if (versionCounters.has(reportId)) {
-      nextVersion = versionCounters.get(reportId)! + 1;
-    } else {
-      const tx = db.transaction('report_versions', 'readonly');
-      const index = tx.objectStore('report_versions').index('by-report');
-      const existingVersions = await index.getAll(reportId);
-      await tx.done;
-      const maxVersion = existingVersions.reduce(
-        (max, v) => Math.max(max, v.versionNumber || 0), 0
-      );
-      nextVersion = maxVersion + 1;
-    }
-    versionCounters.set(reportId, nextVersion);
-
     // Strip large HTML fields from snapshots to save storage space
     const strippedParentData = { ...parentData };
     delete strippedParentData.latest_report_html;
+
+    // Atomic numbering: assign versionNumber and write inside a single readwrite
+    // transaction. IDB serializes readwrite txs across tabs on the same store,
+    // so two tabs cannot both observe the same max and produce duplicate "vN".
+    const writeTx = db.transaction('report_versions', 'readwrite');
+    const writeStore = writeTx.objectStore('report_versions');
+    const existingVersions = await writeStore.index('by-report').getAll(reportId);
+    const maxVersion = (existingVersions as unknown as ReportVersion[]).reduce(
+      (max, v) => Math.max(max, v.versionNumber || 0),
+      0
+    );
+    const nextVersion = maxVersion + 1;
 
     const version: ReportVersion = {
       id: crypto.randomUUID(),
@@ -134,9 +130,7 @@ export async function appendVersion(
       fieldCount: calculateFieldCount(parentData, childrenData),
     };
 
-    // Write the new version
-    const writeTx = db.transaction('report_versions', 'readwrite');
-    await writeTx.objectStore('report_versions').put(version);
+    await writeStore.put(version);
     await writeTx.done;
 
     if (import.meta.env.DEV) {
