@@ -251,6 +251,16 @@ export const useAutoSync = () => {
     }, dynamicTimeout + 2000); // 2 seconds after main timeout as final safety
     
     try {
+      // H10: Flush any queued admin pre-edit snapshot intents BEFORE pushing
+      // local edits to the server, so the snapshot reflects the server's
+      // pre-edit state rather than the admin's overwrite.
+      try {
+        const { flushAdminEditQueue } = await import('@/lib/admin-edit-snapshot-queue');
+        await flushAdminEditQueue();
+      } catch (flushErr) {
+        console.warn('[AutoSync] admin-edit-snapshot flush failed (non-blocking):', flushErr);
+      }
+
       // Refresh real unsynced counts BEFORE deciding whether to skip the pipeline.
       // The in-memory ref can be stale (e.g. immediately after a save, or after an
       // IDB timeout returned 0). Trust a fresh IDB read instead.
