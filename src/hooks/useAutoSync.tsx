@@ -122,6 +122,9 @@ export const useAutoSync = () => {
   // Coalesces bursts of UPDATEs to the same record into one refetch (~300ms window).
   const refetchTimersRef = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map());
   const REFETCH_DEBOUNCE_MS = 300;
+  // S21: Shared completion promise for the in-flight sync run.
+  // Concurrent callers await this directly instead of polling syncInProgressRef.
+  const inFlightSyncRef = useRef<Promise<void> | null>(null);
   
   /**
    * Perform the actual sync operation
