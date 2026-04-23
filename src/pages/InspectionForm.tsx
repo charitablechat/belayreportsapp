@@ -1846,7 +1846,19 @@ export default function InspectionForm() {
             );
 
             // Execute all in parallel
-            await Promise.all(parallelOperations);
+            try {
+              await Promise.all(parallelOperations);
+            } catch (parErr) {
+              // C4: parallel upsert(s) failed — restore the rows reconcile already deleted.
+              if (inspReconciledDeletes.length > 0) {
+                try {
+                  await restoreReconciledDeletions(inspReconciledDeletes, id!);
+                } catch (restoreErr) {
+                  console.error('[C4] InspectionForm: restoreReconciledDeletions threw', restoreErr);
+                }
+              }
+              throw parErr;
+            }
 
             // DEFERRED: Set synced_at ONLY after all child data committed successfully
             const hadFilteredItems = validSystems.length !== systems.length
