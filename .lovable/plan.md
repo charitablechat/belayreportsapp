@@ -1,118 +1,95 @@
 
 
-## C1 — Stop the T0-snapshot from clobbering mid-sync edits across all three report types
+## C2 — Stop the empty-local-guard from silently restoring server child rows
 
 ### Finding
 
-The audit is correct. In `src/lib/atomic-sync-manager.ts` the same destructive pattern exists three times — at the **post-sync** IDB save (not at the snippet line numbers in the report; those point to the *empty-guard* recovery path):
+`atomic-sync-manager.ts` has a "recovery" branch in all three sync paths (inspection ~L686-708, training ~L1568-1584, daily-assessment ~L2380-2396) that fires when **server has child data AND local is empty AND `wasClearedAfterLastSync()` is false**. It pulls every server child row back into IndexedDB (`saveRelatedDataOffline` / `saveTrainingDataOffline` / `saveAssessmentDataOffline`) and stamps `synced_at = updated_at = serverTimestamp` so nothing looks dirty.
 
-| Report | Post-sync write | T0 snapshot variable |
-|---|---|---|
-| Inspection | line **832** (`saveInspectionOffline({ ...inspection, synced_at, updated_at, ... })`) | `inspection` (captured at function start, ~L317 area) |
-| Training | line **1702** (`saveTrainingOffline({ ...training, ... })`) | `training` |
-| Daily assessment | line **2504** (`saveDailyAssessmentOffline({ ...assessment, ... })`) | `assessment` |
+The form-level `reconcileClearIntent` correctly stamps `user_cleared_at` when an autosave runs *after* the last row is removed — but there are real windows where it doesn't:
 
-The local variable holds T0 state. The 5–25 s server transaction runs. Any auto-save that landed in IDB during that window is overwritten by the spread of the stale T0 object, and `updated_at` is reset to `serverTimestamp` so the next `getUnsynced*` scan (drift tolerance 30 s in `local-data-guards.ts:25`, not 5 s — same idea) no longer flags it dirty. Edit lost, silently.
+- An autosave that emptied a section is still in flight (debounced) when the next sync cycle picks the record up.
+- A rare IDB read returns empty for one section while the others are also empty (legitimate state but the marker was never restamped because nothing changed).
+- Cross-tab edits where one tab clears and another tab triggers sync before the marker is persisted.
 
-The same bug also exists at lines **2772 / 2800 / 2829** (a small finalize helper near the bottom of the file that does `saveXOffline({ ...x, synced_at: x.updated_at })`). Same fix applies.
+In every one of those cases the recovery branch silently restores server data. From the user's perspective, "rows I deleted came back" — and worse, any local edits to those child rows are overwritten by the server copy.
+
+The "skip sync" half of the guard (`return { skipped: true, reason: 'empty_local_guard' }`) is correct and should stay. Only the **automatic IDB restore** is the problem.
 
 ### Fix
 
-Add a small private helper, then call it from all three (six, including the finalize trio) post-sync write sites. No behavior change when no concurrent edit happened.
+Convert the recovery branch from "auto-restore IDB" into "skip + surface a held-back conflict the user can resolve." Reuse the S39 plumbing that already surfaces held-back records in `SyncDiagnosticsSheet`.
+
+**1. New module `src/lib/empty-local-conflict-store.ts`** (mirrors `regression-skip-store.ts` shape):
 
 ```ts
-// New helper near the top of atomic-sync-manager.ts
-type LiveGetter<T> = (id: string) => Promise<T | null | undefined>;
-type LiveSaver<T>  = (record: T) => Promise<unknown>;
-
-/**
- * C1: Post-sync save that won't clobber an auto-save that landed in IDB
- * during the server round-trip.
- *
- * - `t0Snapshot` is the parent record as captured at the start of sync.
- * - `t0UpdatedAtMs` is `Date.parse(t0Snapshot.updated_at)` (cache it once).
- * - If the live IDB record's updated_at is strictly newer than T0, we ONLY
- *   stamp `synced_at` on the live record and leave parent fields + updated_at
- *   intact. Otherwise we write the merged record as before.
- *
- * Treat any read/parse failure as "no concurrent edit" and fall through to
- * the legacy write — never block sync completion on a guard-read failure.
- */
-async function safePostSyncSave<T extends { id: string; updated_at?: string | null }>(
-  recordId: string,
-  t0Snapshot: T,
-  t0UpdatedAtMs: number,
-  serverTimestamp: string,
-  mergedFields: Partial<T>,            // e.g. { user_cleared_at: null, inspector: ... }
-  getLive: LiveGetter<T>,
-  save: LiveSaver<T>,
-): Promise<void> {
-  let live: T | null | undefined = null;
-  try { live = await getLive(recordId); } catch { live = null; }
-
-  const liveUpdatedMs = live?.updated_at ? Date.parse(live.updated_at) : NaN;
-  const concurrentEdit =
-    Number.isFinite(liveUpdatedMs) &&
-    Number.isFinite(t0UpdatedAtMs) &&
-    liveUpdatedMs > t0UpdatedAtMs;
-
-  if (concurrentEdit && live) {
-    // Preserve the live (newer) record; only stamp synced_at.
-    await save({ ...live, synced_at: serverTimestamp });
-    if (import.meta.env.DEV) {
-      syncLog.log('[C1] Concurrent edit detected — preserved live record, stamped synced_at only', {
-        id: recordId.substring(0, 8),
-        t0: new Date(t0UpdatedAtMs).toISOString(),
-        live: live.updated_at,
-      });
-    }
-    return;
-  }
-
-  // No concurrent edit — original behavior.
-  await save({
-    ...t0Snapshot,
-    ...mergedFields,
-    synced_at: serverTimestamp,
-    updated_at: serverTimestamp,
-  });
+export interface EmptyLocalConflictEntry {
+  id: string;                              // parent record id
+  reportType: 'inspection' | 'training' | 'daily_assessment';
+  detectedAt: number;
+  serverCounts: Record<string, number>;    // section name → row count
+  organizationLabel?: string;              // best-effort, for UI
 }
+
+// IDB-backed (sync_empty_local_conflicts store, 30-day TTL, hot cache).
+export async function recordEmptyLocalConflict(entry: EmptyLocalConflictEntry): Promise<void>;
+export async function listEmptyLocalConflicts(): Promise<EmptyLocalConflictEntry[]>;
+export async function clearEmptyLocalConflict(id: string): Promise<void>;
 ```
 
-Then patch six sites:
+Add a one-line upgrade in `offline-storage.ts` to create the new object store on the next IDB version bump (or piggy-back on the next version that's already pending — match the same pattern S39 used for `sync_regression_counters`). Until the upgrade lands, `getDB()` returns null and recording is a no-op (matches the existing tolerant pattern in `regression-skip-store.ts`).
 
-1. **Inspection post-sync** (L832): replace the `saveInspectionOffline({ ...inspection, ... })` block with a `safePostSyncSave(...)` call. Compute `t0UpdatedAtMs = Date.parse(inspection.updated_at)` once near the function start (right after `inspection` is captured) and pass it through. Pass `mergedFields = { user_cleared_at: null, inspector: inspectorProfile || { first_name: null, last_name: null, avatar_url: null } }`.
-2. **Training post-sync** (L1702): same pattern with `saveTrainingOffline` and `getOfflineTraining`.
-3. **Daily-assessment post-sync** (L2504): same pattern with `saveDailyAssessmentOffline` and `getOfflineDailyAssessment`.
-4. **Inspection finalize** (L2772): replace `saveInspectionOffline({ ...inspection, synced_at: inspection.updated_at })` with the helper. T0 here is the same `inspection` arg passed into the finalize fn.
-5. **Training finalize** (L2800): same.
-6. **Daily-assessment finalize** (L2829): same.
+**2. Replace the auto-restore in three places.** The new branch:
 
-The two empty-guard recovery writes at L641 and L1515 / L2320 are **out of scope** — they intentionally restore from server data after a guard trip and are not the T0-overwrite path.
+- Removes the `await Promise.all([saveRelatedDataOffline(...), ...])` block.
+- Removes the `saveInspectionOffline({ ...inspection, synced_at: aligned, updated_at: aligned })` re-stamp.
+- Calls `recordEmptyLocalConflict({ id, reportType, detectedAt: Date.now(), serverCounts: {...} })`.
+- Pushes a notification via `addSyncNotification('Sync paused: <Org> — local empty but server has data. Open Sync Diagnostics to resolve.', 'high')` (de-duped on `id` so repeated cycles don't spam).
+- Still returns `{ skipped: true, reason: 'empty_local_guard' }`.
 
-### Why this is safe
+The existing `wasClearedAfterLastSync(...)` short-circuit stays — legitimate "user cleared everything" still flows through normally to delete server rows on the next reconcile.
 
-- When no concurrent edit happened, the helper writes exactly the same payload as today (same fields, same `synced_at = updated_at = serverTimestamp`).
-- When a concurrent edit happened, the live IDB record is preserved verbatim, and only `synced_at` is stamped to `serverTimestamp`. `updated_at` (newer than `synced_at`) makes `getUnsynced*` correctly re-flag it dirty for the next cycle — exactly the behavior we want.
-- Read failure → fall through to legacy behavior (no regression).
+**3. Surface the conflicts in `SyncDiagnosticsSheet.tsx`** — new section beneath "Held-Back Records":
+
+```
+Empty-Local Conflicts (N)
+─────────────────────────
+Acme Corp — Inspection
+Local cache is empty but server has 12 systems, 3 ziplines, 5 equipment.
+Detected 2 minutes ago.
+
+[ Restore from server ]   [ Confirm local empty ]   [ Dismiss ]
+```
+
+Three actions:
+- **Restore from server** — pulls server children into IDB (the *current* recovery behavior, but now opt-in). Calls existing `saveRelatedDataOffline` + re-stamp logic, then `clearEmptyLocalConflict(id)`.
+- **Confirm local empty** — calls `markUserCleared(parent)` + `saveInspectionOffline` (or training/assessment equivalent), bumps `updated_at`, then `clearEmptyLocalConflict(id)`. Next sync cycle will see `wasClearedAfterLastSync === true` and proceed to delete server rows via the normal reconcile path.
+- **Dismiss** — just clears the conflict entry; sync will re-detect on the next cycle if the condition still holds.
+
+Wire the three handlers to existing helpers (`saveRelatedDataOffline`, `saveTrainingDataOffline`, `saveAssessmentDataOffline`, `markUserCleared`, the per-type `saveXOffline`).
+
+**4. Notification de-dupe.** `addSyncNotification` is called from the sync path on every cycle that hits the guard. Add a small in-module `Set<string>` keyed on parent id; only fire the toast when the id isn't already present, and clear it inside `clearEmptyLocalConflict`. Matches S39's "fire once per detection" UX.
 
 ### Out of scope
 
-- The empty-guard recovery saves at L641 / L1515 / L2320 (different intent — restore-from-server).
-- Child-row writes during the same window. They go through `reconcileAllChildTables` + `saveRelatedDataOffline` and aren't keyed on the parent's `updated_at`. Worth a follow-up audit but not C1.
-- Lowering or raising `SYNC_DRIFT_TOLERANCE_MS`.
+- Touching the form-level `reconcileClearIntent` calls — they already handle the happy path.
+- Touching the `wasClearedAfterLastSync` short-circuit.
+- The "SUSPICIOUS EMPTY GUARD" block that follows each recovery branch (it only fires when *both* local and server are empty — different code path, no data-loss risk).
+- The pre-delete backup in the soft-delete branch (different concern).
+- Auto-merging server children with local edits — out of scope for C2; the surfaced conflict gives the user a clear choice instead of guessing.
 
 ### Risk
 
-Low. The helper is a strict superset of current behavior; the only new branch fires when `live.updated_at > t0.updated_at`, which is exactly the case the audit identified as currently silently lost.
+Low–medium. The change is strictly a removal of an automatic write + addition of a user-visible queue. Worst case: a user with the condition has to click a button instead of having it silently "fix" itself — which is exactly the design goal.
+
+The IDB store-creation upgrade is the only new schema touch; it follows the exact pattern that `sync_regression_counters` (S39) uses, so the migration-safety machinery already covers it.
 
 ### Verification
 
 - `npx tsc --noEmit`.
-- DEV: in `InspectionForm`, set a breakpoint inside the sync transaction (or temporarily insert `await new Promise(r => setTimeout(r, 8000))` in `syncInspection` just before `saveInspectionOffline`). While the transaction is in flight, type into a field and let the auto-save fire. Confirm:
-  - Console shows `[C1] Concurrent edit detected — preserved live record, stamped synced_at only`.
-  - The typed text remains in the form (and in IDB) after sync completes.
-  - The next sync cycle picks the record back up and uploads the new edit (i.e. it's not stuck dirty forever).
-- DEV: repeat for trainings and daily assessments.
-- DEV: with no concurrent edit, confirm the existing happy path is unchanged (single `[SYNC_TERMINAL] align_synced_at CONFIRMED` line, no `[C1]` line, record is clean afterwards).
+- DEV scenario A (the bug): with a previously-synced inspection that has 5 systems on the server, manually clear `inspection_systems` from IDB *without* stamping `user_cleared_at`. Trigger sync. Expect: console `[SAFETY] empty_local_guard` warning, **no** `[SAFETY] Recovering` line, **no** server rows pulled back into IDB, sync notification "Sync paused: <Org> — local empty but server has data" appears, `SyncDiagnosticsSheet` shows the entry under "Empty-Local Conflicts (1)".
+- DEV scenario B (legitimate clear): in the inspection form, delete every system/zipline/equipment/standard. Wait for autosave. Trigger sync. Expect: `wasClearedAfterLastSync === true` short-circuit fires, server rows are deleted via reconcile path, **no** conflict entry appears.
+- DEV scenario C (recovery action): from scenario A's state, click "Restore from server" in the diagnostics sheet. Expect: server child rows reappear in IDB and in the form, conflict entry disappears, next sync runs cleanly.
+- DEV scenario D (confirm-empty action): from scenario A's state, click "Confirm local empty". Expect: `user_cleared_at` is stamped, conflict entry disappears, next sync deletes server rows via reconcile, server is now empty.
+- Repeat A–D for trainings and daily assessments.
 
