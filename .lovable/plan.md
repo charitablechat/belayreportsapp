@@ -1,85 +1,79 @@
 
 
-## C5 — Stop the photo sync from poisoning `photo_url` with the IDB UUID
+## C6 — Fix `migrateUserData` silent partial-failure on transaction auto-close
 
 ### Finding
 
-`src/lib/sync-manager.ts:230` — when the sync loop hits a photo whose `blob` has gone null mid-batch, it does:
+`src/lib/offline-auth.ts:316-334` (inspections/trainings/daily_assessments loop) and `:339-360` (photos loop) both await `store.put()` inside a `for` loop after `await store.getAll()`. IndexedDB transactions auto-close as soon as the microtask queue yields without a pending request, so on Chromium/WebKit the second `put` typically throws `InvalidStateError: The transaction has finished`. The `catch (storeError)` swallows it with a `console.warn`, and migration aborts after the first row.
 
-```ts
-await markPhotoAsUploaded(photo.id, photo.photoUrl || photo.id);
-```
-
-If `photo.photoUrl` is null (legitimate states: a partial-write where `markPhotoAsUploaded` previously failed mid-`put`, or a photo created by an old code path that never stamped a `photoUrl`), the `|| photo.id` fallback writes the IDB **UUID** as `photo_url`. That UUID is not a valid storage key — any later signed-URL fetch returns 404 and the report renders a broken image. It also short-circuits any chance to recover the photo, because `uploaded` is now `true` and `markPhotoAsUploaded` has nulled the blob (already null here) and zeroed the retry counter.
-
-The bug is small but the blast radius is permanent: once stored, the bad path propagates into `inspection_photos.photo_url` on the next DB insert and stays there.
+Result on the offline→online reconcile path: any inspections/trainings/daily_assessments/photos saved under the deterministic email-hash UUID stay tagged with the old `inspector_id`. Dashboard queries filter by the real `inspector_id`, so the rows look "disappeared" to the user even though they exist in IDB.
 
 ### Fix
 
-Single edit in `src/lib/sync-manager.ts` around line 225–233, no new helpers needed. The two real cases to separate:
+Single file: `src/lib/offline-auth.ts`, function `migrateUserData` (~lines 304-365). Replace the awaited-put-in-loop pattern with the standard non-yielding pattern: collect all `put()` requests **synchronously** inside the same `readwrite` transaction, then `await Promise.all(puts).then(() => tx.done)`. No await between requests means the transaction stays open.
 
+**Before (each store loop):**
 ```ts
-// Guard: blob must exist (may have been nullified by a previous partial success)
-if (!photo.blob) {
-  if (photo.photoUrl && !photo.photoUrl.startsWith('pending/')) {
-    // Real, non-pending storage path is on record — the previous upload
-    // succeeded and only the markPhotoAsUploaded write lost its way.
-    // Safe to finalize with the known-good path.
-    if (import.meta.env.DEV) {
-      console.warn('[Sync Manager] Finalizing photo with null blob but known photoUrl:', photo.id);
-    }
-    await markPhotoAsUploaded(photo.id, photo.photoUrl);
-    changedCount++;
-    return;
+const tx = db.transaction(name, 'readwrite');
+const store = tx.objectStore(name);
+const allRecords = await store.getAll();
+for (const record of allRecords) {
+  if (record[idField] === oldUserId) {
+    record[idField] = newUserId;
+    await store.put(record);   // ← tx auto-closes here
+    totalMigrated++;
   }
-
-  // No blob AND no trustworthy photoUrl — we cannot reconstruct the upload.
-  // Surface as a permanent dead-letter so the user sees it in
-  // SyncDiagnosticsSheet instead of a silent broken-image landmine in the
-  // rendered report.
-  console.error('[Sync Manager] Photo has no blob and no photoUrl — dead-lettering:', photo.id);
-  await setPhotoLastError(photo.id, 'Photo data missing (no blob and no storage path). Re-capture required.');
-  // Bump straight to the ceiling so it appears in the dead-letter UI on the next refresh
-  // without waiting MAX_PHOTO_RETRIES cycles (the photo is not recoverable by retry).
-  for (let i = 0; i < MAX_PHOTO_RETRIES; i++) {
-    await incrementPhotoRetryCount(photo.id);
-  }
-  changedCount++;
-  return;
 }
+await tx.done;
 ```
 
-That's the entire change. Same return-shape, same `changedCount` accounting, no schema work.
+**After:**
+```ts
+// Read phase in its own readonly tx (free to await)
+const readTx = db.transaction(name, 'readonly');
+const allRecords = await readTx.objectStore(name).getAll();
+await readTx.done;
+
+const toMigrate = allRecords.filter(r => r[idField] === oldUserId);
+if (toMigrate.length === 0) continue;
+
+// Write phase: open tx, fire all puts synchronously, then await tx.done
+const writeTx = db.transaction(name, 'readwrite');
+const writeStore = writeTx.objectStore(name);
+const puts = toMigrate.map(record => {
+  record[idField] = newUserId;
+  return writeStore.put(record);   // returns a promise; do NOT await here
+});
+await Promise.all(puts);
+await writeTx.done;
+totalMigrated += toMigrate.length;
+```
+
+Apply the identical pattern to the `photos` loop at ~lines 339-360 (the change-detection logic stays; just collect mutated records first, then fire puts in one synchronous batch).
 
 ### Why this is safe
 
-- **Common happy path** (blob present): unchanged — falls through to the existing upload code below.
-- **Recoverable null-blob** (real `photoUrl` present): finalizes correctly with the known-good path. This is the same outcome the bug accidentally produces in the `photo.photoUrl` truthy branch today, just without the toxic fallback.
-- **Unrecoverable null-blob**: now goes to the dead-letter UI (existing S22 plumbing — `setPhotoLastError` + retry-count saturation). The user gets a visible, actionable item in `SyncDiagnosticsSheet` instead of a permanently broken image inside a completed report.
-- **`pending/` paths** are excluded from the "trustworthy photoUrl" branch because the path-rewrite code earlier in the loop (S23, lines ~190–222) is the only thing that turns them into real keys, and it requires a blob.
-- No interaction with C1–C4 (different subsystem).
-- `getUnuploadedPhotos` already filters out null-blob photos at the source (`offline-storage.ts:1676`), so this branch fires only on photos whose blob went null *during* the in-flight batch — a very narrow race.
+- `idb` `store.put()` returns a promise that resolves on transaction success. Firing all `put()` calls synchronously before any `await` is the canonical pattern documented in the `idb` README and works on every browser that supports IndexedDB.
+- Read tx and write tx are split — the read can safely `await getAll()`, the write never yields between requests.
+- No schema changes, no new stores, no consumers to update.
+- Worst-case if a single `put` rejects: `Promise.all` rejects, the `catch (storeError)` keeps the existing warn-and-continue behavior, but now we get **all-or-nothing per store** instead of "first row only," which is strictly better.
+- For very large stores (>10k matching rows) `Promise.all` over many `put`s is still fine — IDB handles them in the same tx and they all commit together. If we ever cross that threshold this can be chunked, but it's not in scope.
 
 ### Out of scope
 
-- Changing `markPhotoAsUploaded` itself. Its callers in `PhotoCapture.tsx` and `ItemPhotoUpload.tsx` always pass a valid storage path, so the fix belongs at the sync-manager call-site that has the bad `|| photo.id` fallback.
-- Re-uploading from a recovered blob — there is no blob to re-upload here; that's why we dead-letter.
-- Any change to `pruneOldSyncedPhotoBlobs` (it correctly only nulls `uploaded === true` blobs, so it isn't a current trigger of this bug).
+- Restructuring the helper into a single transaction across all four stores (cross-store atomicity isn't required here — each store stands alone, and `report_deleted_items` audit is a separate concern).
+- Telemetry / progress UI for migration. The toast in the caller (`verifyAndReconcileOfflineAuth`) already announces the linkup; this fix just makes the count under it accurate.
+- The `inspector_id` field-name assumption — already correct for all three report stores.
 
 ### Risk
 
-Trivial. One file, one branch, no new persisted state. Worst case, a photo that today silently becomes a broken image in a report instead becomes a visible dead-letter entry — strictly better.
+Trivial. Same function signature, same surrounding caller flow, same error-swallowing semantics. The behavior change is "migrate all matching rows per store" instead of "migrate one row per store and silently warn."
 
 ### Verification
 
 - `npx tsc --noEmit`.
-- DEV scenario A (the bug): seed an IDB photo record `{ id: 'abc-123', uploaded: false, blob: null, photoUrl: null, inspectionId: <real-uuid> }`. Trigger a sync cycle. Expect:
-  - Console: `[Sync Manager] Photo has no blob and no photoUrl — dead-lettering: abc-123`.
-  - The photo's `lastError` is set, retryCount === `MAX_PHOTO_RETRIES`, `uploaded` stays false.
-  - **No** new row written to `inspection_photos` with `photo_url = 'abc-123'`.
-  - The photo appears in `SyncDiagnosticsSheet`'s dead-letter section.
-- DEV scenario B (recoverable race): seed `{ id, uploaded: false, blob: null, photoUrl: '<userId>/<inspId>/123.jpg', inspectionId: <real-uuid> }`. Trigger sync. Expect:
-  - Console: `[Sync Manager] Finalizing photo with null blob but known photoUrl: <id>`.
-  - `markPhotoAsUploaded` runs with the real path; `uploaded === true`; no toxic UUID anywhere.
-- DEV scenario C (happy path): a normal capture-then-sync. Confirm no `[Sync Manager] Finalizing` and no `[Sync Manager] Photo has no blob` lines, and the upload completes through the existing code path.
+- DEV scenario A (the bug): in DevTools, seed IDB `inspections` with 5 rows whose `inspector_id` equals the deterministic email-hash UUID. Force a reconcile (`verifyAndReconcileOfflineAuth`). Expect: console log `[OfflineAuth] Migrated 5 records ...` (or the equivalent count including photos), all 5 rows now have the real `inspector_id`, dashboard renders them.
+- DEV scenario B (no matches): seed 5 rows with the real `inspector_id` already. Reconcile. Expect: count = 0, no errors, rows untouched.
+- DEV scenario C (mixed): 3 matching, 2 non-matching, 1 photo with `oldUserId` in `photoUrl`. Expect: count = 4, only the 3 inspector_id rows + 1 photo touched, the other 2 untouched.
+- Repeat for `trainings`, `daily_assessments`, `photos`.
 
