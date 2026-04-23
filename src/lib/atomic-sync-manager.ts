@@ -697,17 +697,26 @@ export async function syncInspectionAtomic(inspectionId: string, preValidatedUse
     });
 
     // S3: align_synced_at is ADVISORY. The transaction's final step already wrote
-    // synced_at on the server (executeTransaction enforces row-count > 0). If the
-    // RPC fails (network blip, lock, transient error), fall back to the timestamp
-    // we just committed so local state advances and the record stops re-queueing.
+    // synced_at on the server (executeTransaction enforces row-count > 0).
+    // S14: on RPC failure, do one extra SELECT for the server-authoritative
+    // updated_at/synced_at — the client-clock fallback was the source of the
+    // "1 pending" drift trap on slow networks.
     let serverTimestamp: string;
     const alignedData = aligned as any;
     if (alignError || !alignedData || alignedData.error) {
       console.warn(
-        '[Atomic Sync] align_synced_at non-fatal failure — using transaction timestamp',
+        '[Atomic Sync] align_synced_at non-fatal failure — fetching server timestamp',
         { table: 'inspections', id: inspectionId, alignError: alignError?.message, aligned }
       );
-      serverTimestamp = (steps[steps.length - 1].data as any).synced_at;
+      const { data: serverRow } = await supabase
+        .from('inspections')
+        .select('updated_at, synced_at')
+        .eq('id', inspectionId)
+        .maybeSingle();
+      serverTimestamp =
+        (serverRow as any)?.synced_at ||
+        (serverRow as any)?.updated_at ||
+        (steps[steps.length - 1].data as any).synced_at;
     } else {
       serverTimestamp = alignedData.updated_at;
       console.log(
@@ -2284,14 +2293,23 @@ export async function syncDailyAssessmentAtomic(assessmentId: string, preValidat
     });
 
     // S3: align_synced_at is ADVISORY. Transaction final step already wrote synced_at.
+    // S14: on RPC failure, fetch server-authoritative timestamps instead of using client clock.
     let serverTimestamp: string;
     const alignedData = aligned as any;
     if (alignError || !alignedData || alignedData.error) {
       console.warn(
-        '[Atomic Sync] align_synced_at non-fatal failure — using transaction timestamp',
+        '[Atomic Sync] align_synced_at non-fatal failure — fetching server timestamp',
         { table: 'daily_assessments', id: assessmentId, alignError: alignError?.message, aligned }
       );
-      serverTimestamp = (steps[steps.length - 1].data as any).synced_at;
+      const { data: serverRow } = await supabase
+        .from('daily_assessments')
+        .select('updated_at, synced_at')
+        .eq('id', assessmentId)
+        .maybeSingle();
+      serverTimestamp =
+        (serverRow as any)?.synced_at ||
+        (serverRow as any)?.updated_at ||
+        (steps[steps.length - 1].data as any).synced_at;
     } else {
       serverTimestamp = alignedData.updated_at;
       console.log(
