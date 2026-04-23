@@ -385,6 +385,21 @@ function isLocalStorageAvailable(): boolean {
 // ============= END CIRCUIT BREAKER =============
 
 /**
+ * Timeout limits by operation weight — prevents false empties on slow devices
+ */
+export const IDB_TIMEOUTS = {
+  /** Single-key or small metadata reads */
+  light: 5_000,
+  /** Batch child-section reads (related data, training items, assessments) */
+  batch: 10_000,
+  /** Multi-store transactions or full-table scans */
+  heavy: 15_000,
+  /** Write operations (puts, deletes) */
+  write: 8_000,
+} as const;
+export type TimeoutTier = keyof typeof IDB_TIMEOUTS;
+
+/**
  * Helper to wrap a promise with a timeout
  */
 // Track timeout suppression to avoid console spam
@@ -591,9 +606,24 @@ async function withIndexedDBErrorBoundary<T>(
     return fallbackValue;
   }
 
-  const OPERATION_TIMEOUT = operationName.includes('photo') || operationName.includes('Photo')
-    ? 8000  // 8s for photo blob writes (large on iPad Safari)
-    : 5000; // 5s for everything else
+  const opLowerForTier = operationName.toLowerCase();
+  let OPERATION_TIMEOUT: number;
+  if (opLowerForTier.includes('photo')) {
+    OPERATION_TIMEOUT = IDB_TIMEOUTS.write; // photo blob writes
+  } else if (
+    opLowerForTier.includes('batch') ||
+    opLowerForTier.includes('related') ||
+    opLowerForTier.includes('training') ||
+    opLowerForTier.includes('assessment') ||
+    opLowerForTier.includes('getall') ||
+    opLowerForTier.includes('unsynced')
+  ) {
+    OPERATION_TIMEOUT = IDB_TIMEOUTS.batch;
+  } else if (opLowerForTier.includes('save') || opLowerForTier.includes('delete') || opLowerForTier.includes('put')) {
+    OPERATION_TIMEOUT = IDB_TIMEOUTS.write;
+  } else {
+    OPERATION_TIMEOUT = IDB_TIMEOUTS.light;
+  }
   const TIMEOUT_SENTINEL = Symbol('timeout');
   
   try {
@@ -1775,7 +1805,7 @@ export async function getRelatedDataOfflineWithStatus(
   if (isCircuitBreakerOpen()) {
     return { items: [], readSucceeded: false };
   }
-  const READ_TIMEOUT_MS = 7000;
+  const READ_TIMEOUT_MS = IDB_TIMEOUTS.batch;
   const TIMEOUT_SENTINEL: any = Symbol('with-status-timeout');
   try {
     const result = await Promise.race([
@@ -2138,7 +2168,7 @@ export async function getAssessmentDataOfflineWithStatus(
   if (isCircuitBreakerOpen()) {
     return { items: [], readSucceeded: false };
   }
-  const READ_TIMEOUT_MS = 7000;
+  const READ_TIMEOUT_MS = IDB_TIMEOUTS.batch;
   const TIMEOUT_SENTINEL: any = Symbol('with-status-timeout');
   try {
     const result = await Promise.race([
@@ -2556,7 +2586,7 @@ export async function getTrainingDataOfflineWithStatus(
   if (isCircuitBreakerOpen()) {
     return { items: [], readSucceeded: false };
   }
-  const READ_TIMEOUT_MS = 7000;
+  const READ_TIMEOUT_MS = IDB_TIMEOUTS.batch;
   const TIMEOUT_SENTINEL: any = Symbol('with-status-timeout');
   try {
     const result = await Promise.race([
