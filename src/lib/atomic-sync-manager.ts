@@ -152,12 +152,31 @@ async function safePostSyncSave<T extends { id: string; updated_at?: string | nu
     return;
   }
 
+  // C3: preserve a higher local updated_at if the device clock was ahead of
+  // the server. Flattening to serverTimestamp would zero out drift and let
+  // getUnsynced* falsely flag the record clean even when local edits exist.
+  const t0UpdatedIso = (t0Snapshot as { updated_at?: string | null }).updated_at;
+  const t0Ms = t0UpdatedIso ? Date.parse(t0UpdatedIso) : NaN;
+  const serverMs = Date.parse(serverTimestamp);
+  const mergedUpdatedAt =
+    Number.isFinite(t0Ms) && Number.isFinite(serverMs) && t0Ms > serverMs
+      ? t0UpdatedIso!
+      : serverTimestamp;
+
   await save({
     ...t0Snapshot,
     ...mergedFields,
     synced_at: serverTimestamp,
-    updated_at: serverTimestamp,
+    updated_at: mergedUpdatedAt,
   } as T);
+
+  if (import.meta.env.DEV && mergedUpdatedAt !== serverTimestamp) {
+    syncLog.log('[C3] T0.updated_at > serverTimestamp — preserved local timestamp', {
+      id: recordId.substring(0, 8),
+      t0: t0UpdatedIso,
+      server: serverTimestamp,
+    });
+  }
 }
 import { assertNoTempIds, assertNoTempIdsInArray } from "./sw-sync-validators";
 import { registerSelfWrite } from "./sync-events";
