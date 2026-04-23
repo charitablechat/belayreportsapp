@@ -1,46 +1,64 @@
 /**
- * Offline Authentication Module
- * 
- * Enables "trust then verify" offline sign-in:
- * 1. Users can sign in while offline with email/password
- * 2. A synthetic session is created in localStorage
- * 3. Credentials are stored temporarily in IndexedDB
- * 4. When online, credentials are verified with the backend
- * 5. If userId differs, all IndexedDB records are migrated
+ * Offline Authentication Module (Phase 2 — refresh-token based)
+ *
+ * Trust-then-verify offline sign-in:
+ * 1. On every successful ONLINE sign-in we capture the user's refresh token.
+ * 2. On a later OFFLINE sign-in we verify the email has a captured token,
+ *    then build a synthetic session in a dedicated localStorage slot
+ *    (NOT Supabase's real auth-token key). The refresh token is never
+ *    used while offline — its presence simply proves "this user has
+ *    successfully signed in on this device before."
+ * 3. On reconnect we exchange the refresh token for a real session via
+ *    `supabase.auth.refreshSession({ refresh_token })`. If it succeeds the
+ *    real Supabase session takes over and IndexedDB is migrated if the
+ *    deterministic-UUID needs to be replaced with the real userId. If the
+ *    token has been revoked server-side we delete the entry and force the
+ *    user to sign in online.
+ *
+ * Plain passwords are NEVER stored on the device.
  */
 
 import { openDB } from 'idb';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
+import { OFFLINE_PLACEHOLDER_TOKEN } from '@/lib/synthetic-session-guard';
 
 const OFFLINE_AUTH_DB = 'offline-auth-store';
-const OFFLINE_AUTH_DB_VERSION = 1;
-const SESSION_STORAGE_KEY = 'sb-ssgzcgvygnsrqalisshx-auth-token';
+const OFFLINE_AUTH_DB_VERSION = 2; // bumped to add `offline_auth` store
+
+/** Dedicated storage key — separate from `sb-{ref}-auth-token`. */
+export const SYNTHETIC_SESSION_KEY = 'offline_synthetic_session';
+
+/** Legacy keys we wipe on boot. */
+const LEGACY_PENDING_FLAG = 'offline_auth_pending';
+const PENDING_OFFLINE_SIGNOUT_KEY = 'pending_offline_signout';
+
+/** Synthetic sessions expire 30 days after capture. */
+const SYNTHETIC_SESSION_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 
 interface OfflineAuthDB {
+  /** Lightweight email→userId mapping, kept for migration paths. */
   user_mappings: {
-    key: string; // email (lowercased)
+    key: string;
+    value: { email: string; userId: string; savedAt: number };
+  };
+  /** Legacy XOR-password store — wiped on boot, never re-populated. */
+  pending_credentials: {
+    key: string;
+    value: any;
+  };
+  /** New refresh-token-based offline auth entries, keyed by lowercase email. */
+  offline_auth: {
+    key: string;
     value: {
       email: string;
       userId: string;
-      savedAt: number;
-    };
-  };
-  pending_credentials: {
-    key: string; // 'pending'
-    value: {
-      id: string;
-      email: string;
-      encryptedPassword: string;
-      syntheticUserId: string;
-      createdAt: number;
+      refreshToken: string;
+      capturedAt: number;
     };
   };
 }
 
-/**
- * Open the offline auth IndexedDB (separate from main app DB to avoid version conflicts)
- */
 async function getAuthDB() {
   return openDB<OfflineAuthDB>(OFFLINE_AUTH_DB, OFFLINE_AUTH_DB_VERSION, {
     upgrade(db) {
@@ -50,84 +68,63 @@ async function getAuthDB() {
       if (!db.objectStoreNames.contains('pending_credentials')) {
         db.createObjectStore('pending_credentials', { keyPath: 'id' });
       }
+      if (!db.objectStoreNames.contains('offline_auth')) {
+        db.createObjectStore('offline_auth', { keyPath: 'email' });
+      }
     },
   });
 }
 
-/**
- * Generate a deterministic UUID from an email address using SHA-256.
- * Ensures the same email always produces the same userId across sessions.
- */
+/** Deterministic UUID derived from email; only used when there's no captured userId yet. */
 async function generateDeterministicUserId(email: string): Promise<string> {
-  const encoder = new TextEncoder();
-  const data = encoder.encode(email.toLowerCase().trim());
+  const data = new TextEncoder().encode(email.toLowerCase().trim());
   const hashBuffer = await crypto.subtle.digest('SHA-256', data);
   const hashArray = new Uint8Array(hashBuffer);
-  
-  // Format as UUID v4-like string (but deterministic)
   const hex = Array.from(hashArray).map(b => b.toString(16).padStart(2, '0')).join('');
   return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-4${hex.slice(13, 16)}-${hex.slice(16, 20)}-${hex.slice(20, 32)}`;
-}
-
-/**
- * Simple obfuscation for stored password (not true encryption, but better than plaintext).
- * Uses base64 encoding with a simple XOR against email bytes.
- */
-function obfuscatePassword(password: string, email: string): string {
-  const emailBytes = new TextEncoder().encode(email.toLowerCase());
-  const passBytes = new TextEncoder().encode(password);
-  const result = new Uint8Array(passBytes.length);
-  
-  for (let i = 0; i < passBytes.length; i++) {
-    result[i] = passBytes[i] ^ emailBytes[i % emailBytes.length];
-  }
-  
-  return btoa(String.fromCharCode(...result));
-}
-
-/**
- * Deobfuscate a stored password
- */
-function deobfuscatePassword(obfuscated: string, email: string): string {
-  const emailBytes = new TextEncoder().encode(email.toLowerCase());
-  const decoded = atob(obfuscated);
-  const bytes = new Uint8Array(decoded.length);
-  
-  for (let i = 0; i < decoded.length; i++) {
-    bytes[i] = decoded.charCodeAt(i) ^ emailBytes[i % emailBytes.length];
-  }
-  
-  return new TextDecoder().decode(bytes);
 }
 
 // ==================== PUBLIC API ====================
 
 /**
- * Save email-to-userId mapping. Called on every successful online sign-in.
- * This enables returning users to get their REAL userId when signing in offline.
+ * Save an email→userId mapping AND, if we have one, the refresh token captured
+ * at sign-in. Called after every successful online sign-in.
+ *
+ * `refreshToken` is optional so old call sites that only pass (email, userId)
+ * keep working; they will populate the user_mappings store but won't enable
+ * offline sign-in until a refresh token is also captured.
  */
-export async function saveUserMapping(email: string, userId: string): Promise<void> {
+export async function saveUserMapping(
+  email: string,
+  userId: string,
+  refreshToken?: string
+): Promise<void> {
+  const normalizedEmail = email.toLowerCase().trim();
   try {
     const db = await getAuthDB();
     await db.put('user_mappings', {
-      email: email.toLowerCase().trim(),
+      email: normalizedEmail,
       userId,
       savedAt: Date.now(),
     });
-    
+
+    if (refreshToken) {
+      await db.put('offline_auth', {
+        email: normalizedEmail,
+        userId,
+        refreshToken,
+        capturedAt: Date.now(),
+      });
+    }
+
     if (import.meta.env.DEV) {
-      console.log('[OfflineAuth] Saved user mapping for', email);
+      console.log('[OfflineAuth] Saved user mapping for', normalizedEmail, refreshToken ? '(with refresh token)' : '');
     }
   } catch (error) {
-    // Non-critical - just means offline sign-in might need migration later
     console.warn('[OfflineAuth] Failed to save user mapping:', error);
   }
 }
 
-/**
- * Look up a previously-cached real user ID for the given email.
- * Returns null for brand-new users who have never signed in on this device.
- */
 export async function getStoredUserId(email: string): Promise<string | null> {
   try {
     const db = await getAuthDB();
@@ -139,54 +136,46 @@ export async function getStoredUserId(email: string): Promise<string | null> {
   }
 }
 
-/**
- * Create an offline session. The main offline sign-in function.
- * 
- * 1. Looks up cached real userId for this email (from previous online login)
- * 2. If found, uses the real userId (no migration needed later)
- * 3. If not, generates a deterministic UUID from email hash
- * 4. Stores credentials for deferred verification
- * 5. Creates synthetic session in localStorage
- */
-export async function createOfflineSession(email: string, password: string): Promise<void> {
-  const normalizedEmail = email.toLowerCase().trim();
-  
-  // Try to get the real userId from a previous login
-  let userId = await getStoredUserId(normalizedEmail);
-  let isRealUserId = !!userId;
-  
-  if (!userId) {
-    // Generate deterministic userId from email
-    userId = await generateDeterministicUserId(normalizedEmail);
-    isRealUserId = false;
-    
-    if (import.meta.env.DEV) {
-      console.log('[OfflineAuth] Generated deterministic userId for', normalizedEmail);
-    }
-  } else if (import.meta.env.DEV) {
-    console.log('[OfflineAuth] Using cached real userId for', normalizedEmail);
-  }
-  
-  // Store credentials for deferred verification
+/** Look up a captured offline-auth entry (refresh token + userId) for an email. */
+export async function getOfflineAuthEntry(email: string) {
   try {
     const db = await getAuthDB();
-    await db.put('pending_credentials', {
-      id: 'pending',
-      email: normalizedEmail,
-      encryptedPassword: obfuscatePassword(password, normalizedEmail),
-      syntheticUserId: userId,
-      createdAt: Date.now(),
-    });
+    return (await db.get('offline_auth', email.toLowerCase().trim())) || null;
   } catch (error) {
-    console.warn('[OfflineAuth] Failed to store credentials:', error);
-    // Continue anyway - user can still work offline, just won't auto-verify
+    console.warn('[OfflineAuth] Failed to read offline_auth entry:', error);
+    return null;
   }
-  
-  // Create synthetic session in localStorage (matches Supabase session format)
+}
+
+/**
+ * Create an OFFLINE session.
+ *
+ * Requires a previous successful online sign-in on this device (so we have a
+ * captured refresh token). If none exists, throws — there is no way to verify
+ * a brand-new user offline.
+ *
+ * `password` is accepted for API compatibility but is NEVER stored.
+ */
+export async function createOfflineSession(email: string, _password: string): Promise<void> {
+  const normalizedEmail = email.toLowerCase().trim();
+  const entry = await getOfflineAuthEntry(normalizedEmail);
+
+  if (!entry) {
+    // No captured refresh token → user has never signed in online on this device.
+    // Refuse offline sign-in so we don't silently grant access.
+    throw new Error(
+      'No offline credentials available. Please connect to the internet and sign in once to enable offline access.'
+    );
+  }
+
+  const userId = entry.userId || (await generateDeterministicUserId(normalizedEmail));
+  const capturedAt = Date.now();
+
   const syntheticSession = {
-    access_token: 'offline_placeholder_token',
+    access_token: OFFLINE_PLACEHOLDER_TOKEN,
     refresh_token: 'offline_placeholder',
-    expires_at: 9999999999,
+    // Real expiry: 30 days after this offline sign-in.
+    expires_at: Math.floor((capturedAt + SYNTHETIC_SESSION_TTL_MS) / 1000),
     token_type: 'bearer',
     user: {
       id: userId,
@@ -194,131 +183,165 @@ export async function createOfflineSession(email: string, password: string): Pro
       app_metadata: {},
       user_metadata: {},
       aud: 'authenticated',
-      created_at: new Date().toISOString(),
+      created_at: new Date(capturedAt).toISOString(),
     },
+    // Internal marker so read paths can distinguish synthetic from real sessions.
+    __synthetic: true as const,
+    __capturedAt: capturedAt,
   };
-  
-  localStorage.setItem(SESSION_STORAGE_KEY, JSON.stringify(syntheticSession));
-  localStorage.setItem('offline_auth_pending', 'true');
-  
+
+  // Write to DEDICATED slot — not Supabase's real session key.
+  localStorage.setItem(SYNTHETIC_SESSION_KEY, JSON.stringify(syntheticSession));
+  // Mark that a refresh attempt should run on reconnect.
+  localStorage.setItem(LEGACY_PENDING_FLAG, 'true');
+
   if (import.meta.env.DEV) {
-    console.log('[OfflineAuth] Synthetic session created', { email: normalizedEmail, userId, isRealUserId });
+    console.log('[OfflineAuth] Synthetic session created (refresh-token mode)', {
+      email: normalizedEmail,
+      userId,
+    });
   }
 }
 
 /**
- * Check if there are unverified offline credentials pending verification.
+ * Delete a captured offline-auth entry (e.g. after a failed offline sign-in
+ * or after an explicit online sign-out).
  */
+export async function deleteOfflineAuthEntry(email: string): Promise<void> {
+  try {
+    const db = await getAuthDB();
+    await db.delete('offline_auth', email.toLowerCase().trim());
+  } catch (error) {
+    console.warn('[OfflineAuth] Failed to delete offline_auth entry:', error);
+  }
+}
+
+/** Read the synthetic session (or null) from the dedicated slot. */
+export function readSyntheticSession(): null | {
+  user: { id: string; email?: string };
+  expires_at: number;
+  __synthetic: true;
+  __capturedAt: number;
+} {
+  try {
+    const raw = localStorage.getItem(SYNTHETIC_SESSION_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    if (!parsed?.user?.id) return null;
+    // Expiry check: synthetic sessions die after 30 days regardless of network state.
+    if (parsed.expires_at && parsed.expires_at * 1000 < Date.now()) {
+      localStorage.removeItem(SYNTHETIC_SESSION_KEY);
+      return null;
+    }
+    return parsed;
+  } catch {
+    return null;
+  }
+}
+
+export function clearSyntheticSession(): void {
+  localStorage.removeItem(SYNTHETIC_SESSION_KEY);
+  localStorage.removeItem(LEGACY_PENDING_FLAG);
+}
+
 export function hasPendingOfflineAuth(): boolean {
-  return localStorage.getItem('offline_auth_pending') === 'true';
+  // Either an explicit pending flag OR an active synthetic session means we
+  // should attempt to reconcile when we come back online.
+  return (
+    localStorage.getItem(LEGACY_PENDING_FLAG) === 'true' ||
+    !!readSyntheticSession()
+  );
 }
 
 /**
- * Verify stored offline credentials with the backend when connectivity returns.
- * 
- * On success: Real session replaces synthetic, data migrated if needed, credentials cleared.
- * On failure: User warned, data preserved, credentials cleared.
+ * On reconnect: try to upgrade the synthetic session to a real one by
+ * exchanging the captured refresh token. On failure, force the user to sign
+ * in online again.
  */
 export async function verifyAndReconcileOfflineAuth(): Promise<boolean> {
-  if (!hasPendingOfflineAuth()) return false;
   if (!navigator.onLine) return false;
-  
+
+  const synthetic = readSyntheticSession();
+  if (!synthetic) {
+    localStorage.removeItem(LEGACY_PENDING_FLAG);
+    return false;
+  }
+
+  const email = synthetic.user.email?.toLowerCase().trim();
+  if (!email) {
+    clearSyntheticSession();
+    return false;
+  }
+
+  const entry = await getOfflineAuthEntry(email);
+  if (!entry?.refreshToken) {
+    if (import.meta.env.DEV) {
+      console.warn('[OfflineAuth] No captured refresh token to reconcile — clearing synthetic session');
+    }
+    clearSyntheticSession();
+    return false;
+  }
+
   try {
-    const db = await getAuthDB();
-    const pending = await db.get('pending_credentials', 'pending');
-    
-    if (!pending) {
-      // No credentials stored - just clear the flag
-      localStorage.removeItem('offline_auth_pending');
-      return false;
-    }
-    
-    const { email, encryptedPassword, syntheticUserId } = pending;
-    const password = deobfuscatePassword(encryptedPassword, email);
-    
-    if (import.meta.env.DEV) {
-      console.log('[OfflineAuth] Verifying credentials for', email);
-    }
-    
-    // Attempt real sign-in
-    const { data, error } = await supabase.auth.signInWithPassword({
-      email,
-      password,
+    const { data, error } = await supabase.auth.refreshSession({
+      refresh_token: entry.refreshToken,
     });
-    
-    if (error || !data.user) {
-      console.warn('[OfflineAuth] Credential verification failed:', error?.message);
-      toast.error('Could not verify your offline credentials. Please sign in again when online.', {
-        duration: 10000,
-      });
-      
-      // Clear pending flag but DON'T destroy data
-      localStorage.removeItem('offline_auth_pending');
-      await db.delete('pending_credentials', 'pending');
+
+    if (error || !data.session?.user) {
+      console.warn('[OfflineAuth] Refresh-token exchange failed:', error?.message);
+      toast.error(
+        'Your offline session has expired. Please sign in again.',
+        { duration: 10000 }
+      );
+      // Revoked / expired token — drop the entry and the synthetic session.
+      await deleteOfflineAuthEntry(email);
+      clearSyntheticSession();
       return false;
     }
-    
-    // Success! Real session is now active (Supabase client handles this automatically)
-    const realUserId = data.user.id;
-    
-    if (import.meta.env.DEV) {
-      console.log('[OfflineAuth] Verification successful', { realUserId, syntheticUserId });
-    }
-    
-    // Save mapping for future offline logins
-    await saveUserMapping(email, realUserId);
-    
-    // Migrate data if userId changed
+
+    const realUserId = data.session.user.id;
+    const syntheticUserId = synthetic.user.id;
+
+    // Capture the freshly-rotated refresh token for next time.
+    await saveUserMapping(email, realUserId, data.session.refresh_token);
+
     if (realUserId !== syntheticUserId) {
-      console.log('[OfflineAuth] UserId changed, migrating data...', {
+      console.log('[OfflineAuth] UserId changed — migrating IndexedDB data', {
         from: syntheticUserId,
         to: realUserId,
       });
       await migrateUserData(syntheticUserId, realUserId);
       toast.success('Your offline data has been linked to your account.');
     } else {
-      toast.success('Offline credentials verified successfully.');
+      toast.success('Offline session verified.');
     }
-    
-    // Clean up
-    localStorage.removeItem('offline_auth_pending');
-    await db.delete('pending_credentials', 'pending');
-    
+
+    clearSyntheticSession();
     return true;
   } catch (error) {
-    console.error('[OfflineAuth] Error during verification:', error);
-    localStorage.removeItem('offline_auth_pending');
+    console.error('[OfflineAuth] Error during reconcile:', error);
     return false;
   }
 }
 
-/**
- * Migrate all IndexedDB records from one userId to another.
- * Updates inspector_id fields across all stores.
- */
 async function migrateUserData(oldUserId: string, newUserId: string): Promise<void> {
   try {
-    // Import getDB dynamically to avoid circular dependency
     const { getDB } = await import('./offline-storage');
     const db = await getDB();
-    
+
     const storesToMigrate = [
       { name: 'inspections' as const, idField: 'inspector_id' },
       { name: 'trainings' as const, idField: 'inspector_id' },
       { name: 'daily_assessments' as const, idField: 'inspector_id' },
     ];
-    
-    // Also migrate the unified 'photos' store - photos use inspectionId 
-    // (which maps to the parent report) but the photo_url path contains the userId
-    
+
     let totalMigrated = 0;
-    
+
     for (const { name, idField } of storesToMigrate) {
       try {
         const tx = db.transaction(name, 'readwrite');
         const store = tx.objectStore(name);
         const allRecords = await store.getAll();
-        
         for (const record of allRecords) {
           if (record[idField] === oldUserId) {
             record[idField] = newUserId;
@@ -326,66 +349,159 @@ async function migrateUserData(oldUserId: string, newUserId: string): Promise<vo
             totalMigrated++;
           }
         }
-        
         await tx.done;
       } catch (storeError) {
         console.warn(`[OfflineAuth] Failed to migrate store ${name}:`, storeError);
       }
     }
-    
-    // Migrate photos store - update photo_url paths containing the old userId
+
     try {
       const tx = db.transaction('photos', 'readwrite');
       const store = tx.objectStore('photos');
       const allPhotos = await store.getAll();
-      
       for (const photo of allPhotos) {
         let changed = false;
-        
-        // Update photoUrl path if it contains the old userId
         if (photo.photoUrl && typeof photo.photoUrl === 'string' && photo.photoUrl.includes(oldUserId)) {
           photo.photoUrl = photo.photoUrl.replace(oldUserId, newUserId);
           changed = true;
         }
-        
-        // Update fileName path if it contains the old userId
         if (photo.fileName && typeof photo.fileName === 'string' && photo.fileName.includes(oldUserId)) {
           photo.fileName = photo.fileName.replace(oldUserId, newUserId);
           changed = true;
         }
-        
         if (changed) {
           await store.put(photo);
           totalMigrated++;
         }
       }
-      
       await tx.done;
     } catch (storeError) {
       console.warn('[OfflineAuth] Failed to migrate photos store:', storeError);
     }
-    
-    
+
     if (import.meta.env.DEV) {
-      console.log(`[OfflineAuth] Migrated ${totalMigrated} records from ${oldUserId} to ${newUserId}`);
+      console.log(`[OfflineAuth] Migrated ${totalMigrated} records ${oldUserId} → ${newUserId}`);
     }
   } catch (error) {
     console.error('[OfflineAuth] Data migration failed:', error);
-    // Don't throw - data is still accessible, just under the old userId
   }
 }
 
 /**
- * Clear offline auth state. Called on sign-out.
+ * Hard sign-out cleanup (online sign-out path).
+ * Wipes the synthetic session and the captured refresh token for the given user.
  */
-export async function clearOfflineAuth(): Promise<void> {
-  localStorage.removeItem('offline_auth_pending');
-  
+export async function clearOfflineAuth(email?: string): Promise<void> {
+  clearSyntheticSession();
   try {
     const db = await getAuthDB();
-    await db.delete('pending_credentials', 'pending');
+    // Always clear the legacy XOR password store.
+    await db.clear('pending_credentials');
+    if (email) {
+      await db.delete('offline_auth', email.toLowerCase().trim());
+    }
   } catch (error) {
+    console.warn('[OfflineAuth] Failed to clear offline auth:', error);
+  }
+}
+
+// ==================== H11: Soft offline sign-out + queued cleanup ====================
+
+interface PendingOfflineSignout {
+  userId: string;
+  email?: string;
+  queuedAt: number;
+}
+
+/**
+ * Soft sign-out used while OFFLINE. Clears the synthetic session and in-memory
+ * caches so the UI returns to the sign-in screen, but keeps the captured
+ * refresh token so the user can sign back in offline immediately.
+ *
+ * A flag is queued so the next online auth check completes the cleanup
+ * (revoking the refresh token server-side).
+ */
+export function queueOfflineSignout(userId: string, email?: string): void {
+  try {
+    const payload: PendingOfflineSignout = { userId, email, queuedAt: Date.now() };
+    localStorage.setItem(PENDING_OFFLINE_SIGNOUT_KEY, JSON.stringify(payload));
+  } catch {
     // Non-critical
-    console.warn('[OfflineAuth] Failed to clear credentials:', error);
+  }
+}
+
+export function getPendingOfflineSignout(): PendingOfflineSignout | null {
+  try {
+    const raw = localStorage.getItem(PENDING_OFFLINE_SIGNOUT_KEY);
+    if (!raw) return null;
+    return JSON.parse(raw) as PendingOfflineSignout;
+  } catch {
+    return null;
+  }
+}
+
+export function clearPendingOfflineSignout(): void {
+  localStorage.removeItem(PENDING_OFFLINE_SIGNOUT_KEY);
+}
+
+/**
+ * Run the queued offline-signout cleanup if it matches the currently-active
+ * user (or there is no active user). If a different user is now signed in, we
+ * drop the queued cleanup so we don't touch their state.
+ *
+ * Safe to call repeatedly — it's a no-op when there is no pending cleanup.
+ */
+export async function processQueuedSignout(activeUserId?: string | null): Promise<void> {
+  const pending = getPendingOfflineSignout();
+  if (!pending) return;
+  if (!navigator.onLine) return;
+
+  // If a different user is now signed in, abandon the queued cleanup.
+  if (activeUserId && activeUserId !== pending.userId) {
+    clearPendingOfflineSignout();
+    return;
+  }
+
+  try {
+    // Best-effort: revoke the refresh token server-side if a Supabase session is present.
+    try {
+      await supabase.auth.signOut({ scope: 'local' });
+    } catch (e) {
+      // Non-critical — we may not have a real session
+      if (import.meta.env.DEV) {
+        console.warn('[OfflineAuth] processQueuedSignout: supabase.signOut failed:', e);
+      }
+    }
+
+    if (pending.email) {
+      await deleteOfflineAuthEntry(pending.email);
+    }
+
+    clearSyntheticSession();
+    clearPendingOfflineSignout();
+
+    if (import.meta.env.DEV) {
+      console.log('[OfflineAuth] Queued offline sign-out cleanup completed for', pending.userId);
+    }
+  } catch (error) {
+    console.warn('[OfflineAuth] processQueuedSignout failed:', error);
+  }
+}
+
+// ==================== Boot migration ====================
+
+/**
+ * One-time migration: wipe the legacy XOR password blob.
+ * Idempotent — safe to call on every boot.
+ */
+export async function wipeLegacyPasswordStore(): Promise<void> {
+  try {
+    const db = await getAuthDB();
+    await db.clear('pending_credentials');
+    if (import.meta.env.DEV) {
+      console.log('[OfflineAuth] Legacy XOR password store wiped');
+    }
+  } catch (error) {
+    console.warn('[OfflineAuth] Failed to wipe legacy password store:', error);
   }
 }
