@@ -55,6 +55,7 @@ import {
 } from "./offline-storage";
 import { appendVersion, getLatestFieldCount, calculateFieldCount } from "./report-version-manager";
 import { runWithConcurrency } from "./concurrency";
+import { assertNoTempIds, assertNoTempIdsInArray } from "./sw-sync-validators";
 
 /**
  * Maximum number of items to process per sync cycle.
@@ -423,6 +424,14 @@ export async function syncInspectionAtomic(inspectionId: string, preValidatedUse
         regressionSkipCounter.delete(inspectionId);
       }
     }
+
+    // M15: Hard guard — fail loud if any temp- ID slipped past the transforms above.
+    assertNoTempIds(inspection, 'inspections.upsert');
+    assertNoTempIdsInArray(systems, 'inspection_systems.upsert');
+    assertNoTempIdsInArray(ziplines, 'inspection_ziplines.upsert');
+    assertNoTempIdsInArray(equipment, 'inspection_equipment.upsert');
+    assertNoTempIdsInArray(standards, 'inspection_standards.upsert');
+    if (summary) assertNoTempIds(summary, 'inspection_summary.upsert');
 
     // 4. Build transaction steps
     const steps: TransactionStep[] = [];
