@@ -1084,22 +1084,22 @@ export default function Dashboard() {
       if (navigator.onLine && sessionValid) {
         // Add 6-second timeout to prevent hanging
         supabasePromise = withNetworkTimeout(
-          Promise.resolve(
-            supabase
-              .from("daily_assessments")
-              .select(`
-                id, inspector_id, organization, site, trainer_of_record,
-                assessment_date, status, created_at, updated_at, synced_at,
-                latest_report_generated_at, report_version, deleted_at,
-                inspector:profiles!daily_assessments_inspector_id_profiles_fkey(first_name, last_name, avatar_url)
-              `)
-              .is('deleted_at', null)
-              .order("assessment_date", { ascending: false })
-              .limit(500)
-          ).then(({ data, error }) => {
-            if (error) throw error;
-            return data || [];
-          }).catch(err => {
+          // M13: Paginate to capture full result set for super-admin views.
+          fetchAllPaginated<any>(
+            'daily_assessments',
+            (from, to) =>
+              supabase
+                .from("daily_assessments")
+                .select(`
+                  id, inspector_id, organization, site, trainer_of_record,
+                  assessment_date, status, created_at, updated_at, synced_at,
+                  latest_report_generated_at, report_version, deleted_at,
+                  inspector:profiles!daily_assessments_inspector_id_profiles_fkey(first_name, last_name, avatar_url)
+                `)
+                .is('deleted_at', null)
+                .order("assessment_date", { ascending: false })
+                .range(from, to)
+          ).catch(err => {
             console.error('[Dashboard] Supabase assessments fetch error:', err);
             return null;
           }),
