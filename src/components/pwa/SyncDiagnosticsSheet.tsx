@@ -864,3 +864,55 @@ const EmptyLocalConflictRow = ({
     </div>
   );
 };
+
+interface PhotoFailureRowProps {
+  entry: PhotoUploadFailureEntry;
+  busy: boolean;
+  onRetry: () => void | Promise<void>;
+  onDismiss: () => void | Promise<void>;
+}
+
+const PhotoFailureRow = ({ entry, busy, onRetry, onDismiss }: PhotoFailureRowProps) => {
+  const failedAgo = entry.lastErrorAt
+    ? formatDistanceToNow(new Date(entry.lastErrorAt), { addSuffix: true })
+    : '—';
+  return (
+    <div className="p-3 space-y-2">
+      <div className="flex items-start justify-between gap-2">
+        <div className="min-w-0 flex-1">
+          <p className="text-xs font-medium text-foreground truncate">
+            {entry.section || entry.fileName || entry.id}
+          </p>
+          <p className="text-[11px] text-muted-foreground truncate">
+            {entry.lastError}
+          </p>
+          <p className="text-[10px] text-muted-foreground mt-1">
+            {entry.retryCount} attempts · failed {failedAgo}
+          </p>
+        </div>
+      </div>
+      <div className="flex gap-2">
+        <Button
+          size="sm"
+          variant="outline"
+          onClick={onRetry}
+          disabled={busy}
+          className="h-7 px-2"
+        >
+          <RefreshCw className="h-3 w-3 mr-1" />
+          Retry
+        </Button>
+        <Button
+          size="sm"
+          variant="ghost"
+          onClick={onDismiss}
+          disabled={busy}
+          className="h-7 px-2"
+        >
+          <X className="h-3 w-3 mr-1" />
+          Dismiss
+        </Button>
+      </div>
+    </div>
+  );
+};
