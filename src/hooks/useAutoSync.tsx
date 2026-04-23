@@ -221,6 +221,7 @@ export const useAutoSync = () => {
       if (syncInProgressRef.current) {
         console.warn('[AutoSync] Safety timeout - force resetting sync state');
         syncInProgressRef.current = false;
+        setSyncInProgress(false);
         setState(prev => ({ ...prev, isSyncing: false }));
       }
     }, dynamicTimeout + 2000); // 2 seconds after main timeout as final safety
