@@ -907,22 +907,22 @@ export default function Dashboard() {
       if (navigator.onLine && sessionValid) {
         // Add 6-second timeout to prevent hanging
         supabasePromise = withNetworkTimeout(
-          Promise.resolve(
-            supabase
-              .from("trainings")
-              .select(`
-                id, inspector_id, organization, trainer_of_record, start_date,
-                end_date, status, created_at, updated_at, synced_at,
-                latest_report_generated_at, report_version, deleted_at,
-                trainer:profiles!trainings_inspector_id_profiles_fkey(first_name, last_name, avatar_url)
-              `)
-              .is('deleted_at', null)
-              .order("created_at", { ascending: false })
-              .limit(500)
-          ).then(({ data, error }) => {
-            if (error) throw error;
-            return data || [];
-          }).catch(err => {
+          // M13: Paginate to capture full result set for super-admin views.
+          fetchAllPaginated<any>(
+            'trainings',
+            (from, to) =>
+              supabase
+                .from("trainings")
+                .select(`
+                  id, inspector_id, organization, trainer_of_record, start_date,
+                  end_date, status, created_at, updated_at, synced_at,
+                  latest_report_generated_at, report_version, deleted_at,
+                  trainer:profiles!trainings_inspector_id_profiles_fkey(first_name, last_name, avatar_url)
+                `)
+                .is('deleted_at', null)
+                .order("created_at", { ascending: false })
+                .range(from, to)
+          ).catch(err => {
             console.error('[Dashboard] Supabase trainings fetch error:', err);
             return null;
           }),
