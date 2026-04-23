@@ -4,8 +4,59 @@ import {
   getUnuploadedPhotos,
   markPhotoAsUploaded,
   incrementPhotoRetryCount,
+  setPhotoLastError,
   MAX_PHOTO_RETRIES,
 } from "./offline-storage";
+
+/**
+ * S22: Classify a photo upload / DB error into a sync-policy bucket.
+ *  - 'transient'           — retry next cycle, do NOT bump retryCount
+ *  - 'permanent'           — bump retryCount + stamp lastError
+ *  - 'success-equivalent'  — already-applied (duplicate); treat as success
+ */
+export type PhotoErrorClass = 'transient' | 'permanent' | 'success-equivalent';
+
+export function classifyPhotoError(err: unknown): { kind: PhotoErrorClass; message: string } {
+  const e: any = err || {};
+  // Numeric-ish status / statusCode from Supabase StorageError / PostgrestError
+  const statusRaw = e.status ?? e.statusCode ?? e.httpStatus ?? null;
+  const status = typeof statusRaw === 'string' ? parseInt(statusRaw, 10) : statusRaw;
+  const code: string | undefined = typeof e.code === 'string' ? e.code : undefined;
+  const name: string | undefined = typeof e.name === 'string' ? e.name : undefined;
+  const rawMsg: string = typeof e.message === 'string' ? e.message : String(err ?? 'Unknown error');
+  const msg = rawMsg.toLowerCase();
+
+  // Postgres unique violation — already covered upstream as success.
+  if (code === '23505' || msg.includes('duplicate key')) {
+    return { kind: 'success-equivalent', message: rawMsg };
+  }
+  // Storage "duplicate" with upsert — treat as success.
+  if (status === 409 && (msg.includes('duplicate') || msg.includes('already exists'))) {
+    return { kind: 'success-equivalent', message: rawMsg };
+  }
+
+  // Transient: network / abort / 5xx / 429 / generic 409 conflict / fetch failed.
+  if (
+    name === 'AbortError' ||
+    name === 'TypeError' && msg.includes('fetch') ||
+    msg.includes('network') ||
+    msg.includes('failed to fetch') ||
+    msg.includes('load failed') ||
+    msg.includes('timeout') ||
+    msg.includes('timed out') ||
+    status === 408 ||
+    status === 425 ||
+    status === 429 ||
+    status === 409 ||
+    (typeof status === 'number' && status >= 500 && status < 600)
+  ) {
+    return { kind: 'transient', message: rawMsg };
+  }
+
+  // Everything else (400/401/403/404/413/415/422, RLS, bucket missing, invalid key…)
+  return { kind: 'permanent', message: rawMsg };
+}
+
 
 /**
  * @deprecated Use syncAllInspectionsAtomic from atomic-sync-manager.ts instead
