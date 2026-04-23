@@ -33,6 +33,7 @@ export const SyncPulse = ({ className }: { className?: string }) => {
     forceSync,
     updatePhotoCount,
   } = usePWA();
+  const { regressionSkipCount } = useUnsyncedPhotos();
 
   const isIOSDevice = isIOS();
   const [justSynced, setJustSynced] = useState(false);
