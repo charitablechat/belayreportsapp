@@ -28,6 +28,8 @@ const UploadLogosToStorage = lazy(() => import("./pages/UploadLogosToStorage"));
 const AdminLogoManagement = lazy(() => import("./pages/AdminLogoManagement"));
 const Unsubscribe = lazy(() => import("./pages/Unsubscribe"));
 
+import { RequireAuth } from "@/components/auth/RequireAuth";
+
 import { InstallBanner } from "@/components/pwa/InstallBanner";
 import { UpdateNotification } from "@/components/pwa/UpdateNotification";
 import { StaleVersionBanner } from "@/components/pwa/StaleVersionBanner";
@@ -184,17 +186,17 @@ const router = createBrowserRouter([
     children: [
       { path: "/", element: <Index /> },
       { path: "/welcome", element: <AuroraLanding /> },
-      { path: "/dashboard", element: <Dashboard /> },
-      { path: "/inspection/new", element: <NewInspection /> },
-      { path: "/inspection/:id", element: <InspectionForm /> },
-      { path: "/training/new", element: <NewTraining /> },
-      { path: "/training/:id", element: <TrainingForm /> },
-      { path: "/daily-assessment/new", element: <NewDailyAssessment /> },
-      { path: "/daily-assessment/:id", element: <DailyAssessmentForm /> },
+      { path: "/dashboard", element: <RequireAuth><Dashboard /></RequireAuth> },
+      { path: "/inspection/new", element: <RequireAuth><NewInspection /></RequireAuth> },
+      { path: "/inspection/:id", element: <RequireAuth><InspectionForm /></RequireAuth> },
+      { path: "/training/new", element: <RequireAuth><NewTraining /></RequireAuth> },
+      { path: "/training/:id", element: <RequireAuth><TrainingForm /></RequireAuth> },
+      { path: "/daily-assessment/new", element: <RequireAuth><NewDailyAssessment /></RequireAuth> },
+      { path: "/daily-assessment/:id", element: <RequireAuth><DailyAssessmentForm /></RequireAuth> },
       { path: "/install", element: <Install /> },
       { path: "/capabilities", element: <Capabilities /> },
-      { path: "/profile", element: <Profile /> },
-      { path: "/onboarding", element: <Onboarding /> },
+      { path: "/profile", element: <RequireAuth><Profile /></RequireAuth> },
+      { path: "/onboarding", element: <RequireAuth><Onboarding /></RequireAuth> },
       { path: "/admin", element: <SuperAdminDashboard /> },
       { path: "/base64-converter", element: <Base64Converter /> },
       { path: "/upload-logos", element: <UploadLogos /> },
