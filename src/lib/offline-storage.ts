@@ -1993,6 +1993,88 @@ export async function setPhotoCapturedBy(id: string, userId: string): Promise<vo
 }
 
 /**
+ * 1.C — Persist a photo upload failure to the dead-letter store. Idempotent
+ * on photo id; updates retryCount/lastError on each call. Preserves
+ * `firstFailedAt` from the existing entry if present.
+ */
+export interface PhotoUploadFailureEntry {
+  id: string;
+  inspectionId: string;
+  fileName: string;
+  photoUrl?: string;
+  section?: string;
+  retryCount: number;
+  lastError: string;
+  lastErrorAt: number;
+  firstFailedAt: number;
+  capturedByUserId?: string | null;
+}
+
+export async function recordPhotoUploadFailure(
+  entry: Omit<PhotoUploadFailureEntry, 'firstFailedAt'> & { firstFailedAt?: number }
+): Promise<void> {
+  return withIndexedDBErrorBoundary(
+    async () => {
+      const db = await getDB();
+      const existing = await (db as any).get('photo_upload_failures', entry.id).catch(() => null);
+      const merged: PhotoUploadFailureEntry = {
+        id: entry.id,
+        inspectionId: entry.inspectionId,
+        fileName: entry.fileName,
+        photoUrl: entry.photoUrl,
+        section: entry.section,
+        retryCount: entry.retryCount,
+        lastError: (entry.lastError || '').slice(0, 500),
+        lastErrorAt: entry.lastErrorAt,
+        firstFailedAt: existing?.firstFailedAt ?? entry.firstFailedAt ?? entry.lastErrorAt,
+        capturedByUserId: entry.capturedByUserId ?? null,
+      };
+      await (db as any).put('photo_upload_failures', merged);
+      if (import.meta.env.DEV) {
+        console.warn('[Offline Storage] Photo upload failure recorded:', merged.id, merged.lastError);
+      }
+    },
+    undefined,
+    'recordPhotoUploadFailure'
+  );
+}
+
+export async function listPhotoUploadFailures(): Promise<PhotoUploadFailureEntry[]> {
+  return withIndexedDBErrorBoundary(
+    async () => {
+      const db = await getDB();
+      const all: PhotoUploadFailureEntry[] = await (db as any).getAll('photo_upload_failures');
+      // Newest failures first.
+      return (all || []).sort((a, b) => (b.lastErrorAt || 0) - (a.lastErrorAt || 0));
+    },
+    [],
+    'listPhotoUploadFailures'
+  );
+}
+
+export async function removePhotoUploadFailure(id: string): Promise<void> {
+  return withIndexedDBErrorBoundary(
+    async () => {
+      const db = await getDB();
+      await (db as any).delete('photo_upload_failures', id);
+    },
+    undefined,
+    'removePhotoUploadFailure'
+  );
+}
+
+export async function getPhotoUploadFailureCount(): Promise<number> {
+  return withIndexedDBErrorBoundary(
+    async () => {
+      const db = await getDB();
+      return await (db as any).count('photo_upload_failures');
+    },
+    0,
+    'getPhotoUploadFailureCount'
+  );
+}
+
+/**
  * S23: One-time boot migration. For any legacy photo with `pending/` prefix
  * and no `capturedByUserId`, backfill it ONLY if exactly one user-id is known
  * on this device (per the user_mappings store in offline-auth-store). Otherwise
