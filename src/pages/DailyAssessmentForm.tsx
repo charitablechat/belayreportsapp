@@ -859,9 +859,11 @@ export default function DailyAssessmentForm() {
         if (import.meta.env.DEV) console.log('[Save] Online - syncing to database...');
         try {
           // RECONCILE: Delete server rows removed locally before upserting
+          // C4: capture pre-images for restore-on-failure.
+          let assessmentReconciledDeletes: ReconciledTableDelete[] = [];
           const user = await getUserWithCache();
           if (user) {
-            await reconcileAllChildTables(
+            const reconcileResult = await reconcileAllChildTables(
               [
                 { childTable: 'daily_assessment_beginning_of_day', parentIdColumn: 'assessment_id', localItems: beginningOfDay },
                 { childTable: 'daily_assessment_end_of_day', parentIdColumn: 'assessment_id', localItems: endOfDay },
@@ -874,6 +876,7 @@ export default function DailyAssessmentForm() {
               'daily_assessment',
               user.id,
             );
+            assessmentReconciledDeletes = reconcileResult.deletedByTable;
           }
 
           // Use upsert with onConflict to prevent duplicates
