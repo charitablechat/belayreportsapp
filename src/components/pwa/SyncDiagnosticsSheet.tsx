@@ -18,6 +18,16 @@ import {
   type DeadLetterSoftDelete,
 } from '@/lib/offline-storage';
 import { retryDeadLetterSoftDelete } from '@/lib/queued-soft-delete-processor';
+import {
+  resetRegressionSkipCount,
+  type RegressionSkipEntry,
+} from '@/lib/regression-skip-store';
+import { MAX_REGRESSION_SKIPS } from '@/lib/atomic-sync-manager';
+import {
+  getOfflineInspection,
+  getOfflineTraining,
+  getOfflineDailyAssessment,
+} from '@/lib/offline-storage';
 
 interface DiagnosticsState {
   swRegistered: boolean;
