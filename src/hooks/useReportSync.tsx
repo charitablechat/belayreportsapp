@@ -71,11 +71,15 @@ const loadPendingSyncs = (): PendingReportSync[] => {
 
 // Save pending syncs to localStorage
 const savePendingSyncs = (syncs: PendingReportSync[]): void => {
-  try {
-    localStorage.setItem(REPORT_SYNC_QUEUE_KEY, JSON.stringify(syncs));
-  } catch (e) {
+  // Lazy import to avoid pulling deps into module init
+  import('@/lib/safe-local-storage').then(({ safeSetItem }) => {
+    safeSetItem(REPORT_SYNC_QUEUE_KEY, JSON.stringify(syncs), {
+      scope: 'report-sync.queue',
+      critical: false,
+    });
+  }).catch((e) => {
     console.error('[ReportSync] Failed to save pending syncs:', e);
-  }
+  });
 };
 
 // Add a sync to the queue

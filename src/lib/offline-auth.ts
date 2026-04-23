@@ -594,12 +594,19 @@ interface PendingOfflineSignout {
  * (revoking the refresh token server-side).
  */
 export function queueOfflineSignout(userId: string, email?: string): void {
-  try {
-    const payload: PendingOfflineSignout = { userId, email, queuedAt: Date.now() };
-    localStorage.setItem(PENDING_OFFLINE_SIGNOUT_KEY, JSON.stringify(payload));
-  } catch {
-    // Non-critical
-  }
+  const payload: PendingOfflineSignout = { userId, email, queuedAt: Date.now() };
+  // Lazy import to avoid pulling notification-center into the auth boot path.
+  import('./safe-local-storage').then(({ safeSetItem }) => {
+    safeSetItem(PENDING_OFFLINE_SIGNOUT_KEY, JSON.stringify(payload), {
+      scope: 'offline-auth.queueSignout',
+      critical: false,
+    });
+  }).catch(() => {
+    // Last-ditch direct write if helper import fails
+    try {
+      localStorage.setItem(PENDING_OFFLINE_SIGNOUT_KEY, JSON.stringify(payload));
+    } catch { /* swallow */ }
+  });
 }
 
 export function getPendingOfflineSignout(): PendingOfflineSignout | null {
