@@ -871,6 +871,15 @@ export default function DailyAssessmentForm() {
           }).catch(() => {});
         } catch (offlineError) {
           console.warn('[Save] Offline storage failed:', offlineError);
+          // Gap 2.1: re-throw IdbSaveError so the outer save handler keeps the dirty flag set
+          const { isIdbSaveError } = await import('@/lib/offline-storage');
+          if (isIdbSaveError(offlineError)) {
+            toast.error("Save failed — your changes are NOT stored", {
+              description: "Tap Save again to retry. Do not close this page.",
+              duration: 8000,
+            });
+            throw offlineError;
+          }
           toast.warning("Saved to backup — retrying storage", {
             description: "Your data is safe. Extended storage is slow on this device.",
             duration: 4000,
