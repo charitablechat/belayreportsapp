@@ -710,24 +710,25 @@ export default function Dashboard() {
         // Wrap in Promise.resolve to get a proper Promise with .catch()
         // Add 6-second timeout to prevent hanging
         supabasePromise = withNetworkTimeout(
-          Promise.resolve(
-            supabase
-              .from("inspections")
-              .select(`
-                id, inspector_id, organization, location, inspection_date,
-                status, created_at, updated_at, synced_at, last_opened_at,
-                acct_number, started_at, latest_report_generated_at, report_version,
-                deleted_at, organization_id, previous_inspector, previous_inspection_date,
-                inspector:profiles!inspections_inspector_id_profiles_fkey(first_name, last_name, avatar_url)
-              `)
-              .is('deleted_at', null)
-              .order("last_opened_at", { ascending: false, nullsFirst: false })
-              .order("created_at", { ascending: false })
-              .limit(500)
-          ).then(({ data, error }) => {
-            if (error) throw error;
-            return data || [];
-          }).catch(err => {
+          // M13: Paginate so super-admins with >500 reports get the full set;
+          // truncated results were silently caching as the offline source-of-truth.
+          fetchAllPaginated<any>(
+            'inspections',
+            (from, to) =>
+              supabase
+                .from("inspections")
+                .select(`
+                  id, inspector_id, organization, location, inspection_date,
+                  status, created_at, updated_at, synced_at, last_opened_at,
+                  acct_number, started_at, latest_report_generated_at, report_version,
+                  deleted_at, organization_id, previous_inspector, previous_inspection_date,
+                  inspector:profiles!inspections_inspector_id_profiles_fkey(first_name, last_name, avatar_url)
+                `)
+                .is('deleted_at', null)
+                .order("last_opened_at", { ascending: false, nullsFirst: false })
+                .order("created_at", { ascending: false })
+                .range(from, to)
+          ).catch(err => {
             console.error('[Dashboard] Supabase fetch error:', err);
             return null;
           }),
