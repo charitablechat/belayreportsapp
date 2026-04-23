@@ -169,6 +169,7 @@ export async function syncPhotos(signal?: AbortSignal): Promise<{ remaining: num
           // being silently invisible. Age-based GC (evictStuckTempPhotos)
           // handles the long-tail cleanup.
           await incrementPhotoRetryCount(photo.id);
+          changedCount++;
           return;
         }
 
