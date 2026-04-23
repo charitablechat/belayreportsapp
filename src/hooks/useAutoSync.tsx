@@ -186,25 +186,19 @@ export const useAutoSync = () => {
       return;
     }
     
-    // Prevent duplicate sync calls
-    if (syncInProgressRef.current) {
+    // S21: Await the in-flight sync directly instead of polling syncInProgressRef.
+    // - Silent (background) callers: piggy-back on the in-flight run and return.
+    // - User-initiated callers (silent=false): wait for it to finish, then run a
+    //   fresh sync against post-sync state so the explicit tap is honored.
+    if (syncInProgressRef.current && inFlightSyncRef.current) {
       if (import.meta.env.DEV) {
-        console.log('[AutoSync] Sync already in progress - skipping');
+        console.log('[AutoSync] Sync already in progress - awaiting in-flight run');
       }
-      // Return a promise that resolves when current sync completes
-      return new Promise<void>((resolve) => {
-        const checkInterval = setInterval(() => {
-          if (!syncInProgressRef.current) {
-            clearInterval(checkInterval);
-            resolve();
-          }
-        }, 500);
-        // Safety: resolve after 15s regardless (reduced from 35s to prevent long hangs)
-        setTimeout(() => {
-          clearInterval(checkInterval);
-          resolve();
-        }, 15000);
-      });
+      try { await inFlightSyncRef.current; } catch {}
+      if (!silent) {
+        return performSync(false);
+      }
+      return;
     }
     
     // Debounce protection — only applies to background (silent) syncs.
