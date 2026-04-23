@@ -304,25 +304,78 @@ export async function getAllVersionedReports(): Promise<Array<{
 }
 
 /**
- * Prune old versions beyond the retention limit (async, never blocks saves)
+ * Local-date key (YYYY-MM-DD) for grouping daily keyframes.
+ */
+function localDayKey(timestamp: number): string {
+  const d = new Date(timestamp);
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${y}-${m}-${day}`;
+}
+
+/**
+ * Hybrid retention prune:
+ *   1. Keep all versions whose timestamp is within RECENT_WINDOW_MS (last 24h).
+ *   2. For older versions, keep one keyframe per local-day (newest of that day),
+ *      bounded by KEYFRAME_RETENTION_DAYS.
+ *   3. If the kept set still exceeds MAX_VERSIONS_PER_REPORT, drop the oldest
+ *      keyframes first (recent window is never sacrificed).
+ *
+ * Async; never blocks the save path.
  */
 async function pruneVersions(reportId: string): Promise<void> {
   try {
     const { getDB } = await import('./offline-storage');
     const db = await getDB();
-    
+
     if (!db.objectStoreNames.contains('report_versions')) return;
 
     const tx = db.transaction('report_versions', 'readonly');
     const index = tx.objectStore('report_versions').index('by-report');
-    const versions = await index.getAll(reportId);
+    const versions = (await index.getAll(reportId)) as unknown as ReportVersion[];
     await tx.done;
 
-    if (versions.length <= MAX_VERSIONS_PER_REPORT) return;
+    if (versions.length === 0) return;
 
-    // Sort oldest first, keep the newest MAX_VERSIONS_PER_REPORT
-    const sorted = versions.sort((a, b) => a.versionNumber - b.versionNumber);
-    const toDelete = sorted.slice(0, sorted.length - MAX_VERSIONS_PER_REPORT);
+    const now = Date.now();
+    const recentCutoff = now - RECENT_WINDOW_MS;
+    const keyframeCutoff = now - KEYFRAME_RETENTION_DAYS * 24 * 60 * 60 * 1000;
+
+    const recent: ReportVersion[] = [];
+    const older: ReportVersion[] = [];
+    for (const v of versions) {
+      if (v.timestamp >= recentCutoff) recent.push(v);
+      else older.push(v);
+    }
+
+    // Keep newest version per local-day among older entries, within retention window
+    const keyframeByDay = new Map<string, ReportVersion>();
+    for (const v of older) {
+      if (v.timestamp < keyframeCutoff) continue;
+      const key = localDayKey(v.timestamp);
+      const existing = keyframeByDay.get(key);
+      if (!existing || v.versionNumber > existing.versionNumber) {
+        keyframeByDay.set(key, v);
+      }
+    }
+    let keyframes = Array.from(keyframeByDay.values());
+
+    // Hard ceiling: drop oldest keyframes first if total exceeds cap
+    const totalKept = recent.length + keyframes.length;
+    if (totalKept > MAX_VERSIONS_PER_REPORT) {
+      const overflow = totalKept - MAX_VERSIONS_PER_REPORT;
+      keyframes.sort((a, b) => a.timestamp - b.timestamp);
+      keyframes = keyframes.slice(Math.min(overflow, keyframes.length));
+    }
+
+    const keepIds = new Set<string>([
+      ...recent.map(v => v.id),
+      ...keyframes.map(v => v.id),
+    ]);
+    const toDelete = versions.filter(v => !keepIds.has(v.id));
+
+    if (toDelete.length === 0) return;
 
     const deleteTx = db.transaction('report_versions', 'readwrite');
     const deleteStore = deleteTx.objectStore('report_versions');
@@ -332,7 +385,9 @@ async function pruneVersions(reportId: string): Promise<void> {
     await deleteTx.done;
 
     if (import.meta.env.DEV) {
-      console.log(`[Version Manager] Pruned ${toDelete.length} old versions for ${reportId.substring(0, 8)}…`);
+      console.log(
+        `[Version Manager] Pruned ${toDelete.length} versions for ${reportId.substring(0, 8)}… (kept ${keepIds.size}: ${recent.length} recent + ${keyframes.length} keyframes)`
+      );
     }
   } catch {
     // Pruning failure is non-critical
