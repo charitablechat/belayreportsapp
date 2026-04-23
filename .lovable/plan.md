@@ -1,55 +1,52 @@
 
 
-## S33 — Debounce the `online` handler so flaky networks don't stack 5s session refreshes
+## S34 — Skip `sync-photos-updated` dispatches when nothing changed
 
 ### Problem
 
-`handleOnline` in `src/hooks/useAutoSync.tsx` (L670–704) does, on every single `online` event:
-
-1. `await supabase.auth.refreshSession()` with a hard 5s timeout race.
-2. `await verifyAndReconcileOfflineAuth()` if pending.
-3. `triggerDebouncedSync()` (which itself debounces 1.5s).
-
-The *sync* is debounced, but the *session refresh* isn't. On a network that flips online/offline every few seconds (subway, elevator, weak Wi-Fi roam), each flap stacks another 5s refresh, blocks the next refresh from coalescing, and produces user-visible lag plus log noise. The same pattern lives in the `pageshow` handler at L868.
+`useAutoSync.tsx` dispatches `window.dispatchEvent(new CustomEvent('sync-photos-updated'))` after every sync cycle (L349–350 inside the inspection sync flow, L472–473 inside the training/assessment flow). The sole consumer, `useUnsyncedPhotos`, responds by running `getUnuploadedPhotos(user.id)` + `getDeadLetterPhotos()` — two more IDB index scans — whether or not the photo count actually changed. On a quiet sync (no photos uploaded, no failures, no deletes), this is pure IDB pressure on the very Safari/iOS path S2/S11/S30/S32 already work to relieve.
 
 ### Fix
 
-Debounce the **outer** handler, not just the sync step. Coalesce a burst of online flaps into one refresh+reconcile+sync pass.
+**Only dispatch when something photo-related actually changed in the cycle.** Track per-cycle photo deltas in `useAutoSync` and dispatch the event at most once per cycle, only when the delta is non-zero.
+
+### Changes
 
 **`src/hooks/useAutoSync.tsx`**
 
-1. Add a sibling ref next to `debounceTimerRef`:
+1. Inside `performSync` (the function that wraps both report sync flows), declare a single local counter at the top:
    ```ts
-   const onlineHandlerTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+   let photoChangeCount = 0;
    ```
-   And a constant near `DEBOUNCE_DELAY`:
+   Pass a small `onPhotoChange = () => { photoChangeCount++ }` callback (or capture via closure) into the spots that currently know they touched a photo:
+   - successful photo upload
+   - photo moved to dead-letter
+   - photo retried out of dead-letter
+   - photo deleted from IDB after successful server upload
+2. Replace **both** existing `window.dispatchEvent(new CustomEvent('sync-photos-updated'))` calls (L349–350 and L472–473) with a single guarded dispatch at the **end** of `performSync`:
    ```ts
-   const ONLINE_HANDLER_DEBOUNCE = 1500; // coalesce online-event flaps
+   if (photoChangeCount > 0) {
+     window.dispatchEvent(new CustomEvent('sync-photos-updated'));
+   }
    ```
+3. If a downstream call site (e.g. inside `atomic-sync-manager.ts`) also fires its own `sync-photos-updated` event today, leave those alone for this task — they're targeted and rare. Only the blanket per-cycle dispatch in `useAutoSync` is the issue.
 
-2. Split `handleOnline` (L670) into two functions:
-   - **`runOnlineReconcile`** — the existing body (refresh + reconcile + `triggerDebouncedSync`), unchanged.
-   - **`handleOnline`** — schedules `runOnlineReconcile` via `onlineHandlerTimerRef` after `ONLINE_HANDLER_DEBOUNCE`. If another `online` event fires before the timer expires, clear and reschedule. Also short-circuit to no-op if `!navigator.onLine` at fire time (we went offline again before the timer expired — wait for the next stable online).
-
-3. Same pattern for the `pageshow` handler at L868: route through the same debounced scheduler so a quick app-resume → re-suspend → resume burst doesn't double-refresh.
-
-4. In the unmount cleanup at L988–1018, also `clearTimeout(onlineHandlerTimerRef.current)`.
-
-5. Drop the redundant 5s `Promise.race` timeout for `refreshSession` — once the handler is debounced, only one refresh runs per stable transition, and `supabase.auth.refreshSession()` already has its own internal abort behavior. Keep the try/catch and the warn log. (Optional; if reviewer prefers belt-and-suspenders, keep the race — the win is removing repetition, not removing the timeout itself.)
+**`src/hooks/useUnsyncedPhotos.tsx`** — no change. Its existing 5-min safety tick (`SAFETY_REFRESH_MS`) plus the now-meaningful event are sufficient. The existing `idbReadError` preservation logic continues to handle transient IDB failures.
 
 ### Out of scope
 
-- Retry/backoff inside `refreshSession` — separate concern (Phase 2 auth-bridge owns reconcile retries).
-- The Realtime-event debouncer (`triggerDebouncedSync`) — already correctly debounced.
+- Replacing the event with a direct ref/subscription — overkill for one consumer; the event API stays.
+- Debouncing the event itself — not needed once it's gated behind a real change.
+- Touching `getUnsyncedPhotos`/`getDeadLetterPhotos` internals — they're already as cheap as IDB scans get.
 
 ### Risk
 
-Negligible. The 1.5s extra delay on a stable online transition is invisible against the existing 1.5s sync debounce that already runs after refresh. The win on flaky networks is bounded: at most one outstanding refresh+reconcile pass, regardless of how many flaps occurred.
+Negligible. A quiet sync now produces zero photo refresh — which is exactly correct: nothing changed, the badge can't have changed. The 5-minute safety tick in `useUnsyncedPhotos` still catches any drift from out-of-band IDB writes (e.g. a photo captured on another tab). On any cycle that actually moves a photo, the event still fires exactly once.
 
 ### Verification
 
 - `npx tsc --noEmit`.
-- Manual: with DevTools Network throttling, toggle Offline → Online 5× in 2s, confirm only one `[AutoSync] Network reconnected` log fires (not 5).
-- Manual: confirm a single offline→online transition still syncs within ~3s (1.5s outer debounce + 1.5s inner sync debounce).
-- Regression: online → leave online 10s → manual sync still works as before.
+- Manual: with the dashboard open, trigger an empty sync (no unsynced data) 5×; confirm `sync-photos-updated` does NOT fire (DevTools event listener breakpoint), and `useUnsyncedPhotos` does NOT re-scan IDB.
+- Manual: capture a photo offline → go online → confirm badge decrement still happens within ~3s of upload (event fires once).
+- Manual: force a photo into dead-letter (offline + bad token) → confirm badge updates.
 
