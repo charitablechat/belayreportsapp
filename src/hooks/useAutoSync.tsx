@@ -436,9 +436,16 @@ export const useAutoSync = () => {
         if (!allFetchesFailed) {
           // Refresh unsynced counts (non-blocking)
           updateUnsyncedCounts().catch(() => {});
-          
-          // Update photo count for useUnsyncedPhotos (no longer polls independently)
-          window.dispatchEvent(new CustomEvent('sync-photos-updated'));
+
+          // S34: Tally photo changes from this cycle. The photo result is the
+          // 4th entry returned by the parallel pipeline above.
+          const photoResult = results[3];
+          photoChangeCount += Math.max(0, photoResult?.changed || 0);
+
+          // Only broadcast when something photo-related actually moved this cycle.
+          if (photoChangeCount > 0) {
+            window.dispatchEvent(new CustomEvent('sync-photos-updated'));
+          }
           
            // Hybrid cleanup: prune old synced photo blobs (non-blocking)
            pruneOldSyncedPhotoBlobs().catch(() => {});
