@@ -510,15 +510,23 @@ export const useAutoSync = () => {
             });
           }
           
-          // Only show success toast if items were actually synced
-          if (anySuccess) {
+          // Toast shape depends on whether anything failed in this cycle.
+          if (totalFailed > 0 && totalSynced > 0) {
+            const msg = `Synced ${totalSynced}; ${totalFailed} failed — will retry`;
+            toast.warning(msg);
+            addSyncNotification(msg);
+          } else if (totalFailed > 0 && totalSynced === 0) {
+            const msg = `Sync failed: ${totalFailed} item${totalFailed === 1 ? '' : 's'} could not upload — will retry`;
+            toast.error(msg);
+            addSyncNotification(msg);
+          } else if (cleanSuccess) {
             const remainingMsg = totalRemaining > 0 ? ` (${totalRemaining} more queued)` : '';
             toast.success(`Data synced successfully (${totalSynced} items)${remainingMsg}`);
             addSyncNotification(`Data synced successfully (${totalSynced} items)${remainingMsg}`);
-            
+
             // Reset stale warning flag on successful sync
             staleWarningShownRef.current = false;
-            
+
             // BUILD_TIMESTAMP audit logging for production diagnostics
             console.log('[AutoSync] Sync confirmed', {
               version: import.meta.env.APP_VERSION,
@@ -528,12 +536,13 @@ export const useAutoSync = () => {
               timestamp: new Date().toISOString(),
             });
           }
-          
-          // Only emit sync complete when items were actually synced
-          // Prevents reload loop when all syncs are skipped due to session timeouts
-          if (anySuccess) {
+
+          // Only emit sync complete when items were actually synced AND nothing failed.
+          // Downstream consumers treat sync-complete as "all clear" — don't mislead them
+          // when items remain stuck and need a retry.
+          if (cleanSuccess) {
             emitSyncComplete();
-            
+
             // Finding 7: Update localStorage backup ledger sync status
             // Mark all previously-unsynced snapshots as synced to keep backup ledger accurate
             try {
@@ -549,7 +558,6 @@ export const useAutoSync = () => {
               if (import.meta.env.DEV) console.warn('[AutoSync] Failed to update backup ledger sync status:', e);
             }
           }
-          
           // iOS: Clear pending sync flags after successful sync (fixes N3 - storage accumulation)
           if (isIOSDevice) {
             clearPendingSyncs();
