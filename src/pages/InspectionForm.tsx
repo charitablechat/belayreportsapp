@@ -612,7 +612,10 @@ export default function InspectionForm() {
       });
     });
     
-    return () => unsubscribe();
+    return () => {
+      unsubscribe();
+      unsubHealth();
+    };
   }, []); // Empty dependency array to avoid stale closures
 
   // Fetch inspector profile (the report owner, not current user)
