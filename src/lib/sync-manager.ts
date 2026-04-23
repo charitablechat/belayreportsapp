@@ -104,13 +104,13 @@ import { isMobile } from './mobile-detection';
 // 200+ photos take 20+ sync cycles to drain.
 const MAX_PHOTO_BATCH_SIZE = 30;
 
-export async function syncPhotos(signal?: AbortSignal): Promise<{ remaining: number; error?: string }> {
-  if (signal?.aborted) return { remaining: 0 };
+export async function syncPhotos(signal?: AbortSignal): Promise<{ remaining: number; changed?: number; error?: string }> {
+  if (signal?.aborted) return { remaining: 0, changed: 0 };
   if (!navigator.onLine) {
     if (import.meta.env.DEV) {
       console.log('[Sync Manager] Offline - skipping photo sync');
     }
-    return { remaining: 0 };
+    return { remaining: 0, changed: 0 };
   }
 
   if (import.meta.env.DEV) {
@@ -122,7 +122,7 @@ export async function syncPhotos(signal?: AbortSignal): Promise<{ remaining: num
     const unuploadedPhotosResult = await getUnuploadedPhotos();
     if (isIdbReadFailure(unuploadedPhotosResult)) {
       console.warn('[Sync Manager] IDB read failure for unuploaded photos:', unuploadedPhotosResult.error);
-      return { remaining: -1, error: unuploadedPhotosResult.error };
+      return { remaining: -1, changed: 0, error: unuploadedPhotosResult.error };
     }
     const unuploadedPhotos = unuploadedPhotosResult;
     // Skip photos that have exceeded retry limit
@@ -140,6 +140,10 @@ export async function syncPhotos(signal?: AbortSignal): Promise<{ remaining: num
     }
 
     let successCount = 0;
+    // S34: Count any state-changing photo outcome (success or dead-letter
+    // bump) so the per-cycle dispatch in useAutoSync can stay quiet on
+    // truly idle cycles.
+    let changedCount = 0;
     // Track IDs already processed in this batch to skip duplicates without N+1 queries.
     // Read-then-await pattern below makes this safe under bounded concurrency.
     const processedIds = new Set<string>();
@@ -165,6 +169,7 @@ export async function syncPhotos(signal?: AbortSignal): Promise<{ remaining: num
           // being silently invisible. Age-based GC (evictStuckTempPhotos)
           // handles the long-tail cleanup.
           await incrementPhotoRetryCount(photo.id);
+          changedCount++;
           return;
         }
 
@@ -183,6 +188,7 @@ export async function syncPhotos(signal?: AbortSignal): Promise<{ remaining: num
             console.warn('[Sync Manager] Photo belongs to a different signed-in user (>7d old) — dead-lettering:', photo.id);
             await setPhotoLastError(photo.id, 'Photo belongs to a different signed-in user');
             await incrementPhotoRetryCount(photo.id);
+            changedCount++;
           } else if (import.meta.env.DEV) {
             console.log('[Sync Manager] Skipping photo captured by different user:', photo.id, 'capturedBy=', capturedBy, 'currentUser=', currentUserId);
           }
@@ -200,6 +206,7 @@ export async function syncPhotos(signal?: AbortSignal): Promise<{ remaining: num
               console.warn('[Sync Manager] Photo capturer does not match inspection owner — dead-lettering:', photo.id);
               await setPhotoLastError(photo.id, 'Photo belongs to a different signed-in user');
               await incrementPhotoRetryCount(photo.id);
+              changedCount++;
               return;
             }
           } catch {
@@ -233,6 +240,7 @@ export async function syncPhotos(signal?: AbortSignal): Promise<{ remaining: num
             console.warn('[Sync Manager] Legacy pending photo belongs to a different user — dead-lettering:', photo.id);
             await setPhotoLastError(photo.id, 'Photo belongs to a different signed-in user');
             await incrementPhotoRetryCount(photo.id);
+            changedCount++;
             return;
           }
 
@@ -257,6 +265,7 @@ export async function syncPhotos(signal?: AbortSignal): Promise<{ remaining: num
             console.warn('[Sync Manager] Skipping photo with null blob (already uploaded?):', photo.id);
           }
           await markPhotoAsUploaded(photo.id, photo.photoUrl || photo.id);
+          changedCount++;
           return;
         }
 
@@ -302,6 +311,7 @@ export async function syncPhotos(signal?: AbortSignal): Promise<{ remaining: num
             console.error('[Sync Manager] Permanent upload error for photo:', photo.id, cls.message);
             await setPhotoLastError(photo.id, cls.message);
             await incrementPhotoRetryCount(photo.id);
+            changedCount++;
             return;
           }
         }
@@ -343,6 +353,7 @@ export async function syncPhotos(signal?: AbortSignal): Promise<{ remaining: num
               console.error('[Sync Manager] Permanent DB insert error for photo:', photo.id, cls.message);
               await setPhotoLastError(photo.id, cls.message);
               await incrementPhotoRetryCount(photo.id);
+              changedCount++;
               return;
             }
           }
@@ -354,6 +365,7 @@ export async function syncPhotos(signal?: AbortSignal): Promise<{ remaining: num
         await markPhotoAsUploaded(photo.id, fileName);
         processedIds.add(photo.id);
         successCount++;
+        changedCount++;
 
         if (import.meta.env.DEV) {
           console.log('[Sync Manager] Uploaded photo:', photo.id);
@@ -369,17 +381,18 @@ export async function syncPhotos(signal?: AbortSignal): Promise<{ remaining: num
         }
         await setPhotoLastError(photo.id, cls.message);
         await incrementPhotoRetryCount(photo.id);
+        changedCount++;
       }
     });
 
     if (import.meta.env.DEV) {
-      console.log(`[Sync Manager] Photo sync completed: ${successCount} photos, ${remaining} remaining`);
+      console.log(`[Sync Manager] Photo sync completed: ${successCount} photos, ${remaining} remaining (changed=${changedCount})`);
     }
     
-    return { remaining };
+    return { remaining, changed: changedCount };
   } catch (error) {
     console.error('[Sync Manager] Photo sync error:', error);
-    return { remaining: 0 };
+    return { remaining: 0, changed: 0 };
   }
 }
 

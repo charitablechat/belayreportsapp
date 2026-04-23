@@ -138,6 +138,9 @@ export const useAutoSync = () => {
   }, [state.unsyncedCount]);
 
   const performSync = useCallback(async (silent = true) => {
+    // S34: Track per-cycle photo state changes so we only dispatch
+    // `sync-photos-updated` when something actually moved.
+    let photoChangeCount = 0;
     // Block all writes in Lovable preview to protect production data
     if ((await import('@/lib/environment')).isLovablePreview()) return;
     // Skip if offline
@@ -354,8 +357,8 @@ export const useAutoSync = () => {
         clearTimeout(safetyTimeoutHandle);
         // Always refresh counts so badge reflects reality (fixes stale badge after circuit breaker)
         updateUnsyncedCounts().catch(() => {});
-        // Notify photo-count consumers so dead-letter / orphan filters re-evaluate
-        try { window.dispatchEvent(new Event('sync-photos-updated')); } catch {}
+        // S34: No work happened — skip the photo-count broadcast. The 5-min
+        // safety tick in useUnsyncedPhotos handles any out-of-band drift.
         setState(prev => ({ ...prev, isSyncing: false, lastSyncTime: new Date() }));
         return;
       }
@@ -433,9 +436,16 @@ export const useAutoSync = () => {
         if (!allFetchesFailed) {
           // Refresh unsynced counts (non-blocking)
           updateUnsyncedCounts().catch(() => {});
-          
-          // Update photo count for useUnsyncedPhotos (no longer polls independently)
-          window.dispatchEvent(new CustomEvent('sync-photos-updated'));
+
+          // S34: Tally photo changes from this cycle. The photo result is the
+          // 4th entry returned by the parallel pipeline above.
+          const photoResult = results[3];
+          photoChangeCount += Math.max(0, photoResult?.changed || 0);
+
+          // Only broadcast when something photo-related actually moved this cycle.
+          if (photoChangeCount > 0) {
+            window.dispatchEvent(new CustomEvent('sync-photos-updated'));
+          }
           
            // Hybrid cleanup: prune old synced photo blobs (non-blocking)
            pruneOldSyncedPhotoBlobs().catch(() => {});
@@ -598,8 +608,13 @@ export const useAutoSync = () => {
       resolveInFlight();
       // Always refresh unsynced counts so the badge is accurate after every sync attempt
       updateUnsyncedCounts().catch(() => {});
-      // Always notify photo-count consumers so dead-letter / orphan filters re-evaluate
-      try { window.dispatchEvent(new Event('sync-photos-updated')); } catch {}
+      // S34: Only broadcast if real photo state changed during this cycle.
+      // The post-sync block above also dispatches on the success path; this
+      // finally-block fallback covers error/timeout paths where some photo
+      // mutations may have completed before the throw.
+      if (photoChangeCount > 0) {
+        try { window.dispatchEvent(new Event('sync-photos-updated')); } catch {}
+      }
     }
   }, [queryClient, isMobileDevice, isIOSDevice]);
   
