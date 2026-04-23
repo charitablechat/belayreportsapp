@@ -418,7 +418,7 @@ export async function syncInspectionAtomic(inspectionId: string, preValidatedUse
           }
 
           // Audit: log resolved conflict so the conflicts panel reflects the merge.
-          const organizationId = inspection.organization_id;
+          const organizationId = await resolveOrgIdForAudit(inspection);
           if (organizationId) {
             try {
               await supabase.from('sync_conflicts').insert({
@@ -431,6 +431,11 @@ export async function syncInspectionAtomic(inspectionId: string, preValidatedUse
             } catch (auditErr) {
               console.warn('[Atomic Sync] S16 conflict audit insert failed:', auditErr);
             }
+          } else {
+            console.warn(
+              '[Atomic Sync] sync_conflicts audit skipped: missing organization_id',
+              { inspectionId },
+            );
           }
         }
       }
