@@ -1,5 +1,6 @@
-import { useEffect, useState, type ReactNode } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { useNavigate } from "react-router-dom";
+import { toast } from "sonner";
 import {
   getUserWithCache,
   hasCachedSessionForOffline,
@@ -11,6 +12,10 @@ import {
   isAuthenticated,
   transition,
 } from "@/lib/auth-state-machine";
+import {
+  isOfflineWindowExpiringSoon,
+  getOfflineWindowRemainingMs,
+} from "@/lib/offline-auth";
 
 interface RequireAuthProps {
   children: ReactNode;
@@ -31,6 +36,21 @@ export function RequireAuth({ children }: RequireAuthProps) {
   const [legacyStatus, setLegacyStatus] = useState<
     "checking" | "ok" | "redirect"
   >("checking");
+  const offlineWarnedRef = useRef(false);
+
+  // Phase 4b — soft warning when the bounded offline window is almost up.
+  // Shown once per page-mount; the toast itself dedupes by id.
+  useEffect(() => {
+    if (offlineWarnedRef.current) return;
+    if (!isOfflineWindowExpiringSoon()) return;
+    const remaining = getOfflineWindowRemainingMs() ?? 0;
+    const days = Math.max(1, Math.ceil(remaining / (24 * 60 * 60 * 1000)));
+    toast.warning(
+      `Offline session expires in ${days} day${days === 1 ? "" : "s"} — reconnect to extend it.`,
+      { id: "offline-window-expiring", duration: 10000 }
+    );
+    offlineWarnedRef.current = true;
+  }, [fsmSnapshot.state]);
 
   // ── FSM PATH ─────────────────────────────────────────────────────────
   useEffect(() => {

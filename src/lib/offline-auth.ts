@@ -38,8 +38,32 @@ export const SYNTHETIC_SESSION_KEY = 'offline_synthetic_session';
 const LEGACY_PENDING_FLAG = 'offline_auth_pending';
 const PENDING_OFFLINE_SIGNOUT_KEY = 'pending_offline_signout';
 
-/** Synthetic sessions expire 30 days after capture. */
+/** Synthetic sessions expire 30 days after capture (hard cap). */
 const SYNTHETIC_SESSION_TTL_MS = 30 * 24 * 60 * 60 * 1000;
+
+/**
+ * Phase 4b — bounded offline window. After this many days *without* an online
+ * reconciliation, the user is forced back to the online sign-in screen even
+ * if the synthetic session blob is still valid. 14 days by default.
+ */
+const OFFLINE_WINDOW_DAYS_DEFAULT = 14;
+const OFFLINE_WINDOW_WARNING_DAYS = 2; // soft warning at T-2 days
+
+function getOfflineWindowMs(): number {
+  // Allow admins/devs to tune via localStorage without a redeploy.
+  try {
+    const raw = localStorage.getItem('offline_window_days');
+    if (raw) {
+      const days = parseInt(raw, 10);
+      if (Number.isFinite(days) && days > 0 && days <= 90) {
+        return days * 24 * 60 * 60 * 1000;
+      }
+    }
+  } catch {
+    // ignore
+  }
+  return OFFLINE_WINDOW_DAYS_DEFAULT * 24 * 60 * 60 * 1000;
+}
 
 interface OfflineAuthDB {
   /** Lightweight email→userId mapping, kept for migration paths. */
@@ -207,6 +231,9 @@ export async function createOfflineSession(email: string, _password: string): Pr
   const userId = entry.userId || (await generateDeterministicUserId(normalizedEmail));
   const capturedAt = Date.now();
 
+  const offlineWindowMs = getOfflineWindowMs();
+  const offlineExpiresAt = capturedAt + offlineWindowMs;
+
   const syntheticSession = {
     access_token: OFFLINE_PLACEHOLDER_TOKEN,
     refresh_token: 'offline_placeholder',
@@ -224,6 +251,8 @@ export async function createOfflineSession(email: string, _password: string): Pr
     // Internal marker so read paths can distinguish synthetic from real sessions.
     __synthetic: true as const,
     __capturedAt: capturedAt,
+    /** Phase 4b — bounded offline window (ms epoch). */
+    __offlineExpiresAt: offlineExpiresAt,
   };
 
   // Write to DEDICATED slot — not Supabase's real session key.
@@ -235,6 +264,7 @@ export async function createOfflineSession(email: string, _password: string): Pr
     console.log('[OfflineAuth] Synthetic session created (refresh-token mode)', {
       email: normalizedEmail,
       userId,
+      offlineExpiresAt: new Date(offlineExpiresAt).toISOString(),
     });
   }
 }
@@ -261,21 +291,50 @@ export function readSyntheticSession(): null | {
   expires_at: number;
   __synthetic: true;
   __capturedAt: number;
+  __offlineExpiresAt?: number;
 } {
   try {
     const raw = localStorage.getItem(SYNTHETIC_SESSION_KEY);
     if (!raw) return null;
     const parsed = JSON.parse(raw);
     if (!parsed?.user?.id) return null;
-    // Expiry check: synthetic sessions die after 30 days regardless of network state.
+    // Hard cap: synthetic sessions die 30 days after capture regardless.
     if (parsed.expires_at && parsed.expires_at * 1000 < Date.now()) {
       localStorage.removeItem(SYNTHETIC_SESSION_KEY);
+      return null;
+    }
+    // Phase 4b — bounded offline window. If we've been offline longer than
+    // the configured window, force the user back online to re-verify.
+    if (
+      typeof parsed.__offlineExpiresAt === 'number' &&
+      parsed.__offlineExpiresAt < Date.now()
+    ) {
+      localStorage.removeItem(SYNTHETIC_SESSION_KEY);
+      localStorage.removeItem(LEGACY_PENDING_FLAG);
       return null;
     }
     return parsed;
   } catch {
     return null;
   }
+}
+
+/**
+ * Phase 4b — return ms remaining in the bounded offline window, or `null`
+ * if there is no active synthetic session or no bound was set.
+ */
+export function getOfflineWindowRemainingMs(): number | null {
+  const s = readSyntheticSession();
+  if (!s || typeof s.__offlineExpiresAt !== 'number') return null;
+  return Math.max(0, s.__offlineExpiresAt - Date.now());
+}
+
+/** True when the synthetic session is within the soft-warning window (T-2 days). */
+export function isOfflineWindowExpiringSoon(): boolean {
+  const remaining = getOfflineWindowRemainingMs();
+  if (remaining === null) return false;
+  const warningMs = OFFLINE_WINDOW_WARNING_DAYS * 24 * 60 * 60 * 1000;
+  return remaining > 0 && remaining <= warningMs;
 }
 
 export function clearSyntheticSession(): void {
