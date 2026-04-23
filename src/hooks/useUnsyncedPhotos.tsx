@@ -60,6 +60,7 @@ export const useUnsyncedPhotos = () => {
           unsyncedPhotoCount: 0,
           photosByInspection: {},
           deadLetterCount: 0,
+          deadLetterPhotos: [],
           idbReadError: null,
         });
         return;
@@ -78,6 +79,7 @@ export const useUnsyncedPhotos = () => {
           unsyncedPhotoCount: lastKnownRef.current.count,
           photosByInspection: lastKnownRef.current.byInspection,
           deadLetterCount: lastKnownRef.current.deadLetter,
+          deadLetterPhotos: lastKnownRef.current.deadLetterPhotos,
           idbReadError: 'Local data unreadable — refreshing may help',
         });
         return;
@@ -93,16 +95,29 @@ export const useUnsyncedPhotos = () => {
         byInspection[photo.inspectionId] = (byInspection[photo.inspectionId] || 0) + 1;
       });
 
+      // S22: Surface per-photo dead-letter info (id + lastError) for the diagnostics UI.
+      const deadLetterPhotos: DeadLetterPhotoInfo[] = deadLetter.map((p: any) => ({
+        id: p.id,
+        inspectionId: p.inspectionId,
+        fileName: p.fileName,
+        retryCount: p.retryCount || 0,
+        lastError: p.lastError ?? null,
+        lastErrorAt: p.lastErrorAt ?? null,
+        section: p.section,
+      }));
+
       lastKnownRef.current = {
         count: unuploaded.length,
         byInspection,
         deadLetter: deadLetter.length,
+        deadLetterPhotos,
       };
 
       setStatus({
         unsyncedPhotoCount: unuploaded.length,
         photosByInspection: byInspection,
         deadLetterCount: deadLetter.length,
+        deadLetterPhotos,
         idbReadError: null,
       });
 
