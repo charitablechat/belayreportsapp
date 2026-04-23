@@ -1590,7 +1590,7 @@ export default function InspectionForm() {
         const inspectionChildHint =
           systems.length + ziplines.length + equipment.length + standards.length +
           (currentSummary && (currentSummary.critical_actions || currentSummary.repairs_performed || currentSummary.future_considerations || currentSummary.next_inspection_date) ? 1 : 0);
-        const childSaveOps: Promise<void>[] = [
+        const childSaveOps: Promise<unknown>[] = [
           saveInspectionOffline(inspectionToSave, { childCountHint: inspectionChildHint }),
         ];
         if (systems.length > 0 || childDataLoadedRef.current.systems) {
