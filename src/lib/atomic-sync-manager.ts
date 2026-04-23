@@ -1940,6 +1940,15 @@ export async function syncDailyAssessmentAtomic(assessmentId: string, preValidat
       }
     }
 
+    // M15: Hard guard — fail loud if any temp- ID slipped past the transforms above.
+    assertNoTempIds(assessment, 'daily_assessments.upsert');
+    assertNoTempIdsInArray(beginning_of_day, 'daily_assessment_beginning_of_day.upsert');
+    assertNoTempIdsInArray(end_of_day, 'daily_assessment_end_of_day.upsert');
+    assertNoTempIdsInArray(operating_systems, 'daily_assessment_operating_systems.upsert');
+    assertNoTempIdsInArray(equipment_checks, 'daily_assessment_equipment_checks.upsert');
+    assertNoTempIdsInArray(structure_checks, 'daily_assessment_structure_checks.upsert');
+    assertNoTempIdsInArray(environment_checks, 'daily_assessment_environment_checks.upsert');
+
     // 4. Build transaction steps
     const steps: TransactionStep[] = [];
     
