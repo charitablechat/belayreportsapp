@@ -2660,27 +2660,27 @@ export async function clearRelatedDataOffline(
 }
 
 // Daily Assessment functions
+/**
+ * Save a daily assessment to IndexedDB.
+ * Throws `IdbSaveError` on hard failure (Gap 2.1) — callers MUST handle rejection.
+ */
 export async function saveDailyAssessmentOffline(
   assessment: any,
   opts?: { childCountHint?: number }
-) {
-  return withIndexedDBErrorBoundary(
+): Promise<SaveResult> {
+  return withIndexedDBSaveBoundary(
     async () => {
       const db = await getDB();
-
-      // S30: Prefer caller-provided hint; otherwise preserve existing value.
       if (opts?.childCountHint != null && opts.childCountHint >= 0) {
         assessment.child_count_hint = opts.childCountHint;
       }
-
       await db.put('daily_assessments', assessment);
-      
       if (import.meta.env.DEV) {
         console.log('[Offline Storage] Saved daily assessment:', assessment.id);
       }
     },
-    undefined,
-    'saveDailyAssessmentOffline'
+    'saveDailyAssessmentOffline',
+    assessment,
   );
 }
 
