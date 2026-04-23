@@ -1050,6 +1050,20 @@ export async function getDB() {
               console.log('[Offline Storage] Created sync_empty_local_conflicts store (v13 upgrade)');
             }
           }
+          // === NEW in v14: admin_edit_snapshot_queue store (H10) ===
+          // Queues admin pre-edit snapshot intents captured while offline so they
+          // can be uploaded to admin_edit_snapshots on the next online cycle —
+          // before the admin's edit itself syncs to the server.
+          if (!db.objectStoreNames.contains('admin_edit_snapshot_queue' as any)) {
+            const aeqStore = (db as any).createObjectStore('admin_edit_snapshot_queue', {
+              keyPath: 'id',
+              autoIncrement: true,
+            });
+            aeqStore.createIndex('by-report', ['reportType', 'reportId']);
+            if (import.meta.env.DEV) {
+              console.log('[Offline Storage] Created admin_edit_snapshot_queue store (v14 upgrade)');
+            }
+          }
         },
       });
     };
