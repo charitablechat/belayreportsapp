@@ -1,51 +1,51 @@
 
 
-## S22 — Distinguish transient vs permanent photo upload errors and surface them to the UI
+## S23 — Bind staged photos to the capturing user, not the syncing user
 
-**Problem.** In `src/lib/sync-manager.ts`, the photo upload path classifies *all* failures (storage 409/500/network blips, RLS denials, missing bucket, etc.) the same way: increment `retryCount`, log to console, move on. Users see photos sit in the unsynced badge forever with no indication of *why*. Only DB inserts get the unique-violation soft-success treatment — storage uploads do not.
+**Problem.** In `src/lib/sync-manager.ts` (lines 104–126), photos saved with a `pending/` prefix get rewritten to `${currentUser.id}/...` at sync time. If user A captures photos offline, signs out, and user B signs in on the same device, those photos upload under B's storage tree and get attributed to B — even though they belong to A's inspection.
 
 ### Design
 
-1. **Classify each upload error.** Add a small `classifyPhotoError(err)` helper in `src/lib/sync-manager.ts` returning one of:
-   - `transient` — network failure, `5xx`, `409 Conflict`, `429`, `AbortError`. Retry next cycle, do **not** count toward `MAX_PHOTO_RETRIES`.
-   - `permanent` — `400/401/403`, RLS denial, `Bucket not found`, `Invalid key`, `Payload too large`, etc. Bump retry counter and stamp `lastError`.
-   - `success-equivalent` — storage `409 Duplicate` *with* `upsert: true` semantics already handled implicitly; treat as success (mark uploaded). DB `23505` is already covered.
-2. **Persist last error per photo in IndexedDB.** Extend the offline-photo record with two optional fields: `lastError?: string` (human-readable) and `lastErrorAt?: number` (epoch ms).
-   - Add `setPhotoLastError(id, message)` and clear-on-success in `src/lib/offline-storage.ts`.
-   - Update `OfflinePhoto` type accordingly. No migration needed — fields are nullable adds.
-3. **Update `syncPhotos` flow** in `sync-manager.ts`:
-   - Wrap the storage `.upload(...)` in try/classify. On `transient`, log `[Sync Manager] Transient upload error, will retry` and `return` *without* incrementing the retry count. On `permanent`, call `setPhotoLastError` + `incrementPhotoRetryCount`. On `success-equivalent`, fall through to the DB insert path.
-   - Same classification around the DB insert (`409`, `5xx` → transient; existing `23505` path unchanged).
-   - On any successful path, clear `lastError`.
-4. **Surface `lastError` to the UI.**
-   - `src/hooks/useUnsyncedPhotos.tsx`: include `lastError` in the returned per-photo data.
-   - `src/components/pwa/SyncDiagnosticsSheet.tsx` (existing dead-letter / diagnostics surface): render a "Last error" line per stuck photo with a small `Retry` button that calls a new `resetPhotoForRetry(id)` (zeros `retryCount`, clears `lastError`). For photos whose error is clearly permanent (e.g. `Payload too large`), show a `Discard` button that uses the existing soft-delete path.
-5. **Telemetry / dev logs.** Behind `import.meta.env.DEV`, log the classification once per photo per cycle so we can spot misclassification quickly.
+1. **Capture-time binding (preferred fix).** When a photo is staged offline:
+   - If a real `auth.uid()` is available, write the path as `${user.id}/${inspectionId}/${ts}.${ext}` directly — no `pending/` prefix needed.
+   - If truly no user is known (extremely rare; pre-auth capture), fall back to the offline cached user from `getOfflineUserId()` / `cached-auth.ts` and use that id.
+   - Only as a last resort, write `pending/${capturedByHint}/...` where `capturedByHint` is whatever id we *did* know at capture time, even if stale. Persist a new `OfflinePhoto.capturedByUserId: string` field alongside the existing record.
+
+2. **Sync-time guard (defense in depth).** In `syncPhotos`:
+   - Read `photo.capturedByUserId`. If it exists and does **not** match the current `auth.uid()`, **do not** rewrite the path to the current user. Instead:
+     - If the capturing user can still be resolved as the active session user later → leave the photo queued and skip this cycle (log `[Sync Manager] Skipping photo captured by different user`).
+     - If the photo has been waiting > 7 days with no matching user session, surface it via the existing dead-letter / `lastError` channel from S22 with message `Photo belongs to a different signed-in user`. The user can then `Discard` from `SyncDiagnosticsSheet`.
+   - Only rewrite `pending/` → `${currentUser.id}/` when `capturedByUserId` is missing (legacy records) **and** the inspection's `inspector_id` matches the current user. Otherwise treat as the cross-user case above.
+
+3. **Inspection ownership cross-check.** As a secondary signal, look up the parent inspection's `inspector_id` (already in IDB for offline reports). If `photo.capturedByUserId !== inspection.inspector_id`, the photo is misattributed regardless of who's signed in — log and route to dead-letter.
+
+4. **Migration for existing `pending/` photos.** One-time, on app boot:
+   - Scan IDB for photos with `photoUrl` starting with `pending/` and no `capturedByUserId`.
+   - If exactly one user has ever signed in on this device (check `cached-auth` history / a single profile in IDB), backfill `capturedByUserId` with that id. Otherwise leave them; they'll fall through to the dead-letter path on next sync attempt.
 
 ### Files
 
-- `src/lib/sync-manager.ts` — add `classifyPhotoError`, rework upload + DB insert error paths, clear `lastError` on success.
-- `src/lib/offline-storage.ts` — extend `OfflinePhoto` type with `lastError`/`lastErrorAt`; add `setPhotoLastError(id, msg)` and `resetPhotoForRetry(id)`; ensure `markPhotoAsUploaded` clears these fields.
-- `src/hooks/useUnsyncedPhotos.tsx` — propagate `lastError` to consumers.
-- `src/components/pwa/SyncDiagnosticsSheet.tsx` — render last-error and Retry/Discard controls per stuck photo.
+- **`src/lib/offline-storage.ts`** — add optional `capturedByUserId?: string` to `OfflinePhoto` type; helper `setPhotoCapturedBy(id, userId)`; one-time `backfillCapturedByUserIdForPendingPhotos()` migration helper.
+- **`src/lib/photo-cache.ts`** *(or wherever `addOfflinePhoto` is called from `PhotoCapture.tsx`)* — at staging time, resolve user (online → `getUserWithCache`; offline → `getOfflineUserId`) and store as `capturedByUserId`. Build the storage path with that id directly when known; only emit `pending/` when truly nothing is resolvable.
+- **`src/lib/sync-manager.ts`** — replace the unconditional `pending/` → current-user rewrite (lines 104–126) with the guarded logic in §2; keep S22's classify/last-error plumbing for cross-user dead-lettering.
+- **`src/main.tsx`** *(or existing boot orchestration)* — invoke `backfillCapturedByUserIdForPendingPhotos()` once after auth bootstrap.
 
 ### Out of scope
 
-- Cross-tab broadcast of error state (the next sync cycle re-reads from IDB).
-- Surfacing storage errors during the *initial* foreground capture in `PhotoCapture.tsx` (already toasts via existing receipt fallback).
-- Quota/back-pressure on transient retries — `MAX_PHOTO_RETRIES` still bounds permanent failures; transient errors keep retrying every sync cycle.
+- Multi-account "switch user but keep my queued work" UX (would require a true per-user IDB partition; far larger).
+- Re-attributing already-uploaded photos in Storage (this fix prevents the bad write; it doesn't undo prior misattribution).
+- Surfacing capture-time user in the photo gallery UI.
 
 ### Risk
 
 Low.
-- New fields are optional; existing IDB records work unchanged.
-- The DB-insert `23505` soft-success path is preserved verbatim.
-- No public API changes outside `sync-manager` and `offline-storage`.
-- Worst-case misclassification → a transient-marked permanent error retries forever; mitigated by the dev-log + visible `lastError` row that the user can `Discard`.
+- New field is optional; legacy records flow through the migration helper or fall through to dead-letter, never silently misattributed.
+- The dead-letter UI from S22 already exists, so cross-user photos get a visible Retry/Discard control instead of vanishing.
+- Capture-time path now requires an extra `getUserWithCache()` call on stage; already cached, sub-millisecond.
 
 ### Verification
 
 - `npx tsc --noEmit`.
-- Unit-coverage hook: extend `src/lib/sw-sync-guards.test.ts` (or add `src/lib/sync-manager.test.ts`) to cover `classifyPhotoError` for representative `StorageError` shapes.
-- Manual smoke: temporarily throw a fake `5xx` from `supabase.storage.upload`, confirm photo retries without the retry counter incrementing, and that toggling to a 403 surfaces the error in the diagnostics sheet with a working Retry button.
+- Unit: extend `src/lib/offline-storage-guards.test.ts` with two cases — (a) `capturedByUserId` matches current user → upload proceeds; (b) mismatch → upload skipped and `lastError` set.
+- Manual smoke: sign in as A → capture 1 photo offline → sign out → sign in as B → trigger sync → confirm the photo appears in the diagnostics sheet with `Photo belongs to a different signed-in user`, **not** uploaded under B's tree.
 
