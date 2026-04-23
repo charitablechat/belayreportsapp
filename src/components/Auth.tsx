@@ -171,6 +171,15 @@ export default function Auth() {
           </CardDescription>
         </CardHeader>
         <CardContent>
+          {credentialsDamaged && (
+            <Alert className="mb-4 border-destructive/50 bg-destructive/10">
+              <AlertDescription className="text-sm text-destructive">
+                <span className="font-semibold">Offline credentials damaged.</span>{" "}
+                Your saved offline sign-in data could not be verified. Please
+                connect to the internet and sign in again to restore offline access.
+              </AlertDescription>
+            </Alert>
+          )}
           {error && (
             <Alert className="mb-4 border-destructive/50 bg-destructive/10">
               <AlertDescription className="text-sm text-destructive">
