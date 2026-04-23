@@ -5,15 +5,37 @@ import { assertSafeToDeleteChildRows } from "./child-row-deletion-tripwire";
 const STEP_TIMEOUT = 15000; // 15 seconds per step (allows large ~2MB records to sync on slower connections)
 
 /**
- * Wrap a promise with a timeout to prevent individual steps from blocking
+ * S20: throw an AbortError if the provided signal has been aborted.
  */
-function withStepTimeout<T>(promise: Promise<T>, stepName: string): Promise<T> {
-  return Promise.race([
-    promise,
-    new Promise<T>((_, reject) => 
-      setTimeout(() => reject(new Error(`Step timeout: ${stepName}`)), STEP_TIMEOUT)
-    )
-  ]);
+function throwIfAborted(signal?: AbortSignal): void {
+  if (signal?.aborted) {
+    throw new DOMException('Operation aborted', 'AbortError');
+  }
+}
+
+/**
+ * Wrap a promise with a timeout to prevent individual steps from blocking.
+ * S20: also rejects early when an external AbortSignal fires.
+ */
+function withStepTimeout<T>(promise: Promise<T>, stepName: string, signal?: AbortSignal): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const timeout = setTimeout(
+      () => reject(new Error(`Step timeout: ${stepName}`)),
+      STEP_TIMEOUT
+    );
+    const onAbort = () => {
+      clearTimeout(timeout);
+      reject(new DOMException(`Step aborted: ${stepName}`, 'AbortError'));
+    };
+    if (signal) {
+      if (signal.aborted) { onAbort(); return; }
+      signal.addEventListener('abort', onAbort, { once: true });
+    }
+    promise.then(
+      (v) => { clearTimeout(timeout); signal?.removeEventListener('abort', onAbort); resolve(v); },
+      (e) => { clearTimeout(timeout); signal?.removeEventListener('abort', onAbort); reject(e); }
+    );
+  });
 }
 
 // Tables that are NEVER allowed to have delete operations via the transaction manager
