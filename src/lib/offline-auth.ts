@@ -110,7 +110,14 @@ async function generateDeterministicUserId(email: string): Promise<string> {
   const hashBuffer = await crypto.subtle.digest('SHA-256', data);
   const hashArray = new Uint8Array(hashBuffer);
   const hex = Array.from(hashArray).map(b => b.toString(16).padStart(2, '0')).join('');
-  return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-4${hex.slice(13, 16)}-${hex.slice(16, 20)}-${hex.slice(20, 32)}`;
+  // L1: Force a strict RFC 4122 v4 layout.
+  //   - 13th hex digit (version nibble) must be '4'
+  //   - 17th hex digit (variant nibble) must be 8/9/a/b
+  // The previous implementation set the version but left the variant nibble
+  // free, producing strings that strict UUID parsers (and a future tightening
+  // of Postgres' uuid type) could reject.
+  const variantNibble = (parseInt(hex[16], 16) & 0x3 | 0x8).toString(16);
+  return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-4${hex.slice(13, 16)}-${variantNibble}${hex.slice(17, 20)}-${hex.slice(20, 32)}`;
 }
 
 // ==================== PUBLIC API ====================
