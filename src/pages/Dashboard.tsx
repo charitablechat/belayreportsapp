@@ -651,6 +651,48 @@ export default function Dashboard() {
     ]);
   };
 
+  /**
+   * M13: Paginated fetch for dashboard lists.
+   *
+   * Supabase/PostgREST caps any single response at ~1000 rows. A hardcoded
+   * `.limit(500)` truncated super-admin views, and the truncated set was then
+   * written into the dashboard cache — making older records vanish offline
+   * (and look like orphans to the cleanup pass).
+   *
+   * Caller passes a `buildPage(from, to)` factory that returns a *fresh*
+   * PostgREST query for the requested range. We page until a short page is
+   * returned (or the safety cap is hit), then concatenate.
+   */
+  const fetchAllPaginated = async <T,>(
+    label: string,
+    buildPage: (from: number, to: number) => PromiseLike<{ data: T[] | null; error: any }>,
+    pageSize: number = 500,
+    maxRows: number = 10000,
+  ): Promise<T[]> => {
+    const all: T[] = [];
+    let from = 0;
+    // Safety cap protects against pathological loops / runaway data sets.
+    while (all.length < maxRows) {
+      const to = from + pageSize - 1;
+      const { data, error } = await buildPage(from, to);
+      if (error) {
+        console.error(`[Dashboard] Paginated fetch error (${label}, range ${from}-${to}):`, error);
+        throw error;
+      }
+      if (!data || data.length === 0) break;
+      all.push(...data);
+      // Short page = last page. Avoids one extra round-trip when the total
+      // count is an exact multiple of pageSize, which is rare and harmless.
+      if (data.length < pageSize) break;
+      from += pageSize;
+    }
+    if (all.length >= maxRows && import.meta.env.DEV) {
+      console.warn(`[Dashboard] Paginated fetch (${label}) hit safety cap of ${maxRows} rows`);
+    }
+    return all;
+  };
+
+
   const loadInspections = async (cachedUserId?: string, cachedIsSuperAdmin?: boolean, sessionValid: boolean = true): Promise<{ networkSuccess: boolean; definitive: boolean }> => {
     try {
       // Use passed userId or fetch from cache
@@ -668,24 +710,25 @@ export default function Dashboard() {
         // Wrap in Promise.resolve to get a proper Promise with .catch()
         // Add 6-second timeout to prevent hanging
         supabasePromise = withNetworkTimeout(
-          Promise.resolve(
-            supabase
-              .from("inspections")
-              .select(`
-                id, inspector_id, organization, location, inspection_date,
-                status, created_at, updated_at, synced_at, last_opened_at,
-                acct_number, started_at, latest_report_generated_at, report_version,
-                deleted_at, organization_id, previous_inspector, previous_inspection_date,
-                inspector:profiles!inspections_inspector_id_profiles_fkey(first_name, last_name, avatar_url)
-              `)
-              .is('deleted_at', null)
-              .order("last_opened_at", { ascending: false, nullsFirst: false })
-              .order("created_at", { ascending: false })
-              .limit(500)
-          ).then(({ data, error }) => {
-            if (error) throw error;
-            return data || [];
-          }).catch(err => {
+          // M13: Paginate so super-admins with >500 reports get the full set;
+          // truncated results were silently caching as the offline source-of-truth.
+          fetchAllPaginated<any>(
+            'inspections',
+            (from, to) =>
+              supabase
+                .from("inspections")
+                .select(`
+                  id, inspector_id, organization, location, inspection_date,
+                  status, created_at, updated_at, synced_at, last_opened_at,
+                  acct_number, started_at, latest_report_generated_at, report_version,
+                  deleted_at, organization_id, previous_inspector, previous_inspection_date,
+                  inspector:profiles!inspections_inspector_id_profiles_fkey(first_name, last_name, avatar_url)
+                `)
+                .is('deleted_at', null)
+                .order("last_opened_at", { ascending: false, nullsFirst: false })
+                .order("created_at", { ascending: false })
+                .range(from, to)
+          ).catch(err => {
             console.error('[Dashboard] Supabase fetch error:', err);
             return null;
           }),
@@ -864,22 +907,22 @@ export default function Dashboard() {
       if (navigator.onLine && sessionValid) {
         // Add 6-second timeout to prevent hanging
         supabasePromise = withNetworkTimeout(
-          Promise.resolve(
-            supabase
-              .from("trainings")
-              .select(`
-                id, inspector_id, organization, trainer_of_record, start_date,
-                end_date, status, created_at, updated_at, synced_at,
-                latest_report_generated_at, report_version, deleted_at,
-                trainer:profiles!trainings_inspector_id_profiles_fkey(first_name, last_name, avatar_url)
-              `)
-              .is('deleted_at', null)
-              .order("created_at", { ascending: false })
-              .limit(500)
-          ).then(({ data, error }) => {
-            if (error) throw error;
-            return data || [];
-          }).catch(err => {
+          // M13: Paginate to capture full result set for super-admin views.
+          fetchAllPaginated<any>(
+            'trainings',
+            (from, to) =>
+              supabase
+                .from("trainings")
+                .select(`
+                  id, inspector_id, organization, trainer_of_record, start_date,
+                  end_date, status, created_at, updated_at, synced_at,
+                  latest_report_generated_at, report_version, deleted_at,
+                  trainer:profiles!trainings_inspector_id_profiles_fkey(first_name, last_name, avatar_url)
+                `)
+                .is('deleted_at', null)
+                .order("created_at", { ascending: false })
+                .range(from, to)
+          ).catch(err => {
             console.error('[Dashboard] Supabase trainings fetch error:', err);
             return null;
           }),
@@ -1041,22 +1084,22 @@ export default function Dashboard() {
       if (navigator.onLine && sessionValid) {
         // Add 6-second timeout to prevent hanging
         supabasePromise = withNetworkTimeout(
-          Promise.resolve(
-            supabase
-              .from("daily_assessments")
-              .select(`
-                id, inspector_id, organization, site, trainer_of_record,
-                assessment_date, status, created_at, updated_at, synced_at,
-                latest_report_generated_at, report_version, deleted_at,
-                inspector:profiles!daily_assessments_inspector_id_profiles_fkey(first_name, last_name, avatar_url)
-              `)
-              .is('deleted_at', null)
-              .order("assessment_date", { ascending: false })
-              .limit(500)
-          ).then(({ data, error }) => {
-            if (error) throw error;
-            return data || [];
-          }).catch(err => {
+          // M13: Paginate to capture full result set for super-admin views.
+          fetchAllPaginated<any>(
+            'daily_assessments',
+            (from, to) =>
+              supabase
+                .from("daily_assessments")
+                .select(`
+                  id, inspector_id, organization, site, trainer_of_record,
+                  assessment_date, status, created_at, updated_at, synced_at,
+                  latest_report_generated_at, report_version, deleted_at,
+                  inspector:profiles!daily_assessments_inspector_id_profiles_fkey(first_name, last_name, avatar_url)
+                `)
+                .is('deleted_at', null)
+                .order("assessment_date", { ascending: false })
+                .range(from, to)
+          ).catch(err => {
             console.error('[Dashboard] Supabase assessments fetch error:', err);
             return null;
           }),
