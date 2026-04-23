@@ -844,11 +844,12 @@ export async function syncAllInspectionsAtomic(preValidatedUser?: CachedUser) {
     return { total: 0, success: 0, failed: 0, errors: [] };
   }
   
-  // Batch limiting: only process MAX_BATCH_SIZE items per cycle
+  // S7: Adaptive batch — grows on success, resets on failure
+  const adaptiveSize = getCurrentBatchSize();
   const totalUnsynced = unsynced.length;
-  const batch = unsynced.slice(0, MAX_BATCH_SIZE);
+  const batch = unsynced.slice(0, adaptiveSize);
   const remaining = totalUnsynced - batch.length;
-  
+
   // Log temp-ID items for sync debugging (always, not just DEV)
   const tempIdItems = batch.filter(i => i.id.startsWith('temp-'));
   if (tempIdItems.length > 0) {
@@ -1662,11 +1663,12 @@ export async function syncAllTrainingsAtomic(preValidatedUser?: CachedUser) {
     return { total: 0, success: 0, failed: 0, errors: [] };
   }
   
-  // Batch limiting: only process MAX_BATCH_SIZE items per cycle
+  // S7: Adaptive batch — grows on success, resets on failure
+  const adaptiveSize = getCurrentBatchSize();
   const totalUnsynced = unsynced.length;
-  const batch = unsynced.slice(0, MAX_BATCH_SIZE);
+  const batch = unsynced.slice(0, adaptiveSize);
   const remaining = totalUnsynced - batch.length;
-  
+
   if (import.meta.env.DEV) {
     console.log('[Atomic Sync] Starting sync for unsynced trainings', {
       total: totalUnsynced,
@@ -2410,11 +2412,12 @@ export async function syncAllDailyAssessmentsAtomic(preValidatedUser?: CachedUse
     return { total: 0, success: 0, failed: 0, errors: [] };
   }
   
-  // Batch limiting: only process MAX_BATCH_SIZE items per cycle
+  // S7: Adaptive batch — grows on success, resets on failure
+  const adaptiveSize = getCurrentBatchSize();
   const totalUnsynced = unsynced.length;
-  const batch = unsynced.slice(0, MAX_BATCH_SIZE);
+  const batch = unsynced.slice(0, adaptiveSize);
   const remaining = totalUnsynced - batch.length;
-  
+
   if (import.meta.env.DEV) {
     console.log('[Atomic Sync] Starting sync for unsynced daily assessments', {
       total: totalUnsynced,
