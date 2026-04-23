@@ -47,6 +47,7 @@ interface InspectionDB extends DBSchema {
       uploaded: boolean;
       photoUrl?: string;
       cachedAt?: number; // Timestamp when photo was cached from remote
+      uploadedAt?: number; // M6: Timestamp when photo's upload to server was confirmed
       lastValidated?: number; // Last time cache was validated
       display_order?: number; // Order for drag-and-drop reordering
       tableName?: string; // DB table for sync (e.g. 'training_photos')
@@ -1806,7 +1807,12 @@ export async function pruneOldSyncedPhotoBlobs(): Promise<number> {
       let pruned = 0;
       while (cursor) {
         const photo = cursor.value;
-        if (photo.blob != null && photo.cachedAt && photo.cachedAt < cutoff) {
+        // M6: Prune based on upload-confirmation time, not cache time. A photo
+        // cached long ago but uploaded today must keep its blob as a recovery
+        // source. Fall back to cachedAt only for legacy rows that predate the
+        // uploadedAt field (they have no other timestamp signal available).
+        const referenceTime = photo.uploadedAt ?? photo.cachedAt;
+        if (photo.blob != null && referenceTime && referenceTime < cutoff) {
           photo.blob = null;
           await cursor.update(photo);
           pruned++;
@@ -1830,9 +1836,14 @@ export async function markPhotoAsUploaded(id: string, photoUrl: string) {
       const db = await getDB();
       const photo = await db.get('photos', id);
       if (photo) {
+        const now = Date.now();
         photo.uploaded = true;
         photo.photoUrl = photoUrl;
-        photo.lastValidated = Date.now();
+        photo.lastValidated = now;
+        // M6: Stamp upload-confirmation time so prune can age-out blobs
+        // based on when the upload actually succeeded, not when the photo
+        // was originally cached.
+        photo.uploadedAt = now;
         // Release the binary blob to free IndexedDB storage quota
         photo.blob = null;
         photo.retryCount = 0;
