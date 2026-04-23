@@ -337,6 +337,74 @@ export const SyncDiagnosticsSheet = () => {
             </div>
           )}
 
+          {emptyLocalConflicts.length > 0 && (
+            <div>
+              <h3 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-2 flex items-center gap-1.5">
+                <AlertTriangle className="h-3.5 w-3.5 text-warning" />
+                Empty-Local Conflicts ({emptyLocalConflicts.length})
+              </h3>
+              <p className="text-xs text-muted-foreground mb-2">
+                Local cache is empty for these reports but the server has data.
+                Sync is paused until you choose how to resolve.
+              </p>
+              <div className="rounded-md border border-border divide-y divide-border">
+                {emptyLocalConflicts.map((entry) => (
+                  <EmptyLocalConflictRow
+                    key={entry.id}
+                    entry={entry}
+                    busy={busyConflictId === entry.id}
+                    onRestoreFromServer={async () => {
+                      setBusyConflictId(entry.id);
+                      try {
+                        await restoreEmptyLocalFromServer(entry);
+                        await clearEmptyLocalConflict(entry.id);
+                        await refresh();
+                        toast.success('Server data restored to this device');
+                      } catch (err) {
+                        console.error('[C2] restore failed:', err);
+                        toast.error('Could not restore from server');
+                      } finally {
+                        setBusyConflictId(null);
+                      }
+                    }}
+                    onConfirmLocalEmpty={async () => {
+                      if (
+                        !confirm(
+                          'Confirm this report should be empty? On the next sync, the matching rows on the server will be deleted.',
+                        )
+                      ) {
+                        return;
+                      }
+                      setBusyConflictId(entry.id);
+                      try {
+                        await confirmEmptyLocal(entry);
+                        await clearEmptyLocalConflict(entry.id);
+                        await refresh();
+                        await forceSync();
+                        toast.success('Marked empty — sync will clear server rows');
+                      } catch (err) {
+                        console.error('[C2] confirm-empty failed:', err);
+                        toast.error('Could not confirm empty');
+                      } finally {
+                        setBusyConflictId(null);
+                      }
+                    }}
+                    onDismiss={async () => {
+                      setBusyConflictId(entry.id);
+                      try {
+                        await clearEmptyLocalConflict(entry.id);
+                        await refresh();
+                        toast('Conflict dismissed');
+                      } finally {
+                        setBusyConflictId(null);
+                      }
+                    }}
+                  />
+                ))}
+              </div>
+            </div>
+          )}
+
           <div className="flex flex-col gap-2 pt-2">
             <ForceSyncButton variant="default" />
             <Button
