@@ -22,6 +22,31 @@
 export const SYNC_DRIFT_TOLERANCE_MS = 30_000;
 
 /**
+ * Single source of truth for "do these two timestamps differ by more than the
+ * sync drift tolerance?" Uses absolute value — caller-agnostic to direction.
+ *
+ * Standardized on `>` (strictly greater than tolerance ⇒ outside tolerance) so
+ * a record with drift exactly equal to the tolerance is treated as synced.
+ * This matches the operator already used by the hottest path
+ * (`getUnsyncedCounts` in `offline-storage.ts`) and prevents future call sites
+ * from picking the opposite operator (`<=` vs `>`) and silently disagreeing.
+ */
+export function exceedsDriftTolerance(aMs: number, bMs: number): boolean {
+  return Math.abs(aMs - bMs) > SYNC_DRIFT_TOLERANCE_MS;
+}
+
+/**
+ * Signed variant — true only when `updatedMs` is meaningfully *ahead of*
+ * `syncedMs` (i.e. local edits made after last sync). Used by unsynced-record
+ * queries where a local copy that's *older* than its synced timestamp is not
+ * a sync target — that's just clock skew or a server-anchored timestamp from
+ * Part B of S14.
+ */
+export function isUpdatedAheadOfSync(updatedMs: number, syncedMs: number): boolean {
+  return updatedMs - syncedMs > SYNC_DRIFT_TOLERANCE_MS;
+}
+
+/**
  * Determines whether local (IndexedDB) data should take priority over server data.
  * Used by form pages to prevent stale server data from overwriting newer local edits.
  *
@@ -42,19 +67,13 @@ export function isLocalDataNewer(
   const serverMs = new Date(serverData.updated_at).getTime();
 
   // Within tolerance — treat as the same logical version, prefer the server payload.
-  if (Math.abs(localMs - serverMs) <= SYNC_DRIFT_TOLERANCE_MS) {
+  if (!exceedsDriftTolerance(localMs, serverMs)) {
     return false;
   }
 
   // Local is meaningfully newer than the server.
   return localMs > serverMs;
 }
-
-/**
- * @deprecated Use {@link SYNC_DRIFT_TOLERANCE_MS} instead. Kept as an alias to
- * avoid breaking any importer that still references the old name.
- */
-const CLOCK_SKEW_TOLERANCE_MS = SYNC_DRIFT_TOLERANCE_MS;
 
 /**
  * Determines whether a local IndexedDB record should be preserved (not overwritten)
@@ -69,8 +88,9 @@ export function shouldPreserveLocalRecord(
   if (!localRecord.synced_at) return true;
   // Local changes made after last sync (with clock-skew tolerance)
   if (localRecord.updated_at && localRecord.synced_at) {
-    const drift = new Date(localRecord.updated_at).getTime() - new Date(localRecord.synced_at).getTime();
-    if (drift > CLOCK_SKEW_TOLERANCE_MS) {
+    const updatedMs = new Date(localRecord.updated_at).getTime();
+    const syncedMs = new Date(localRecord.synced_at).getTime();
+    if (exceedsDriftTolerance(updatedMs, syncedMs)) {
       return true;
     }
   }
