@@ -386,13 +386,13 @@ export async function syncPhotos(signal?: AbortSignal): Promise<{ remaining: num
     });
 
     if (import.meta.env.DEV) {
-      console.log(`[Sync Manager] Photo sync completed: ${successCount} photos, ${remaining} remaining`);
+      console.log(`[Sync Manager] Photo sync completed: ${successCount} photos, ${remaining} remaining (changed=${changedCount})`);
     }
     
-    return { remaining };
+    return { remaining, changed: changedCount };
   } catch (error) {
     console.error('[Sync Manager] Photo sync error:', error);
-    return { remaining: 0 };
+    return { remaining: 0, changed: 0 };
   }
 }
 
