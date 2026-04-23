@@ -10,7 +10,14 @@ import { getRecentTripwireBlockCount } from '@/lib/child-row-deletion-tripwire';
 import { format } from 'date-fns';
 import { toast } from 'sonner';
 import { useUnsyncedPhotos, type DeadLetterPhotoInfo } from '@/hooks/useUnsyncedPhotos';
-import { resetPhotoForRetry, deleteOfflinePhoto } from '@/lib/offline-storage';
+import {
+  resetPhotoForRetry,
+  deleteOfflinePhoto,
+  getDeadLetterSoftDeletes,
+  removeDeadLetterSoftDelete,
+  type DeadLetterSoftDelete,
+} from '@/lib/offline-storage';
+import { retryDeadLetterSoftDelete } from '@/lib/queued-soft-delete-processor';
 
 interface DiagnosticsState {
   swRegistered: boolean;
@@ -44,6 +51,8 @@ export const SyncDiagnosticsSheet = () => {
   const { deadLetterPhotos, updatePhotoCount } = useUnsyncedPhotos();
   const [open, setOpen] = useState(false);
   const [busyPhotoId, setBusyPhotoId] = useState<string | null>(null);
+  const [deadLetterDeletes, setDeadLetterDeletes] = useState<DeadLetterSoftDelete[]>([]);
+  const [busyDeadLetterId, setBusyDeadLetterId] = useState<string | null>(null);
   const [diag, setDiag] = useState<DiagnosticsState>({
     swRegistered: false,
     swController: false,
@@ -70,6 +79,8 @@ export const SyncDiagnosticsSheet = () => {
     }
     const storage = await checkStorageQuota();
     const tripwireBlocks24h = await getRecentTripwireBlockCount(24).catch(() => 0);
+    const dlDeletes = await getDeadLetterSoftDeletes().catch(() => []);
+    setDeadLetterDeletes(dlDeletes);
     setDiag({
       swRegistered,
       swController,
