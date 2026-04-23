@@ -75,6 +75,15 @@ Deno.serve(async (req) => {
 
     const { action, ...payload } = await req.json();
 
+    // ── C2: Role allowlist — block super_admin escalation ──
+    const ALLOWED_ROLES = ['admin', 'inspector', 'trainer'] as const;
+    if ((payload as any).role !== undefined && !ALLOWED_ROLES.includes((payload as any).role)) {
+      return new Response(
+        JSON.stringify({ success: false, error: 'Invalid role. Allowed: admin, inspector, trainer' }),
+        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
     console.log(`Admin action: ${action} by user ${user.id}`);
 
     switch (action) {
@@ -138,8 +147,9 @@ Deno.serve(async (req) => {
 
         // Send password reset email so the new user can set their own password
         try {
-          const siteUrl = Deno.env.get('SUPABASE_URL') ?? '';
-          const redirectTo = siteUrl.replace('.supabase.co', '.lovable.app');
+          // ── C3: SITE_URL runtime secret with fallback ──
+          const redirectTo = Deno.env.get('SITE_URL')
+            || (Deno.env.get('SUPABASE_URL') ?? '').replace('.supabase.co', '.lovable.app');
           await supabaseAdmin.auth.resetPasswordForEmail(email, { redirectTo });
           console.log(`Password reset email sent to: ${email}`);
         } catch (emailError) {

@@ -218,6 +218,22 @@ Deno.serve(async (req) => {
     const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
     const adminClient = createClient(supabaseUrl, serviceRoleKey);
 
+    // ── Webhook secret auth (C1) ──
+    const webhookSecret = req.headers.get("x-webhook-secret");
+    const { data: secretRow, error: secretError } = await adminClient
+      .from("webhook_config")
+      .select("key_value")
+      .eq("key_name", "WEBHOOK_SECRET")
+      .single();
+    if (secretError || !secretRow?.key_value) {
+      return new Response(JSON.stringify({ error: "Server configuration error" }),
+        { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+    }
+    if (!webhookSecret || webhookSecret !== secretRow.key_value) {
+      return new Response(JSON.stringify({ error: "Unauthorized" }),
+        { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+    }
+
     // Parse request body for the backup timestamp/path
     const body = await req.json().catch(() => ({}));
     const backupTimestamp = body.timestamp || new Date().toISOString().replace(/[:.]/g, "-");
