@@ -1267,6 +1267,53 @@ function transformTempIds<T extends { id?: string }>(items: T[]): T[] {
 }
 
 /**
+ * C8: Idempotently rewrite training child rows in IndexedDB from oldId → newId.
+ * Reads each child store at oldId; if non-empty, mutates the foreign-key
+ * (`training_id`) on each row to newId, saves the rewritten array under newId,
+ * and clears the oldId entry. Safe to call multiple times — if oldId has no
+ * children (because a prior call already migrated them), it's a no-op.
+ *
+ * MUST be called before any read at the canonical id post-swap, so that
+ * `fetchId = trainingId` returns the user's actual local children on every
+ * sync (first or Nth) instead of silently shipping an empty payload.
+ */
+async function rewriteTrainingChildrenIdb(oldId: string, newId: string): Promise<void> {
+  if (oldId === newId) return;
+  const childStores = ['delivery_approaches', 'operating_systems', 'immediate_attention', 'verifiable_items', 'systems_in_place', 'summary'] as const;
+  for (const store of childStores) {
+    try {
+      const items = await getTrainingDataOffline(store, oldId);
+      if (!items || items.length === 0) continue;
+      const rewritten = items.map((item: any) => ({ ...item, training_id: newId }));
+      await saveTrainingDataOffline(store, newId, rewritten);
+      await clearTrainingDataOffline(store, oldId);
+    } catch (e) {
+      console.warn(`[C8] rewriteTrainingChildrenIdb failed for store ${store}`, e);
+    }
+  }
+}
+
+/**
+ * C8: Idempotently rewrite daily assessment child rows in IndexedDB
+ * from oldId → newId. See rewriteTrainingChildrenIdb for rationale.
+ */
+async function rewriteAssessmentChildrenIdb(oldId: string, newId: string): Promise<void> {
+  if (oldId === newId) return;
+  const childStores = ['beginning_of_day', 'end_of_day', 'operating_systems', 'equipment_checks', 'structure_checks', 'environment_checks'] as const;
+  for (const store of childStores) {
+    try {
+      const items = await getAssessmentDataOffline(store, oldId);
+      if (!items || items.length === 0) continue;
+      const rewritten = items.map((item: any) => ({ ...item, assessment_id: newId }));
+      await saveAssessmentDataOffline(store, newId, rewritten);
+      await clearAssessmentDataOffline(store, oldId);
+    } catch (e) {
+      console.warn(`[C8] rewriteAssessmentChildrenIdb failed for store ${store}`, e);
+    }
+  }
+}
+
+/**
  * Sync training with all related data atomically
  */
 export async function syncTrainingAtomic(trainingId: string, preValidatedUser?: CachedUser, signal?: AbortSignal) {
