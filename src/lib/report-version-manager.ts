@@ -1,9 +1,18 @@
 /**
  * Report Version Manager — Append-Only Immutable Version History
- * 
+ *
  * Every save creates a new immutable snapshot in IndexedDB's `report_versions` store.
- * Versions are never overwritten — only appended. Retention: last 10 per report.
- * Pruning is async and never blocks the save path.
+ * Versions are never overwritten — only appended.
+ *
+ * Retention (hybrid time-windowed + count-capped):
+ *   - Keep ALL versions from the last 24 hours (recent window is sacrosanct).
+ *   - Beyond 24h, keep one keyframe per local-day for the last 30 days
+ *     (the highest-versionNumber entry of each day).
+ *   - Hard ceiling of 100 versions per report; if exceeded, oldest keyframes
+ *     are dropped first.
+ *
+ * Pruning is async and never blocks the save path. `pruneAllVersionsToMax`
+ * remains available for storage-pressure-driven tighter caps.
  */
 
 import { isMobile } from './mobile-detection';
