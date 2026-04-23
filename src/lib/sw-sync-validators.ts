@@ -67,3 +67,36 @@ export function validateInspectionData(
 export function shouldSkipUpsert(data: any[] | null | undefined): boolean {
   return !data || data.length === 0;
 }
+
+/**
+ * M15: Hard guard against `temp-` prefixed IDs reaching the database.
+ * The sync pipeline transforms temp-IDs into UUIDs upstream; this is a
+ * fail-loud safety net that throws if a regression ever lets one slip
+ * through to a DB mutation call site.
+ *
+ * @param record - any object that may carry an `id` field
+ * @param context - human-readable label of the call site (e.g. table name)
+ */
+export function assertNoTempIds(
+  record: { id?: string | null } | null | undefined,
+  context: string
+): void {
+  const id = record?.id;
+  if (id && typeof id === 'string' && id.startsWith('temp-')) {
+    throw new Error(
+      `[sync-guard] Refusing DB mutation: temp-prefixed id "${id}" reached ${context}. ` +
+      `This indicates a missing temp→UUID transform upstream.`
+    );
+  }
+}
+
+/**
+ * Convenience: assert across an array of records (child-row tables).
+ */
+export function assertNoTempIdsInArray(
+  records: Array<{ id?: string | null }> | null | undefined,
+  context: string
+): void {
+  if (!records || records.length === 0) return;
+  for (const r of records) assertNoTempIds(r, context);
+}

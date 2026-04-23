@@ -16,6 +16,7 @@ import { createOfflineSession } from "@/lib/offline-auth";
 import { isCredentialsDamaged, clearCredentialsDamagedFlag } from "@/lib/auth-resilience";
 import { triggerHaptic } from "@/lib/haptics";
 import { toast } from "sonner";
+import { PasswordStrengthMeter } from "@/components/ui/password-strength-meter";
 
 // Helper to get user-friendly error messages
 const getAuthErrorMessage = (error: any): string => {
@@ -248,6 +249,7 @@ export default function Auth() {
                     )}
                   </button>
                 </div>
+                <PasswordStrengthMeter password={password} />
                 <div className="text-right">
                   <button
                     type="button"

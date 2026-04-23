@@ -55,6 +55,7 @@ import {
 } from "./offline-storage";
 import { appendVersion, getLatestFieldCount, calculateFieldCount } from "./report-version-manager";
 import { runWithConcurrency } from "./concurrency";
+import { assertNoTempIds, assertNoTempIdsInArray } from "./sw-sync-validators";
 
 /**
  * Maximum number of items to process per sync cycle.
@@ -423,6 +424,14 @@ export async function syncInspectionAtomic(inspectionId: string, preValidatedUse
         regressionSkipCounter.delete(inspectionId);
       }
     }
+
+    // M15: Hard guard — fail loud if any temp- ID slipped past the transforms above.
+    assertNoTempIds(inspection, 'inspections.upsert');
+    assertNoTempIdsInArray(systems, 'inspection_systems.upsert');
+    assertNoTempIdsInArray(ziplines, 'inspection_ziplines.upsert');
+    assertNoTempIdsInArray(equipment, 'inspection_equipment.upsert');
+    assertNoTempIdsInArray(standards, 'inspection_standards.upsert');
+    if (summary) assertNoTempIds(summary, 'inspection_summary.upsert');
 
     // 4. Build transaction steps
     const steps: TransactionStep[] = [];
@@ -1203,6 +1212,15 @@ export async function syncTrainingAtomic(trainingId: string, preValidatedUser?: 
       }
     }
 
+    // M15: Hard guard — fail loud if any temp- ID slipped past the transforms above.
+    assertNoTempIds(training, 'trainings.upsert');
+    assertNoTempIdsInArray(delivery_approaches, 'training_delivery_approaches.upsert');
+    assertNoTempIdsInArray(operating_systems, 'training_operating_systems.upsert');
+    assertNoTempIdsInArray(immediate_attention, 'training_immediate_attention.upsert');
+    assertNoTempIdsInArray(verifiable_items, 'training_verifiable_items.upsert');
+    assertNoTempIdsInArray(systems_in_place, 'training_systems_in_place.upsert');
+    if (summary) assertNoTempIds(summary, 'training_summary.upsert');
+
     // 4. Build transaction steps
     const steps: TransactionStep[] = [];
     
@@ -1921,6 +1939,15 @@ export async function syncDailyAssessmentAtomic(assessmentId: string, preValidat
         regressionSkipCounter.delete(assessmentId);
       }
     }
+
+    // M15: Hard guard — fail loud if any temp- ID slipped past the transforms above.
+    assertNoTempIds(assessment, 'daily_assessments.upsert');
+    assertNoTempIdsInArray(beginning_of_day, 'daily_assessment_beginning_of_day.upsert');
+    assertNoTempIdsInArray(end_of_day, 'daily_assessment_end_of_day.upsert');
+    assertNoTempIdsInArray(operating_systems, 'daily_assessment_operating_systems.upsert');
+    assertNoTempIdsInArray(equipment_checks, 'daily_assessment_equipment_checks.upsert');
+    assertNoTempIdsInArray(structure_checks, 'daily_assessment_structure_checks.upsert');
+    assertNoTempIdsInArray(environment_checks, 'daily_assessment_environment_checks.upsert');
 
     // 4. Build transaction steps
     const steps: TransactionStep[] = [];

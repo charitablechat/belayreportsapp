@@ -5,6 +5,8 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Loader2, Eye, EyeOff } from "lucide-react";
+import { PasswordStrengthMeter } from "@/components/ui/password-strength-meter";
+import { evaluatePassword } from "@/lib/password-strength";
 
 interface UserFormData {
   email: string;
@@ -78,15 +80,15 @@ export function UserManagementDialog({
     e.preventDefault();
     setPasswordError('');
 
-    // Validate password client-side
+    // M14: Validate password strength client-side (8+ chars, composition, blocklist, score >= 2)
     const trimmedPassword = (formData.password || '').trim();
-    if (mode === 'create' && trimmedPassword.length < 6) {
-      setPasswordError('Password must be at least 6 characters');
-      return;
-    }
-    if (mode === 'edit' && trimmedPassword.length > 0 && trimmedPassword.length < 6) {
-      setPasswordError('Password must be at least 6 characters');
-      return;
+    const mustValidate = mode === 'create' || trimmedPassword.length > 0;
+    if (mustValidate) {
+      const strength = evaluatePassword(trimmedPassword);
+      if (!strength.acceptable) {
+        setPasswordError(strength.reason || 'Password is too weak');
+        return;
+      }
     }
 
     const submitData = {
@@ -152,7 +154,7 @@ export function UserManagementDialog({
                     setPasswordError('');
                   }}
                   required={mode === 'create'}
-                  placeholder={mode === 'edit' ? 'Enter new password' : 'Min. 6 characters'}
+                  placeholder={mode === 'edit' ? 'Enter new password' : 'Min. 8 chars, letter + number'}
                   className="pr-10"
                 />
                 <Button
@@ -166,6 +168,7 @@ export function UserManagementDialog({
                   {showPassword ? <EyeOff className="h-4 w-4 text-muted-foreground" /> : <Eye className="h-4 w-4 text-muted-foreground" />}
                 </Button>
               </div>
+              <PasswordStrengthMeter password={formData.password || ''} />
               {passwordError && (
                 <p className="text-sm text-destructive">{passwordError}</p>
               )}
