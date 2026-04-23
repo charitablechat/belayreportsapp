@@ -854,6 +854,27 @@ export async function getDB() {
       });
     };
 
+    // Phase 5 — pre-flight snapshot when an actual version bump is coming.
+    // We detect the existing version by opening with no upgrade hook first.
+    try {
+      if (migrationSafety) {
+        let existingVersion = 0;
+        try {
+          const probe = await openDB(DB_NAME);
+          existingVersion = probe.version;
+          probe.close();
+        } catch { /* fresh install */ }
+        if (existingVersion > 0 && existingVersion < DB_VERSION) {
+          const snap = await migrationSafety.createPreMigrationSnapshot(DB_NAME, existingVersion, DB_VERSION);
+          snapshotCreated = !!snap.ok;
+        }
+        // Always prune old snapshots to keep storage bounded.
+        migrationSafety.pruneOldSnapshots().catch(() => {});
+      }
+    } catch (err) {
+      console.warn('[Offline Storage] pre-migration snapshot failed:', err);
+    }
+
     // RC-3: Use 8s timeout on mobile (Safari bfcache restore + iPad cold boot can take 5-6s)
     const DB_OPEN_TIMEOUT = isMobile() ? 8000 : 5000;
     dbPromise = Promise.race([
@@ -864,8 +885,62 @@ export async function getDB() {
           reject(new Error('IndexedDB open timed out'));
         }, DB_OPEN_TIMEOUT)
       )
-    ]).catch(error => {
+    ]).then(async (db) => {
+      // Phase 5 — post-upgrade fingerprint validation.
+      if (upgradeStartTs > 0 && migrationSafety) {
+        try {
+          const expected = [
+            { storeName: 'inspections', indexes: ['by-status', 'by-synced'] },
+            { storeName: 'operations' },
+            { storeName: 'photos', indexes: ['by-inspection', 'by-uploaded'] },
+            { storeName: 'inspection_systems', indexes: ['by-inspection'] },
+            { storeName: 'inspection_ziplines', indexes: ['by-inspection'] },
+            { storeName: 'inspection_equipment', indexes: ['by-inspection'] },
+            { storeName: 'inspection_standards', indexes: ['by-inspection'] },
+            { storeName: 'inspection_summary', indexes: ['by-inspection'] },
+            { storeName: 'daily_assessments', indexes: ['by-status', 'by-synced'] },
+            { storeName: 'trainings', indexes: ['by-status', 'by-synced'] },
+            { storeName: 'report_backups', indexes: ['by-report', 'by-timestamp'] },
+            { storeName: 'report_versions', indexes: ['by-report', 'by-timestamp', 'by-report-version'] },
+            { storeName: 'autocomplete_history', indexes: ['by-field-type', 'by-synced'] },
+            { storeName: 'equipment_type_cache', indexes: ['by-category'] },
+          ];
+          const fp = await migrationSafety.validateSchemaFingerprint(db as any, expected);
+          await migrationSafety.recordMigrationOutcome({
+            dbName: DB_NAME,
+            fromVersion: upgradeFromVersion,
+            toVersion: DB_VERSION,
+            ok: true,
+            durationMs: Date.now() - upgradeStartTs,
+            fingerprintMissing: fp.ok ? undefined : fp.missing,
+          });
+          if (!fp.ok && import.meta.env.DEV) {
+            console.warn('[Offline Storage] Post-upgrade fingerprint mismatch:', fp.missing);
+          }
+        } catch (err) {
+          console.warn('[Offline Storage] post-upgrade validation failed:', err);
+        }
+      }
+      return db;
+    }).catch(error => {
       console.error('[Offline Storage] Failed to open IndexedDB:', error);
+      // Phase 5 — record the failure so the recovery UI can offer rollback.
+      if (upgradeStartTs > 0 && migrationSafety) {
+        upgradeError = (error as any)?.message || String(error);
+        migrationSafety.recordMigrationOutcome({
+          dbName: DB_NAME,
+          fromVersion: upgradeFromVersion,
+          toVersion: DB_VERSION,
+          ok: false,
+          durationMs: Date.now() - upgradeStartTs,
+          error: upgradeError,
+        }).catch(() => {});
+      }
+      if (snapshotCreated) {
+        try {
+          localStorage.setItem('idb-migration-rollback-available', '1');
+        } catch { /* ignore */ }
+      }
       dbPromise = null; // Reset so next attempt can retry
       throw error;
     });
