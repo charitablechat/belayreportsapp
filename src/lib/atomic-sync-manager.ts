@@ -620,6 +620,7 @@ export async function syncInspectionAtomic(inspectionId: string, preValidatedUse
         table: 'inspection_systems',
         operation: 'upsert',
         data: systems,
+        rollbackData: existingSystems,
       });
     }
     
@@ -628,6 +629,7 @@ export async function syncInspectionAtomic(inspectionId: string, preValidatedUse
         table: 'inspection_ziplines',
         operation: 'upsert',
         data: ziplines,
+        rollbackData: existingZiplines,
       });
     }
     
@@ -636,6 +638,7 @@ export async function syncInspectionAtomic(inspectionId: string, preValidatedUse
         table: 'inspection_equipment',
         operation: 'upsert',
         data: equipment,
+        rollbackData: existingEquipment,
       });
     }
     
@@ -644,6 +647,7 @@ export async function syncInspectionAtomic(inspectionId: string, preValidatedUse
         table: 'inspection_standards',
         operation: 'upsert',
         data: standards,
+        rollbackData: existingStandards,
       });
     }
     
@@ -658,6 +662,7 @@ export async function syncInspectionAtomic(inspectionId: string, preValidatedUse
         table: 'inspection_summary',
         operation: 'upsert',
         data: [sanitizedSummary],
+        rollbackData: existingSummary,
       });
     }
     
@@ -1465,6 +1470,7 @@ export async function syncTrainingAtomic(trainingId: string, preValidatedUser?: 
         table: 'training_delivery_approaches',
         operation: 'upsert',
         data: delivery_approaches,
+        rollbackData: existingApproaches,
       });
     }
     
@@ -1473,6 +1479,7 @@ export async function syncTrainingAtomic(trainingId: string, preValidatedUser?: 
         table: 'training_operating_systems',
         operation: 'upsert',
         data: operating_systems,
+        rollbackData: existingSystems,
       });
     }
     
@@ -1481,6 +1488,7 @@ export async function syncTrainingAtomic(trainingId: string, preValidatedUser?: 
         table: 'training_immediate_attention',
         operation: 'upsert',
         data: immediate_attention,
+        rollbackData: existingAttention,
       });
     }
     
@@ -1489,6 +1497,7 @@ export async function syncTrainingAtomic(trainingId: string, preValidatedUser?: 
         table: 'training_verifiable_items',
         operation: 'upsert',
         data: verifiable_items,
+        rollbackData: existingVerifiable,
       });
     }
     
@@ -1497,6 +1506,7 @@ export async function syncTrainingAtomic(trainingId: string, preValidatedUser?: 
         table: 'training_systems_in_place',
         operation: 'upsert',
         data: systems_in_place,
+        rollbackData: existingSystemsInPlace,
       });
     }
     
@@ -1511,6 +1521,7 @@ export async function syncTrainingAtomic(trainingId: string, preValidatedUser?: 
         table: 'training_summary',
         operation: 'upsert',
         data: [sanitizedSummary],
+        rollbackData: existingSummary,
       });
     }
     
@@ -2251,6 +2262,7 @@ export async function syncDailyAssessmentAtomic(assessmentId: string, preValidat
         table: 'daily_assessment_beginning_of_day',
         operation: 'upsert',
         data: beginning_of_day,
+        rollbackData: existingBeginning,
       });
     }
     
@@ -2259,6 +2271,7 @@ export async function syncDailyAssessmentAtomic(assessmentId: string, preValidat
         table: 'daily_assessment_end_of_day',
         operation: 'upsert',
         data: end_of_day,
+        rollbackData: existingEnd,
       });
     }
     
@@ -2267,6 +2280,7 @@ export async function syncDailyAssessmentAtomic(assessmentId: string, preValidat
         table: 'daily_assessment_operating_systems',
         operation: 'upsert',
         data: operating_systems,
+        rollbackData: existingSystems,
       });
     }
     
@@ -2275,6 +2289,7 @@ export async function syncDailyAssessmentAtomic(assessmentId: string, preValidat
         table: 'daily_assessment_equipment_checks',
         operation: 'upsert',
         data: equipment_checks,
+        rollbackData: existingEquipment,
       });
     }
     
@@ -2283,6 +2298,7 @@ export async function syncDailyAssessmentAtomic(assessmentId: string, preValidat
         table: 'daily_assessment_structure_checks',
         operation: 'upsert',
         data: structure_checks,
+        rollbackData: existingStructure,
       });
     }
     
@@ -2291,6 +2307,7 @@ export async function syncDailyAssessmentAtomic(assessmentId: string, preValidat
         table: 'daily_assessment_environment_checks',
         operation: 'upsert',
         data: environment_checks,
+        rollbackData: existingEnvironment,
       });
     }
     
