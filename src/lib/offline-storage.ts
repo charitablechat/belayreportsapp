@@ -1810,6 +1810,84 @@ export async function resetPhotoForRetry(id: string): Promise<boolean> {
   );
 }
 
+/**
+ * S23: Stamp the user-id that captured a staged photo so the sync path can
+ * refuse to upload it under a different signed-in user's tree.
+ */
+export async function setPhotoCapturedBy(id: string, userId: string): Promise<void> {
+  return withIndexedDBErrorBoundary(
+    async () => {
+      const db = await getDB();
+      const photo = await db.get('photos', id);
+      if (photo && !photo.capturedByUserId) {
+        photo.capturedByUserId = userId;
+        await db.put('photos', photo);
+      }
+    },
+    undefined,
+    'setPhotoCapturedBy'
+  );
+}
+
+/**
+ * S23: One-time boot migration. For any legacy photo with `pending/` prefix
+ * and no `capturedByUserId`, backfill it ONLY if exactly one user-id is known
+ * on this device (per the user_mappings store in offline-auth-store). Otherwise
+ * leave them untouched — the sync path will route them to the dead-letter UI.
+ */
+export async function backfillCapturedByUserIdForPendingPhotos(): Promise<number> {
+  return withIndexedDBErrorBoundary(
+    async () => {
+      // Resolve the set of user-ids ever known on this device.
+      let knownUserIds = new Set<string>();
+      try {
+        const authDb = await openDB('offline-auth-store');
+        if (authDb.objectStoreNames.contains('user_mappings')) {
+          const mappings: any[] = await authDb.getAll('user_mappings');
+          for (const m of mappings) {
+            if (m?.userId) knownUserIds.add(m.userId);
+          }
+        }
+        authDb.close();
+      } catch {
+        // Best-effort; if we can't read auth-store, skip migration.
+        return 0;
+      }
+
+      if (knownUserIds.size !== 1) {
+        return 0; // ambiguous — let sync route them to dead-letter
+      }
+      const onlyUserId = Array.from(knownUserIds)[0];
+
+      const db = await getDB();
+      const tx = db.transaction('photos', 'readwrite');
+      let updated = 0;
+      let cursor = await tx.store.openCursor();
+      while (cursor) {
+        const p: any = cursor.value;
+        if (
+          !p.uploaded &&
+          !p.capturedByUserId &&
+          typeof p.photoUrl === 'string' &&
+          p.photoUrl.startsWith('pending/')
+        ) {
+          p.capturedByUserId = onlyUserId;
+          await cursor.update(p);
+          updated++;
+        }
+        cursor = await cursor.continue();
+      }
+      await tx.done;
+      if (updated > 0 && import.meta.env.DEV) {
+        console.log(`[Offline Storage] S23 backfill: tagged ${updated} pending photo(s) with capturedByUserId=${onlyUserId}`);
+      }
+      return updated;
+    },
+    0,
+    'backfillCapturedByUserIdForPendingPhotos'
+  );
+}
+
 export async function deleteOfflinePhoto(id: string) {
   return withIndexedDBErrorBoundary(
     async () => {
