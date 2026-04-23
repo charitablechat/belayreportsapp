@@ -2024,16 +2024,29 @@ export async function syncDailyAssessmentAtomic(assessmentId: string, preValidat
       };
     }
     
-    // Use recordStatus for conflict detection if available
+    // S16: Field-level merge for daily assessments (matches inspections path).
     if (recordStatus?.record_exists && !recordStatus?.is_deleted) {
       const remoteUpdated = new Date(recordStatus.updated_at!).getTime();
       const localUpdated = new Date(assessment.updated_at).getTime();
       const timeDiff = Math.abs(remoteUpdated - localUpdated);
-      
-      if (timeDiff > 5000 && remoteUpdated > localUpdated) {
-        console.warn('[Atomic Sync] Daily assessment conflict detected:', assessmentId);
-        // For daily assessments, we use local-wins strategy silently
-        // No toast notification - conflicts are resolved automatically
+
+      if (timeDiff > CONFLICT_THRESHOLD_MS && remoteUpdated > localUpdated) {
+        const { data: remoteRow } = await supabase
+          .from('daily_assessments')
+          .select('*')
+          .eq('id', assessmentId)
+          .maybeSingle();
+        if (remoteRow) {
+          const merged = mergeRecordFields<any>(
+            assessment as any,
+            remoteRow as any,
+            TRACKED_FIELDS.daily_assessment,
+          );
+          Object.assign(assessment, merged);
+          if (import.meta.env.DEV) {
+            console.log('[Atomic Sync] S16 field-merged assessment:', assessmentId);
+          }
+        }
       }
     }
     
