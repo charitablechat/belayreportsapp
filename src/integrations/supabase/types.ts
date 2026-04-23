@@ -453,6 +453,7 @@ export type Database = {
           attestation_signer_name: string | null
           attestation_text: string | null
           attestation_user_agent: string | null
+          client_idempotency_key: string | null
           created_at: string
           deleted_at: string | null
           deleted_by: string | null
@@ -489,6 +490,7 @@ export type Database = {
           attestation_signer_name?: string | null
           attestation_text?: string | null
           attestation_user_agent?: string | null
+          client_idempotency_key?: string | null
           created_at?: string
           deleted_at?: string | null
           deleted_by?: string | null
@@ -525,6 +527,7 @@ export type Database = {
           attestation_signer_name?: string | null
           attestation_text?: string | null
           attestation_user_agent?: string | null
+          client_idempotency_key?: string | null
           created_at?: string
           deleted_at?: string | null
           deleted_by?: string | null
@@ -1263,6 +1266,7 @@ export type Database = {
           attestation_signer_name: string | null
           attestation_text: string | null
           attestation_user_agent: string | null
+          client_idempotency_key: string | null
           course_history: string | null
           created_at: string | null
           deleted_at: string | null
@@ -1301,6 +1305,7 @@ export type Database = {
           attestation_signer_name?: string | null
           attestation_text?: string | null
           attestation_user_agent?: string | null
+          client_idempotency_key?: string | null
           course_history?: string | null
           created_at?: string | null
           deleted_at?: string | null
@@ -1339,6 +1344,7 @@ export type Database = {
           attestation_signer_name?: string | null
           attestation_text?: string | null
           attestation_user_agent?: string | null
+          client_idempotency_key?: string | null
           course_history?: string | null
           created_at?: string | null
           deleted_at?: string | null
@@ -2157,6 +2163,7 @@ export type Database = {
           attestation_signer_name: string | null
           attestation_text: string | null
           attestation_user_agent: string | null
+          client_idempotency_key: string | null
           created_at: string
           deleted_at: string | null
           deleted_by: string | null
@@ -2192,6 +2199,7 @@ export type Database = {
           attestation_signer_name?: string | null
           attestation_text?: string | null
           attestation_user_agent?: string | null
+          client_idempotency_key?: string | null
           created_at?: string
           deleted_at?: string | null
           deleted_by?: string | null
@@ -2227,6 +2235,7 @@ export type Database = {
           attestation_signer_name?: string | null
           attestation_text?: string | null
           attestation_user_agent?: string | null
+          client_idempotency_key?: string | null
           created_at?: string
           deleted_at?: string | null
           deleted_by?: string | null
