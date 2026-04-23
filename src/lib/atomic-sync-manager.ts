@@ -2537,11 +2537,106 @@ export async function syncAllDailyAssessmentsAtomic(preValidatedUser?: CachedUse
     failed: failCount,
   });
   
-  return {
-    total: totalUnsynced,
-    success: successCount,
-    failed: failCount,
-    remaining,
-    errors,
-  };
+}
+
+// ============================================================================
+// S12: Full-package refetch helpers.
+// When a parent-row Realtime event survives shouldPreserveLocalRecord, we
+// schedule a single round-trip that pulls parent + all child collections from
+// the server and writes the package atomically into IDB. This keeps cross-
+// device child-row edits in sync without subscribing to every child table.
+// Self-write registration suppresses the resulting Realtime echo (S6).
+// ============================================================================
+
+async function fetchAllRows(table: string, parentColumn: string, parentId: string): Promise<any[]> {
+  const { data, error } = await (supabase.from(table as any) as any)
+    .select('*')
+    .eq(parentColumn, parentId);
+  if (error) throw error;
+  return (data as any[]) || [];
+}
+
+export async function refetchInspectionPackage(inspectionId: string): Promise<void> {
+  if (!navigator.onLine) return;
+  try {
+    const [{ data: inspection, error }, systems, ziplines, equipment, standards, summaryRows] = await Promise.all([
+      supabase.from('inspections').select('*').eq('id', inspectionId).maybeSingle(),
+      fetchAllRows('inspection_systems', 'inspection_id', inspectionId),
+      fetchAllRows('inspection_ziplines', 'inspection_id', inspectionId),
+      fetchAllRows('inspection_equipment', 'inspection_id', inspectionId),
+      fetchAllRows('inspection_standards', 'inspection_id', inspectionId),
+      fetchAllRows('inspection_summary', 'inspection_id', inspectionId),
+    ]);
+    if (error || !inspection) return;
+    registerSelfWrite(inspectionId);
+    await saveInspectionOffline({ ...inspection, synced_at: inspection.updated_at });
+    await Promise.all([
+      clearRelatedDataOffline('systems', inspectionId).then(() => systems.length > 0 ? saveRelatedDataOffline('systems', inspectionId, systems) : null),
+      clearRelatedDataOffline('ziplines', inspectionId).then(() => ziplines.length > 0 ? saveRelatedDataOffline('ziplines', inspectionId, ziplines) : null),
+      clearRelatedDataOffline('equipment', inspectionId).then(() => equipment.length > 0 ? saveRelatedDataOffline('equipment', inspectionId, equipment) : null),
+      clearRelatedDataOffline('standards', inspectionId).then(() => standards.length > 0 ? saveRelatedDataOffline('standards', inspectionId, standards) : null),
+      clearRelatedDataOffline('summary', inspectionId).then(() => summaryRows.length > 0 ? saveRelatedDataOffline('summary', inspectionId, summaryRows) : null),
+    ]);
+    if (import.meta.env.DEV) console.log('[Atomic Sync] Refetched inspection package:', inspectionId);
+  } catch (e) {
+    console.warn('[Atomic Sync] refetchInspectionPackage failed (non-fatal):', e);
+  }
+}
+
+export async function refetchTrainingPackage(trainingId: string): Promise<void> {
+  if (!navigator.onLine) return;
+  try {
+    const [{ data: training, error }, da, os, ia, vi, sip, summary] = await Promise.all([
+      supabase.from('trainings').select('*').eq('id', trainingId).maybeSingle(),
+      fetchAllRows('training_delivery_approaches', 'training_id', trainingId),
+      fetchAllRows('training_operating_systems', 'training_id', trainingId),
+      fetchAllRows('training_immediate_attention', 'training_id', trainingId),
+      fetchAllRows('training_verifiable_items', 'training_id', trainingId),
+      fetchAllRows('training_systems_in_place', 'training_id', trainingId),
+      fetchAllRows('training_summary', 'training_id', trainingId),
+    ]);
+    if (error || !training) return;
+    registerSelfWrite(trainingId);
+    await saveTrainingOffline({ ...training, synced_at: training.updated_at });
+    await Promise.all([
+      clearTrainingDataOffline('delivery_approaches', trainingId).then(() => da.length > 0 ? saveTrainingDataOffline('delivery_approaches', trainingId, da) : null),
+      clearTrainingDataOffline('operating_systems', trainingId).then(() => os.length > 0 ? saveTrainingDataOffline('operating_systems', trainingId, os) : null),
+      clearTrainingDataOffline('immediate_attention', trainingId).then(() => ia.length > 0 ? saveTrainingDataOffline('immediate_attention', trainingId, ia) : null),
+      clearTrainingDataOffline('verifiable_items', trainingId).then(() => vi.length > 0 ? saveTrainingDataOffline('verifiable_items', trainingId, vi) : null),
+      clearTrainingDataOffline('systems_in_place', trainingId).then(() => sip.length > 0 ? saveTrainingDataOffline('systems_in_place', trainingId, sip) : null),
+      clearTrainingDataOffline('summary', trainingId).then(() => summary.length > 0 ? saveTrainingDataOffline('summary', trainingId, summary) : null),
+    ]);
+    if (import.meta.env.DEV) console.log('[Atomic Sync] Refetched training package:', trainingId);
+  } catch (e) {
+    console.warn('[Atomic Sync] refetchTrainingPackage failed (non-fatal):', e);
+  }
+}
+
+export async function refetchAssessmentPackage(assessmentId: string): Promise<void> {
+  if (!navigator.onLine) return;
+  try {
+    const [{ data: assessment, error }, bod, eod, opSys, eq, st, env] = await Promise.all([
+      supabase.from('daily_assessments').select('*').eq('id', assessmentId).maybeSingle(),
+      fetchAllRows('daily_assessment_beginning_of_day', 'assessment_id', assessmentId),
+      fetchAllRows('daily_assessment_end_of_day', 'assessment_id', assessmentId),
+      fetchAllRows('daily_assessment_operating_systems', 'assessment_id', assessmentId),
+      fetchAllRows('daily_assessment_equipment_checks', 'assessment_id', assessmentId),
+      fetchAllRows('daily_assessment_structure_checks', 'assessment_id', assessmentId),
+      fetchAllRows('daily_assessment_environment_checks', 'assessment_id', assessmentId),
+    ]);
+    if (error || !assessment) return;
+    registerSelfWrite(assessmentId);
+    await saveDailyAssessmentOffline({ ...assessment, synced_at: assessment.updated_at });
+    await Promise.all([
+      clearAssessmentDataOffline('beginning_of_day', assessmentId).then(() => bod.length > 0 ? saveAssessmentDataOffline('beginning_of_day', assessmentId, bod) : null),
+      clearAssessmentDataOffline('end_of_day', assessmentId).then(() => eod.length > 0 ? saveAssessmentDataOffline('end_of_day', assessmentId, eod) : null),
+      clearAssessmentDataOffline('operating_systems', assessmentId).then(() => opSys.length > 0 ? saveAssessmentDataOffline('operating_systems', assessmentId, opSys) : null),
+      clearAssessmentDataOffline('equipment_checks', assessmentId).then(() => eq.length > 0 ? saveAssessmentDataOffline('equipment_checks', assessmentId, eq) : null),
+      clearAssessmentDataOffline('structure_checks', assessmentId).then(() => st.length > 0 ? saveAssessmentDataOffline('structure_checks', assessmentId, st) : null),
+      clearAssessmentDataOffline('environment_checks', assessmentId).then(() => env.length > 0 ? saveAssessmentDataOffline('environment_checks', assessmentId, env) : null),
+    ]);
+    if (import.meta.env.DEV) console.log('[Atomic Sync] Refetched assessment package:', assessmentId);
+  } catch (e) {
+    console.warn('[Atomic Sync] refetchAssessmentPackage failed (non-fatal):', e);
+  }
 }
