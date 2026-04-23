@@ -206,6 +206,7 @@ export async function syncPhotos(signal?: AbortSignal): Promise<{ remaining: num
               console.warn('[Sync Manager] Photo capturer does not match inspection owner — dead-lettering:', photo.id);
               await setPhotoLastError(photo.id, 'Photo belongs to a different signed-in user');
               await incrementPhotoRetryCount(photo.id);
+              changedCount++;
               return;
             }
           } catch {
