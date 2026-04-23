@@ -95,9 +95,10 @@ export async function manageStoragePressure(): Promise<{
     result.tier = estimate.tier;
 
     if (estimate.tier === 0) {
-      // Still run backup cleanup unconditionally (cheap, 14-day threshold)
-      const { evictOldReportBackups } = await import('./offline-storage');
-      result.evictedBackups = await evictOldReportBackups(14);
+      // M12: At Tier 0 (healthy), do NOT evict report_backups. evictOldReportBackups
+      // is purely age-based and doesn't distinguish synced vs unsynced snapshots,
+      // so running it unconditionally thins the recovery window even when storage
+      // is fine. Only run cleanup once we cross ~60% usage (Tier 1+).
       return result;
     }
 
