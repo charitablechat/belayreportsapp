@@ -15,12 +15,7 @@ const SENDER_DOMAIN = "notify.belayreports.com"
 // even though actual sending uses the subdomain above.
 const FROM_DOMAIN = "notify.belayreports.com"
 
-const corsHeaders = {
-  'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers':
-    'authorization, x-client-info, apikey, content-type',
-}
-
+import { corsHeaders } from "../_shared/cors.ts";
 // Generate a cryptographically random 32-byte hex token
 function generateToken(): string {
   const bytes = new Uint8Array(32)
