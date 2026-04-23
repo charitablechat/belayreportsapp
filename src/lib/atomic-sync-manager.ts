@@ -517,7 +517,7 @@ export async function syncInspectionAtomic(inspectionId: string, preValidatedUse
       const localIsCompletelyEmpty = systems.length === 0 && ziplines.length === 0 && 
         equipment.length === 0 && standards.length === 0 && !summary;
       
-      if (serverHasChildData && localIsCompletelyEmpty) {
+      if (serverHasChildData && localIsCompletelyEmpty && !wasClearedAfterLastSync(inspection)) {
         console.warn('[SAFETY] empty_local_guard: server has child data but local is empty', {
           inspectionId,
           serverCounts: {
@@ -1336,7 +1336,7 @@ export async function syncTrainingAtomic(trainingId: string, preValidatedUser?: 
         immediate_attention.length === 0 && verifiable_items.length === 0 && 
         systems_in_place.length === 0 && !summary;
       
-      if (serverHasChildData && localIsCompletelyEmpty) {
+      if (serverHasChildData && localIsCompletelyEmpty && !wasClearedAfterLastSync(training)) {
         console.warn('[SAFETY] empty_local_guard: training server has child data but local is empty', {
           trainingId,
           serverCounts: {
@@ -2088,7 +2088,7 @@ export async function syncDailyAssessmentAtomic(assessmentId: string, preValidat
         operating_systems.length === 0 && equipment_checks.length === 0 && 
         structure_checks.length === 0 && environment_checks.length === 0;
       
-      if (serverHasChildData && localIsCompletelyEmpty) {
+      if (serverHasChildData && localIsCompletelyEmpty && !wasClearedAfterLastSync(assessment)) {
         console.warn('[SAFETY] empty_local_guard: assessment server has child data but local is empty', {
           assessmentId,
           serverCounts: {
