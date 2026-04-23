@@ -78,7 +78,7 @@ import { useReportEditPermission } from "@/hooks/useReportEditPermission";
 import { CompletionLockDialog } from "@/components/CompletionLockDialog";
 import { SaveBeforeLeaveDialog } from "@/components/SaveBeforeLeaveDialog";
 import { Lock } from "lucide-react";
-import { appendVersion } from "@/lib/report-version-manager";
+import { appendVersion, subscribeVersioningHealth, getVersioningHealth, resetVersioningHealth } from "@/lib/report-version-manager";
 import { showHardSavedToast } from "@/lib/toast-helpers";
 import { DataIntegrityBadge, type IntegrityStatus } from "@/components/ui/data-integrity-badge";
 import { VersionHistoryPanel } from "@/components/admin/VersionHistoryPanel";
@@ -146,6 +146,10 @@ export default function InspectionForm() {
   const [lastVersionNumber, setLastVersionNumber] = useState<number | undefined>(undefined);
   const [lastFieldCount, setLastFieldCount] = useState<number | undefined>(undefined);
   const [saveError, setSaveError] = useState<string | null>(null);
+  // M9: Versioning health — surface a banner when version writes silently fail.
+  const [versioningFailures, setVersioningFailures] = useState<number>(
+    () => getVersioningHealth().consecutiveFailures
+  );
   const saveDebounceTimerRef = useRef<NodeJS.Timeout | null>(null);
   const isInternalUpdateRef = useRef(false);
   const anySaveInProgressRef = useRef(false);
