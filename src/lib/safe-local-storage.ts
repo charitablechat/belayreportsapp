@@ -78,14 +78,11 @@ export function safeSetItem(
       try {
         void import('@/lib/notification-center').then((mod) => {
           try {
-            const fn = (mod as any).addSyncNotification;
-            if (typeof fn === 'function') {
-              fn({
-                type: 'error',
-                title: 'Storage is full',
-                message: `${opts.scope ?? 'A record'} could not be saved. Free up space immediately.`,
-              });
-            }
+            const addError = (mod as any).addErrorNotification;
+            const addSync = (mod as any).addSyncNotification;
+            const msg = `Storage is full — ${opts.scope ?? 'a record'} could not be saved. Free up space immediately.`;
+            if (typeof addError === 'function') addError(msg);
+            else if (typeof addSync === 'function') addSync(msg);
           } catch { /* swallow */ }
         }).catch(() => { /* swallow */ });
       } catch { /* swallow */ }
