@@ -67,15 +67,13 @@ export interface AutoSyncState {
   unsyncedInspections: any[];
   unsyncedTrainings: any[];
   unsyncedAssessments: any[];
+  // S11: surfaces IDB read failures so the badge keeps last-known counts
+  // and the user gets a real error instead of a silent 0.
+  syncError: string | null;
 }
 
 /**
  * Unified hook for fully automatic background synchronization
- * - Debounced sync after local data changes
- * - Immediate sync on network reconnection
- * - Sync on app visibility changes
- * - Periodic polling as fallback
- * - Realtime subscriptions for multi-device sync
  */
 export const useAutoSync = () => {
   const queryClient = useQueryClient();
@@ -83,8 +81,6 @@ export const useAutoSync = () => {
   const isIOSDevice = isIOS();
   const isMobileViewport = useIsMobile();
   
-  // Compute sync interval based on viewport (mobile vs desktop)
-  // Active interval is used when there are unsynced items, idle interval when everything is synced
   const activeSyncInterval = isMobileViewport ? MOBILE_SYNC_INTERVAL : DESKTOP_SYNC_INTERVAL;
   const idleSyncInterval = isMobileViewport ? MOBILE_IDLE_SYNC_INTERVAL : DESKTOP_IDLE_SYNC_INTERVAL;
   
@@ -96,6 +92,7 @@ export const useAutoSync = () => {
     unsyncedInspections: [],
     unsyncedTrainings: [],
     unsyncedAssessments: [],
+    syncError: null,
   });
   
   // Refs for debouncing and preventing duplicate syncs
