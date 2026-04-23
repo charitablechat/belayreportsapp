@@ -27,6 +27,25 @@ interface DeleteUserPayload {
   userId: string;
 }
 
+// ── M14: Server-side password floor — 8 chars + composition + common-password blocklist ──
+const COMMON_PASSWORDS = new Set([
+  'password', 'password1', 'password123', '123456', '123456789', '12345678',
+  'qwerty', 'qwerty123', 'abc123', 'abcd1234', 'letmein', 'welcome',
+  'welcome1', 'admin', 'admin123', 'iloveyou', 'monkey', 'football',
+  'dragon', 'baseball', 'master', 'sunshine', 'princess', 'solo',
+  'starwars', 'ropeworks', 'ropeworks123', 'changeme', 'password!',
+]);
+
+function validatePasswordStrength(rawPassword: string | undefined | null): string | null {
+  const pw = (rawPassword || '').trim();
+  if (pw.length < 8) return 'Password must be at least 8 characters';
+  if (COMMON_PASSWORDS.has(pw.toLowerCase())) return 'Password is too common — choose something unique';
+  if (!/[a-zA-Z]/.test(pw) || !/\d/.test(pw)) {
+    return 'Password must contain at least one letter and one number';
+  }
+  return null;
+}
+
 Deno.serve(async (req) => {
   // Handle CORS preflight requests
   if (req.method === 'OPTIONS') {
@@ -86,14 +105,38 @@ Deno.serve(async (req) => {
 
     console.log(`Admin action: ${action} by user ${user.id}`);
 
+    // ── M12: Audit log helper — record every admin action via create_audit_log RPC ──
+    async function logAdminAction(
+      actionType: string,
+      targetUserId: string,
+      oldValues: Record<string, unknown> | null,
+      newValues: Record<string, unknown> | null,
+      metadata: Record<string, unknown> = {}
+    ) {
+      try {
+        await supabaseAdmin.rpc('create_audit_log', {
+          p_user_id: user.id,
+          p_action_type: `admin.${actionType}`,
+          p_table_name: 'auth.users',
+          p_record_id: targetUserId,
+          p_old_values: oldValues,
+          p_new_values: newValues,
+          p_metadata: { ...metadata, actor_email: user.email },
+        });
+      } catch (e) {
+        console.warn('[admin-manage-user] audit log insert failed:', e);
+      }
+    }
+
     switch (action) {
       case 'create': {
         const { email, firstName, lastName, organizationId, role } = payload as CreateUserPayload;
         const password = (payload as CreateUserPayload).password?.trim();
-        
-        if (!password || password.length < 6) {
+
+        const pwError = validatePasswordStrength(password);
+        if (pwError) {
           return new Response(
-            JSON.stringify({ success: false, error: 'Password must be at least 6 characters' }),
+            JSON.stringify({ success: false, error: pwError }),
             { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
           );
         }
@@ -157,6 +200,14 @@ Deno.serve(async (req) => {
           // Don't fail the user creation if email fails
         }
 
+        await logAdminAction(
+          'create_user',
+          newUser.user.id,
+          null,
+          { email, role: role ?? null, first_name: firstName ?? null, last_name: lastName ?? null },
+          { organizationId: organizationId ?? null }
+        );
+
         return new Response(
           JSON.stringify({ success: true, user: newUser.user }),
           { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
@@ -167,11 +218,14 @@ Deno.serve(async (req) => {
         const { userId, email, firstName, lastName, role } = payload as UpdateUserPayload;
         const password = (payload as UpdateUserPayload).password?.trim() || '';
 
-        if (password && password.length < 6) {
-          return new Response(
-            JSON.stringify({ success: false, error: 'Password must be at least 6 characters' }),
-            { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-          );
+        if (password) {
+          const pwError = validatePasswordStrength(password);
+          if (pwError) {
+            return new Response(
+              JSON.stringify({ success: false, error: pwError }),
+              { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+            );
+          }
         }
 
         const updateData: any = {};
@@ -258,6 +312,20 @@ Deno.serve(async (req) => {
           }
         }
 
+        await logAdminAction(
+          'update_user',
+          userId,
+          null,
+          {
+            email: email ?? null,
+            role: role ?? null,
+            first_name: firstName ?? null,
+            last_name: lastName ?? null,
+            password_changed: !!password,
+          },
+          {}
+        );
+
         return new Response(
           JSON.stringify({ success: true, user: updatedUser.user }),
           { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
@@ -295,6 +363,14 @@ Deno.serve(async (req) => {
 
           console.log(`User ${userId} deactivated by ${user.id} (soft delete)`);
 
+          await logAdminAction(
+            'deactivate_user',
+            userId,
+            { is_active: true },
+            { is_active: false },
+            { reason: 'soft_delete' }
+          );
+
           return new Response(
             JSON.stringify({ success: true, deactivated: true }),
             { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
@@ -317,6 +393,14 @@ Deno.serve(async (req) => {
         }
 
         console.log(`User ${userId} hard-deleted by ${user.id}`);
+
+        await logAdminAction(
+          'hard_delete_user',
+          userId,
+          null,
+          null,
+          { destructive: true }
+        );
 
         return new Response(
           JSON.stringify({ success: true, hardDeleted: true }),
@@ -354,6 +438,14 @@ Deno.serve(async (req) => {
 
         console.log(`User deactivated: ${userId}`);
 
+        await logAdminAction(
+          'deactivate_user',
+          userId,
+          { is_active: true },
+          { is_active: false },
+          {}
+        );
+
         return new Response(
           JSON.stringify({ success: true }),
           { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
@@ -385,6 +477,14 @@ Deno.serve(async (req) => {
         }
 
         console.log(`User reactivated: ${userId}`);
+
+        await logAdminAction(
+          'reactivate_user',
+          userId,
+          { is_active: false },
+          { is_active: true },
+          {}
+        );
 
         return new Response(
           JSON.stringify({ success: true }),
@@ -477,6 +577,14 @@ Deno.serve(async (req) => {
 
         console.log(`Admin granted to user: ${userId}`);
 
+        await logAdminAction(
+          'grant_admin',
+          userId,
+          null,
+          { role: 'admin' },
+          {}
+        );
+
         return new Response(
           JSON.stringify({ success: true }),
           { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
@@ -502,6 +610,14 @@ Deno.serve(async (req) => {
         }
 
         console.log(`Admin revoked from user: ${userId}`);
+
+        await logAdminAction(
+          'revoke_admin',
+          userId,
+          { role: 'admin' },
+          null,
+          {}
+        );
 
         return new Response(
           JSON.stringify({ success: true }),

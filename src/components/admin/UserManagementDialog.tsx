@@ -5,6 +5,8 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Loader2, Eye, EyeOff } from "lucide-react";
+import { PasswordStrengthMeter } from "@/components/ui/password-strength-meter";
+import { evaluatePassword } from "@/lib/password-strength";
 
 interface UserFormData {
   email: string;
