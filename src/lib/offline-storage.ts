@@ -400,6 +400,38 @@ export const IDB_TIMEOUTS = {
 export type TimeoutTier = keyof typeof IDB_TIMEOUTS;
 
 /**
+ * Wraps an IDB operation with a per-tier timeout.
+ * Returns { data, timedOut } so callers can distinguish
+ * real empties from timeout fallbacks.
+ */
+export async function withIDBTimeout<T>(
+  operationName: string,
+  tier: TimeoutTier,
+  fn: () => Promise<T>,
+  fallback: T
+): Promise<{ data: T; timedOut: boolean }> {
+  const ms = IDB_TIMEOUTS[tier];
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const timeout = new Promise<never>((_, reject) => {
+    timer = setTimeout(() => {
+      reject(new Error(`[IDB] ${operationName} timed out after ${ms}ms (tier: ${tier})`));
+    }, ms);
+  });
+  try {
+    const data = await Promise.race([fn(), timeout]);
+    return { data, timedOut: false };
+  } catch (err) {
+    const isTimeout = err instanceof Error && err.message.includes('timed out');
+    console.warn(
+      `[IDB] ${operationName} ${isTimeout ? 'timed out' : 'failed'}: ${err instanceof Error ? err.message : err}`
+    );
+    return { data: fallback, timedOut: isTimeout };
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+/**
  * Helper to wrap a promise with a timeout
  */
 // Track timeout suppression to avoid console spam
