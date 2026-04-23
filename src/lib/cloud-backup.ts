@@ -66,6 +66,43 @@ export function uploadSnapshotToCloud(
   });
 }
 
+/**
+ * M1 guard: refuse to upload "empty" snapshots that would clobber a richer
+ * cloud copy via upsert.
+ *
+ * A snapshot is considered empty when EVERY child table is empty/missing AND
+ * the parent has no user-authored content (only system fields like id /
+ * timestamps / inspector_id). This catches the auto-save-during-mid-load race
+ * where React state is briefly empty before children rehydrate.
+ */
+function _isEmptySnapshot(snapshot: ReportSnapshot): boolean {
+  const children = snapshot.children || {};
+  const hasAnyChildren = Object.values(children).some(
+    (rows) => Array.isArray(rows) && rows.length > 0
+  );
+  if (hasAnyChildren) return false;
+
+  const parent = snapshot.parent || {};
+  // System-managed fields that don't represent user content.
+  const SYSTEM_KEYS = new Set([
+    'id', 'user_id', 'inspector_id', 'organization_id', 'created_at',
+    'updated_at', 'synced_at', 'deleted_at', 'deleted_by', 'retention_until',
+    'last_opened_at', 'last_modified_by', 'last_sync_source',
+    'latest_report_html', 'latest_report_generated_at', 'report_version',
+    'version', 'status',
+  ]);
+  const hasUserContent = Object.entries(parent).some(([key, value]) => {
+    if (SYSTEM_KEYS.has(key)) return false;
+    if (value === null || value === undefined) return false;
+    if (typeof value === 'string') return value.trim() !== '';
+    if (Array.isArray(value)) return value.length > 0;
+    if (typeof value === 'object') return Object.keys(value).length > 0;
+    return true; // numbers, booleans, etc.
+  });
+
+  return !hasUserContent;
+}
+
 async function _doUpload(
   reportType: ReportType,
   reportId: string,
@@ -73,6 +110,18 @@ async function _doUpload(
 ): Promise<void> {
   const user = await getUserWithCache();
   if (!user) return;
+
+  // M1: never overwrite cloud with an empty snapshot. The next meaningful
+  // save will upload as normal.
+  if (_isEmptySnapshot(snapshot)) {
+    if (import.meta.env.DEV) {
+      console.log('[Cloud Backup] Skipping upload — empty snapshot', {
+        reportType,
+        reportId,
+      });
+    }
+    return;
+  }
 
   const facility = snapshot.parent?.organization || snapshot.parent?.site || '';
 
