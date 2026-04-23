@@ -575,6 +575,9 @@ export const useAutoSync = () => {
       setSyncInProgress(false);
       // CRITICAL: Always reset isSyncing state in finally block to prevent stuck spinner
       setState(prev => ({ ...prev, isSyncing: false }));
+      // S21: clear the in-flight ref and resolve awaiters before doing follow-up work
+      inFlightSyncRef.current = null;
+      resolveInFlight();
       // Always refresh unsynced counts so the badge is accurate after every sync attempt
       updateUnsyncedCounts().catch(() => {});
       // Always notify photo-count consumers so dead-letter / orphan filters re-evaluate
