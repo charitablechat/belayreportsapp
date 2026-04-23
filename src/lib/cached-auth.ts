@@ -31,6 +31,56 @@ const AUTH_NETWORK_TIMEOUT = 8000; // 8 seconds max for network auth fetch
 /** Supabase auth-token localStorage key — derived from project ref. */
 const SUPABASE_SESSION_KEY = `sb-${import.meta.env.VITE_SUPABASE_PROJECT_ID || 'ssgzcgvygnsrqalisshx'}-auth-token`;
 
+// ── C7: Per-user-namespaced admin cache keys ──
+const ADMIN_CACHE_PREFIX = 'cached-admin-status:';
+const TRUE_SUPER_ADMIN_CACHE_PREFIX = 'cached-true-super-admin:';
+
+export function getAdminCacheKey(userId: string): string {
+  return `${ADMIN_CACHE_PREFIX}${userId}`;
+}
+
+export function getTrueSuperAdminCacheKey(userId: string): string {
+  return `${TRUE_SUPER_ADMIN_CACHE_PREFIX}${userId}`;
+}
+
+/** Sweep ALL namespaced admin cache entries (any user). */
+export function clearAllAdminCacheKeys(): void {
+  try {
+    const keys: string[] = [];
+    for (let i = 0; i < localStorage.length; i++) {
+      const k = localStorage.key(i);
+      if (
+        k &&
+        (k.startsWith(ADMIN_CACHE_PREFIX) ||
+          k.startsWith(TRUE_SUPER_ADMIN_CACHE_PREFIX))
+      ) {
+        keys.push(k);
+      }
+    }
+    keys.forEach((k) => localStorage.removeItem(k));
+  } catch {
+    // ignore
+  }
+}
+
+/** Targeted clear for a single user-id. */
+export function clearAdminCacheForUser(userId: string): void {
+  try {
+    localStorage.removeItem(getAdminCacheKey(userId));
+    localStorage.removeItem(getTrueSuperAdminCacheKey(userId));
+  } catch {
+    // ignore
+  }
+}
+
+// One-time migration: remove legacy unscoped keys (stale by definition)
+try {
+  localStorage.removeItem('cached-admin-status');
+  localStorage.removeItem('cached-true-super-admin');
+} catch {
+  // ignore (e.g. SSR / restricted storage)
+}
+
 /**
  * Detects Navigator LockManager timeout errors from Supabase auth-js.
  * These occur when too many concurrent auth requests compete for the session lock.
