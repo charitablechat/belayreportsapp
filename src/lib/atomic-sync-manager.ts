@@ -1470,6 +1470,7 @@ export async function syncTrainingAtomic(trainingId: string, preValidatedUser?: 
         table: 'training_delivery_approaches',
         operation: 'upsert',
         data: delivery_approaches,
+        rollbackData: existingApproaches,
       });
     }
     
@@ -1478,6 +1479,7 @@ export async function syncTrainingAtomic(trainingId: string, preValidatedUser?: 
         table: 'training_operating_systems',
         operation: 'upsert',
         data: operating_systems,
+        rollbackData: existingSystems,
       });
     }
     
@@ -1486,6 +1488,7 @@ export async function syncTrainingAtomic(trainingId: string, preValidatedUser?: 
         table: 'training_immediate_attention',
         operation: 'upsert',
         data: immediate_attention,
+        rollbackData: existingAttention,
       });
     }
     
@@ -1494,6 +1497,7 @@ export async function syncTrainingAtomic(trainingId: string, preValidatedUser?: 
         table: 'training_verifiable_items',
         operation: 'upsert',
         data: verifiable_items,
+        rollbackData: existingVerifiable,
       });
     }
     
@@ -1502,6 +1506,7 @@ export async function syncTrainingAtomic(trainingId: string, preValidatedUser?: 
         table: 'training_systems_in_place',
         operation: 'upsert',
         data: systems_in_place,
+        rollbackData: existingSystemsInPlace,
       });
     }
     
@@ -1516,6 +1521,7 @@ export async function syncTrainingAtomic(trainingId: string, preValidatedUser?: 
         table: 'training_summary',
         operation: 'upsert',
         data: [sanitizedSummary],
+        rollbackData: existingSummary,
       });
     }
     
