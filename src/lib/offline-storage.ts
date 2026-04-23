@@ -716,6 +716,173 @@ async function withIndexedDBReadBoundary<T>(
  * OPTIMIZED: Skips redundant health checks after first successful DB connection
  * CIRCUIT BREAKER: Fails fast after repeated failures
  */
+// ============================================================================
+// Gap 2.1: Strict save boundary that THROWS on failure.
+// `withIndexedDBErrorBoundary` swallows errors and returns `fallbackValue`,
+// which makes save-failures look like successes to the caller — the form
+// clears its dirty flag and the user navigates away losing data.
+//
+// `withIndexedDBSaveBoundary` is a parallel wrapper used by the three
+// user-facing report saves (saveInspectionOffline / saveTrainingOffline /
+// saveDailyAssessmentOffline). On failure it throws an `IdbSaveError` so
+// callers can KEEP the dirty flag, SKIP appendVersion(), and surface the
+// failure persistently in the AutoSaveIndicator.
+//
+// Returns `{ savedToBackup: true }` when the circuit breaker is open and the
+// emergency localStorage fallback succeeds (caller knows the row is in
+// localStorage, not IDB, but data is safe).
+// ============================================================================
+export type IdbSaveErrorCode =
+  | 'idb_unhealthy'
+  | 'timeout'
+  | 'quota_exceeded'
+  | 'storage_unavailable'
+  | 'unknown';
+
+export class IdbSaveError extends Error {
+  readonly code: IdbSaveErrorCode;
+  readonly operationName: string;
+  readonly cause?: unknown;
+  constructor(code: IdbSaveErrorCode, operationName: string, cause?: unknown) {
+    super(`[${operationName}] save failed: ${code}`);
+    this.name = 'IdbSaveError';
+    this.code = code;
+    this.operationName = operationName;
+    this.cause = cause;
+  }
+}
+
+export function isIdbSaveError(e: unknown): e is IdbSaveError {
+  return e instanceof IdbSaveError || (
+    !!e && typeof e === 'object' && (e as any).name === 'IdbSaveError' && typeof (e as any).code === 'string'
+  );
+}
+
+export type SaveResult = { savedToBackup: boolean };
+
+async function withIndexedDBSaveBoundary(
+  operation: () => Promise<void>,
+  operationName: string,
+  parentDataForFallback?: any,
+): Promise<SaveResult> {
+  // Circuit breaker open — try emergency localStorage write
+  if (isCircuitBreakerOpen()) {
+    if (import.meta.env.DEV) {
+      console.log(`[Offline Storage] Circuit breaker open, attempting localStorage fallback for ${operationName}`);
+    }
+    const fallbackSucceeded = parentDataForFallback
+      ? emergencyLocalStorageFallback(operationName, parentDataForFallback)
+      : false;
+
+    // Show toast once per session like the silent boundary
+    try {
+      const cbWarningKey = 'circuit-breaker-warning-shown';
+      if (typeof sessionStorage !== 'undefined' && !sessionStorage.getItem(cbWarningKey)) {
+        sessionStorage.setItem(cbWarningKey, 'true');
+        import('@/hooks/use-toast').then(({ toast }) => {
+          if (fallbackSucceeded) {
+            toast({
+              title: 'Using backup storage',
+              description: "Your changes are saved locally. They'll sync when storage recovers.",
+            });
+          } else {
+            toast({
+              title: 'Storage unavailable',
+              description: 'Your changes are NOT saved. Stay on this page until storage recovers.',
+              variant: 'destructive',
+            });
+          }
+        }).catch(() => {});
+        const resetTime = getCircuitBreakerResetTime();
+        setTimeout(() => sessionStorage.removeItem(cbWarningKey), resetTime + 1000);
+      }
+    } catch { /* ignore */ }
+
+    if (fallbackSucceeded) return { savedToBackup: true };
+    throw new IdbSaveError('storage_unavailable', operationName);
+  }
+
+  // Pick timeout tier (mirror silent boundary)
+  const opLowerForTier = operationName.toLowerCase();
+  let OPERATION_TIMEOUT: number;
+  if (opLowerForTier.includes('photo')) {
+    OPERATION_TIMEOUT = IDB_TIMEOUTS.write;
+  } else if (
+    opLowerForTier.includes('batch') ||
+    opLowerForTier.includes('related') ||
+    opLowerForTier.includes('training') ||
+    opLowerForTier.includes('assessment') ||
+    opLowerForTier.includes('getall') ||
+    opLowerForTier.includes('unsynced')
+  ) {
+    OPERATION_TIMEOUT = IDB_TIMEOUTS.batch;
+  } else if (opLowerForTier.includes('save') || opLowerForTier.includes('delete') || opLowerForTier.includes('put')) {
+    OPERATION_TIMEOUT = IDB_TIMEOUTS.write;
+  } else {
+    OPERATION_TIMEOUT = IDB_TIMEOUTS.light;
+  }
+  const TIMEOUT_SENTINEL = Symbol('timeout');
+
+  try {
+    const result = await withTimeout(
+      (async () => {
+        if (!dbConnectionVerified) {
+          const isHealthy = await checkIndexedDBHealth();
+          if (!isHealthy) {
+            throw new IdbSaveError('idb_unhealthy', operationName);
+          }
+          dbConnectionVerified = true;
+        }
+        await operation();
+        return 'ok' as const;
+      })(),
+      OPERATION_TIMEOUT,
+      TIMEOUT_SENTINEL as any,
+    );
+
+    if (result === TIMEOUT_SENTINEL) {
+      console.warn(`[Offline Storage] Save timeout for ${operationName}, resetting DB connection`);
+      dbConnectionVerified = false;
+      recordIndexedDBFailure();
+      if (dbPromise) {
+        dbPromise.then(db => db.close()).catch(() => {});
+        dbPromise = null;
+      }
+      throw new IdbSaveError('timeout', operationName);
+    }
+
+    recordIndexedDBSuccess();
+    return { savedToBackup: false };
+  } catch (error: any) {
+    if (isIdbSaveError(error)) {
+      // Already-tagged failures (idb_unhealthy / timeout) — re-throw as-is
+      if (error.code === 'idb_unhealthy') recordIndexedDBFailure();
+      throw error;
+    }
+
+    console.error(`[Offline Storage] Save error in ${operationName}:`, error);
+    dbConnectionVerified = false;
+
+    const isQuotaError = error?.name === 'QuotaExceededError' || error?.message?.includes('QuotaExceeded');
+    if (!isQuotaError) {
+      recordIndexedDBFailure();
+    }
+
+    if (isQuotaError && typeof window !== 'undefined') {
+      import('@/hooks/use-toast').then(({ toast }) => {
+        toast({
+          title: 'Storage full',
+          description: 'Device storage is full. Please sync your data and clear old reports.',
+          variant: 'destructive',
+        });
+      }).catch(() => {});
+      throw new IdbSaveError('quota_exceeded', operationName, error);
+    }
+
+    throw new IdbSaveError('unknown', operationName, error);
+  }
+}
+
 async function withIndexedDBErrorBoundary<T>(
   operation: () => Promise<T>,
   fallbackValue: T,
@@ -1199,40 +1366,31 @@ export async function getDB() {
 
 // Inspection functions
 
+/**
+ * Save an inspection to IndexedDB.
+ * Throws `IdbSaveError` on hard failure (Gap 2.1) — callers MUST handle rejection
+ * to avoid clearing the form's dirty flag while data is unsaved.
+ * Returns `{ savedToBackup: true }` if the row was written to the localStorage
+ * emergency fallback instead of IDB.
+ */
 export async function saveInspectionOffline(
   inspection: any,
   opts?: { childCountHint?: number }
-) {
-  return withIndexedDBErrorBoundary(
+): Promise<SaveResult> {
+  return withIndexedDBSaveBoundary(
     async () => {
-      try {
-        const db = await getDB();
-
-        // S30: Prefer caller-provided hint to avoid IDB contention on every save.
-        // If not provided, preserve the existing hint already on the row (a stale
-        // hint is safe — the SW guard becomes more lenient, not stricter).
-        if (opts?.childCountHint != null && opts.childCountHint >= 0) {
-          inspection.child_count_hint = opts.childCountHint;
-        }
-        // else: keep inspection.child_count_hint as-is (no scan)
-
-        await db.put('inspections', inspection);
-
-        if (import.meta.env.DEV) {
-          console.log('[Offline Storage] Saved inspection:', inspection.id);
-        }
-      } catch (error: any) {
-        console.error('[Offline Storage] Failed to save inspection:', error);
-        
-        if (error.name === 'QuotaExceededError') {
-          throw new Error('Storage quota exceeded. Please sync and clear old data.');
-        }
-        
-        throw error;
+      const db = await getDB();
+      // S30: prefer caller-provided hint; otherwise preserve existing hint.
+      if (opts?.childCountHint != null && opts.childCountHint >= 0) {
+        inspection.child_count_hint = opts.childCountHint;
+      }
+      await db.put('inspections', inspection);
+      if (import.meta.env.DEV) {
+        console.log('[Offline Storage] Saved inspection:', inspection.id);
       }
     },
-    undefined,
-    'saveInspectionOffline'
+    'saveInspectionOffline',
+    inspection,
   );
 }
 
@@ -2502,27 +2660,27 @@ export async function clearRelatedDataOffline(
 }
 
 // Daily Assessment functions
+/**
+ * Save a daily assessment to IndexedDB.
+ * Throws `IdbSaveError` on hard failure (Gap 2.1) — callers MUST handle rejection.
+ */
 export async function saveDailyAssessmentOffline(
   assessment: any,
   opts?: { childCountHint?: number }
-) {
-  return withIndexedDBErrorBoundary(
+): Promise<SaveResult> {
+  return withIndexedDBSaveBoundary(
     async () => {
       const db = await getDB();
-
-      // S30: Prefer caller-provided hint; otherwise preserve existing value.
       if (opts?.childCountHint != null && opts.childCountHint >= 0) {
         assessment.child_count_hint = opts.childCountHint;
       }
-
       await db.put('daily_assessments', assessment);
-      
       if (import.meta.env.DEV) {
         console.log('[Offline Storage] Saved daily assessment:', assessment.id);
       }
     },
-    undefined,
-    'saveDailyAssessmentOffline'
+    'saveDailyAssessmentOffline',
+    assessment,
   );
 }
 
@@ -2845,27 +3003,27 @@ export async function clearAssessmentDataOffline(
 }
 
 // Training functions
+/**
+ * Save a training to IndexedDB.
+ * Throws `IdbSaveError` on hard failure (Gap 2.1) — callers MUST handle rejection.
+ */
 export async function saveTrainingOffline(
   training: any,
   opts?: { childCountHint?: number }
-) {
-  return withIndexedDBErrorBoundary(
+): Promise<SaveResult> {
+  return withIndexedDBSaveBoundary(
     async () => {
       const db = await getDB();
-
-      // S30: Prefer caller-provided hint; otherwise preserve existing value.
       if (opts?.childCountHint != null && opts.childCountHint >= 0) {
         training.child_count_hint = opts.childCountHint;
       }
-
       await db.put('trainings', training);
-      
       if (import.meta.env.DEV) {
         console.log('[Offline Storage] Saved training:', training.id);
       }
     },
-    undefined,
-    'saveTrainingOffline'
+    'saveTrainingOffline',
+    training,
   );
 }
 

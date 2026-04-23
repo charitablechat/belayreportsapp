@@ -127,6 +127,12 @@ async function getVersionStore(mode: IDBTransactionMode = 'readonly') {
 /**
  * Append a new immutable version entry for a report.
  * Fire-and-forget — never blocks the caller's save path.
+ *
+ * Gap 2.1: MUST only be called after a confirmed successful IDB save. Calling
+ * this on a failed save creates a version snapshot for data the user cannot
+ * recover, which both wastes storage and lies to the user about what's saved.
+ * Form auto-save code paths must therefore wrap their save calls in try/catch
+ * and skip `appendVersion` on `IdbSaveError` rejection.
  */
 export async function appendVersion(
   reportType: ReportType,

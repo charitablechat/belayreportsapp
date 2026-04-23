@@ -1590,7 +1590,7 @@ export default function InspectionForm() {
         const inspectionChildHint =
           systems.length + ziplines.length + equipment.length + standards.length +
           (currentSummary && (currentSummary.critical_actions || currentSummary.repairs_performed || currentSummary.future_considerations || currentSummary.next_inspection_date) ? 1 : 0);
-        const childSaveOps: Promise<void>[] = [
+        const childSaveOps: Promise<unknown>[] = [
           saveInspectionOffline(inspectionToSave, { childCountHint: inspectionChildHint }),
         ];
         if (systems.length > 0 || childDataLoadedRef.current.systems) {
@@ -1648,6 +1648,14 @@ export default function InspectionForm() {
         }).catch(() => {});
       } catch (offlineError) {
         console.warn('[InspectionForm Save] Offline storage failed:', offlineError);
+        // Gap 2.1: A real IdbSaveError must propagate so callers KEEP the dirty
+        // flag set, SKIP advancing lastSaved, and SKIP appendVersion(). The
+        // localStorage snapshot above is still the user's safety net.
+        const { isIdbSaveError } = await import('@/lib/offline-storage');
+        if (isIdbSaveError(offlineError)) {
+          setSaveError('Local save failed — your changes are NOT stored. Tap to retry.');
+          throw offlineError;
+        }
         if (!silent) {
           toast.warning("Saved to backup — retrying storage", {
             description: "Your data is safe. Extended storage is slow on this device.",
