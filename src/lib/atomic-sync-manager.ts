@@ -1,4 +1,19 @@
 import { supabase } from "@/integrations/supabase/client";
+
+/**
+ * Build a user-facing label from a list of parts, skipping empty/nullish values.
+ * Returns `fallback` when no usable parts remain so we never show " - " or a
+ * leading separator.
+ */
+function formatProgressLabel(
+  parts: Array<string | null | undefined>,
+  fallback: string
+): string {
+  const cleaned = parts
+    .map((p) => (typeof p === 'string' ? p.trim() : ''))
+    .filter((p) => p.length > 0);
+  return cleaned.length > 0 ? cleaned.join(' - ') : fallback;
+}
 import { getUserWithCache, ensureValidSession, type CachedUser } from "@/lib/cached-auth";
 import { 
   getUnsyncedInspections,
