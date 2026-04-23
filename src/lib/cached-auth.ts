@@ -3,6 +3,7 @@ import {
   saveUserMapping,
   clearOfflineAuth,
   readSyntheticSession,
+  clearSyntheticSession,
 } from "@/lib/offline-auth";
 import { isPlaceholderToken } from "@/lib/synthetic-session-guard";
 
