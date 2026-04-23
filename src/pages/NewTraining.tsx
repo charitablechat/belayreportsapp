@@ -147,7 +147,9 @@ export default function NewTraining() {
 
       const now = new Date().toISOString();
       const tempId = `temp-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
-      
+      // S5: stable client idempotency key for sync dedup (server-enforced)
+      const clientIdempotencyKey = crypto.randomUUID();
+
       const newTraining = {
         id: tempId,
         inspector_id: user.id,
@@ -162,6 +164,7 @@ export default function NewTraining() {
         created_at: now,
         updated_at: now,
         synced_at: null as string | null,
+        client_idempotency_key: clientIdempotencyKey,
       };
 
       if (isOnline) {
@@ -177,6 +180,7 @@ export default function NewTraining() {
             trainer_of_record: trainerName || null,
             latitude: formData.latitude,
             longitude: formData.longitude,
+            client_idempotency_key: clientIdempotencyKey,
           }])
           .select()
           .single();

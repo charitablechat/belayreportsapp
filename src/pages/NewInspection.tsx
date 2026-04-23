@@ -485,7 +485,11 @@ export default function NewInspection() {
       }
 
       const tempId = `temp-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
-      
+      // S5: stable client idempotency key — derived from temp id (already a UUID-shaped string).
+      // Used by the sync layer to detect when the same offline record is being synced twice
+      // (server-enforced via partial unique index on (inspector_id, client_idempotency_key)).
+      const clientIdempotencyKey = crypto.randomUUID();
+
       const newInspection = {
         ...formData,
         id: tempId,
@@ -495,6 +499,7 @@ export default function NewInspection() {
         created_at: new Date().toISOString(),
         updated_at: new Date().toISOString(),
         inspection_date: new Date().toISOString().split('T')[0],
+        client_idempotency_key: clientIdempotencyKey,
       };
 
       const cleanedFormData = {
@@ -518,6 +523,7 @@ export default function NewInspection() {
             inspector_id: user.id,
             status: "draft",
             synced_at: syncTimestamp,
+            client_idempotency_key: clientIdempotencyKey,
           })
           .select()
           .single();

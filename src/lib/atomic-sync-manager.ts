@@ -56,6 +56,7 @@ import {
 import { appendVersion, getLatestFieldCount, calculateFieldCount } from "./report-version-manager";
 import { runWithConcurrency } from "./concurrency";
 import { assertNoTempIds, assertNoTempIdsInArray } from "./sw-sync-validators";
+import { registerSelfWrite } from "./sync-events";
 
 /**
  * Maximum number of items to process per sync cycle.
@@ -154,36 +155,46 @@ export async function syncInspectionAtomic(inspectionId: string, preValidatedUse
     
     // Detect and replace temp inspection IDs with real UUIDs before validation
     if (inspection.id.startsWith('temp-')) {
-      // DEDUP GUARD: Check if an identical record already exists on the server
-      // This prevents duplicate creation when both main thread and service worker sync simultaneously
-      const { data: existingDup } = await supabase
+      // S5: DEDUP via stable client_idempotency_key (server-enforced via partial unique index).
+      // Falls back to deriving the key from the temp id for legacy temp records that
+      // were created before this column existed.
+      const idempKey = (inspection as any).client_idempotency_key
+        ?? inspection.id.replace(/^temp-/, '');
+
+      const { data: dupRows } = await supabase
         .from('inspections')
         .select('id')
         .eq('inspector_id', inspection.inspector_id)
-        .eq('organization', inspection.organization)
-        .eq('created_at', inspection.created_at)
-        .maybeSingle();
+        .eq('client_idempotency_key', idempKey)
+        .limit(2);
 
-      if (existingDup) {
+      if (dupRows && dupRows.length > 0) {
+        if (dupRows.length > 1) {
+          console.warn('[Atomic Sync] Multiple server rows share idempotency key — adopting first, manual cleanup needed', {
+            idempKey, ids: dupRows.map(r => r.id),
+          });
+        }
+        const serverId = dupRows[0].id;
         console.log('[Atomic Sync] Found existing server record for temp inspection - adopting ID:', {
           tempId: inspection.id,
-          serverId: existingDup.id,
+          serverId,
         });
-        inspectionIdMapping = { oldId: inspection.id, newId: existingDup.id };
-        inspection.id = existingDup.id;
-        inspectionId = existingDup.id;
+        inspectionIdMapping = { oldId: inspection.id, newId: serverId };
+        inspection.id = serverId;
+        inspectionId = serverId;
       } else {
         const newId = crypto.randomUUID();
         inspectionIdMapping = { oldId: inspection.id, newId };
-        
         console.log('[Atomic Sync] Replacing temp inspection ID with real UUID:', {
           oldId: inspection.id,
           newId,
         });
-        
         inspection.id = newId;
         inspectionId = newId;
       }
+
+      // Always carry the idempotency key forward into the upsert payload.
+      (inspection as any).client_idempotency_key = idempKey;
     }
     
     // Use pre-validated user from batch caller, or validate session if called individually
@@ -641,6 +652,8 @@ export async function syncInspectionAtomic(inspectionId: string, preValidatedUse
     });
     
     // 5. Execute transaction
+    // S6: register self-write so the Realtime handler doesn't re-trigger sync from our own writes
+    registerSelfWrite(inspectionId);
     const result = await executeTransaction(steps);
     
     if (!result.success) {
@@ -656,6 +669,7 @@ export async function syncInspectionAtomic(inspectionId: string, preValidatedUse
     // POST-SYNC ALIGNMENT: Call align_synced_at RPC to set synced_at = updated_at on server
     // The updated trigger now preserves updated_at for metadata-only changes,
     // and this RPC ensures synced_at >= updated_at, eliminating the re-sync race condition.
+    registerSelfWrite(inspectionId); // S6: align_synced_at is a separate server write
     const { data: aligned, error: alignError } = await supabase.rpc('align_synced_at', {
       p_table_name: 'inspections',
       p_record_id: inspectionId,
@@ -996,35 +1010,43 @@ export async function syncTrainingAtomic(trainingId: string, preValidatedUser?: 
     
     // Detect and replace temp training IDs with real UUIDs before validation
     if (training.id.startsWith('temp-')) {
-      // DEDUP GUARD: Check if an identical record already exists on the server
-      const { data: existingDup } = await supabase
+      // S5: DEDUP via stable client_idempotency_key (server-enforced via partial unique index).
+      const idempKey = (training as any).client_idempotency_key
+        ?? training.id.replace(/^temp-/, '');
+
+      const { data: dupRows } = await supabase
         .from('trainings')
         .select('id')
         .eq('inspector_id', training.inspector_id)
-        .eq('organization', training.organization)
-        .eq('created_at', training.created_at)
-        .maybeSingle();
+        .eq('client_idempotency_key', idempKey)
+        .limit(2);
 
-      if (existingDup) {
+      if (dupRows && dupRows.length > 0) {
+        if (dupRows.length > 1) {
+          console.warn('[Atomic Sync] Multiple server rows share idempotency key — adopting first, manual cleanup needed', {
+            idempKey, ids: dupRows.map(r => r.id),
+          });
+        }
+        const serverId = dupRows[0].id;
         console.log('[Atomic Sync] Found existing server record for temp training - adopting ID:', {
           tempId: training.id,
-          serverId: existingDup.id,
+          serverId,
         });
-        trainingIdMapping = { oldId: training.id, newId: existingDup.id };
-        training.id = existingDup.id;
-        trainingId = existingDup.id;
+        trainingIdMapping = { oldId: training.id, newId: serverId };
+        training.id = serverId;
+        trainingId = serverId;
       } else {
         const newId = crypto.randomUUID();
         trainingIdMapping = { oldId: training.id, newId };
-        
         console.log('[Atomic Sync] Replacing temp training ID with real UUID:', {
           oldId: training.id,
           newId,
         });
-        
         training.id = newId;
         trainingId = newId;
       }
+
+      (training as any).client_idempotency_key = idempKey;
     }
     
     // Use pre-validated user from batch caller, or validate session if called individually
@@ -1450,6 +1472,8 @@ export async function syncTrainingAtomic(trainingId: string, preValidatedUser?: 
     });
     
     // 5. Execute transaction
+    // S6: register self-write so the Realtime handler doesn't re-trigger sync from our own writes
+    registerSelfWrite(trainingId);
     const result = await executeTransaction(steps);
     
     if (!result.success) {
@@ -1463,6 +1487,7 @@ export async function syncTrainingAtomic(trainingId: string, preValidatedUser?: 
     const inspectorProfile = await getCachedProfile(user.id);
     
     // POST-SYNC ALIGNMENT: Call align_synced_at RPC to set synced_at = updated_at on server
+    registerSelfWrite(trainingId); // S6: align_synced_at is a separate server write
     const { data: aligned, error: alignError } = await supabase.rpc('align_synced_at', {
       p_table_name: 'trainings',
       p_record_id: trainingId,
@@ -1743,35 +1768,43 @@ export async function syncDailyAssessmentAtomic(assessmentId: string, preValidat
     
     // Detect and replace temp assessment IDs with real UUIDs before validation
     if (assessment.id.startsWith('temp-')) {
-      // DEDUP GUARD: Check if an identical record already exists on the server
-      const { data: existingDup } = await supabase
+      // S5: DEDUP via stable client_idempotency_key (server-enforced via partial unique index).
+      const idempKey = (assessment as any).client_idempotency_key
+        ?? assessment.id.replace(/^temp-/, '');
+
+      const { data: dupRows } = await supabase
         .from('daily_assessments')
         .select('id')
         .eq('inspector_id', assessment.inspector_id)
-        .eq('organization', assessment.organization)
-        .eq('created_at', assessment.created_at)
-        .maybeSingle();
+        .eq('client_idempotency_key', idempKey)
+        .limit(2);
 
-      if (existingDup) {
+      if (dupRows && dupRows.length > 0) {
+        if (dupRows.length > 1) {
+          console.warn('[Atomic Sync] Multiple server rows share idempotency key — adopting first, manual cleanup needed', {
+            idempKey, ids: dupRows.map(r => r.id),
+          });
+        }
+        const serverId = dupRows[0].id;
         console.log('[Atomic Sync] Found existing server record for temp assessment - adopting ID:', {
           tempId: assessment.id,
-          serverId: existingDup.id,
+          serverId,
         });
-        assessmentIdMapping = { oldId: assessment.id, newId: existingDup.id };
-        assessment.id = existingDup.id;
-        assessmentId = existingDup.id;
+        assessmentIdMapping = { oldId: assessment.id, newId: serverId };
+        assessment.id = serverId;
+        assessmentId = serverId;
       } else {
         const newId = crypto.randomUUID();
         assessmentIdMapping = { oldId: assessment.id, newId };
-        
         console.log('[Atomic Sync] Replacing temp assessment ID with real UUID:', {
           oldId: assessment.id,
           newId,
         });
-        
         assessment.id = newId;
         assessmentId = newId;
       }
+
+      (assessment as any).client_idempotency_key = idempKey;
     }
     
     // Use pre-validated user from batch caller, or validate session if called individually
@@ -2188,6 +2221,8 @@ export async function syncDailyAssessmentAtomic(assessmentId: string, preValidat
     });
     
     // 5. Execute transaction
+    // S6: register self-write so the Realtime handler doesn't re-trigger sync from our own writes
+    registerSelfWrite(assessmentId);
     const result = await executeTransaction(steps);
     
     if (!result.success) {
@@ -2201,6 +2236,7 @@ export async function syncDailyAssessmentAtomic(assessmentId: string, preValidat
     const inspectorProfile = await getCachedProfile(user.id);
     
     // POST-SYNC ALIGNMENT: Call align_synced_at RPC to set synced_at = updated_at on server
+    registerSelfWrite(assessmentId); // S6: align_synced_at is a separate server write
     const { data: aligned, error: alignError } = await supabase.rpc('align_synced_at', {
       p_table_name: 'daily_assessments',
       p_record_id: assessmentId,
