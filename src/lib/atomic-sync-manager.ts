@@ -2885,7 +2885,17 @@ export async function refetchTrainingPackage(trainingId: string): Promise<void> 
     ]);
     if (error || !training) return;
     registerSelfWrite(trainingId);
-    await saveTrainingOffline({ ...training, synced_at: training.updated_at });
+    // C1: see refetchInspectionPackage above.
+    const refetchT0Ms = training.updated_at ? Date.parse(training.updated_at as string) : NaN;
+    await safePostSyncSave(
+      trainingId,
+      training as any,
+      refetchT0Ms,
+      (training as any).updated_at,
+      {} as any,
+      getOfflineTraining,
+      saveTrainingOffline,
+    );
     await Promise.all([
       clearTrainingDataOffline('delivery_approaches', trainingId).then(() => da.length > 0 ? saveTrainingDataOffline('delivery_approaches', trainingId, da) : null),
       clearTrainingDataOffline('operating_systems', trainingId).then(() => os.length > 0 ? saveTrainingDataOffline('operating_systems', trainingId, os) : null),
@@ -2914,7 +2924,17 @@ export async function refetchAssessmentPackage(assessmentId: string): Promise<vo
     ]);
     if (error || !assessment) return;
     registerSelfWrite(assessmentId);
-    await saveDailyAssessmentOffline({ ...assessment, synced_at: assessment.updated_at });
+    // C1: see refetchInspectionPackage above.
+    const refetchT0Ms = assessment.updated_at ? Date.parse(assessment.updated_at as string) : NaN;
+    await safePostSyncSave(
+      assessmentId,
+      assessment as any,
+      refetchT0Ms,
+      (assessment as any).updated_at,
+      {} as any,
+      getOfflineDailyAssessment,
+      saveDailyAssessmentOffline,
+    );
     await Promise.all([
       clearAssessmentDataOffline('beginning_of_day', assessmentId).then(() => bod.length > 0 ? saveAssessmentDataOffline('beginning_of_day', assessmentId, bod) : null),
       clearAssessmentDataOffline('end_of_day', assessmentId).then(() => eod.length > 0 ? saveAssessmentDataOffline('end_of_day', assessmentId, eod) : null),
