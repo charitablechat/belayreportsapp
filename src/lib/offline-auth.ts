@@ -437,26 +437,37 @@ async function migrateUserData(oldUserId: string, newUserId: string): Promise<vo
 
     for (const { name, idField } of storesToMigrate) {
       try {
-        const tx = db.transaction(name, 'readwrite');
-        const store = tx.objectStore(name);
-        const allRecords = await store.getAll();
-        for (const record of allRecords) {
-          if (record[idField] === oldUserId) {
-            record[idField] = newUserId;
-            await store.put(record);
-            totalMigrated++;
-          }
-        }
-        await tx.done;
+        // Read phase in its own readonly tx (free to await between calls).
+        const readTx = db.transaction(name, 'readonly');
+        const allRecords = await readTx.objectStore(name).getAll();
+        await readTx.done;
+
+        const toMigrate = allRecords.filter((r: any) => r[idField] === oldUserId);
+        if (toMigrate.length === 0) continue;
+
+        // Write phase: open tx, fire all puts synchronously (no await between
+        // requests, otherwise the tx auto-closes), then await tx.done.
+        const writeTx = db.transaction(name, 'readwrite');
+        const writeStore = writeTx.objectStore(name);
+        const puts = toMigrate.map((record: any) => {
+          record[idField] = newUserId;
+          return writeStore.put(record);
+        });
+        await Promise.all(puts);
+        await writeTx.done;
+        totalMigrated += toMigrate.length;
       } catch (storeError) {
         console.warn(`[OfflineAuth] Failed to migrate store ${name}:`, storeError);
       }
     }
 
     try {
-      const tx = db.transaction('photos', 'readwrite');
-      const store = tx.objectStore('photos');
-      const allPhotos = await store.getAll();
+      // Read phase: collect all photos and figure out which need rewriting.
+      const readTx = db.transaction('photos', 'readonly');
+      const allPhotos = await readTx.objectStore('photos').getAll();
+      await readTx.done;
+
+      const toMigrate: any[] = [];
       for (const photo of allPhotos) {
         let changed = false;
         if (photo.photoUrl && typeof photo.photoUrl === 'string' && photo.photoUrl.includes(oldUserId)) {
@@ -467,12 +478,18 @@ async function migrateUserData(oldUserId: string, newUserId: string): Promise<vo
           photo.fileName = photo.fileName.replace(oldUserId, newUserId);
           changed = true;
         }
-        if (changed) {
-          await store.put(photo);
-          totalMigrated++;
-        }
+        if (changed) toMigrate.push(photo);
       }
-      await tx.done;
+
+      if (toMigrate.length > 0) {
+        // Write phase: fire all puts synchronously inside a single tx.
+        const writeTx = db.transaction('photos', 'readwrite');
+        const writeStore = writeTx.objectStore('photos');
+        const puts = toMigrate.map((photo) => writeStore.put(photo));
+        await Promise.all(puts);
+        await writeTx.done;
+        totalMigrated += toMigrate.length;
+      }
     } catch (storeError) {
       console.warn('[OfflineAuth] Failed to migrate photos store:', storeError);
     }
