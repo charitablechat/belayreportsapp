@@ -264,6 +264,10 @@ export async function reconcileAllChildTables(
   const blockedTables = results
     .filter(r => r.result.blocked)
     .map(r => ({ table: r.table, reason: r.result.blockReason || 'unknown' }));
+  // C4: capture per-table deleted row pre-images for restore-on-failure.
+  const deletedByTable: ReconciledTableDelete[] = results
+    .filter(r => r.result.deletedRows && r.result.deletedRows.length > 0)
+    .map(r => ({ table: r.table, rows: r.result.deletedRows }));
 
   if (totalDeleted > 0) {
     console.log(`[Reconcile] Total ${totalDeleted} orphaned rows deleted for ${reportType} ${parentId.substring(0, 8)}...`);
@@ -276,5 +280,6 @@ export async function reconcileAllChildTables(
     totalDeleted,
     blocked: blockedTables.length > 0,
     blockedTables,
+    deletedByTable,
   };
 }
