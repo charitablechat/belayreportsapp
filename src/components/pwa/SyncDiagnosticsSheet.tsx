@@ -58,11 +58,14 @@ export const SyncDiagnosticsSheet = () => {
     isCheckingForUpdate,
     checkForUpdates,
   } = usePWA();
-  const { deadLetterPhotos, updatePhotoCount } = useUnsyncedPhotos();
+  const { deadLetterPhotos, regressionSkipEntries, updatePhotoCount } = useUnsyncedPhotos();
+  const { forceSync } = usePWA();
   const [open, setOpen] = useState(false);
   const [busyPhotoId, setBusyPhotoId] = useState<string | null>(null);
   const [deadLetterDeletes, setDeadLetterDeletes] = useState<DeadLetterSoftDelete[]>([]);
   const [busyDeadLetterId, setBusyDeadLetterId] = useState<string | null>(null);
+  const [busyHeldBackId, setBusyHeldBackId] = useState<string | null>(null);
+  const [heldBackLabels, setHeldBackLabels] = useState<Record<string, string>>({});
   const [diag, setDiag] = useState<DiagnosticsState>({
     swRegistered: false,
     swController: false,
