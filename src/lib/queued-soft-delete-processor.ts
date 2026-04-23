@@ -30,17 +30,6 @@ export const MAX_SOFT_DELETE_ATTEMPTS = 5;
 type QueueStore = 'operations' | 'assessment_operations' | 'training_operations';
 type TableName = 'inspections' | 'trainings' | 'daily_assessments';
 
-/**
- * Determine the Supabase table from the queued operation data.
- */
-function resolveTable(data: any): TableName | null {
-  if (!data) return null;
-  if ('assessment_date' in data && !('start_date' in data)) return 'daily_assessments';
-  if ('start_date' in data) return 'trainings';
-  if ('inspection_date' in data || 'location' in data) return 'inspections';
-  return 'inspections';
-}
-
 function isSoftDeleteOp(op: any): boolean {
   return op?.type === 'update' && op?.data?.deleted_at != null;
 }
@@ -132,11 +121,18 @@ export async function processQueuedSoftDeletes(signal?: AbortSignal): Promise<So
     for (const op of inspOps) {
       if (signal?.aborted) return result;
       if (!isSoftDeleteOp(op)) continue;
-      const table = resolveTable(op.data);
-      if (!table) continue;
+      const table: TableName = 'inspections';
 
       const recordId = op.inspectionId || op.data?.id;
-      if (!recordId) continue;
+      if (!recordId || !op.data?.deleted_at) {
+        console.warn('[QueuedSoftDelete] Skipping malformed inspection op (missing id or deleted_at):', {
+          opId: op.id,
+          hasData: !!op.data,
+          hasId: !!recordId,
+          hasDeletedAt: !!op.data?.deleted_at,
+        });
+        continue;
+      }
 
       try {
         const { error } = await supabase
