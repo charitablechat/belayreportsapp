@@ -224,10 +224,29 @@ export async function syncPhotos(signal?: AbortSignal): Promise<{ remaining: num
 
         // Guard: blob must exist (may have been nullified by a previous partial success)
         if (!photo.blob) {
-          if (import.meta.env.DEV) {
-            console.warn('[Sync Manager] Skipping photo with null blob (already uploaded?):', photo.id);
+          if (photo.photoUrl && !photo.photoUrl.startsWith('pending/')) {
+            // C5: Real, non-pending storage path is on record — the previous upload
+            // succeeded and only the markPhotoAsUploaded write lost its way.
+            // Safe to finalize with the known-good path.
+            if (import.meta.env.DEV) {
+              console.warn('[Sync Manager] Finalizing photo with null blob but known photoUrl:', photo.id);
+            }
+            await markPhotoAsUploaded(photo.id, photo.photoUrl);
+            changedCount++;
+            return;
           }
-          await markPhotoAsUploaded(photo.id, photo.photoUrl || photo.id);
+
+          // C5: No blob AND no trustworthy photoUrl — we cannot reconstruct the upload.
+          // Surface as a permanent dead-letter so the user sees it in
+          // SyncDiagnosticsSheet instead of a silent broken-image landmine in the
+          // rendered report. Never fall back to photo.id (it is not a valid storage key).
+          console.error('[Sync Manager] Photo has no blob and no photoUrl — dead-lettering:', photo.id);
+          await setPhotoLastError(photo.id, 'Photo data missing (no blob and no storage path). Re-capture required.');
+          // Saturate the retry counter so the dead-letter UI surfaces it on next refresh
+          // (the photo is not recoverable by retry).
+          for (let i = 0; i < MAX_PHOTO_RETRIES; i++) {
+            await incrementPhotoRetryCount(photo.id);
+          }
           changedCount++;
           return;
         }
