@@ -1429,7 +1429,7 @@ export default function InspectionForm() {
       const user = await getUserWithCache().catch(() => null);
       
       // Preserve original inspector_id - only update timestamp
-      const inspectionToSave = {
+      const baseInspectionToSave = {
         ...inspection,
         updated_at: new Date().toISOString(),
         // DISABLED: active_duration_seconds: getElapsedSeconds(),
@@ -1438,6 +1438,26 @@ export default function InspectionForm() {
           ? { last_modified_by: currentUser.id } 
           : {}),
       };
+
+      // S9: Reconcile user-clear intent. If the user has emptied every section
+      // of a previously-synced inspection, stamp `user_cleared_at` so the
+      // sync pipeline doesn't restore the server copy back into IDB.
+      const summarySnapshot = summaryRef.current;
+      const summaryHasAnyContent = !!(summarySnapshot && (
+        summarySnapshot.repairs_performed ||
+        summarySnapshot.critical_actions ||
+        summarySnapshot.future_considerations ||
+        summarySnapshot.next_inspection_date
+      ));
+      const totalChildCount =
+        systems.length + ziplines.length + equipment.length +
+        standards.length + (summaryHasAnyContent ? 1 : 0);
+      const { reconcileClearIntent } = await import('@/lib/clear-intent');
+      const inspectionToSave = reconcileClearIntent(
+        baseInspectionToSave,
+        totalChildCount,
+        !!baseInspectionToSave.synced_at,
+      );
       
       // Validate before saving
       // Only include summary in validation if it has required fields and content
