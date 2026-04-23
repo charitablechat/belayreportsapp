@@ -275,12 +275,7 @@ export function clearSessionStateForOfflineSignout(): void {
   // Drop only the synthetic session — keep the offline_auth IDB entry and the
   // cached admin/profile flags in localStorage so the next offline sign-in is
   // instant.
-  try {
-    const { clearSyntheticSession } = require('@/lib/offline-auth');
-    clearSyntheticSession();
-  } catch {
-    // Synchronous import not available — handled separately by caller.
-  }
+  clearSyntheticSession();
 }
 
 /**
