@@ -1,47 +1,54 @@
 
 
-## S27 — Harden conflict-audit insert against null `organization_id`
+## S28 — Add retry ceiling + dead-letter for queued soft-deletes
 
-### Current state
+### Problem
 
-`src/lib/atomic-sync-manager.ts` L420–434 already guards the `sync_conflicts` insert:
+`processQueuedSoftDeletes` retries failed soft-delete ops every sync cycle forever. A permanent failure (RLS denial, deleted record, schema mismatch) burns network and log noise indefinitely with no operator visibility.
 
-```ts
-const organizationId = inspection.organization_id;
-if (organizationId) {
-  try { await supabase.from('sync_conflicts').insert({ ... }); }
-  catch (auditErr) { console.warn(...); }
-}
-```
+### Design
 
-So the literal "throws and infinite-retries" scenario described in S27 cannot occur from this site today: the `if` skips the insert and the surrounding try/catch would swallow it anyway. DB confirms `sync_conflicts.organization_id` is `NOT NULL`, and exactly **1** inspection in production currently has `organization_id IS NULL`.
+**Retry counter on the queue entry.** Add an `attempts: number` field (and `lastError: string`, `lastAttemptAt: string`) to queued op records as they pass through the processor. The IDB stores already accept arbitrary fields on op rows (`getQueuedOperations` returns the raw object), so we can persist these without a schema migration — we just `put` the mutated op back via the existing `removeQueuedOperation` + re-add pattern, OR add a small `updateQueuedOperation` helper.
 
-### What's still worth doing
+**Threshold.** `MAX_SOFT_DELETE_ATTEMPTS = 5`. After the 5th consecutive failure, the op is moved to a dead-letter store and removed from the active queue.
 
-Two small hardenings so the silent-skip path is observable and self-healing:
+**Dead-letter store.** New IDB object store `dead_letter_soft_deletes` (created lazily; bumped DB version handled via existing `idb-migration-safety` snapshot path). Each entry: `{ id, originalOp, table, recordId, attempts, firstFailedAt, lastError, deadLetteredAt }`. No automatic retry — operator-visible only.
 
-1. **Backfill attempt before skipping.** When `inspection.organization_id` is null but `inspection.organization` (text) is set, try a one-shot lookup against `organizations` by name and use that id for the audit insert. Don't mutate the inspection row — just enable the audit row. If lookup fails, fall through to the skip.
+**Processor changes** (`src/lib/queued-soft-delete-processor.ts`):
+- On each iteration, before the supabase call, read `op.attempts ?? 0`.
+- On supabase error: increment attempts, write `lastError` + `lastAttemptAt` back to the op. If `attempts >= 5`, push to `dead_letter_soft_deletes` and `removeQueuedOperation(op.id!)`. Otherwise leave in queue for next cycle.
+- On success: existing remove path unchanged.
+- Apply identically to all three queues (inspections, assessments, trainings).
 
-2. **Structured skip log + dev counter.** Replace the silent skip with a `console.warn('[Atomic Sync] sync_conflicts audit skipped: missing organization_id', { inspectionId })` so admins can spot orphaned records via diagnostics. Optional: bump a counter in `notification-center` if we want to surface it in the diagnostics sheet, but a console warn is enough for now.
+**Helper additions** (`src/lib/offline-storage.ts`):
+- `updateQueuedOperation(id, patch)` / `updateQueuedAssessmentOperation` / `updateQueuedTrainingOperation` — small `put`-based helpers.
+- `addToDeadLetterSoftDeletes(entry)` + `getDeadLetterSoftDeletes()` + `removeDeadLetterSoftDelete(id)` for the new store.
+- Bump IDB version; add the new store in the `onupgradeneeded` path. Pre-migration snapshot logic already covers new-store additions safely.
+
+**Result reporting.** Extend `SoftDeleteProcessorResult` with `deadLettered: number` so the auto-sync loop can surface a one-time toast like "3 deletions failed permanently — see diagnostics."
+
+**Operator visibility (minimal).** Add a small section to `src/components/pwa/SyncDiagnosticsSheet.tsx` listing dead-lettered entries with table/recordId/lastError and a "Retry once" / "Discard" button per entry. Retry pushes the op back into the active queue with `attempts: 0`; discard removes from the dead-letter store.
 
 ### Files
 
-- **`src/lib/atomic-sync-manager.ts`** (around L420–434):
-  - Extract a tiny local helper `resolveOrgIdForAudit(inspection): Promise<string | null>` that returns `inspection.organization_id ?? lookupByName(inspection.organization)`.
-  - Replace the inline `if (organizationId)` with `const organizationId = await resolveOrgIdForAudit(inspection);` then keep the existing guard + try/catch. On null, `console.warn` once with the inspection id.
+- `src/lib/queued-soft-delete-processor.ts` — attempt counting, dead-letter on threshold, return `deadLettered` count.
+- `src/lib/offline-storage.ts` — new `dead_letter_soft_deletes` store + IDB version bump + 6 new helpers.
+- `src/components/pwa/SyncDiagnosticsSheet.tsx` — small "Failed deletions" panel with retry/discard.
+- `src/hooks/useAutoSync.tsx` (or wherever the processor result is consumed) — surface a toast when `deadLettered > 0`.
 
 ### Out of scope
 
-- Backfilling `inspections.organization_id` for the 1 legacy row — separate data task if desired.
-- Making `sync_conflicts.organization_id` nullable — schema is intentionally strict.
-- Adding analogous audit inserts for trainings / daily assessments (no `sync_conflicts` writes exist on those paths today).
+- Auto-retry of dead-lettered entries on a schedule.
+- Server-side audit log of dead-lettered operations.
+- Backfilling attempt counts onto already-queued ops (they start at 0 on first run after deploy, which is correct behavior).
 
 ### Risk
 
-Negligible. The new lookup is a single indexed `select … where lower(name) = lower($1) limit 1`; failure mode is identical to today (skip the audit row).
+Low. New store + version bump is the only schema change; covered by the existing pre-migration snapshot system. Failure of the dead-letter write itself falls back to leaving the op in the queue (current behavior), so we never lose data.
 
 ### Verification
 
 - `npx tsc --noEmit`.
-- Manual: trigger a merge on the 1 null-org inspection; confirm console shows the structured warn (and, if the org name matches, that the audit row lands with the resolved id).
+- Unit: extend an existing processor test to simulate 5 consecutive failures and assert the op moves to the dead-letter store with `attempts: 5`.
+- Manual: toggle off RLS update permission for one record, run sync 5 times, confirm the entry disappears from the active queue and appears in the diagnostics sheet.
 
