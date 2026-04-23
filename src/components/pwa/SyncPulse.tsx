@@ -10,6 +10,7 @@ import {
   SheetDescription,
 } from '@/components/ui/sheet';
 import { getDeadLetterPhotos, resetPhotoRetryCounts } from '@/lib/offline-storage';
+import { useUnsyncedPhotos } from '@/hooks/useUnsyncedPhotos';
 
 type Phase = 'idle' | 'syncing' | 'synced' | 'unsynced' | 'error';
 
