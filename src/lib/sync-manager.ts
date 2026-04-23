@@ -240,6 +240,7 @@ export async function syncPhotos(signal?: AbortSignal): Promise<{ remaining: num
             console.warn('[Sync Manager] Legacy pending photo belongs to a different user — dead-lettering:', photo.id);
             await setPhotoLastError(photo.id, 'Photo belongs to a different signed-in user');
             await incrementPhotoRetryCount(photo.id);
+            changedCount++;
             return;
           }
 
