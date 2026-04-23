@@ -880,12 +880,15 @@ export default function DailyAssessmentForm() {
 
 
 
+      // H10: Pre-edit snapshot: capture server state before admin overwrites it.
+      // Fires regardless of online state — capturePreEditSnapshot internally
+      // routes to a local queue when offline so the audit trail is never lost.
+      if (localSaveSucceeded && currentUser?.id && assessment?.inspector_id && currentUser.id !== assessment.inspector_id) {
+        const { capturePreEditSnapshot } = await import('@/lib/admin-edit-snapshot');
+        capturePreEditSnapshot('daily_assessment', id!, assessment.inspector_id, currentUser.id);
+      }
+
       if (navigator.onLine && localSaveSucceeded) {
-        // Pre-edit snapshot: capture server state before admin overwrites it
-        if (currentUser?.id && assessment?.inspector_id && currentUser.id !== assessment.inspector_id) {
-          const { capturePreEditSnapshot } = await import('@/lib/admin-edit-snapshot');
-          capturePreEditSnapshot('daily_assessment', id!, assessment.inspector_id, currentUser.id);
-        }
         if (import.meta.env.DEV) console.log('[Save] Online - syncing to database...');
         try {
           // RECONCILE: Delete server rows removed locally before upserting
