@@ -1,13 +1,13 @@
 import { useEffect, useState } from 'react';
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle, SheetTrigger } from '@/components/ui/sheet';
 import { Button } from '@/components/ui/button';
-import { Activity, RefreshCw, Trash2, X } from 'lucide-react';
+import { Activity, RefreshCw, Trash2, X, AlertTriangle } from 'lucide-react';
 import { usePWA } from '@/hooks/usePWA';
 import { ForceSyncButton } from '@/components/pwa/ForceSyncButton';
 import { getMobileCapabilities, checkStorageQuota } from '@/lib/mobile-detection';
 import { isServiceWorkerAllowed } from '@/lib/environment';
 import { getRecentTripwireBlockCount } from '@/lib/child-row-deletion-tripwire';
-import { format } from 'date-fns';
+import { format, formatDistanceToNow } from 'date-fns';
 import { toast } from 'sonner';
 import { useUnsyncedPhotos, type DeadLetterPhotoInfo } from '@/hooks/useUnsyncedPhotos';
 import {
@@ -27,7 +27,20 @@ import {
   getOfflineInspection,
   getOfflineTraining,
   getOfflineDailyAssessment,
+  saveInspectionOffline,
+  saveTrainingOffline,
+  saveDailyAssessmentOffline,
+  saveRelatedDataOffline,
+  saveTrainingDataOffline,
+  saveAssessmentDataOffline,
 } from '@/lib/offline-storage';
+import {
+  listEmptyLocalConflicts,
+  clearEmptyLocalConflict,
+  type EmptyLocalConflictEntry,
+} from '@/lib/empty-local-conflict-store';
+import { markUserCleared } from '@/lib/clear-intent';
+import { supabase } from '@/integrations/supabase/client';
 
 interface DiagnosticsState {
   swRegistered: boolean;
