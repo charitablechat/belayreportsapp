@@ -2341,44 +2341,26 @@ export async function syncDailyAssessmentAtomic(assessmentId: string, preValidat
     const isNewAssessment = !assessment.synced_at;
     const recordStatus = isNewAssessment ? null : await checkRemoteRecordStatus('daily_assessments', assessmentId);
     
-    // SAFEGUARD: Check if remote record was soft-deleted by someone else
-    // This works for ALL users (regular and super admin) by bypassing RLS
+    // C9: Remote assessment was soft-deleted. Quarantine if unsynced edits exist.
     if (recordStatus?.record_exists && recordStatus?.is_deleted) {
-      console.warn('[Atomic Sync] Remote assessment was soft-deleted - cleaning up local copy:', assessmentId);
-      
-      // PRE-DELETE BACKUP: Snapshot before destroying local data
-      try {
-        const localData = await getOfflineDailyAssessment(assessmentId);
-        if (localData) {
-          const [bod, eod, os, eq, st, env] = await Promise.all([
-            getAssessmentDataOffline('beginning_of_day', assessmentId),
-            getAssessmentDataOffline('end_of_day', assessmentId),
-            getAssessmentDataOffline('operating_systems', assessmentId),
-            getAssessmentDataOffline('equipment_checks', assessmentId),
-            getAssessmentDataOffline('structure_checks', assessmentId),
-            getAssessmentDataOffline('environment_checks', assessmentId),
-          ]);
-          appendVersion('daily_assessment', assessmentId, localData, {
-            beginning_of_day: bod, end_of_day: eod, operating_systems: os,
-            equipment_checks: eq, structure_checks: st, environment_checks: env,
-          }, 'pre_delete').catch(() => {});
-        }
-      } catch (backupErr) {
-        console.warn('[Atomic Sync] Pre-delete assessment backup failed:', backupErr);
-      }
-      
-      try {
-        await deleteOfflineDailyAssessment(assessmentId);
-        syncLog.log('[Atomic Sync] Cleaned up orphaned local assessment:', assessmentId);
-      } catch (cleanupError) {
-        console.error('[Atomic Sync] Failed to clean up orphaned local assessment:', cleanupError);
-      }
-      
-      return { 
-        success: false, 
-        skipped: true, 
-        reason: 'remote_deleted',
-        message: 'This assessment was deleted by an administrator. Local copy has been cleaned up.'
+      const remoteDeletedAt = recordStatus.deleted_at ?? new Date().toISOString();
+      const result = await handleRemoteDeleted(
+        'daily_assessments',
+        assessmentId,
+        assessment,
+        remoteDeletedAt,
+        async () => {
+          await deleteOfflineDailyAssessment(assessmentId);
+        },
+      );
+      return {
+        success: false,
+        skipped: true,
+        reason: 'remote_deleted' as const,
+        quarantined: result.quarantined,
+        message: result.quarantined
+          ? 'This assessment was deleted by an administrator while you had unsynced changes. Resolve in the conflict dialog.'
+          : 'This assessment was deleted by an administrator. Local copy has been cleaned up.',
       };
     }
     
