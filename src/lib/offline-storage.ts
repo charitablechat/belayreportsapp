@@ -1410,7 +1410,92 @@ export async function incrementOperationRetry(id: number) {
   );
 }
 
-// Photo functions
+// ============================================================
+// S28 — Queued operation patch helpers + dead-letter store
+// ============================================================
+
+export interface DeadLetterSoftDelete {
+  id: string;
+  queueStore: 'operations' | 'assessment_operations' | 'training_operations';
+  table: 'inspections' | 'trainings' | 'daily_assessments';
+  recordId: string;
+  attempts: number;
+  firstFailedAt: string;
+  lastError: string;
+  deadLetteredAt: string;
+  originalOp: any;
+}
+
+async function patchOpInStore(
+  storeName: 'operations' | 'assessment_operations' | 'training_operations',
+  id: number | undefined | null,
+  patch: Record<string, any>
+) {
+  if (id === undefined || id === null) return;
+  return withIndexedDBErrorBoundary(
+    async () => {
+      const db = await getDB();
+      const op = await db.get(storeName as any, id);
+      if (!op) return;
+      const merged = { ...op, ...patch };
+      await db.put(storeName as any, merged);
+    },
+    undefined,
+    `patchOp:${storeName}`
+  );
+}
+
+export async function updateQueuedOperation(id: number | undefined | null, patch: Record<string, any>) {
+  return patchOpInStore('operations', id, patch);
+}
+
+export async function updateQueuedAssessmentOperation(id: number | undefined | null, patch: Record<string, any>) {
+  return patchOpInStore('assessment_operations', id, patch);
+}
+
+export async function updateQueuedTrainingOperation(id: number | undefined | null, patch: Record<string, any>) {
+  return patchOpInStore('training_operations', id, patch);
+}
+
+export async function addToDeadLetterSoftDeletes(entry: DeadLetterSoftDelete) {
+  return withIndexedDBErrorBoundary(
+    async () => {
+      const db = await getDB();
+      await (db as any).put('dead_letter_soft_deletes', entry);
+      if (import.meta.env.DEV) {
+        console.warn('[Offline Storage] Dead-lettered soft-delete:', entry.id, entry.lastError);
+      }
+    },
+    undefined,
+    'addToDeadLetterSoftDeletes'
+  );
+}
+
+export async function getDeadLetterSoftDeletes(): Promise<DeadLetterSoftDelete[]> {
+  return withIndexedDBErrorBoundary(
+    async () => {
+      const db = await getDB();
+      const all = await (db as any).getAll('dead_letter_soft_deletes');
+      return (all as DeadLetterSoftDelete[]).sort(
+        (a, b) => new Date(b.deadLetteredAt).getTime() - new Date(a.deadLetteredAt).getTime()
+      );
+    },
+    [],
+    'getDeadLetterSoftDeletes'
+  );
+}
+
+export async function removeDeadLetterSoftDelete(id: string) {
+  return withIndexedDBErrorBoundary(
+    async () => {
+      const db = await getDB();
+      await (db as any).delete('dead_letter_soft_deletes', id);
+    },
+    undefined,
+    'removeDeadLetterSoftDelete'
+  );
+}
+
 
 export async function savePhotoOffline(photo: {
   id: string;
