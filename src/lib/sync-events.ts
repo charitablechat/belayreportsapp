@@ -51,6 +51,33 @@ export function emitSyncComplete(): void {
   });
 }
 
+/**
+ * S6: Per-record self-write suppression registry.
+ * The atomic-sync helpers register the record id right before/after their
+ * server writes. The Realtime handler in useAutoSync consults this to skip
+ * triggering a redundant sync for events emitted by our own writes.
+ *
+ * 15s TTL covers the transaction commit + align_synced_at follow-up window.
+ */
+const recentSelfWriteIds = new Map<string, number>();
+const DEFAULT_SELF_WRITE_TTL = 15000;
+
+export function registerSelfWrite(id: string, ttlMs: number = DEFAULT_SELF_WRITE_TTL): void {
+  if (!id) return;
+  recentSelfWriteIds.set(id, Date.now() + ttlMs);
+}
+
+export function isRecentSelfWrite(id: string): boolean {
+  if (!id) return false;
+  const exp = recentSelfWriteIds.get(id);
+  if (!exp) return false;
+  if (exp < Date.now()) {
+    recentSelfWriteIds.delete(id);
+    return false;
+  }
+  return true;
+}
+
 const STALE_TIMESTAMP_KEY = 'dashboardStaleTimestamp';
 
 /**
