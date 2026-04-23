@@ -1,177 +1,111 @@
 
 
-## S5 + S6: Idempotent dedup key + race-free Realtime self-suppression
+## S9 + S10: Honor intentional clears + persist regression-skip counter
 
-Two surgical fixes. S5 adds a stable client-side dedup key; S6 closes a self-trigger race in the Realtime handler.
+Two surgical fixes. S9 lets users actually empty a synced report. S10 stops the regression-skip guard from forgetting itself on reload.
 
 ---
 
-### S5 — Replace `(inspector_id, organization, created_at)` dedup with a client idempotency key
+### S9 — Disambiguate "user cleared everything" from "IDB corruption"
 
-**Root cause.** The current dedup query in `atomic-sync-manager.ts` (lines 159–165 / 1000–1006 / 1747–1753) matches on `created_at`, which the server frequently rewrites via `DEFAULT now()` for service-role inserts and is timezone-fragile. `maybeSingle()` also silently returns `null` if a previous failed run already left two collisions, so the third sync attempt creates a third row.
+**Root cause.** In `atomic-sync-manager.ts` (~476–519 inspections, ~1260–1294 trainings, equivalent for assessments), if a parent record was previously synced AND the local state has zero children/summary, the guard assumes IDB corruption and *restores* the server copy into IDB, returning `{ skipped: true, reason: 'empty_local_guard' }`. There's no signal distinguishing a user who deliberately deleted every row from a stale-IDB read.
 
-**Fix.** Add a nullable `client_idempotency_key text` column to `inspections`, `trainings`, `daily_assessments`. Populate it at temp-id creation time (it's literally the temp-id minus the `temp-` prefix — already a UUID, already persisted in IDB, never changes). On sync, dedup on this key instead of the fragile triple.
+**Fix.** Add an explicit user-intent marker on the parent record, written by the form whenever the user removes the last child row in any section. The guard then becomes: "skip only if local is empty AND no clear-intent marker AND server is non-empty."
 
-**Schema (migration):**
+**Schema (migration).** Nullable timestamp columns — partial, no defaults, no index needed:
 ```sql
-ALTER TABLE public.inspections      ADD COLUMN client_idempotency_key text;
-ALTER TABLE public.trainings        ADD COLUMN client_idempotency_key text;
-ALTER TABLE public.daily_assessments ADD COLUMN client_idempotency_key text;
-
--- Partial unique index per inspector (NULLs ignored, so legacy rows unaffected).
-CREATE UNIQUE INDEX IF NOT EXISTS inspections_client_idemp_unique
-  ON public.inspections (inspector_id, client_idempotency_key)
-  WHERE client_idempotency_key IS NOT NULL;
-CREATE UNIQUE INDEX IF NOT EXISTS trainings_client_idemp_unique
-  ON public.trainings (inspector_id, client_idempotency_key)
-  WHERE client_idempotency_key IS NOT NULL;
-CREATE UNIQUE INDEX IF NOT EXISTS daily_assessments_client_idemp_unique
-  ON public.daily_assessments (inspector_id, client_idempotency_key)
-  WHERE client_idempotency_key IS NOT NULL;
+ALTER TABLE public.inspections       ADD COLUMN user_cleared_at timestamptz;
+ALTER TABLE public.trainings         ADD COLUMN user_cleared_at timestamptz;
+ALTER TABLE public.daily_assessments ADD COLUMN user_cleared_at timestamptz;
 ```
 
-The partial-unique index is the actual server-side guarantee — even if the dedup query races, the second insert fails loudly instead of silently duplicating.
+A timestamp (rather than boolean) lets us future-proof: the guard can compare `user_cleared_at` against `synced_at` to detect "was cleared after last sync."
 
-**Producer changes** (where temp-ids are minted):
-- `src/pages/NewInspection.tsx` (~`tempId` block, ~line 540–550): when creating offline `newInspection`, set `client_idempotency_key: tempId.replace(/^temp-/, '')`. When inserting online (line 514–523), also pass `client_idempotency_key: crypto.randomUUID()` so even online creates carry one.
-- `src/pages/NewTraining.tsx` and `src/pages/NewDailyAssessment.tsx` — same pattern. Confirm during implementation.
+**Producer changes** — wherever a delete reduces a child collection to zero, stamp the parent. Concretely:
+- `src/pages/InspectionForm.tsx` — in the handlers that remove the last system / zipline / equipment / standard, and the summary-clear handler, set `user_cleared_at: new Date().toISOString()` on the parent inspection and persist via `saveInspectionOffline`.
+- `src/pages/TrainingForm.tsx` — same pattern across delivery approaches / operating systems / immediate attention / verifiable items / systems-in-place / summary clears.
+- `src/pages/DailyAssessmentForm.tsx` — same across the six section collections.
 
-**Sync changes** in `src/lib/atomic-sync-manager.ts`:
-
-Replace each of the three temp-id dedup blocks. Inspection example (~159–165):
+Centralize the stamping in a tiny helper to avoid scatter:
 ```ts
-const idempKey = (inspection as any).client_idempotency_key
-  ?? inspection.id.replace(/^temp-/, ''); // fallback for legacy temp rows
-
-const { data: dupRows } = await supabase
-  .from('inspections')
-  .select('id')
-  .eq('inspector_id', inspection.inspector_id)
-  .eq('client_idempotency_key', idempKey)
-  .limit(2); // detect prior-failed-run double-collision
-
-if (dupRows && dupRows.length > 0) {
-  if (dupRows.length > 1) {
-    console.warn('[Atomic Sync] Multiple server rows share idempotency key — adopting first, manual cleanup needed', {
-      idempKey, ids: dupRows.map(r => r.id),
-    });
-  }
-  const serverId = dupRows[0].id;
-  inspectionIdMapping = { oldId: inspection.id, newId: serverId };
-  inspection.id = serverId;
-  inspectionId = serverId;
-} else {
-  const newId = crypto.randomUUID();
-  inspectionIdMapping = { oldId: inspection.id, newId };
-  inspection.id = newId;
-  inspectionId = newId;
+// src/lib/clear-intent.ts
+export function markUserCleared<T extends { user_cleared_at?: string | null; updated_at?: string }>(
+  parent: T,
+): T {
+  const now = new Date().toISOString();
+  return { ...parent, user_cleared_at: now, updated_at: now };
 }
-
-// Always carry the key forward into the upsert payload.
-(inspection as any).client_idempotency_key = idempKey;
 ```
 
-Identical shape for trainings (~1000–1006) and daily_assessments (~1747–1753).
+Reset the marker on first non-empty save: when any section gains a row, the same helper sets `user_cleared_at: null`.
 
-**Why this is safe.** Legacy rows without a key are never touched (partial index excludes NULLs; dedup query never matches NULL keys). New offline records inherit the key from their temp-id, so even a temp-id that's been retried 5 times still maps to the same server row. The `limit(2)` plus warn logs the prior double-collision case instead of silently producing a third.
+**Sync changes** in `atomic-sync-manager.ts`. Replace the empty-local guard at all three sites (~479, ~1263, equivalent assessments) with:
+```ts
+const isLocallyEmpty = localChildCount === 0;
+const wasClearedByUser =
+  inspection.user_cleared_at &&
+  inspection.synced_at &&
+  new Date(inspection.user_cleared_at) >= new Date(inspection.synced_at);
+
+if (isLocallyEmpty && !wasClearedByUser && serverHasChildren) {
+  // Existing corruption-recovery path: pull server copy into IDB, return skipped.
+} else if (isLocallyEmpty && wasClearedByUser) {
+  if (import.meta.env.DEV) {
+    console.log('[Atomic Sync] Honoring intentional user-clear for', inspection.id);
+  }
+  // Fall through to normal sync — child reconcile will soft-delete server children.
+}
+```
+
+After a successful sync, clear `user_cleared_at` on the local record so future stale-IDB reads aren't misinterpreted as fresh user intent (the marker has done its job).
 
 ---
 
-### S6 — Close the Realtime self-suppression race
+### S10 — Persist `regressionSkipCounter` across reloads
 
-**Root cause.** In `useAutoSync.tsx` lines 510–520, the `finally` block runs:
+**Root cause.** `regressionSkipCounter` is a module-level `Map<string, number>` in `atomic-sync-manager.ts` (~71–72, consumed at ~395–425). Tab refresh, PWA wake-from-suspend, or service-worker restart wipes it, so a user whose report legitimately lost >50% of fields can ping-pong on the regression guard indefinitely if they happen to reload between cycles.
+
+**Fix.** Promote the counter to a tiny IDB store, accessed via small async helpers. Keep the in-memory Map as a hot cache so the existing call sites can stay synchronous-feeling.
+
+**IDB store** in `src/lib/offline-storage.ts`:
+- Store name: `sync_regression_counters`
+- Key: record id (string)
+- Value: `{ id: string; count: number; lastIncrementAt: number }`
+- Bump `DB_CONFIG.version` (currently 10 → 11) and add the store creation in the `upgrade` handler. Existing migration-safety snapshot machinery (Phase 5) covers this automatically.
+
+**Helpers** (new file `src/lib/regression-skip-store.ts`):
 ```ts
-syncInProgressRef.current = false;
-setSyncInProgress(false);
-lastSyncCompletedAtRef.current = Date.now();
+export async function getRegressionSkipCount(id: string): Promise<number>;
+export async function incrementRegressionSkipCount(id: string): Promise<number>;
+export async function resetRegressionSkipCount(id: string): Promise<void>;
 ```
-A Realtime UPDATE that lands between line 511 and line 513 sees `syncInProgressRef === false` AND `lastSyncCompletedAtRef === <ancient or 0>`, so it falls through both gates and triggers `performSync(true)`. Worse, `align_synced_at` is a separate write that emits its own Realtime event after the transaction completes — so even the cooldown gate is racing against our own follow-up writes.
+Each writes through to IDB *and* updates the in-memory Map.
 
-**Fix.** Two changes:
+**Wire-up** in `atomic-sync-manager.ts`:
+- On module load, lazily hydrate the Map from IDB (one read at first guard hit per record id; cache miss → `getRegressionSkipCount` → fill Map).
+- Replace the three Map mutation sites (increment on skip, reset on success) with calls to the new helpers. The existing synchronous reads of the Map become awaited helper calls.
 
-1. **Reorder the finally block** — set the timestamp *before* clearing the in-progress flag:
-   ```ts
-   } finally {
-     lastSyncCompletedAtRef.current = Date.now();   // first
-     syncInProgressRef.current = false;             // then release the gate
-     setSyncInProgress(false);
-     setState(prev => ({ ...prev, isSyncing: false }));
-     updateUnsyncedCounts().catch(() => {});
-     try { window.dispatchEvent(new Event('sync-photos-updated')); } catch {}
-   }
-   ```
-   Now any Realtime event that races past `syncInProgressRef` will see a fresh `lastSyncCompletedAtRef` and hit the cooldown gate correctly.
-
-2. **Per-record self-suppression set** — add a short-TTL "we just wrote this" registry that the Realtime handler consults *in addition to* the cooldown:
-   ```ts
-   // Top of useAutoSync.tsx, alongside the other refs:
-   const recentSelfWritesRef = useRef<Map<string, number>>(new Map()); // recordId -> expiry ms
-   const SELF_WRITE_TTL = 15000; // 15s — covers transaction commit + align_synced_at follow-up
-   
-   const markSelfWrite = useCallback((id: string) => {
-     recentSelfWritesRef.current.set(id, Date.now() + SELF_WRITE_TTL);
-   }, []);
-   
-   const isSelfWrite = useCallback((id: string) => {
-     const exp = recentSelfWritesRef.current.get(id);
-     if (!exp) return false;
-     if (exp < Date.now()) {
-       recentSelfWritesRef.current.delete(id);
-       return false;
-     }
-     return true;
-   }, []);
-   ```
-   
-   Wire it in `handleRemoteChange` (line 619) before the existing gates:
-   ```ts
-   const recordId = payload?.new?.id || payload?.old?.id;
-   if (recordId && isSelfWrite(recordId)) {
-     if (import.meta.env.DEV) {
-       console.log('[AutoSync] Skipping Realtime — self-write suppression', { recordId });
-     }
-     // Still persist to IDB and invalidate queries (existing logic), but do NOT trigger sync.
-     // ...existing IDB persist + queryClient.invalidateQueries...
-     return;
-   }
-   ```
-   Refactor the existing function so the `performSync` retrigger lives in a separate branch and self-writes skip it cleanly.
-
-3. **Atomic-sync ↔ hook bridge.** The atomic-sync helpers don't have a direct handle to `useAutoSync`'s ref. Use a tiny module-level registry in `src/lib/sync-events.ts` that already brokers `emitSyncComplete`:
-   ```ts
-   // sync-events.ts
-   const recentSelfWriteIds = new Map<string, number>();
-   export function registerSelfWrite(id: string, ttlMs = 15000) {
-     recentSelfWriteIds.set(id, Date.now() + ttlMs);
-   }
-   export function isRecentSelfWrite(id: string) {
-     const exp = recentSelfWriteIds.get(id);
-     if (!exp) return false;
-     if (exp < Date.now()) { recentSelfWriteIds.delete(id); return false; }
-     return true;
-   }
-   ```
-   `useAutoSync.handleRemoteChange` calls `isRecentSelfWrite(payload.new.id)`. Each atomic-sync helper calls `registerSelfWrite(inspectionId)` (and the same for trainings/assessments) **right before** the transaction's final `update` step and again right before/after the `align_synced_at` RPC. That covers both Realtime writes from the same record.
-
-**Why this is safe.** The reorder is a pure ordering fix. The self-write set is additive — the cooldown and `syncInProgressRef` gates still run; we just stop trusting them as the only line of defense. TTL of 15s is generous vs. transaction + align timing (typically <2s) but well below the next legitimate edit window from another device. Cross-device updates still trigger sync because their record ids are not in our self-write set.
+**Stale-entry pruning.** Add a 30-day TTL: in `getRegressionSkipCount`, drop entries older than `lastIncrementAt + 30d` and return 0. Keeps the store from accumulating dead record ids.
 
 ---
 
 ### Files
 
-- **New migration:** add `client_idempotency_key` column + partial unique indexes on `inspections`, `trainings`, `daily_assessments`.
-- `src/lib/atomic-sync-manager.ts` — three dedup blocks (~159–186, ~1000–1027, ~1747–1773) replaced; carry `client_idempotency_key` forward in the payload; call `registerSelfWrite` before the final transaction step and before `align_synced_at` (three sites each ≈ 6 lines).
-- `src/lib/sync-events.ts` — add `registerSelfWrite` / `isRecentSelfWrite`.
-- `src/hooks/useAutoSync.tsx` — reorder `finally` block (~510–520); call `isRecentSelfWrite` at the top of `handleRemoteChange` (~619), short-circuit the sync re-trigger when true while keeping IDB persist + query invalidation.
-- `src/pages/NewInspection.tsx`, `src/pages/NewTraining.tsx`, `src/pages/NewDailyAssessment.tsx` — set `client_idempotency_key` at row creation (online and offline branches).
+- **New migration** — adds `user_cleared_at timestamptz` to `inspections`, `trainings`, `daily_assessments`.
+- `src/lib/atomic-sync-manager.ts` — three empty-local guards updated (~479, ~1263, assessments equivalent); regression-counter Map mutations replaced with awaited helper calls (~395–425 + symmetric sites in trainings/assessments); post-sync reset of `user_cleared_at`.
+- **New** `src/lib/clear-intent.ts` — `markUserCleared` helper.
+- **New** `src/lib/regression-skip-store.ts` — IDB-backed counter helpers.
+- `src/lib/offline-storage.ts` — bump `DB_CONFIG.version` to 11, add `sync_regression_counters` store in upgrade handler.
+- `public/db-config.js` — bump `version` to 11 to keep service worker in sync.
+- `src/pages/InspectionForm.tsx`, `src/pages/TrainingForm.tsx`, `src/pages/DailyAssessmentForm.tsx` — call `markUserCleared` from final-row removal handlers; clear marker when collections regain content.
 
 ### Out of scope
 
-- Backfilling `client_idempotency_key` for existing rows. Partial unique index ignores NULLs; legacy rows continue using the old triple-key path via the fallback `inspection.id.replace(/^temp-/, '')`.
-- Hardening the cooldown duration — the per-record set replaces it as the primary guard; the time-based cooldown stays as belt-and-suspenders.
-- Folding `align_synced_at` into the transaction (separate RPC change, deferred).
+- Backfilling `user_cleared_at` for legacy rows. NULL means "no signal" — guard falls back to today's behavior, which is the safe default.
+- Surfacing the regression-skip counter in admin diagnostics (separate UI work).
+- Replacing the field-count regression guard itself with field-merge semantics — Phase 7 territory.
 
 ### Risk
 
-Low–medium. S5 adds columns + partial unique indexes — the partial-NULL behavior keeps legacy rows untouched, and the producer changes are additive (key written but never required by old code paths). The unique index is the only thing that could surface a pre-existing duplicate at insert time; if so, the warn log identifies it for manual cleanup. S6 is pure ordering + additive bookkeeping — worst case the self-write set is wrong about a record and we do one redundant sync, identical to today's behavior.
+Low. S9 is additive (new column, new producer paths) — guard short-circuit only triggers when the explicit marker is set, so no behavior change for any existing record. S10 is a storage-layer move with hot-cache fallback; first read after upgrade is one extra IDB hit per record, then identical to today's behavior. IDB version bump is covered by existing Phase 5 migration safety (pre-upgrade snapshot + fingerprint validation + rollback API).
 
