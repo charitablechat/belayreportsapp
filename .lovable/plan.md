@@ -1,47 +1,44 @@
 
 
-## S29 — Replace heuristic `resolveTable` with explicit per-queue table binding
+## S30 — Eliminate redundant child-count-hint scans on every save
 
 ### Problem
 
-`resolveTable(data)` in `src/lib/queued-soft-delete-processor.ts` (L36–42) infers the target Supabase table from the *shape* of the queued payload (`assessment_date`, `start_date`, `inspection_date`, `location`). A future column rename or a payload that happens to omit those fields would silently misroute a soft-delete to the wrong table — succeeding against the wrong row or failing without a clear cause.
-
-It's also unnecessary: each of the three queue stores (`operations`, `assessment_operations`, `training_operations`) corresponds 1:1 to a single target table. The queue store itself is already the source of truth.
+`saveInspectionOffline`, `saveDailyAssessmentOffline`, and `saveTrainingOffline` each run **5–6 parallel `getAllFromIndex` reads on every call** to compute `child_count_hint`. During typing-driven auto-save (every 1.5 s), this is 5–6 extra IDB reads per burst per report — purely diagnostic data consumed only by the service-worker sync regression guard. On iOS this measurably worsens the IDB contention that S2/S11 were built to mitigate.
 
 ### Design
 
-**Bind table at the queue level, not the payload level.**
+**Move hint computation off the parent-save hot path** by giving it three cheaper sources of truth, in priority order:
 
-In `src/lib/queued-soft-delete-processor.ts`:
+1. **Caller-provided hint (preferred).** Add an optional second argument `opts?: { childCountHint?: number }`. The form components that mutate children (InspectionForm, TrainingForm, DailyAssessmentForm) already hold the in-memory arrays they just modified, so they can pass `{ childCountHint: systems.length + ziplines.length + … }` for free. No IDB reads.
 
-1. **Delete `resolveTable`** entirely. Remove the heuristic and the `inspection_date|location` fallback.
-2. **Hardcode the table name in each of the three loops** (they already iterate distinct stores):
-   - `operations` queue → `'inspections'`
-   - `assessment_operations` queue → `'daily_assessments'` (already hardcoded; no change)
-   - `training_operations` queue → `'trainings'` (already hardcoded; no change)
-3. **Add a defensive payload guard** in the inspections loop: if `op.data` is missing required identifiers (`id` / `deleted_at`), log a structured warn and skip (do not dead-letter — the op is malformed, not a server failure). This replaces the implicit "guess by shape" safety net with an explicit one.
-4. **Tighten the `TableName` type usage**: keep the existing `type TableName = 'inspections' | 'trainings' | 'daily_assessments'` and pass the literal at the call site so TypeScript catches any future drift.
+2. **Stamp on child writes, not parent writes.** The functions that actually mutate children — `saveRelatedDataOffline`, `saveTrainingDataOffline`, `saveAssessmentDataOffline` — already touch the relevant child store. After their write, do one cheap `count()` per affected store (or use the array length they were just passed) and patch `child_count_hint` onto the parent row inline. This way the hint is recomputed only when children actually change, not on every keystroke that updates parent fields.
+
+3. **Preserve existing value when neither is available.** If the caller doesn't pass a hint and the save is a parent-only save (no child mutation), keep the existing `inspection.child_count_hint` value already on the row — do NOT scan. A stale hint is fine for the SW guard (the guard is "is current count drastically below the last known total?"; a slightly old hint just means the guard is slightly more permissive on the next sync, which is the safe direction).
 
 ### Files
 
-- **`src/lib/queued-soft-delete-processor.ts`**
-  - Remove `resolveTable` function (L36–42).
-  - In the inspections loop (around L137–142), replace `const table = resolveTable(op.data); if (!table) continue;` with `const table: TableName = 'inspections';` plus the malformed-payload guard.
-  - No changes needed to assessments/trainings loops (already hardcoded).
+- **`src/lib/offline-storage.ts`**
+  - `saveInspectionOffline(inspection, opts?)` — replace the 5-read scan (L1149–1163) with: `if (opts?.childCountHint != null) inspection.child_count_hint = opts.childCountHint;` else preserve existing value. Same shape change for `saveDailyAssessmentOffline` (L2218–2236) and `saveTrainingOffline` (L2566–2585).
+  - `saveRelatedDataOffline` / `saveTrainingDataOffline` / `saveAssessmentDataOffline` — after the child write, fetch the parent row, compute the new total from `data.length` plus `count()` on the *other* relevant stores via a single shared transaction (one read per other store, but only on actual child mutation, not every parent save). Patch `child_count_hint` on the parent and `put` it back. Keep this fire-and-forget so it never blocks the child save.
+
+- **`src/pages/InspectionForm.tsx`, `src/pages/TrainingForm.tsx`, `src/pages/DailyAssessmentForm.tsx`** — at each `saveInspectionOffline`/`saveTrainingOffline`/`saveDailyAssessmentOffline` call site that already knows the in-memory child arrays, pass `{ childCountHint: <sum> }` so the parent save path requires zero extra reads.
+
+- **No changes** to `public/sw-sync.js` — the guard contract (compare live count to `child_count_hint`) is unchanged.
 
 ### Out of scope
 
-- Adding queue-store metadata to ops (not needed; the iterating store IS the binding).
-- Migrating already-queued ops (no schema or shape change to existing payloads).
-- Renaming `operations` → `inspection_operations` for symmetry with the other two stores (separate cleanup if desired; would require IDB version bump).
+- Redesigning the SW regression guard itself (separate concern, S6/S11 territory).
+- Removing the field entirely — it's still a valuable safety net for partial-read SW scenarios.
 
 ### Risk
 
-Negligible. The change removes a code path that today only ever returns `'inspections'` (because it's only invoked from the inspections queue). No behavior change for any well-formed op; malformed ops now produce a clear warn instead of being routed to `'inspections'` by the catch-all `return 'inspections'` on L41.
+Low. Worst case: if a caller forgets to pass the hint *and* mutates children via a path that doesn't go through the child-save helpers, the hint goes stale. The SW guard then becomes more lenient (lets the sync proceed even when live count is below an older hint), which is the safer direction — the dangerous direction (false-positive regression block) is unaffected.
 
 ### Verification
 
 - `npx tsc --noEmit`.
-- Manual: queue a soft-delete on each report type (inspection, training, assessment), go offline → online, confirm each lands on the correct table (verify via `select id, deleted_at from <table> where id = …`).
-- Regression: confirm `getPendingSoftDeleteCount` still returns the same value before/after (it doesn't call `resolveTable`).
+- Manual: type rapidly in an inspection form for 10 s, confirm Performance tab shows ~0 extra `getAllFromIndex` calls per parent save (vs. 5 before).
+- Manual: add/remove a system row, sync, confirm `child_count_hint` on the parent matches the new total in the IDB inspector.
+- Manual: trigger the SW regression guard by manually clearing one child store before sync; confirm SW still defers the cycle (guard still works).
 
