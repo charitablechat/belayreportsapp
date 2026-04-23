@@ -1,5 +1,6 @@
-import { useEffect, useState, type ReactNode } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { useNavigate } from "react-router-dom";
+import { toast } from "sonner";
 import {
   getUserWithCache,
   hasCachedSessionForOffline,
@@ -11,6 +12,10 @@ import {
   isAuthenticated,
   transition,
 } from "@/lib/auth-state-machine";
+import {
+  isOfflineWindowExpiringSoon,
+  getOfflineWindowRemainingMs,
+} from "@/lib/offline-auth";
 
 interface RequireAuthProps {
   children: ReactNode;
