@@ -1,29 +1,38 @@
-# H12 — Surface partial sync failures
+## M3 — Verify offline-auth-pending on iOS resume paths before syncing
 
-**Problem:** In `src/hooks/useAutoSync.tsx` (~line 448–528), the post-sync logic computes `anySuccess = results.some(r => r?.success > 0)` and shows a green "Data synced successfully (N items)" toast whenever *anything* succeeded. If 3 of 5 inspections sync and 2 fail, the user sees a success toast, assumes everything is up, closes the laptop — and the 2 failed records never sync.
+### Problem
+`runOnlineReconcile` (the `online` event handler) already calls `verifyAndReconcileOfflineAuth()` before triggering a sync. But three other resume paths kick off `performSync(true)` directly without that check:
 
-The result objects already carry per-batch `failed` counts (visible at line 507 in the mobile debug log), but `failed` is currently ignored when shaping the toast.
+1. **`handlePageShow`** (iOS bfcache restore, line 960) — currently routes to `handleOnline()`, which is debounced 1s+. During that debounce window, nothing prevents another path from syncing first.
+2. **`handleFocus`** (iOS focus, line 970) — calls `performSync(true)` directly.
+3. **`handleVisibilityChange`** (line 780) — calls `performSync(true)` directly.
 
-## Fix
+If iOS restores the tab with `offline_auth_pending === 'true'` and the synthetic session still in localStorage, `performSync(true)` runs against the deterministic UUID. RLS either rejects the placeholder token (no-op, data stuck) or, worse, races with a half-completed `refreshSession` and writes under the wrong `inspector_id`. Outcomes are nondeterministic.
 
-Tally `totalFailed` across all four results and branch the toast based on it:
+### Fix
+Introduce a small helper inside `useAutoSync.tsx` that runs the reconcile guard before any iOS-resume sync trigger:
 
-- `totalFailed === 0 && totalSynced > 0` → existing green success toast (with optional `(N more queued)` suffix).
-- `totalFailed > 0 && totalSynced > 0` → **warning** toast: `"Synced ${totalSynced}; ${totalFailed} failed — will retry"`. Use `toast.warning(...)` (sonner supports it; it routes through the existing mobile-aware notification-config classifier).
-- `totalFailed > 0 && totalSynced === 0` → **error** toast: `"Sync failed: ${totalFailed} item${s} could not upload — will retry"`.
-- All-zero → no toast (unchanged).
+```ts
+const reconcileThenSync = useCallback(async (force = true) => {
+  if (navigator.onLine && hasPendingOfflineAuth()) {
+    try { await verifyAndReconcileOfflineAuth(); }
+    catch (e) { console.warn('[AutoSync] Reconcile before resume sync failed:', e); }
+  }
+  performSync(force);
+}, [performSync]);
+```
 
-Mirror the same message into `addSyncNotification` so the in-app notification center reflects the partial failure for later review.
+Then update all three handlers to await it instead of calling `performSync(true)` directly:
 
-Also gate `emitSyncComplete()` and the backup-ledger "mark synced" loop on `totalFailed === 0` so downstream consumers (which currently treat a sync-complete event as "all clear") don't get a misleading all-clear when items actually failed. Failed items remain in IDB and will be retried by the next sync cycle as today.
+- **`handlePageShow`** — call `reconcileThenSync()` directly (skip the `handleOnline` debounce; bfcache restore is a discrete event, not a flap). Keeps the original guard `event.persisted && navigator.onLine`.
+- **`handleFocus`** — replace `performSync(true)` with `reconcileThenSync()`. Preserve the existing `MIN_SYNC_INTERVAL` debounce check.
+- **`handleVisibilityChange`** — replace `performSync(true)` with `reconcileThenSync()`. Preserve the `!document.hidden && navigator.onLine` guard.
 
-## Files
+`hasPendingOfflineAuth` is cheap (one localStorage read), so the gate has negligible cost when no synthetic session exists. When a synthetic session does exist, the reconcile completes before any RLS-bound write — eliminating the deterministic-UUID race.
 
-- `src/hooks/useAutoSync.tsx` — update the `if (anySuccess)` block at ~lines 511–528 and the second `if (anySuccess)` at ~lines 532–549 to use the new `totalFailed` / `totalSynced` shape described above. Add `const totalFailed = results.reduce((sum, r) => sum + (r?.failed || 0), 0);` next to the existing `totalSynced`/`totalRemaining` reducers.
+### Files
+- `src/hooks/useAutoSync.tsx` — add `reconcileThenSync` helper, swap three call sites.
 
-No schema changes, no new files, no API surface change. Existing per-type sync functions already populate `failed` on their result objects — no edits needed there.
-
-## Verification
-
-- `npx tsc --noEmit`.
-- Manual: temporarily force one inspection sync to throw (e.g. malformed payload), trigger sync with 2 valid + 1 invalid record. Confirm the warning toast reads "Synced 2; 1 failed — will retry" and the failed record stays unsynced and retries on the next cycle.
+### Verification
+- `npx tsc --noEmit`
+- Manual on iOS Safari: sign in offline (synthetic session), background the app for >30s, return — confirm DevTools shows `[OfflineAuth] Synthetic session created` followed by reconcile success **before** any sync POST. No writes should fire under the deterministic UUID.

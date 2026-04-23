@@ -775,6 +775,24 @@ export const useAutoSync = () => {
   }, [runOnlineReconcile]);
   
   /**
+   * M3: Reconcile any pending offline-auth synthetic session BEFORE firing
+   * a sync. Without this, iOS resume paths (pageshow / focus / visibilitychange)
+   * can hit performSync while the session is still the deterministic-UUID
+   * placeholder — RLS rejects (data stuck) or, worse, races with a half-completed
+   * refreshSession and writes under the wrong inspector_id.
+   */
+  const reconcileThenSync = useCallback(async (force = true) => {
+    if (navigator.onLine && hasPendingOfflineAuth()) {
+      try {
+        await verifyAndReconcileOfflineAuth();
+      } catch (e) {
+        console.warn('[AutoSync] Reconcile before resume sync failed:', e);
+      }
+    }
+    performSync(force);
+  }, [performSync]);
+
+  /**
    * Handle visibility change - sync when app becomes visible
    */
   const handleVisibilityChange = useCallback(() => {
@@ -782,9 +800,10 @@ export const useAutoSync = () => {
       if (import.meta.env.DEV) {
         console.log('[AutoSync] App became visible - syncing');
       }
-      performSync(true);
+      reconcileThenSync();
     }
-  }, [performSync]);
+  }, [reconcileThenSync]);
+
   
   /**
    * S12: Debounced full-package refetch (parent + all child collections).
@@ -955,29 +974,31 @@ export const useAutoSync = () => {
     window.addEventListener('online', handleOnline);
     document.addEventListener('visibilitychange', handleVisibilityChange);
     
-    // RC-4 / S33: iOS page restore — route through the same debounced reconcile
-    // so a quick app-resume → re-suspend → resume burst doesn't double-refresh.
+    // RC-4 / S33 / M3: iOS page restore — reconcile any synthetic offline-auth
+    // session FIRST, then sync. bfcache restore is a discrete event (not a flap),
+    // so we skip the handleOnline debounce and reconcile inline.
     const handlePageShow = (event: PageTransitionEvent) => {
       if (event.persisted && navigator.onLine) {
         if (import.meta.env.DEV) {
-          console.log('[AutoSync] Page restored from bfcache - scheduling debounced reconcile');
+          console.log('[AutoSync] Page restored from bfcache - reconciling auth then syncing');
         }
-        handleOnline();
+        reconcileThenSync();
       }
     };
     
-    // RC-2: Gate iOS focus handler behind MIN_SYNC_INTERVAL debounce
+    // RC-2 / M3: Gate iOS focus handler behind MIN_SYNC_INTERVAL debounce,
+    // and reconcile any synthetic offline-auth session before syncing.
     const handleFocus = () => {
       if (navigator.onLine) {
         const now = Date.now();
         if (now - lastSyncAttemptRef.current >= MIN_SYNC_INTERVAL) {
-          performSync(true);
+          reconcileThenSync();
         } else if (import.meta.env.DEV) {
           console.log('[AutoSync] Focus event debounced (too soon since last sync)');
         }
       }
     };
-    
+
     if (isIOSDevice) {
       window.addEventListener('pageshow', handlePageShow as EventListener);
       window.addEventListener('focus', handleFocus);
