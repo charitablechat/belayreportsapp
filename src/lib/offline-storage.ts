@@ -606,9 +606,24 @@ async function withIndexedDBErrorBoundary<T>(
     return fallbackValue;
   }
 
-  const OPERATION_TIMEOUT = operationName.includes('photo') || operationName.includes('Photo')
-    ? 8000  // 8s for photo blob writes (large on iPad Safari)
-    : 5000; // 5s for everything else
+  const opLowerForTier = operationName.toLowerCase();
+  let OPERATION_TIMEOUT: number;
+  if (opLowerForTier.includes('photo')) {
+    OPERATION_TIMEOUT = IDB_TIMEOUTS.write; // photo blob writes
+  } else if (
+    opLowerForTier.includes('batch') ||
+    opLowerForTier.includes('related') ||
+    opLowerForTier.includes('training') ||
+    opLowerForTier.includes('assessment') ||
+    opLowerForTier.includes('getall') ||
+    opLowerForTier.includes('unsynced')
+  ) {
+    OPERATION_TIMEOUT = IDB_TIMEOUTS.batch;
+  } else if (opLowerForTier.includes('save') || opLowerForTier.includes('delete') || opLowerForTier.includes('put')) {
+    OPERATION_TIMEOUT = IDB_TIMEOUTS.write;
+  } else {
+    OPERATION_TIMEOUT = IDB_TIMEOUTS.light;
+  }
   const TIMEOUT_SENTINEL = Symbol('timeout');
   
   try {
