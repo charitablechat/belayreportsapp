@@ -245,13 +245,31 @@ async function rollbackTransaction(
           break;
           
         case 'upsert':
-          // Delete if it was an insert, update if it was an update
-          if (step.rollbackData) {
+          // S17: Batched upsert rollback — restore array pre-images
+          if (Array.isArray(step.rollbackData) && Array.isArray(step.data)) {
+            // Pre-image is an array: ids that existed before are restored,
+            // ids that didn't exist (genuine inserts) are deleted.
+            const preImageIds = new Set(
+              step.rollbackData.map((r: any) => r?.id).filter(Boolean)
+            );
+            const newIds = step.data
+              .filter((d: any) => d?.id && !preImageIds.has(d.id))
+              .map((d: any) => d.id);
+            if (newIds.length > 0) {
+              try { await (supabase as any).rpc('set_bulk_delete_opt_in'); } catch {}
+              await (supabase as any).from(step.table).delete().in('id', newIds);
+            }
+            if (step.rollbackData.length > 0) {
+              await (supabase as any).from(step.table).upsert(step.rollbackData);
+            }
+          } else if (step.rollbackData && step.data?.id) {
+            // Single-row update rollback (existing behavior)
             await (supabase as any)
               .from(step.table)
               .update(step.rollbackData)
               .eq('id', step.data.id);
           } else if (step.data?.id) {
+            // No pre-image — best-effort delete the inserted row
             await (supabase as any).from(step.table).delete().eq('id', step.data.id);
           }
           break;
