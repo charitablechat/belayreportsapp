@@ -39,6 +39,15 @@ Deno.serve(async (req) => {
       );
     }
 
+    // ── H3: Authorization gate — require admin role ──
+    const { data: isAdmin, error: adminErr } = await userClient.rpc('is_admin_or_above');
+    if (adminErr || !isAdmin) {
+      return new Response(
+        JSON.stringify({ error: "Forbidden: admin privileges required" }),
+        { status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
     const { table = "training_photos", bucket = "training-photos", dryRun = false, limit = 20, offset = 0 } = await req.json().catch(() => ({}));
 
     const allowedTables: Record<string, string> = {
