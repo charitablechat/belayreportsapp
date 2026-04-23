@@ -184,6 +184,19 @@ export const SyncPulse = ({ className }: { className?: string }) => {
               </div>
             )}
 
+            {/* S39: Held-back records (regression guard). Read-only here; deep actions live in SyncDiagnosticsSheet. */}
+            {regressionSkipCount > 0 && (
+              <div className="space-y-1 border-t border-green-900/40 pt-2">
+                <div className="flex items-center justify-between text-green-300/80">
+                  <span>HELD_BACK</span>
+                  <span className="text-amber-400">{regressionSkipCount}</span>
+                </div>
+                <p className="text-green-700 text-[10px] italic">
+                  ▸ Tap diagnostics for details
+                </p>
+              </div>
+            )}
+
             {/* Failed (dead-letter) photos — retry-exhausted or orphaned */}
             {deadLetterCount > 0 && (
               <div className="space-y-1.5 border-t border-green-900/40 pt-2">
