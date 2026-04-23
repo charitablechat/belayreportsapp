@@ -130,6 +130,7 @@ const PWAProviderContent = ({ children }: PWAProviderProps) => {
     unsyncedAssessments,
     isSyncing, 
     lastSyncTime, 
+    syncError: autoSyncError,
     updateUnsyncedCounts,
     performSync
   } = useAutoSync();
@@ -139,6 +140,7 @@ const PWAProviderContent = ({ children }: PWAProviderProps) => {
     photosByInspection,
     updatePhotoCount,
     deadLetterCount,
+    idbReadError: photoIdbError,
   } = useUnsyncedPhotos();
 
   const updateAndReload = async () => {
@@ -148,6 +150,10 @@ const PWAProviderContent = ({ children }: PWAProviderProps) => {
   const forceSync = async () => {
     await performSync(false);
   };
+
+  // Combine sync errors from both sources (auto-sync IDB failures + photo IDB failures).
+  // Photo error wins only when there's no broader sync error to show.
+  const syncError = autoSyncError ?? photoIdbError ?? null;
 
   const value: PWAContextType = {
     isInstallable,
@@ -171,7 +177,7 @@ const PWAProviderContent = ({ children }: PWAProviderProps) => {
     unsyncedAssessments,
     isSyncing,
     lastSyncTime,
-    syncError: null,
+    syncError,
     updateUnsyncedCount: updateUnsyncedCounts,
     forceSync,
     unsyncedPhotoCount,
