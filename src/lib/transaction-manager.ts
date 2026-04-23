@@ -74,13 +74,17 @@ export interface TransactionResult {
  * Supports batch inserts (arrays) for better performance on mobile
  */
 export async function executeTransaction(
-  steps: TransactionStep[]
+  steps: TransactionStep[],
+  options?: { signal?: AbortSignal }
 ): Promise<TransactionResult> {
   const completedSteps: TransactionStep[] = [];
+  const signal = options?.signal;
   
   try {
     // Execute each step in order
     for (let i = 0; i < steps.length; i++) {
+      // S20: bail before starting any new step if we've been aborted
+      throwIfAborted(signal);
       const step = steps[i];
       
       if (import.meta.env.DEV) {
@@ -94,22 +98,25 @@ export async function executeTransaction(
         case 'insert':
           // Support both single item and batch insert (arrays)
           result = await withStepTimeout(
-            (supabase as any).from(step.table).insert(step.data).select('id'),
-            `insert:${step.table}`
+            (supabase as any).from(step.table).insert(step.data).select('id').abortSignal(signal as any),
+            `insert:${step.table}`,
+            signal
           );
           break;
           
         case 'update':
           result = await withStepTimeout(
-            (supabase as any).from(step.table).update(step.data).match(step.filter).select('id'),
-            `update:${step.table}`
+            (supabase as any).from(step.table).update(step.data).match(step.filter).select('id').abortSignal(signal as any),
+            `update:${step.table}`,
+            signal
           );
           break;
           
         case 'upsert':
           result = await withStepTimeout(
-            (supabase as any).from(step.table).upsert(step.data).select('id'),
-            `upsert:${step.table}`
+            (supabase as any).from(step.table).upsert(step.data).select('id').abortSignal(signal as any),
+            `upsert:${step.table}`,
+            signal
           );
           break;
           
@@ -127,7 +134,8 @@ export async function executeTransaction(
               const { data: targetRows } = await (supabase as any)
                 .from(step.table)
                 .select('id')
-                .match(step.filter);
+                .match(step.filter)
+                .abortSignal(signal as any);
               const targetIds = (targetRows || []).map((r: any) => r.id);
               if (targetIds.length > 0) {
                 const tw = await assertSafeToDeleteChildRows({
@@ -146,8 +154,9 @@ export async function executeTransaction(
             }
           }
           result = await withStepTimeout(
-            (supabase as any).from(step.table).delete().match(step.filter),
-            `delete:${step.table}`
+            (supabase as any).from(step.table).delete().match(step.filter).abortSignal(signal as any),
+            `delete:${step.table}`,
+            signal
           );
           break;
       }
