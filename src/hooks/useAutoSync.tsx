@@ -1,6 +1,6 @@
 import { useEffect, useCallback, useRef, useState } from 'react';
 import { supabase } from '@/integrations/supabase/client';
-import { syncAllInspectionsAtomic, syncAllTrainingsAtomic, syncAllDailyAssessmentsAtomic, noteBatchOutcome } from '@/lib/atomic-sync-manager';
+import { syncAllInspectionsAtomic, syncAllTrainingsAtomic, syncAllDailyAssessmentsAtomic, noteBatchOutcome, refetchInspectionPackage, refetchTrainingPackage, refetchAssessmentPackage } from '@/lib/atomic-sync-manager';
 import { syncPhotos } from '@/lib/sync-manager';
 import { saveInspectionOffline, saveTrainingOffline, saveDailyAssessmentOffline } from '@/lib/offline-storage';
 import { shouldPreserveLocalRecord } from '@/lib/local-data-guards';
@@ -106,6 +106,10 @@ export const useAutoSync = () => {
   const realtimeErrorCountRef = useRef<number>(0);
   const realtimeReconnectTimerRef = useRef<NodeJS.Timeout | null>(null);
   const realtimeBackoffRef = useRef<number>(60000); // Start at 60s, doubles up to 300s cap
+  // S12: Per-id debounced full-package refetch on Realtime parent events.
+  // Coalesces bursts of UPDATEs to the same record into one refetch (~300ms window).
+  const refetchTimersRef = useRef<Map<string, NodeJS.Timeout>>(new Map());
+  const REFETCH_DEBOUNCE_MS = 300;
   
   /**
    * Perform the actual sync operation
@@ -668,6 +672,38 @@ export const useAutoSync = () => {
   }, [performSync]);
   
   /**
+   * S12: Debounced full-package refetch (parent + all child collections).
+   * Coalesces multiple Realtime events for the same record into one round-trip.
+   */
+  const scheduleFullRefetch = useCallback((table: string, recordId: string) => {
+    const key = `${table}:${recordId}`;
+    const existing = refetchTimersRef.current.get(key);
+    if (existing) clearTimeout(existing);
+    const handle = setTimeout(() => {
+      refetchTimersRef.current.delete(key);
+      const run = async () => {
+        try {
+          if (table === 'inspections') {
+            await refetchInspectionPackage(recordId);
+          } else if (table === 'trainings') {
+            await refetchTrainingPackage(recordId);
+          } else if (table === 'daily_assessments') {
+            await refetchAssessmentPackage(recordId);
+          }
+          // Notify dashboards / forms that local IDB has fresh data
+          window.dispatchEvent(new CustomEvent('dashboard-stale'));
+        } catch (e) {
+          if (import.meta.env.DEV) {
+            console.warn('[AutoSync] Full-package refetch failed:', e);
+          }
+        }
+      };
+      run();
+    }, REFETCH_DEBOUNCE_MS);
+    refetchTimersRef.current.set(key, handle);
+  }, []);
+
+  /**
    * Handle Realtime database changes from other devices
    */
   const handleRemoteChange = useCallback((payload: any) => {
@@ -707,6 +743,13 @@ export const useAutoSync = () => {
           }
         };
         persistToIDB();
+
+        // S12: Debounced full-package refetch — covers cross-device child-row edits
+        // (which don't have their own Realtime subscriptions). Skip if this is a
+        // self-write echo to avoid redundant round-trips.
+        if (!isRecentSelfWrite(record.id)) {
+          scheduleFullRefetch(payload.table, record.id);
+        }
       }
     }
     
@@ -753,7 +796,7 @@ export const useAutoSync = () => {
     } else if (import.meta.env.DEV) {
       console.log('[AutoSync] Skipping Realtime-triggered sync (sync in progress)');
     }
-  }, [queryClient, triggerDebouncedSync]);
+  }, [queryClient, performSync, scheduleFullRefetch]);
   
   // Initialize sync system
   useEffect(() => {
@@ -924,6 +967,10 @@ export const useAutoSync = () => {
       if (channelRef.current) {
         supabase.removeChannel(channelRef.current);
       }
+
+      // S12: clear any pending package refetches
+      refetchTimersRef.current.forEach((handle) => clearTimeout(handle));
+      refetchTimersRef.current.clear();
     };
   }, [performSync, handleOnline, handleVisibilityChange, handleRemoteChange, updateUnsyncedCounts, isIOSDevice, isMobileDevice, activeSyncInterval, idleSyncInterval, isMobileViewport]);
   
