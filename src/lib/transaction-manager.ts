@@ -38,6 +38,16 @@ function withStepTimeout<T>(promise: Promise<T>, stepName: string, signal?: Abor
   });
 }
 
+/**
+ * S20: conditionally attach an AbortSignal to a PostgREST builder chain.
+ * Returns the builder unchanged when no signal is provided so existing
+ * non-cancellable callers are unaffected.
+ */
+function maybeAbort<T>(builder: T, signal?: AbortSignal): T {
+  if (!signal) return builder;
+  return (builder as any).abortSignal(signal);
+}
+
 // Tables that are NEVER allowed to have delete operations via the transaction manager
 // This is a compile-time/runtime guard against accidental data loss
 const REPORT_TABLE_BLOCKLIST = new Set([
