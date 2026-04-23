@@ -364,7 +364,13 @@ export const useAutoSync = () => {
       }
       
       // S1: Sync the three report types IN PARALLEL (independent table families, no shared rows).
-      // Photos run AFTER report sync because they depend on the temp-ID → UUID mapping.
+      // Photos run AFTER report sync so the temp-ID → UUID swap (performed
+      // during report sync) is in place before we try to upload. This is
+      // best-effort: any photo whose parent is still `temp-…` at upload time
+      // is skipped AND has its retryCount bumped (see sync-manager.ts /
+      // syncPhotos, S13). After MAX_PHOTO_RETRIES (5) such cycles the photo
+      // dead-letters and surfaces in SyncDiagnosticsSheet — it is not
+      // silently re-queued forever.
       const yieldToUI = () => new Promise<void>(r => setTimeout(r, 0));
 
       const syncResult = await withSyncTimeout(
