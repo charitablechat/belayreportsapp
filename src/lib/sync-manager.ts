@@ -168,27 +168,86 @@ export async function syncPhotos(signal?: AbortSignal): Promise<{ remaining: num
           return;
         }
 
-        // Normalize pending/ paths: replace placeholder prefix with real userId
-        // so the upload satisfies bucket RLS (path must start with auth.uid())
+        // S23: Bind photo to its capturing user. Resolve current user once.
+        const currentUser = await getUserWithCache();
+        const currentUserId = currentUser?.id || null;
+        const capturedBy = (photo as any).capturedByUserId as string | null | undefined;
+
+        // Cross-user guard: if the photo was captured by a different user than
+        // is currently signed in, do NOT rewrite the path under the new user.
+        if (capturedBy && currentUserId && capturedBy !== currentUserId) {
+          const ageMs = Date.now() - (photo.timestamp || Date.now());
+          const SEVEN_DAYS = 7 * 24 * 60 * 60 * 1000;
+          if (ageMs > SEVEN_DAYS) {
+            // Surface to dead-letter UI via S22 plumbing.
+            console.warn('[Sync Manager] Photo belongs to a different signed-in user (>7d old) — dead-lettering:', photo.id);
+            await setPhotoLastError(photo.id, 'Photo belongs to a different signed-in user');
+            await incrementPhotoRetryCount(photo.id);
+          } else if (import.meta.env.DEV) {
+            console.log('[Sync Manager] Skipping photo captured by different user:', photo.id, 'capturedBy=', capturedBy, 'currentUser=', currentUserId);
+          }
+          return;
+        }
+
+        // Inspection-ownership cross-check: if the parent inspection is owned
+        // by a different user than the one who staged the photo, dead-letter it.
+        if (capturedBy && photo.inspectionId && !photo.inspectionId.startsWith('temp-')) {
+          try {
+            const { getOfflineInspection, getOfflineDailyAssessment } = await import('./offline-storage');
+            const parent = (await getOfflineInspection(photo.inspectionId)) || (await getOfflineDailyAssessment(photo.inspectionId));
+            const parentOwnerId = parent?.inspector_id || parent?.user_id || null;
+            if (parentOwnerId && parentOwnerId !== capturedBy) {
+              console.warn('[Sync Manager] Photo capturer does not match inspection owner — dead-lettering:', photo.id);
+              await setPhotoLastError(photo.id, 'Photo belongs to a different signed-in user');
+              await incrementPhotoRetryCount(photo.id);
+              return;
+            }
+          } catch {
+            // Best-effort cross-check; don't block sync on lookup failure.
+          }
+        }
+
+        // Legacy `pending/` rewrite — only safe when there is no capturedBy
+        // tag (pre-S23 records) AND the current user owns the parent inspection.
         if (photo.photoUrl?.startsWith('pending/')) {
-          const user = await getUserWithCache();
-          if (!user?.id) {
+          if (!currentUserId) {
             if (import.meta.env.DEV) {
               console.log('[Sync Manager] Skipping pending photo (no auth):', photo.id);
             }
             return;
           }
-          const normalizedPath = photo.photoUrl.replace(/^pending\//, `${user.id}/`);
-          photo.photoUrl = normalizedPath;
-          // Persist the corrected path to IndexedDB so future cycles don't re-normalize
+          if (capturedBy && capturedBy !== currentUserId) {
+            // Already handled above, but defense in depth.
+            return;
+          }
+          // Verify ownership of parent inspection before rewriting.
+          let parentOwnerId: string | null = null;
           try {
-            const { updatePhotoUrl } = await import('./offline-storage');
+            const { getOfflineInspection, getOfflineDailyAssessment } = await import('./offline-storage');
+            const parent = (await getOfflineInspection(photo.inspectionId)) || (await getOfflineDailyAssessment(photo.inspectionId));
+            parentOwnerId = parent?.inspector_id || parent?.user_id || null;
+          } catch {
+            parentOwnerId = null;
+          }
+          if (parentOwnerId && parentOwnerId !== currentUserId) {
+            console.warn('[Sync Manager] Legacy pending photo belongs to a different user — dead-lettering:', photo.id);
+            await setPhotoLastError(photo.id, 'Photo belongs to a different signed-in user');
+            await incrementPhotoRetryCount(photo.id);
+            return;
+          }
+
+          const normalizedPath = photo.photoUrl.replace(/^pending\//, `${currentUserId}/`);
+          photo.photoUrl = normalizedPath;
+          try {
+            const { updatePhotoUrl, setPhotoCapturedBy } = await import('./offline-storage');
             await updatePhotoUrl(photo.id, normalizedPath);
+            // Stamp capturedBy now that we've definitively bound it.
+            await setPhotoCapturedBy(photo.id, currentUserId);
           } catch (e) {
             console.warn('[Sync Manager] Failed to persist normalized path:', e);
           }
           if (import.meta.env.DEV) {
-            console.log('[Sync Manager] Normalized pending path to:', normalizedPath);
+            console.log('[Sync Manager] Normalized legacy pending path to:', normalizedPath);
           }
         }
 
