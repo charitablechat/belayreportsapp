@@ -67,7 +67,7 @@ export function useUnsavedChanges({
     blocker.reset?.();
   }, [blocker]);
 
-  const saveAndLeave = useCallback(async () => {
+  const saveAndLeave = useCallback(async (): Promise<{ ok: boolean; error?: unknown }> => {
     if (onSaveAndLeave) {
       try {
         await Promise.race([
@@ -75,12 +75,17 @@ export function useUnsavedChanges({
           new Promise((_, reject) => setTimeout(() => reject(new Error('Save timeout')), 5000)),
         ]);
       } catch (e) {
-        console.warn('[useUnsavedChanges] Save before leave failed or timed out:', e);
+        // Gap 2.1: do NOT navigate away on save failure — that would silently
+        // discard the user's data. Surface the failure to the dialog so it can
+        // keep the user on the page with the persistent error visible.
+        console.warn('[useUnsavedChanges] Save before leave failed:', e);
+        return { ok: false, error: e };
       }
     }
     bypassRef.current = true;
     blocker.reset?.();
     navigate(fallbackPath);
+    return { ok: true };
   }, [blocker, onSaveAndLeave, navigate, fallbackPath]);
 
   // Reset bypass when blocker resets (user cancelled or new navigation)
