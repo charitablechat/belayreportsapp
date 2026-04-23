@@ -1241,16 +1241,29 @@ export async function syncTrainingAtomic(trainingId: string, preValidatedUser?: 
       };
     }
     
-    // Use recordStatus for conflict detection if available
+    // S16: Field-level merge for trainings (matches inspections path).
     if (recordStatus?.record_exists && !recordStatus?.is_deleted) {
       const remoteUpdated = new Date(recordStatus.updated_at!).getTime();
       const localUpdated = new Date(training.updated_at).getTime();
       const timeDiff = Math.abs(remoteUpdated - localUpdated);
-      
-      if (timeDiff > 5000 && remoteUpdated > localUpdated) {
-        console.warn('[Atomic Sync] Training conflict detected:', trainingId);
-        // For trainings, we use local-wins strategy silently
-        // No toast notification - conflicts are resolved automatically
+
+      if (timeDiff > CONFLICT_THRESHOLD_MS && remoteUpdated > localUpdated) {
+        const { data: remoteRow } = await supabase
+          .from('trainings')
+          .select('*')
+          .eq('id', trainingId)
+          .maybeSingle();
+        if (remoteRow) {
+          const merged = mergeRecordFields<any>(
+            training as any,
+            remoteRow as any,
+            TRACKED_FIELDS.training,
+          );
+          Object.assign(training, merged);
+          if (import.meta.env.DEV) {
+            console.log('[Atomic Sync] S16 field-merged training:', trainingId);
+          }
+        }
       }
     }
     
