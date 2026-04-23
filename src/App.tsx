@@ -36,6 +36,7 @@ import { StaleVersionBanner } from "@/components/pwa/StaleVersionBanner";
 import { InstallSuccessNotification } from "@/components/pwa/InstallSuccessNotification";
 import { MinVersionEnforcer } from "@/components/pwa/MinVersionEnforcer";
 import { AuthenticatedHeader } from "@/components/AuthenticatedHeader";
+import { RemoteDeletedConflictDialog } from "@/components/RemoteDeletedConflictDialog";
 import { GlobalEnterToBlur } from "@/components/GlobalEnterToBlur";
 import { PWAProvider } from "@/components/pwa/PWAProvider";
 import { useScrollRestoration } from "@/hooks/useScrollRestoration";
@@ -174,6 +175,7 @@ const RootLayout = () => {
             <MinVersionEnforcer />
             <AuthenticatedHeader />
             <GlobalEnterToBlur />
+            <RemoteDeletedConflictDialog />
             <Suspense fallback={null}>
               <Outlet />
             </Suspense>

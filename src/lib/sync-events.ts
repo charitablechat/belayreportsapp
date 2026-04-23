@@ -125,3 +125,37 @@ export function consumePendingDashboardRefresh(): boolean {
   }
   return false;
 }
+
+// ─── C9: Remote-deleted conflict bus ───────────────────────────────────────
+// Emitted by atomic-sync-manager when the server reports a record as
+// soft-deleted while the local copy still has unsynced edits. The local
+// row is quarantined (not wiped); the UI subscribes here to surface a
+// dialog so the user can Restore-as-New or Discard.
+
+export interface RemoteDeletedConflictPayload {
+  table: 'inspections' | 'trainings' | 'daily_assessments';
+  recordId: string;
+  remoteDeletedAt: string;
+  organizationLabel?: string | null;
+}
+
+type RemoteDeletedListener = (p: RemoteDeletedConflictPayload) => void;
+const remoteDeletedListeners = new Set<RemoteDeletedListener>();
+
+export function onRemoteDeletedConflict(listener: RemoteDeletedListener): () => void {
+  remoteDeletedListeners.add(listener);
+  return () => remoteDeletedListeners.delete(listener);
+}
+
+export function emitRemoteDeletedConflict(payload: RemoteDeletedConflictPayload): void {
+  remoteDeletedListeners.forEach((l) => {
+    try { l(payload); } catch (err) {
+      console.error('[SyncEvents] Remote-deleted listener error:', err);
+    }
+  });
+  // Also dispatch a window event so non-React listeners (diagnostics,
+  // notification-center) can react without importing this module.
+  try {
+    window.dispatchEvent(new CustomEvent('sync-remote-deleted-conflict', { detail: payload }));
+  } catch {}
+}

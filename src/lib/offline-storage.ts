@@ -1195,7 +1195,9 @@ export async function getOfflineInspections(userId?: string, isSuperAdmin?: bool
       const allInspections = await db.getAll('inspections');
       
       // Filter out soft-deleted records so they don't reappear on dashboard
-      const activeInspections = allInspections.filter(i => !i.deleted_at);
+      // C9: Also filter out records quarantined due to remote soft-delete; they
+      // remain in IDB pending user resolution via RemoteDeletedConflictDialog.
+      const activeInspections = allInspections.filter(i => !i.deleted_at && !(i as any)._remote_deleted_at);
       
       // Super admins see all reports - bypass user filtering
       if (isSuperAdmin) {
@@ -1259,7 +1261,9 @@ export async function getUnsyncedInspections(userId?: string) {
       // Simple getAll() + filter — reliable across all browsers.
       // These stores typically hold <100 records so full scans are fast.
       const all = await db.getAll('inspections');
-      let unsynced = all.filter(record => {
+      // C9: Exclude quarantined records (remote was soft-deleted) from unsynced
+      // candidates so we don't keep re-attempting to upload them.
+      let unsynced = all.filter(record => !(record as any)._remote_deleted_at).filter(record => {
         if (!record.synced_at) return true; // never synced
         if (record.updated_at) {
           const drift = new Date(record.updated_at).getTime() - new Date(record.synced_at).getTime();
@@ -2355,7 +2359,8 @@ export async function getOfflineDailyAssessments(userId?: string, isSuperAdmin?:
       const allAssessments = await db.getAll('daily_assessments');
       
       // Filter out soft-deleted records so they don't reappear on dashboard
-      const activeAssessments = allAssessments.filter(a => !a.deleted_at);
+      // C9: Also filter out quarantined remote-deleted records.
+      const activeAssessments = allAssessments.filter(a => !a.deleted_at && !(a as any)._remote_deleted_at);
       
       // Super admins see all reports - bypass user filtering
       if (isSuperAdmin) {
@@ -2413,7 +2418,8 @@ export async function getUnsyncedDailyAssessments(userId?: string) {
       const db = await getDB();
       
       const all = await db.getAll('daily_assessments');
-      let unsynced = all.filter(record => {
+      // C9: Exclude quarantined records.
+      let unsynced = all.filter(record => !(record as any)._remote_deleted_at).filter(record => {
         if (!record.synced_at) return true;
         if (record.updated_at) {
           return isUpdatedAheadOfSync(new Date(record.updated_at).getTime(), new Date(record.synced_at).getTime());
@@ -2696,7 +2702,8 @@ export async function getOfflineTrainings(userId?: string, isSuperAdmin?: boolea
       const allTrainings = await db.getAll('trainings');
       
       // Filter out soft-deleted records so they don't reappear on dashboard
-      const activeTrainings = allTrainings.filter(t => !t.deleted_at);
+      // C9: Also filter out quarantined remote-deleted records.
+      const activeTrainings = allTrainings.filter(t => !t.deleted_at && !(t as any)._remote_deleted_at);
       
       // Super admins see all reports - bypass user filtering
       if (isSuperAdmin) {
@@ -2754,7 +2761,8 @@ export async function getUnsyncedTrainings(userId?: string) {
       const db = await getDB();
       
       const all = await db.getAll('trainings');
-      let unsynced = all.filter(record => {
+      // C9: Exclude quarantined records.
+      let unsynced = all.filter(record => !(record as any)._remote_deleted_at).filter(record => {
         if (!record.synced_at) return true;
         if (record.updated_at) {
           return isUpdatedAheadOfSync(new Date(record.updated_at).getTime(), new Date(record.synced_at).getTime());
@@ -3568,4 +3576,245 @@ export async function bulkPutEquipmentTypeOptions(entries: EquipmentTypeCacheEnt
     }
     await tx.done;
   }, undefined, 'bulkPutEquipmentTypeOptions');
+}
+
+// ─── C9: Remote-deleted quarantine helpers ─────────────────────────────────
+// When a sync detects the server-side row has been soft-deleted but the
+// local copy still has unsynced edits, we mark the local parent with
+// `_remote_deleted_at` + `_quarantine_reason` instead of wiping it. The
+// dashboard / list-getters and getUnsynced* filters skip quarantined rows;
+// the user resolves them via RemoteDeletedConflictDialog.
+//
+// These helpers are intentionally additive — no existing call sites change.
+
+export type QuarantineTable = 'inspections' | 'trainings' | 'daily_assessments';
+
+export interface QuarantinedRecord {
+  table: QuarantineTable;
+  id: string;
+  organization?: string | null;
+  location?: string | null;
+  site?: string | null;
+  remoteDeletedAt: string;
+  reason: string;
+  raw: any;
+}
+
+export async function quarantineRecord(
+  table: QuarantineTable,
+  id: string,
+  remoteDeletedAt: string,
+  reason: string = 'remote_soft_delete',
+): Promise<boolean> {
+  return withIndexedDBErrorBoundary(
+    async () => {
+      const db = await getDB();
+      const row = await db.get(table, id);
+      if (!row) return false;
+      const updated = {
+        ...row,
+        _remote_deleted_at: remoteDeletedAt,
+        _quarantine_reason: reason,
+      };
+      await db.put(table, updated);
+      if (import.meta.env.DEV) {
+        console.warn('[C9] Quarantined local record (remote was soft-deleted):', {
+          table,
+          id: id.substring(0, 8),
+          remoteDeletedAt,
+        });
+      }
+      return true;
+    },
+    false,
+    'quarantineRecord',
+  );
+}
+
+export async function getQuarantinedRecords(
+  table?: QuarantineTable,
+): Promise<QuarantinedRecord[]> {
+  return withIndexedDBErrorBoundary(
+    async () => {
+      const db = await getDB();
+      const tables: QuarantineTable[] = table
+        ? [table]
+        : ['inspections', 'trainings', 'daily_assessments'];
+      const out: QuarantinedRecord[] = [];
+      for (const t of tables) {
+        const all = await db.getAll(t);
+        for (const r of all as any[]) {
+          if (r._remote_deleted_at) {
+            out.push({
+              table: t,
+              id: r.id,
+              organization: r.organization ?? null,
+              location: r.location ?? null,
+              site: r.site ?? null,
+              remoteDeletedAt: r._remote_deleted_at,
+              reason: r._quarantine_reason ?? 'remote_soft_delete',
+              raw: r,
+            });
+          }
+        }
+      }
+      return out;
+    },
+    [],
+    'getQuarantinedRecords',
+  );
+}
+
+/** Permanently discard a quarantined record + its children (user-confirmed). */
+export async function discardQuarantinedRecord(
+  table: QuarantineTable,
+  id: string,
+): Promise<void> {
+  switch (table) {
+    case 'inspections':
+      await deleteOfflineInspection(id);
+      return;
+    case 'trainings':
+      await deleteOfflineTraining(id);
+      return;
+    case 'daily_assessments':
+      await deleteOfflineDailyAssessment(id);
+      return;
+  }
+}
+
+/**
+ * Clone a quarantined parent + all its children under a fresh UUID, mark
+ * the new copy dirty (synced_at = null) so the next sync uploads it as a
+ * new report on the server, and remove the quarantined original from IDB.
+ *
+ * Returns the new id, or null if the quarantined record could not be found.
+ */
+export async function restoreQuarantinedAsNew(
+  table: QuarantineTable,
+  id: string,
+): Promise<string | null> {
+  return withIndexedDBErrorBoundary(
+    async () => {
+      const db = await getDB();
+      const row = await db.get(table, id);
+      if (!row) return null;
+
+      const newId = crypto.randomUUID();
+      const nowIso = new Date().toISOString();
+
+      // Strip quarantine + sync state on the clone so it looks like a
+      // brand-new local record to the next sync cycle.
+      const clone: any = {
+        ...row,
+        id: newId,
+        synced_at: null,
+        updated_at: nowIso,
+        created_at: nowIso,
+        client_idempotency_key: null,
+        // Keep deleted_at clear — this is a fresh report.
+        deleted_at: null,
+        deleted_by: null,
+        retention_until: null,
+      };
+      delete clone._remote_deleted_at;
+      delete clone._quarantine_reason;
+
+      // Copy children with rewritten parent FK and fresh ids.
+      const childStores: Record<QuarantineTable, { name: string; fk: string; index: string }[]> = {
+        inspections: [
+          { name: 'systems', fk: 'inspection_id', index: 'by-inspection' },
+          { name: 'ziplines', fk: 'inspection_id', index: 'by-inspection' },
+          { name: 'equipment', fk: 'inspection_id', index: 'by-inspection' },
+          { name: 'standards', fk: 'inspection_id', index: 'by-inspection' },
+          { name: 'summary', fk: 'inspection_id', index: 'by-inspection' },
+          { name: 'inspection_photos', fk: 'inspection_id', index: 'by-inspection' },
+        ],
+        trainings: [
+          { name: 'training_delivery_approaches', fk: 'training_id', index: 'by-training' },
+          { name: 'training_operating_systems', fk: 'training_id', index: 'by-training' },
+          { name: 'training_immediate_attention', fk: 'training_id', index: 'by-training' },
+          { name: 'training_verifiable_items', fk: 'training_id', index: 'by-training' },
+          { name: 'training_systems_in_place', fk: 'training_id', index: 'by-training' },
+          { name: 'training_summary', fk: 'training_id', index: 'by-training' },
+          { name: 'training_photos', fk: 'training_id', index: 'by-training' },
+        ],
+        daily_assessments: [
+          { name: 'daily_assessment_beginning_of_day', fk: 'assessment_id', index: 'by-assessment' },
+          { name: 'daily_assessment_end_of_day', fk: 'assessment_id', index: 'by-assessment' },
+          { name: 'daily_assessment_operating_systems', fk: 'assessment_id', index: 'by-assessment' },
+          { name: 'daily_assessment_equipment_checks', fk: 'assessment_id', index: 'by-assessment' },
+          { name: 'daily_assessment_structure_checks', fk: 'assessment_id', index: 'by-assessment' },
+          { name: 'daily_assessment_environment_checks', fk: 'assessment_id', index: 'by-assessment' },
+          { name: 'daily_assessment_photos', fk: 'assessment_id', index: 'by-assessment' },
+        ],
+      };
+
+      // Write the new parent.
+      await db.put(table, clone);
+
+      for (const store of childStores[table]) {
+        try {
+          const idx = db.transaction(store.name as any).store.index(store.index as any);
+          const children = await idx.getAll(id);
+          if (!children || children.length === 0) continue;
+          const tx = db.transaction(store.name as any, 'readwrite');
+          for (const child of children as any[]) {
+            const newChild = {
+              ...child,
+              id: crypto.randomUUID(),
+              [store.fk]: newId,
+            };
+            await tx.store.put(newChild);
+          }
+          await tx.done;
+        } catch (err) {
+          // Non-fatal — a missing/empty child store shouldn't block the restore.
+          if (import.meta.env.DEV) {
+            console.warn('[C9] restoreQuarantinedAsNew: child copy skipped', {
+              store: store.name,
+              err,
+            });
+          }
+        }
+      }
+
+      // Drop the original quarantined parent + its children. Children under
+      // the old id are now orphaned in IDB — clear them too.
+      try {
+        for (const store of childStores[table]) {
+          const idx = db.transaction(store.name as any).store.index(store.index as any);
+          const children = await idx.getAll(id);
+          if (!children || children.length === 0) continue;
+          const tx = db.transaction(store.name as any, 'readwrite');
+          for (const child of children as any[]) {
+            await tx.store.delete(child.id);
+          }
+          await tx.done;
+        }
+      } catch (err) {
+        if (import.meta.env.DEV) {
+          console.warn('[C9] restoreQuarantinedAsNew: old child cleanup skipped', err);
+        }
+      }
+      try {
+        await db.delete(table, id);
+      } catch (err) {
+        if (import.meta.env.DEV) {
+          console.warn('[C9] restoreQuarantinedAsNew: old parent cleanup skipped', err);
+        }
+      }
+
+      if (import.meta.env.DEV) {
+        console.log('[C9] Restored quarantined record as new:', {
+          table,
+          oldId: id.substring(0, 8),
+          newId: newId.substring(0, 8),
+        });
+      }
+      return newId;
+    },
+    null,
+    'restoreQuarantinedAsNew',
+  );
 }

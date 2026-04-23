@@ -179,7 +179,8 @@ async function safePostSyncSave<T extends { id: string; updated_at?: string | nu
   }
 }
 import { assertNoTempIds, assertNoTempIdsInArray } from "./sw-sync-validators";
-import { registerSelfWrite } from "./sync-events";
+import { registerSelfWrite, emitRemoteDeletedConflict } from "./sync-events";
+import { quarantineRecord } from "./offline-storage";
 import {
   getRegressionSkipCount,
   incrementRegressionSkipCount,
@@ -342,6 +343,67 @@ async function checkRemoteRecordStatus(
     console.error('[Atomic Sync] Exception checking record status:', e);
     return null;
   }
+}
+
+/**
+ * C9: Handle a sync-time detection of `remote_deleted` for a parent record.
+ *
+ * Behavior:
+ * - If the local record has unsynced edits (synced_at < updated_at, or never
+ *   synced), QUARANTINE the local row in IDB (set `_remote_deleted_at` and
+ *   `_quarantine_reason`) and emit a `remote-deleted-conflict` event for the
+ *   UI to surface RemoteDeletedConflictDialog. Children are NOT touched.
+ * - If the local record has no unsynced edits, the local copy already matches
+ *   the server's pre-delete state — safe to hard-delete locally as before
+ *   (no version-ring snapshot needed; nothing to recover).
+ *
+ * Returns `{ quarantined: true }` when we held the local data, or
+ * `{ quarantined: false }` when we performed the legacy hard-delete.
+ */
+async function handleRemoteDeleted(
+  table: 'inspections' | 'trainings' | 'daily_assessments',
+  recordId: string,
+  localRecord: { synced_at?: string | null; updated_at?: string | null; organization?: string | null } | null,
+  remoteDeletedAt: string,
+  legacyHardDelete: () => Promise<void>,
+): Promise<{ quarantined: boolean }> {
+  const hasUnsyncedEdits = (() => {
+    if (!localRecord) return false;
+    if (!localRecord.synced_at) return true;
+    const upd = localRecord.updated_at ? Date.parse(localRecord.updated_at) : NaN;
+    const syn = Date.parse(localRecord.synced_at);
+    if (!Number.isFinite(upd) || !Number.isFinite(syn)) return false;
+    return upd > syn;
+  })();
+
+  if (hasUnsyncedEdits) {
+    const ok = await quarantineRecord(table, recordId, remoteDeletedAt, 'remote_soft_delete');
+    if (ok) {
+      emitRemoteDeletedConflict({
+        table,
+        recordId,
+        remoteDeletedAt,
+        organizationLabel: localRecord?.organization ?? null,
+      });
+      syncLog.log('[C9] Quarantined local record with unsynced edits (remote was deleted):', {
+        table,
+        id: recordId.substring(0, 8),
+      });
+      return { quarantined: true };
+    }
+    // Quarantine failed (record vanished mid-flight) — fall through to legacy.
+  }
+
+  try {
+    await legacyHardDelete();
+    syncLog.log('[Atomic Sync] Cleaned up local copy for remote-deleted record (no unsynced edits):', {
+      table,
+      id: recordId.substring(0, 8),
+    });
+  } catch (err) {
+    console.error('[Atomic Sync] Failed to clean up orphaned local data:', err);
+  }
+  return { quarantined: false };
 }
 
 /**
@@ -515,41 +577,29 @@ export async function syncInspectionAtomic(inspectionId: string, preValidatedUse
     const isNewRecord = !inspection.synced_at;
     const recordStatus = isNewRecord ? null : await checkRemoteRecordStatus('inspections', inspectionId);
     
-    // SAFEGUARD: Check if remote record was soft-deleted by someone else
+    // C9: Remote record was soft-deleted. If we have unsynced local edits,
+    // quarantine instead of wiping — the user resolves via dialog.
     if (recordStatus?.record_exists && recordStatus?.is_deleted) {
-      console.warn('[Atomic Sync] Remote record was soft-deleted - cleaning up local copy:', inspectionId);
-      
-      // PRE-DELETE BACKUP: Snapshot before destroying local data
-      try {
-        const localData = await getOfflineInspection(inspectionId);
-        if (localData) {
-          const [sys, zips, equip, stds, summ] = await Promise.all([
-            getRelatedDataOffline('systems', inspectionId),
-            getRelatedDataOffline('ziplines', inspectionId),
-            getRelatedDataOffline('equipment', inspectionId),
-            getRelatedDataOffline('standards', inspectionId),
-            getRelatedDataOffline('summary', inspectionId),
-          ]);
-          appendVersion('inspection', inspectionId, localData, {
-            systems: sys, ziplines: zips, equipment: equip, standards: stds, summary: summ,
-          }, 'pre_delete').catch(() => {});
-        }
-      } catch (backupErr) {
-        console.warn('[Atomic Sync] Pre-delete backup failed:', backupErr);
-      }
-      
-      try {
-        await deleteOfflineInspection(inspectionId);
-        syncLog.log('[Atomic Sync] Cleaned up orphaned local inspection:', inspectionId);
-      } catch (cleanupError) {
-        console.error('[Atomic Sync] Failed to clean up orphaned local data:', cleanupError);
-      }
-      
-      return { 
-        success: false, 
-        skipped: true, 
-        reason: 'remote_deleted',
-        message: 'This record was deleted by an administrator. Local copy has been cleaned up.'
+      const remoteDeletedAt = recordStatus.deleted_at ?? new Date().toISOString();
+      const result = await handleRemoteDeleted(
+        'inspections',
+        inspectionId,
+        inspection,
+        remoteDeletedAt,
+        async () => {
+          // Legacy hard-delete path: only runs when there are no unsynced edits.
+          // No version snapshot needed — local matches server's pre-delete state.
+          await deleteOfflineInspection(inspectionId);
+        },
+      );
+      return {
+        success: false,
+        skipped: true,
+        reason: 'remote_deleted' as const,
+        quarantined: result.quarantined,
+        message: result.quarantined
+          ? 'This record was deleted by an administrator while you had unsynced changes. Resolve in the conflict dialog.'
+          : 'This record was deleted by an administrator. Local copy has been cleaned up.',
       };
     }
     
@@ -1490,44 +1540,26 @@ export async function syncTrainingAtomic(trainingId: string, preValidatedUser?: 
     const isNewTraining = !training.synced_at;
     const recordStatus = isNewTraining ? null : await checkRemoteRecordStatus('trainings', trainingId);
     
-    // SAFEGUARD: Check if remote record was soft-deleted by someone else
-    // This works for ALL users (regular and super admin) by bypassing RLS
+    // C9: Remote training was soft-deleted. Quarantine if unsynced edits exist.
     if (recordStatus?.record_exists && recordStatus?.is_deleted) {
-      console.warn('[Atomic Sync] Remote training was soft-deleted - cleaning up local copy:', trainingId);
-      
-      // PRE-DELETE BACKUP: Snapshot before destroying local data
-      try {
-        const localData = await getOfflineTraining(trainingId);
-        if (localData) {
-          const [da, os, ia, vi, sip, summ] = await Promise.all([
-            getTrainingDataOffline('delivery_approaches', trainingId),
-            getTrainingDataOffline('operating_systems', trainingId),
-            getTrainingDataOffline('immediate_attention', trainingId),
-            getTrainingDataOffline('verifiable_items', trainingId),
-            getTrainingDataOffline('systems_in_place', trainingId),
-            getTrainingDataOffline('summary', trainingId),
-          ]);
-          appendVersion('training', trainingId, localData, {
-            delivery_approaches: da, operating_systems: os, immediate_attention: ia,
-            verifiable_items: vi, systems_in_place: sip, summary: summ,
-          }, 'pre_delete').catch(() => {});
-        }
-      } catch (backupErr) {
-        console.warn('[Atomic Sync] Pre-delete training backup failed:', backupErr);
-      }
-      
-      try {
-        await deleteOfflineTraining(trainingId);
-        syncLog.log('[Atomic Sync] Cleaned up orphaned local training:', trainingId);
-      } catch (cleanupError) {
-        console.error('[Atomic Sync] Failed to clean up orphaned local training:', cleanupError);
-      }
-      
-      return { 
-        success: false, 
-        skipped: true, 
-        reason: 'remote_deleted',
-        message: 'This training was deleted by an administrator. Local copy has been cleaned up.'
+      const remoteDeletedAt = recordStatus.deleted_at ?? new Date().toISOString();
+      const result = await handleRemoteDeleted(
+        'trainings',
+        trainingId,
+        training,
+        remoteDeletedAt,
+        async () => {
+          await deleteOfflineTraining(trainingId);
+        },
+      );
+      return {
+        success: false,
+        skipped: true,
+        reason: 'remote_deleted' as const,
+        quarantined: result.quarantined,
+        message: result.quarantined
+          ? 'This training was deleted by an administrator while you had unsynced changes. Resolve in the conflict dialog.'
+          : 'This training was deleted by an administrator. Local copy has been cleaned up.',
       };
     }
     
@@ -2309,44 +2341,26 @@ export async function syncDailyAssessmentAtomic(assessmentId: string, preValidat
     const isNewAssessment = !assessment.synced_at;
     const recordStatus = isNewAssessment ? null : await checkRemoteRecordStatus('daily_assessments', assessmentId);
     
-    // SAFEGUARD: Check if remote record was soft-deleted by someone else
-    // This works for ALL users (regular and super admin) by bypassing RLS
+    // C9: Remote assessment was soft-deleted. Quarantine if unsynced edits exist.
     if (recordStatus?.record_exists && recordStatus?.is_deleted) {
-      console.warn('[Atomic Sync] Remote assessment was soft-deleted - cleaning up local copy:', assessmentId);
-      
-      // PRE-DELETE BACKUP: Snapshot before destroying local data
-      try {
-        const localData = await getOfflineDailyAssessment(assessmentId);
-        if (localData) {
-          const [bod, eod, os, eq, st, env] = await Promise.all([
-            getAssessmentDataOffline('beginning_of_day', assessmentId),
-            getAssessmentDataOffline('end_of_day', assessmentId),
-            getAssessmentDataOffline('operating_systems', assessmentId),
-            getAssessmentDataOffline('equipment_checks', assessmentId),
-            getAssessmentDataOffline('structure_checks', assessmentId),
-            getAssessmentDataOffline('environment_checks', assessmentId),
-          ]);
-          appendVersion('daily_assessment', assessmentId, localData, {
-            beginning_of_day: bod, end_of_day: eod, operating_systems: os,
-            equipment_checks: eq, structure_checks: st, environment_checks: env,
-          }, 'pre_delete').catch(() => {});
-        }
-      } catch (backupErr) {
-        console.warn('[Atomic Sync] Pre-delete assessment backup failed:', backupErr);
-      }
-      
-      try {
-        await deleteOfflineDailyAssessment(assessmentId);
-        syncLog.log('[Atomic Sync] Cleaned up orphaned local assessment:', assessmentId);
-      } catch (cleanupError) {
-        console.error('[Atomic Sync] Failed to clean up orphaned local assessment:', cleanupError);
-      }
-      
-      return { 
-        success: false, 
-        skipped: true, 
-        reason: 'remote_deleted',
-        message: 'This assessment was deleted by an administrator. Local copy has been cleaned up.'
+      const remoteDeletedAt = recordStatus.deleted_at ?? new Date().toISOString();
+      const result = await handleRemoteDeleted(
+        'daily_assessments',
+        assessmentId,
+        assessment,
+        remoteDeletedAt,
+        async () => {
+          await deleteOfflineDailyAssessment(assessmentId);
+        },
+      );
+      return {
+        success: false,
+        skipped: true,
+        reason: 'remote_deleted' as const,
+        quarantined: result.quarantined,
+        message: result.quarantined
+          ? 'This assessment was deleted by an administrator while you had unsynced changes. Resolve in the conflict dialog.'
+          : 'This assessment was deleted by an administrator. Local copy has been cleaned up.',
       };
     }
     
