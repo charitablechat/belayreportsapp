@@ -1793,7 +1793,7 @@ export async function syncAllTrainingsAtomic(preValidatedUser?: CachedUser, sign
       syncProgressEmitter.emit({
         total: batch.length,
         current: progressCounter,
-        currentItem: `${formatProgressLabel([training.organization, (training as { location?: string | null }).location], 'Untitled training')}${retryCount > 0 ? ` (retry ${retryCount})` : ''}${remaining > 0 ? ` (${remaining} more queued)` : ''}`,
+        currentItem: `${formatProgressLabel([training.organization, training.location], 'Untitled training')}${retryCount > 0 ? ` (retry ${retryCount})` : ''}${remaining > 0 ? ` (${remaining} more queued)` : ''}`,
         phase: 'trainings',
         errors,
       });
