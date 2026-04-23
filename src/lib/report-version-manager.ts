@@ -187,9 +187,24 @@ export async function appendVersion(
     // Async prune — never blocks
     pruneVersions(reportId).catch(() => {});
 
+    // M9: Record success — clear any prior failure streak.
+    if (versioningHealth.consecutiveFailures > 0 || versioningHealth.lastSuccessAt === null) {
+      versioningHealth.consecutiveFailures = 0;
+      versioningHealth.lastError = null;
+      versioningHealth.lastSuccessAt = Date.now();
+      emitHealth();
+    } else {
+      versioningHealth.lastSuccessAt = Date.now();
+    }
+
     return version;
   } catch (error) {
     console.warn('[Version Manager] Failed to append version:', error);
+    // M9: Track consecutive failures so the UI can warn the user.
+    versioningHealth.consecutiveFailures += 1;
+    versioningHealth.lastFailureAt = Date.now();
+    versioningHealth.lastError = error instanceof Error ? error.message : String(error);
+    emitHealth();
     return null;
   }
 }
