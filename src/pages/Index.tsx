@@ -4,6 +4,9 @@ import { supabase } from "@/integrations/supabase/client";
 import Auth from "@/components/Auth";
 import { hasPendingOfflineAuth } from "@/lib/offline-auth";
 
+// H8: Derive Supabase auth-token storage key from env (project ref) instead of hardcoding.
+const SUPABASE_SESSION_KEY = `sb-${import.meta.env.VITE_SUPABASE_PROJECT_ID}-auth-token`;
+
 const Index = () => {
   const navigate = useNavigate();
   const [session, setSession] = useState<any>(null);
@@ -15,7 +18,7 @@ const Index = () => {
         // If offline, check cached session immediately without Supabase call
         if (!navigator.onLine) {
           console.log('[Auth] Offline detected, checking cached session');
-          const cachedSession = localStorage.getItem('sb-ssgzcgvygnsrqalisshx-auth-token');
+          const cachedSession = localStorage.getItem(SUPABASE_SESSION_KEY);
           
           if (cachedSession) {
             try {
@@ -67,7 +70,7 @@ const Index = () => {
           console.log('[Auth] Supabase verification failed or timed out, checking cache:', authError);
           
           // Fallback to cached session only if Supabase request truly failed
-          const cachedSession = localStorage.getItem('sb-ssgzcgvygnsrqalisshx-auth-token');
+          const cachedSession = localStorage.getItem(SUPABASE_SESSION_KEY);
           
           if (cachedSession) {
             try {
