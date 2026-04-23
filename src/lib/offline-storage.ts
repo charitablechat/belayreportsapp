@@ -1805,7 +1805,7 @@ export async function getRelatedDataOfflineWithStatus(
   if (isCircuitBreakerOpen()) {
     return { items: [], readSucceeded: false };
   }
-  const READ_TIMEOUT_MS = 7000;
+  const READ_TIMEOUT_MS = IDB_TIMEOUTS.batch;
   const TIMEOUT_SENTINEL: any = Symbol('with-status-timeout');
   try {
     const result = await Promise.race([
@@ -2168,7 +2168,7 @@ export async function getAssessmentDataOfflineWithStatus(
   if (isCircuitBreakerOpen()) {
     return { items: [], readSucceeded: false };
   }
-  const READ_TIMEOUT_MS = 7000;
+  const READ_TIMEOUT_MS = IDB_TIMEOUTS.batch;
   const TIMEOUT_SENTINEL: any = Symbol('with-status-timeout');
   try {
     const result = await Promise.race([
@@ -2586,7 +2586,7 @@ export async function getTrainingDataOfflineWithStatus(
   if (isCircuitBreakerOpen()) {
     return { items: [], readSucceeded: false };
   }
-  const READ_TIMEOUT_MS = 7000;
+  const READ_TIMEOUT_MS = IDB_TIMEOUTS.batch;
   const TIMEOUT_SENTINEL: any = Symbol('with-status-timeout');
   try {
     const result = await Promise.race([
