@@ -3003,27 +3003,27 @@ export async function clearAssessmentDataOffline(
 }
 
 // Training functions
+/**
+ * Save a training to IndexedDB.
+ * Throws `IdbSaveError` on hard failure (Gap 2.1) — callers MUST handle rejection.
+ */
 export async function saveTrainingOffline(
   training: any,
   opts?: { childCountHint?: number }
-) {
-  return withIndexedDBErrorBoundary(
+): Promise<SaveResult> {
+  return withIndexedDBSaveBoundary(
     async () => {
       const db = await getDB();
-
-      // S30: Prefer caller-provided hint; otherwise preserve existing value.
       if (opts?.childCountHint != null && opts.childCountHint >= 0) {
         training.child_count_hint = opts.childCountHint;
       }
-
       await db.put('trainings', training);
-      
       if (import.meta.env.DEV) {
         console.log('[Offline Storage] Saved training:', training.id);
       }
     },
-    undefined,
-    'saveTrainingOffline'
+    'saveTrainingOffline',
+    training,
   );
 }
 
