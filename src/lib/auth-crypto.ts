@@ -159,7 +159,11 @@ export async function decryptFromStorage(stored: string): Promise<string | null>
   try {
     const iv = base64ToBytes(ivB64);
     const cipher = base64ToBytes(cipherB64);
-    const plain = await crypto.subtle.decrypt({ name: 'AES-GCM', iv }, key, cipher);
+    const plain = await crypto.subtle.decrypt(
+      { name: 'AES-GCM', iv: iv as BufferSource },
+      key,
+      cipher as BufferSource
+    );
     return new TextDecoder().decode(plain);
   } catch (err) {
     if (import.meta.env.DEV) {
