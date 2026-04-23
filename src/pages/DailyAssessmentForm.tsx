@@ -801,7 +801,7 @@ export default function DailyAssessmentForm() {
           !!baseUpdatedAssessment.synced_at,
         );
         childOps.push(
-          withTimeout(saveDailyAssessmentOffline(updatedAssessment), 3000, 'Assessment offline save')
+          withTimeout(saveDailyAssessmentOffline(updatedAssessment, { childCountHint: totalChildCount }), 3000, 'Assessment offline save')
         );
 
         // Layer 1: localStorage snapshot backup FIRST (before IndexedDB writes)

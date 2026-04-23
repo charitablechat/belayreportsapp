@@ -732,7 +732,7 @@ export default function TrainingForm() {
 
       // Save offline (fire-and-forget for UI responsiveness)
       // Guard: Only write child data if it was successfully loaded OR has items
-      const childOps: Promise<any>[] = [saveTrainingOffline(updatedTraining)];
+      const childOps: Promise<any>[] = [saveTrainingOffline(updatedTraining, { childCountHint: totalChildCount })];
       if (deliveryApproaches.length > 0 || childDataLoadedRef.current.delivery_approaches) {
         childOps.push(saveTrainingDataOffline('delivery_approaches', id, deliveryApproaches, { allowEmpty: true }));
       } else {

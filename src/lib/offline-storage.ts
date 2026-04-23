@@ -1140,27 +1140,22 @@ export async function getDB() {
 
 // Inspection functions
 
-export async function saveInspectionOffline(inspection: any) {
+export async function saveInspectionOffline(
+  inspection: any,
+  opts?: { childCountHint?: number }
+) {
   return withIndexedDBErrorBoundary(
     async () => {
       try {
         const db = await getDB();
 
-        // V6: Stamp child_count_hint = total live children at save time so SW can detect regressions.
-        try {
-          const [systems, ziplines, equipment, standards, summary] = await Promise.all([
-            db.getAllFromIndex('inspection_systems', 'by-inspection', inspection.id).catch(() => []),
-            db.getAllFromIndex('inspection_ziplines', 'by-inspection', inspection.id).catch(() => []),
-            db.getAllFromIndex('inspection_equipment', 'by-inspection', inspection.id).catch(() => []),
-            db.getAllFromIndex('inspection_standards', 'by-inspection', inspection.id).catch(() => []),
-            db.getAllFromIndex('inspection_summary', 'by-inspection', inspection.id).catch(() => []),
-          ]);
-          const total = (systems?.length ?? 0) + (ziplines?.length ?? 0) + (equipment?.length ?? 0)
-            + (standards?.length ?? 0) + ((summary?.length ?? 0) > 0 ? 1 : 0);
-          if (total > 0) inspection.child_count_hint = total;
-        } catch {
-          // non-fatal
+        // S30: Prefer caller-provided hint to avoid IDB contention on every save.
+        // If not provided, preserve the existing hint already on the row (a stale
+        // hint is safe — the SW guard becomes more lenient, not stricter).
+        if (opts?.childCountHint != null && opts.childCountHint >= 0) {
+          inspection.child_count_hint = opts.childCountHint;
         }
+        // else: keep inspection.child_count_hint as-is (no scan)
 
         await db.put('inspections', inspection);
 
@@ -2083,6 +2078,108 @@ const ensureValidUUID = (id: string | undefined): string => {
   return id;
 };
 
+// S30: Recompute child_count_hint on the parent record after a child mutation.
+// Called fire-and-forget from child-save helpers so it never blocks the save.
+// Uses cheap count() per "other" store (not getAllFromIndex) to minimize IDB load,
+// and skips entirely on read errors (a stale hint is safe for the SW guard).
+async function recomputeInspectionChildCountHint(
+  db: any,
+  inspectionId: string,
+  justSavedType: RelatedDataType,
+  justSavedCount: number,
+): Promise<void> {
+  try {
+    const inspection = await db.get('inspections', inspectionId).catch(() => null);
+    if (!inspection) return;
+
+    const otherTypes: RelatedDataType[] = (['systems', 'ziplines', 'equipment', 'standards', 'summary'] as RelatedDataType[])
+      .filter(t => t !== justSavedType);
+    const counts = await Promise.all(
+      otherTypes.map(async (t) => {
+        try {
+          const idx = db.transaction(storeNameMap[t]).store.index('by-inspection');
+          return (await idx.count(inspectionId)) as number;
+        } catch {
+          return 0;
+        }
+      })
+    );
+    const otherTotal = counts.reduce((a, b) => a + b, 0);
+    // Summary contributes 1 if any row exists; align with old "summary?.length > 0 ? 1 : 0" semantics.
+    const newHint = otherTotal + (justSavedType === 'summary' ? (justSavedCount > 0 ? 1 : 0) : justSavedCount);
+    if (inspection.child_count_hint !== newHint) {
+      inspection.child_count_hint = newHint;
+      await db.put('inspections', inspection);
+    }
+  } catch {
+    // non-fatal; SW guard tolerates a stale hint
+  }
+}
+
+async function recomputeAssessmentChildCountHint(
+  db: any,
+  assessmentId: string,
+  justSavedType: AssessmentDataType,
+  justSavedCount: number,
+): Promise<void> {
+  try {
+    const assessment = await db.get('daily_assessments', assessmentId).catch(() => null);
+    if (!assessment) return;
+
+    const allTypes: AssessmentDataType[] = ['beginning_of_day', 'end_of_day', 'operating_systems', 'equipment_checks', 'structure_checks', 'environment_checks'];
+    const otherTypes = allTypes.filter(t => t !== justSavedType);
+    const counts = await Promise.all(
+      otherTypes.map(async (t) => {
+        try {
+          const idx = db.transaction(assessmentStoreNameMap[t]).store.index('by-assessment');
+          return (await idx.count(assessmentId)) as number;
+        } catch {
+          return 0;
+        }
+      })
+    );
+    const newHint = counts.reduce((a, b) => a + b, 0) + justSavedCount;
+    if (assessment.child_count_hint !== newHint) {
+      assessment.child_count_hint = newHint;
+      await db.put('daily_assessments', assessment);
+    }
+  } catch {
+    // non-fatal
+  }
+}
+
+async function recomputeTrainingChildCountHint(
+  db: any,
+  trainingId: string,
+  justSavedType: TrainingDataType,
+  justSavedCount: number,
+): Promise<void> {
+  try {
+    const training = await db.get('trainings', trainingId).catch(() => null);
+    if (!training) return;
+
+    const allTypes: TrainingDataType[] = ['delivery_approaches', 'operating_systems', 'immediate_attention', 'verifiable_items', 'systems_in_place', 'summary'];
+    const otherTypes = allTypes.filter(t => t !== justSavedType);
+    const counts = await Promise.all(
+      otherTypes.map(async (t) => {
+        try {
+          const idx = db.transaction(trainingStoreNameMap[t]).store.index('by-training');
+          return (await idx.count(trainingId)) as number;
+        } catch {
+          return 0;
+        }
+      })
+    );
+    const newHint = counts.reduce((a, b) => a + b, 0) + justSavedCount;
+    if (training.child_count_hint !== newHint) {
+      training.child_count_hint = newHint;
+      await db.put('trainings', training);
+    }
+  } catch {
+    // non-fatal
+  }
+}
+
 export async function saveRelatedDataOffline(
   type: RelatedDataType,
   inspectionId: string,
@@ -2127,6 +2224,10 @@ export async function saveRelatedDataOffline(
       if (import.meta.env.DEV) {
         console.log(`[Offline Storage] Saved ${type}:`, data.length, 'items');
       }
+
+      // S30: Recompute child_count_hint on the parent only when children mutate.
+      // Fire-and-forget; never block the child save.
+      void recomputeInspectionChildCountHint(db, inspectionId, type, data.length);
     },
     undefined,
     `saveRelatedDataOffline:${type}`
@@ -2212,26 +2313,17 @@ export async function clearRelatedDataOffline(
 }
 
 // Daily Assessment functions
-export async function saveDailyAssessmentOffline(assessment: any) {
+export async function saveDailyAssessmentOffline(
+  assessment: any,
+  opts?: { childCountHint?: number }
+) {
   return withIndexedDBErrorBoundary(
     async () => {
       const db = await getDB();
 
-      // V6: Stamp child_count_hint for assessment
-      try {
-        const [bod, eod, env, eq, str, os] = await Promise.all([
-          db.getAllFromIndex('daily_assessment_beginning_of_day', 'by-assessment', assessment.id).catch(() => []),
-          db.getAllFromIndex('daily_assessment_end_of_day', 'by-assessment', assessment.id).catch(() => []),
-          db.getAllFromIndex('daily_assessment_environment_checks', 'by-assessment', assessment.id).catch(() => []),
-          db.getAllFromIndex('daily_assessment_equipment_checks', 'by-assessment', assessment.id).catch(() => []),
-          db.getAllFromIndex('daily_assessment_structure_checks', 'by-assessment', assessment.id).catch(() => []),
-          db.getAllFromIndex('daily_assessment_operating_systems', 'by-assessment', assessment.id).catch(() => []),
-        ]);
-        const total = (bod?.length ?? 0) + (eod?.length ?? 0) + (env?.length ?? 0)
-          + (eq?.length ?? 0) + (str?.length ?? 0) + (os?.length ?? 0);
-        if (total > 0) assessment.child_count_hint = total;
-      } catch {
-        // non-fatal
+      // S30: Prefer caller-provided hint; otherwise preserve existing value.
+      if (opts?.childCountHint != null && opts.childCountHint >= 0) {
+        assessment.child_count_hint = opts.childCountHint;
       }
 
       await db.put('daily_assessments', assessment);
@@ -2479,6 +2571,9 @@ export async function saveAssessmentDataOffline(
       if (import.meta.env.DEV) {
         console.log(`[Offline Storage] Saved assessment ${type}:`, data.length, 'items');
       }
+
+      // S30: Recompute child_count_hint on the parent (fire-and-forget).
+      void recomputeAssessmentChildCountHint(db, assessmentId, type, data.length);
     },
     undefined,
     `saveAssessmentDataOffline:${type}`
@@ -2560,26 +2655,17 @@ export async function clearAssessmentDataOffline(
 }
 
 // Training functions
-export async function saveTrainingOffline(training: any) {
+export async function saveTrainingOffline(
+  training: any,
+  opts?: { childCountHint?: number }
+) {
   return withIndexedDBErrorBoundary(
     async () => {
       const db = await getDB();
 
-      // V6: Stamp child_count_hint for training
-      try {
-        const [da, os, ia, vi, sip, summary] = await Promise.all([
-          db.getAllFromIndex('training_delivery_approaches', 'by-training', training.id).catch(() => []),
-          db.getAllFromIndex('training_operating_systems', 'by-training', training.id).catch(() => []),
-          db.getAllFromIndex('training_immediate_attention', 'by-training', training.id).catch(() => []),
-          db.getAllFromIndex('training_verifiable_items', 'by-training', training.id).catch(() => []),
-          db.getAllFromIndex('training_systems_in_place', 'by-training', training.id).catch(() => []),
-          db.getAllFromIndex('training_summary', 'by-training', training.id).catch(() => []),
-        ]);
-        const total = (da?.length ?? 0) + (os?.length ?? 0) + (ia?.length ?? 0)
-          + (vi?.length ?? 0) + (sip?.length ?? 0) + (summary?.length ?? 0);
-        if (total > 0) training.child_count_hint = total;
-      } catch {
-        // non-fatal
+      // S30: Prefer caller-provided hint; otherwise preserve existing value.
+      if (opts?.childCountHint != null && opts.childCountHint >= 0) {
+        training.child_count_hint = opts.childCountHint;
       }
 
       await db.put('trainings', training);
@@ -2882,6 +2968,9 @@ export async function saveTrainingDataOffline(
       if (import.meta.env.DEV) {
         console.log(`[Offline Storage] Saved training ${type}:`, items.length, 'items');
       }
+
+      // S30: Recompute child_count_hint on the parent (fire-and-forget).
+      void recomputeTrainingChildCountHint(db, trainingId, type, items.length);
     },
     undefined,
     `saveTrainingDataOffline:${type}`
