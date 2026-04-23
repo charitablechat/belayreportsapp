@@ -216,6 +216,13 @@ export const useAutoSync = () => {
     syncInProgressRef.current = true;
     setSyncInProgress(true);
     setState(prev => ({ ...prev, isSyncing: true }));
+
+    // S21: Create a deferred promise that resolves when this run's `finally` clears it.
+    // Concurrent callers above await this directly instead of polling.
+    let resolveInFlight: () => void = () => {};
+    inFlightSyncRef.current = new Promise<void>((resolve) => {
+      resolveInFlight = resolve;
+    });
     
     // Calculate dynamic timeout based on BATCH size (not total unsynced)
     // With MAX_BATCH_SIZE=5: 30s + (5 x 8s) = 70s -- well within safe limits
