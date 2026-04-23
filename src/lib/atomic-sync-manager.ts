@@ -722,6 +722,9 @@ export async function syncInspectionAtomic(inspectionId: string, preValidatedUse
       ...inspection,
       synced_at: serverTimestamp,
       updated_at: serverTimestamp,
+      // S9: marker has done its job — clear it so a future stale-IDB read
+      // isn't misinterpreted as fresh user-clear intent.
+      user_cleared_at: null,
       inspector: inspectorProfile || { first_name: null, last_name: null, avatar_url: null },
     });
     
