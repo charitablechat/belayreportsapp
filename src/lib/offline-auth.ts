@@ -416,6 +416,11 @@ export async function verifyAndReconcileOfflineAuth(): Promise<boolean> {
         to: realUserId,
       });
       await migrateUserData(syntheticUserId, realUserId);
+      // 1.A — Rewrite queued (not-yet-uploaded) photo paths so the next
+      // syncPhotos() cycle POSTs to <newUid>/... and passes storage RLS.
+      // Already-uploaded photos keep their <oldUid>/ path (see C7 note in
+      // migrateUserData) — their storage object lives there forever.
+      await migratePendingPhotoPaths(syntheticUserId, realUserId);
       toast.success('Your offline data has been linked to your account.');
     } else {
       toast.success('Offline session verified.');
@@ -468,19 +473,89 @@ async function migrateUserData(oldUserId: string, newUserId: string): Promise<vo
       }
     }
 
-    // C7: Photo paths are intentionally NOT rewritten. The storage object
-    // lives under <oldUserId>/... forever; rewriting the IDB pointer would
-    // make it point at a non-existent key. Reads use signed URLs that work
-    // regardless of which uid prefix is in the path, so the original key
-    // remains valid post-reconcile. Only `inspector_id` on the parent report
-    // rows needs migrating (handled above) so the Dashboard query surfaces
-    // them under the real account.
+    // C7: Photo paths for ALREADY-UPLOADED photos are intentionally NOT
+    // rewritten. The storage object lives under <oldUserId>/... forever;
+    // rewriting the IDB pointer would make it point at a non-existent key.
+    // Reads use signed URLs that work regardless of which uid prefix is in
+    // the path, so the original key remains valid post-reconcile.
+    // PENDING (not-yet-uploaded) photos ARE rewritten — see
+    // `migratePendingPhotoPaths` below — because their next upload must
+    // target the new authenticated uid to satisfy storage RLS.
 
     if (import.meta.env.DEV) {
       console.log(`[OfflineAuth] Migrated ${totalMigrated} records ${oldUserId} → ${newUserId}`);
     }
   } catch (error) {
     console.error('[OfflineAuth] Data migration failed:', error);
+  }
+}
+
+/**
+ * 1.A — Rewrite IDB photo paths for queued (not-yet-uploaded) photos so the
+ * next sync cycle uploads them under the real authenticated uid. Already-
+ * uploaded photos are left alone (their storage object lives under the old
+ * prefix and signed URLs work regardless).
+ */
+async function migratePendingPhotoPaths(oldUserId: string, newUserId: string): Promise<void> {
+  if (!oldUserId || !newUserId || oldUserId === newUserId) return;
+  try {
+    const { getDB } = await import('./offline-storage');
+    const db = await getDB();
+
+    // Read phase — readonly tx, free to await.
+    let allPhotos: any[] = [];
+    try {
+      const readTx = db.transaction('photos', 'readonly');
+      allPhotos = await readTx.objectStore('photos').getAll();
+      await readTx.done;
+    } catch (readErr) {
+      console.warn('[OfflineAuth] Failed to read photos store for path migration:', readErr);
+      return;
+    }
+
+    const prefix = `${oldUserId}/`;
+    const toRewrite = allPhotos.filter((p: any) => {
+      // Only touch pending uploads. `uploaded` is the canonical flag
+      // (indexed as `by-uploaded` in offline-storage).
+      if (p?.uploaded) return false;
+      return typeof p?.photoUrl === 'string' && p.photoUrl.startsWith(prefix);
+    });
+
+    if (toRewrite.length === 0) {
+      if (import.meta.env.DEV) {
+        console.log('[OfflineAuth] No pending photo paths to migrate');
+      }
+      return;
+    }
+
+    // Write phase — fire all puts synchronously, then await tx.done.
+    try {
+      const writeTx = db.transaction('photos', 'readwrite');
+      const writeStore = writeTx.objectStore('photos');
+      const puts = toRewrite.map((photo: any) => {
+        try {
+          const rewritten = {
+            ...photo,
+            photoUrl: `${newUserId}/${photo.photoUrl.slice(prefix.length)}`,
+          };
+          return writeStore.put(rewritten);
+        } catch (rowErr) {
+          console.warn('[OfflineAuth] Skipped photo during path migration:', photo?.id, rowErr);
+          return Promise.resolve();
+        }
+      });
+      await Promise.all(puts);
+      await writeTx.done;
+    } catch (writeErr) {
+      console.warn('[OfflineAuth] Photo path migration write phase failed:', writeErr);
+      return;
+    }
+
+    if (import.meta.env.DEV) {
+      console.log(`[OfflineAuth] Migrated ${toRewrite.length} pending photo paths ${oldUserId} → ${newUserId}`);
+    }
+  } catch (error) {
+    console.error('[OfflineAuth] migratePendingPhotoPaths failed:', error);
   }
 }
 
