@@ -30,17 +30,6 @@ export const MAX_SOFT_DELETE_ATTEMPTS = 5;
 type QueueStore = 'operations' | 'assessment_operations' | 'training_operations';
 type TableName = 'inspections' | 'trainings' | 'daily_assessments';
 
-/**
- * Determine the Supabase table from the queued operation data.
- */
-function resolveTable(data: any): TableName | null {
-  if (!data) return null;
-  if ('assessment_date' in data && !('start_date' in data)) return 'daily_assessments';
-  if ('start_date' in data) return 'trainings';
-  if ('inspection_date' in data || 'location' in data) return 'inspections';
-  return 'inspections';
-}
-
 function isSoftDeleteOp(op: any): boolean {
   return op?.type === 'update' && op?.data?.deleted_at != null;
 }
