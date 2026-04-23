@@ -1018,6 +1018,10 @@ export const useAutoSync = () => {
       if (debounceTimerRef.current) {
         clearTimeout(debounceTimerRef.current);
       }
+
+      if (onlineHandlerTimerRef.current) {
+        clearTimeout(onlineHandlerTimerRef.current);
+      }
       
       if (periodicSyncIntervalRef.current) {
         clearInterval(periodicSyncIntervalRef.current);
