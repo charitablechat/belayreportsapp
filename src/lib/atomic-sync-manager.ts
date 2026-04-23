@@ -1,5 +1,10 @@
 import { supabase } from "@/integrations/supabase/client";
 import { syncLog } from "./sync-logger";
+import {
+  recordEmptyLocalConflict,
+  shouldNotifyForEmptyLocalConflict,
+  type EmptyLocalReportType,
+} from "./empty-local-conflict-store";
 
 /**
  * Build a user-facing label from a list of parts, skipping empty/nullish values.
