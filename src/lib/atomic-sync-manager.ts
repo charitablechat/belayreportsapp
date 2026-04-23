@@ -1212,6 +1212,15 @@ export async function syncTrainingAtomic(trainingId: string, preValidatedUser?: 
       }
     }
 
+    // M15: Hard guard — fail loud if any temp- ID slipped past the transforms above.
+    assertNoTempIds(training, 'trainings.upsert');
+    assertNoTempIdsInArray(delivery_approaches, 'training_delivery_approaches.upsert');
+    assertNoTempIdsInArray(operating_systems, 'training_operating_systems.upsert');
+    assertNoTempIdsInArray(immediate_attention, 'training_immediate_attention.upsert');
+    assertNoTempIdsInArray(verifiable_items, 'training_verifiable_items.upsert');
+    assertNoTempIdsInArray(systems_in_place, 'training_systems_in_place.upsert');
+    if (summary) assertNoTempIds(summary, 'training_summary.upsert');
+
     // 4. Build transaction steps
     const steps: TransactionStep[] = [];
     
