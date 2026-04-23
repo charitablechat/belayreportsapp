@@ -179,7 +179,8 @@ async function safePostSyncSave<T extends { id: string; updated_at?: string | nu
   }
 }
 import { assertNoTempIds, assertNoTempIdsInArray } from "./sw-sync-validators";
-import { registerSelfWrite } from "./sync-events";
+import { registerSelfWrite, emitRemoteDeletedConflict } from "./sync-events";
+import { quarantineRecord } from "./offline-storage";
 import {
   getRegressionSkipCount,
   incrementRegressionSkipCount,
