@@ -188,13 +188,20 @@ import {
 } from "./regression-skip-store";
 import { wasClearedAfterLastSync } from "./clear-intent";
 import { mergeRecordFields, TRACKED_FIELDS } from "./field-merge";
+import { SYNC_DRIFT_TOLERANCE_MS } from "./local-data-guards";
 
 /**
- * Conflict-detection threshold. Aligned with SYNC_DRIFT_TOLERANCE_MS (S14):
- * any remote/local gap below this is treated as ordinary network/clock jitter
- * rather than a real concurrent edit. Above it, S16's field-merge runs.
+ * H4: Field-merge gate. We no longer use a `timeDiff > 30s` window — that
+ * created a silent-overwrite blind spot where two devices editing within
+ * ~30s of each other would skip the merge entirely and let the local upsert
+ * clobber remote-only field edits. Instead, we trigger the merge whenever
+ * the remote `updated_at` is strictly newer than our last successful sync
+ * (with `SYNC_DRIFT_TOLERANCE_MS` absorbing benign server/client clock skew).
+ *
+ * `mergeRecordFields` is idempotent and safe to run on identical inputs, so
+ * over-triggering only costs an extra `select *` round-trip; under-triggering
+ * costs data.
  */
-const CONFLICT_THRESHOLD_MS = 30_000;
 
 /**
  * Adaptive batch size for sync cycles.
@@ -609,18 +616,14 @@ export async function syncInspectionAtomic(inspectionId: string, preValidatedUse
     // flows through the normal sync path (so child reconciliation still runs).
     if (recordStatus?.record_exists && !recordStatus?.is_deleted) {
       const remoteUpdated = new Date(recordStatus.updated_at!).getTime();
-      const localUpdated = new Date(inspection.updated_at).getTime();
-      const timeDiff = Math.abs(remoteUpdated - localUpdated);
       const localSyncedAt = inspection.synced_at ? new Date(inspection.synced_at).getTime() : 0;
-      const isAlreadySynced = localSyncedAt >= localUpdated;
-      const remoteUpdatedAfterOurSync = localSyncedAt === 0 || remoteUpdated > localSyncedAt;
+      // H4: merge whenever remote could plausibly have changed since our last
+      // sync. SYNC_DRIFT_TOLERANCE_MS absorbs benign server/client clock skew
+      // without re-introducing a silent-overwrite blind spot.
+      const remoteChangedSinceOurSync =
+        localSyncedAt === 0 || remoteUpdated > localSyncedAt + SYNC_DRIFT_TOLERANCE_MS;
 
-      if (
-        timeDiff > CONFLICT_THRESHOLD_MS &&
-        remoteUpdated > localUpdated &&
-        !isAlreadySynced &&
-        remoteUpdatedAfterOurSync
-      ) {
+      if (remoteChangedSinceOurSync) {
         const { data: remoteRow } = await supabase
           .from('inspections')
           .select('*')
@@ -1566,10 +1569,12 @@ export async function syncTrainingAtomic(trainingId: string, preValidatedUser?: 
     // S16: Field-level merge for trainings (matches inspections path).
     if (recordStatus?.record_exists && !recordStatus?.is_deleted) {
       const remoteUpdated = new Date(recordStatus.updated_at!).getTime();
-      const localUpdated = new Date(training.updated_at).getTime();
-      const timeDiff = Math.abs(remoteUpdated - localUpdated);
+      const localSyncedAt = training.synced_at ? new Date(training.synced_at).getTime() : 0;
+      // H4: merge whenever remote changed after our last successful sync.
+      const remoteChangedSinceOurSync =
+        localSyncedAt === 0 || remoteUpdated > localSyncedAt + SYNC_DRIFT_TOLERANCE_MS;
 
-      if (timeDiff > CONFLICT_THRESHOLD_MS && remoteUpdated > localUpdated) {
+      if (remoteChangedSinceOurSync) {
         const { data: remoteRow } = await supabase
           .from('trainings')
           .select('*')
@@ -2367,10 +2372,12 @@ export async function syncDailyAssessmentAtomic(assessmentId: string, preValidat
     // S16: Field-level merge for daily assessments (matches inspections path).
     if (recordStatus?.record_exists && !recordStatus?.is_deleted) {
       const remoteUpdated = new Date(recordStatus.updated_at!).getTime();
-      const localUpdated = new Date(assessment.updated_at).getTime();
-      const timeDiff = Math.abs(remoteUpdated - localUpdated);
+      const localSyncedAt = assessment.synced_at ? new Date(assessment.synced_at).getTime() : 0;
+      // H4: merge whenever remote changed after our last successful sync.
+      const remoteChangedSinceOurSync =
+        localSyncedAt === 0 || remoteUpdated > localSyncedAt + SYNC_DRIFT_TOLERANCE_MS;
 
-      if (timeDiff > CONFLICT_THRESHOLD_MS && remoteUpdated > localUpdated) {
+      if (remoteChangedSinceOurSync) {
         const { data: remoteRow } = await supabase
           .from('daily_assessments')
           .select('*')
