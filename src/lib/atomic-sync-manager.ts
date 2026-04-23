@@ -98,6 +98,62 @@ import {
 } from "./offline-storage";
 import { appendVersion, getLatestFieldCount, calculateFieldCount } from "./report-version-manager";
 import { runWithConcurrency } from "./concurrency";
+
+// ─── C1 helper ──────────────────────────────────────────────────────────────
+type LiveGetter<T> = (id: string) => Promise<T | null | undefined>;
+type LiveSaver<T>  = (record: T) => Promise<unknown>;
+
+/**
+ * C1: Post-sync save that won't clobber an auto-save that landed in IDB
+ * during the server round-trip.
+ *
+ * - `t0Snapshot` is the parent record as captured at the start of sync.
+ * - `t0UpdatedAtMs` is `Date.parse(t0Snapshot.updated_at)` (cache it once).
+ * - If the live IDB record's updated_at is strictly newer than T0, we ONLY
+ *   stamp `synced_at` on the live record and leave parent fields + updated_at
+ *   intact — the next `getUnsynced*` cycle will correctly re-flag and upload
+ *   the new edit instead of silently losing it.
+ *
+ * Any read/parse failure falls through to the legacy write so a guard-read
+ * failure can never block sync completion.
+ */
+async function safePostSyncSave<T extends { id: string; updated_at?: string | null }>(
+  recordId: string,
+  t0Snapshot: T,
+  t0UpdatedAtMs: number,
+  serverTimestamp: string,
+  mergedFields: Partial<T>,
+  getLive: LiveGetter<T>,
+  save: LiveSaver<T>,
+): Promise<void> {
+  let live: T | null | undefined = null;
+  try { live = await getLive(recordId); } catch { live = null; }
+
+  const liveUpdatedMs = live?.updated_at ? Date.parse(live.updated_at) : NaN;
+  const concurrentEdit =
+    Number.isFinite(liveUpdatedMs) &&
+    Number.isFinite(t0UpdatedAtMs) &&
+    liveUpdatedMs > t0UpdatedAtMs;
+
+  if (concurrentEdit && live) {
+    await save({ ...live, synced_at: serverTimestamp } as T);
+    if (import.meta.env.DEV) {
+      syncLog.log('[C1] Concurrent edit detected — preserved live record, stamped synced_at only', {
+        id: recordId.substring(0, 8),
+        t0: new Date(t0UpdatedAtMs).toISOString(),
+        live: live.updated_at,
+      });
+    }
+    return;
+  }
+
+  await save({
+    ...t0Snapshot,
+    ...mergedFields,
+    synced_at: serverTimestamp,
+    updated_at: serverTimestamp,
+  } as T);
+}
 import { assertNoTempIds, assertNoTempIdsInArray } from "./sw-sync-validators";
 import { registerSelfWrite } from "./sync-events";
 import {
