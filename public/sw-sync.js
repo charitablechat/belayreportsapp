@@ -32,14 +32,63 @@ function getUserAccessToken() {
 var cachedUserToken = null;
 var cachedTokenExpiry = 0;
 
+// C6: JWT shape — three base64url segments separated by dots, header begins with `ey`.
+var SW_JWT_SHAPE = /^ey[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+$/;
+var SW_LOG_PREFIX = '[SW Sync]';
+var OFFLINE_PLACEHOLDER_TOKEN = 'offline_placeholder_token';
+
+function isMessageFromTrustedSource(event) {
+  var source = event.source;
+  if (!source || source.type !== 'window') {
+    console.warn(SW_LOG_PREFIX, 'rejected message: source is not a window client', source && source.type);
+    return false;
+  }
+  try {
+    var sourceUrl = source.url;
+    if (!sourceUrl) {
+      console.warn(SW_LOG_PREFIX, 'rejected message: source has no url');
+      return false;
+    }
+    var sourceOrigin = new URL(sourceUrl).origin;
+    if (sourceOrigin !== self.location.origin) {
+      console.warn(SW_LOG_PREFIX, 'rejected message: cross-origin source', sourceOrigin);
+      return false;
+    }
+  } catch (e) {
+    console.warn(SW_LOG_PREFIX, 'rejected message: failed to validate source url', e);
+    return false;
+  }
+  return true;
+}
+
 /**
  * Listen for auth token messages from the main thread.
  * The main thread sends the JWT whenever it refreshes the session.
+ *
+ * C6: every message is validated for origin + payload shape before use.
  */
 self.addEventListener('message', function(event) {
-  if (event.data && event.data.type === 'AUTH_TOKEN') {
-    cachedUserToken = event.data.accessToken || null;
-    cachedTokenExpiry = event.data.expiresAt || 0;
+  if (!isMessageFromTrustedSource(event)) return;
+
+  var data = event.data;
+  if (!data || typeof data !== 'object') return;
+
+  if (data.type === 'AUTH_TOKEN') {
+    var token = data.accessToken;
+    if (typeof token !== 'string' || token.length === 0) {
+      console.warn(SW_LOG_PREFIX, 'rejected message: AUTH_TOKEN missing or not a string');
+      return;
+    }
+    if (token === OFFLINE_PLACEHOLDER_TOKEN) {
+      console.warn(SW_LOG_PREFIX, 'rejected message: AUTH_TOKEN is offline placeholder');
+      return;
+    }
+    if (!SW_JWT_SHAPE.test(token)) {
+      console.warn(SW_LOG_PREFIX, 'rejected message: AUTH_TOKEN failed JWT shape check');
+      return;
+    }
+    cachedUserToken = token;
+    cachedTokenExpiry = typeof data.expiresAt === 'number' ? data.expiresAt : 0;
     console.log('[SW Auth] Received auth token from main thread, expires:', new Date(cachedTokenExpiry * 1000).toISOString());
   }
 });

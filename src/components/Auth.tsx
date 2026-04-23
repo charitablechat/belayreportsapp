@@ -79,12 +79,22 @@ export default function Auth() {
         return;
       }
 
-      const { error } = await supabase.auth.signInWithPassword({
+      const { data, error } = await supabase.auth.signInWithPassword({
         email,
         password,
       });
 
       if (error) throw error;
+
+      // C4: capture refresh token for future offline sign-ins.
+      if (data.session?.user?.email && data.session?.refresh_token) {
+        const { saveUserMapping } = await import('@/lib/offline-auth');
+        await saveUserMapping(
+          data.session.user.email,
+          data.session.user.id,
+          data.session.refresh_token
+        ).catch(() => {});
+      }
     } catch (error: any) {
       console.error("Authentication error:", error);
       const friendlyMessage = getAuthErrorMessage(error);
