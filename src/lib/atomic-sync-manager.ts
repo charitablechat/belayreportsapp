@@ -203,25 +203,15 @@ export async function syncInspectionAtomic(inspectionId: string, preValidatedUse
   let inspectionIdMapping: { oldId: string; newId: string } | null = null;
   
   try {
-    // S9: Fetch inspection record + all child records in a single Promise.all batch.
-    // Children are keyed by inspectionId which we already have, so no need to wait
-    // for the parent record before kicking off child reads.
-    const [
-      inspectionRead,
-      systemsRead,
-      ziplinesRead,
-      equipmentRead,
-      standardsRead,
-      summaryRead,
-    ] = await Promise.all([
-      getOfflineInspection(inspectionId),
-      getRelatedDataOfflineWithStatus('systems', inspectionId),
-      getRelatedDataOfflineWithStatus('ziplines', inspectionId),
-      getRelatedDataOfflineWithStatus('equipment', inspectionId),
-      getRelatedDataOfflineWithStatus('standards', inspectionId),
-      getRelatedDataOfflineWithStatus('summary', inspectionId),
-    ]);
-    const inspection = inspectionRead;
+    // S32: Serialize per-item child reads to avoid Safari/iOS IDB lock contention
+    // (6 concurrent reads × N items reliably triggered withIDBTimeout fallbacks).
+    // Outer loop is already one-item-at-a-time, so total in-flight reads = 1.
+    const inspection = await getOfflineInspection(inspectionId);
+    const systemsRead = await getRelatedDataOfflineWithStatus('systems', inspectionId);
+    const ziplinesRead = await getRelatedDataOfflineWithStatus('ziplines', inspectionId);
+    const equipmentRead = await getRelatedDataOfflineWithStatus('equipment', inspectionId);
+    const standardsRead = await getRelatedDataOfflineWithStatus('standards', inspectionId);
+    const summaryRead = await getRelatedDataOfflineWithStatus('summary', inspectionId);
     if (!inspection) {
       throw new Error("Inspection not found in local storage");
     }
@@ -1189,14 +1179,13 @@ export async function syncTrainingAtomic(trainingId: string, preValidatedUser?: 
     // because they are stored in IndexedDB under the original training_id
     const fetchId = trainingIdMapping ? trainingIdMapping.oldId : trainingId;
     
-    const [daRead, osRead, iaRead, viRead, sipRead, summaryReadT] = await Promise.all([
-      getTrainingDataOfflineWithStatus('delivery_approaches', fetchId),
-      getTrainingDataOfflineWithStatus('operating_systems', fetchId),
-      getTrainingDataOfflineWithStatus('immediate_attention', fetchId),
-      getTrainingDataOfflineWithStatus('verifiable_items', fetchId),
-      getTrainingDataOfflineWithStatus('systems_in_place', fetchId),
-      getTrainingDataOfflineWithStatus('summary', fetchId),
-    ]);
+    // S32: Serialized to avoid Safari IDB lock contention (see syncInspectionAtomic).
+    const daRead = await getTrainingDataOfflineWithStatus('delivery_approaches', fetchId);
+    const osRead = await getTrainingDataOfflineWithStatus('operating_systems', fetchId);
+    const iaRead = await getTrainingDataOfflineWithStatus('immediate_attention', fetchId);
+    const viRead = await getTrainingDataOfflineWithStatus('verifiable_items', fetchId);
+    const sipRead = await getTrainingDataOfflineWithStatus('systems_in_place', fetchId);
+    const summaryReadT = await getTrainingDataOfflineWithStatus('summary', fetchId);
     const rawDeliveryApproaches = daRead.items;
     const rawOperatingSystems = osRead.items;
     const rawImmediateAttention = iaRead.items;
@@ -1993,14 +1982,13 @@ export async function syncDailyAssessmentAtomic(assessmentId: string, preValidat
     // because they are stored in IndexedDB under the original assessment_id
     const fetchId = assessmentIdMapping ? assessmentIdMapping.oldId : assessmentId;
     
-    const [bodRead, eodRead, opSysRead, eqRead, stRead, envRead] = await Promise.all([
-      getAssessmentDataOfflineWithStatus('beginning_of_day', fetchId),
-      getAssessmentDataOfflineWithStatus('end_of_day', fetchId),
-      getAssessmentDataOfflineWithStatus('operating_systems', fetchId),
-      getAssessmentDataOfflineWithStatus('equipment_checks', fetchId),
-      getAssessmentDataOfflineWithStatus('structure_checks', fetchId),
-      getAssessmentDataOfflineWithStatus('environment_checks', fetchId),
-    ]);
+    // S32: Serialized to avoid Safari IDB lock contention (see syncInspectionAtomic).
+    const bodRead = await getAssessmentDataOfflineWithStatus('beginning_of_day', fetchId);
+    const eodRead = await getAssessmentDataOfflineWithStatus('end_of_day', fetchId);
+    const opSysRead = await getAssessmentDataOfflineWithStatus('operating_systems', fetchId);
+    const eqRead = await getAssessmentDataOfflineWithStatus('equipment_checks', fetchId);
+    const stRead = await getAssessmentDataOfflineWithStatus('structure_checks', fetchId);
+    const envRead = await getAssessmentDataOfflineWithStatus('environment_checks', fetchId);
     const rawBeginningOfDay = bodRead.items;
     const rawEndOfDay = eodRead.items;
     const rawOperatingSystems = opSysRead.items;
