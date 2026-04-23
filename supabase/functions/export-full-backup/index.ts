@@ -1,4 +1,5 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { BACKUP_TABLES } from "../_shared/backup-tables.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -6,53 +7,7 @@ const corsHeaders = {
     "authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version",
 };
 
-const TABLES = [
-  "profiles",
-  "organizations",
-  "organization_members",
-  "user_roles",
-  "inspections",
-  "inspection_systems",
-  "inspection_equipment",
-  "inspection_standards",
-  "inspection_photos",
-  "inspection_ziplines",
-  "inspection_summary",
-  "inspection_reports",
-  "trainings",
-  "training_systems",
-  "training_equipment",
-  "training_photos",
-  "training_operating_systems",
-  "training_delivery_approaches",
-  "training_verifiable_items",
-  "training_immediate_attention",
-  "training_systems_in_place",
-  "training_summary",
-  "training_reports",
-  "daily_assessments",
-  "daily_assessment_beginning_of_day",
-  "daily_assessment_end_of_day",
-  "daily_assessment_environment_checks",
-  "daily_assessment_equipment_checks",
-  "daily_assessment_operating_systems",
-  "daily_assessment_structure_checks",
-  "daily_assessment_photos",
-  "user_field_history",
-  "global_field_history",
-  "audit_logs",
-  "admin_settings",
-  "notification_preferences",
-  "push_subscriptions",
-  "form_sections",
-  "form_fields",
-  "form_field_options",
-  "form_translations",
-  "form_versions",
-  "onboarding_resources",
-  "onboarding_progress",
-  "app_announcements",
-];
+const TABLES = BACKUP_TABLES;
 
 async function fetchAllRows(supabase: any, table: string): Promise<any[]> {
   const allRows: any[] = [];
@@ -118,9 +73,9 @@ Deno.serve(async (req) => {
       }
       userId = claimsData.claims.sub;
 
-      // Only Kale can access backups
-      const BACKUP_ADMIN_ID = '759e973e-2484-4db3-862a-0cb2ec6d6ea3';
-      if (userId !== BACKUP_ADMIN_ID) {
+      // M1: Role-based check (backup_operator) instead of hardcoded UUID
+      const { data: isBackupAdmin, error: rpcError } = await userClient.rpc("is_backup_admin");
+      if (rpcError || !isBackupAdmin) {
         return new Response(JSON.stringify({ error: "Backup access restricted" }), {
           status: 403,
           headers: { ...corsHeaders, "Content-Type": "application/json" },

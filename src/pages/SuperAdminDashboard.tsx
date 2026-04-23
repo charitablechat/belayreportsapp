@@ -31,16 +31,19 @@ import { parseLocalDate } from "@/lib/date-utils";
 import { getSessionBackground } from "@/lib/background-manager";
 import { getUserWithCache } from "@/lib/cached-auth";
 
-const BACKUP_ADMIN_ID = '759e973e-2484-4db3-862a-0cb2ec6d6ea3';
-
 export default function SuperAdminDashboard() {
   const { loading } = useRequireAdmin();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
+  const [isBackupAdmin, setIsBackupAdmin] = useState(false);
   useEffect(() => {
     getUserWithCache().then(u => setCurrentUserId(u?.id || null));
+    // M1: Role-based backup admin check via RPC (replaces hardcoded UUID)
+    supabase.rpc('is_backup_admin').then(({ data }) => {
+      setIsBackupAdmin(data === true);
+    });
   }, []);
   
   const [dialogOpen, setDialogOpen] = useState(false);
@@ -852,7 +855,7 @@ export default function SuperAdminDashboard() {
 
       {/* Tabs for different sections */}
       <Tabs defaultValue="organizations" className="space-y-6">
-        <AdminTabsSection showBackupTab={currentUserId === BACKUP_ADMIN_ID} />
+        <AdminTabsSection showBackupTab={isBackupAdmin} />
 
         <TabsContent value="organizations" className="space-y-4">
           {/* Desktop table */}

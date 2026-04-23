@@ -141,8 +141,15 @@ Deno.serve(async (req) => {
           continue;
         }
 
-        // Optionally delete the old HEIC file
-        await supabase.storage.from(bucket).remove([photo.photo_url]);
+        // M3: Best-effort delete of old HEIC. DB row is already updated to the
+        // new .jpg path above, so a failed delete only leaves an orphan blob —
+        // never a broken row. Explicitly swallow + log so future await-behavior
+        // changes can't surface this as a caller-visible failure.
+        try {
+          await supabase.storage.from(bucket).remove([photo.photo_url]);
+        } catch (delErr) {
+          console.warn(`[convert-heic-photos] orphan blob left at ${photo.photo_url}: ${delErr}`);
+        }
 
         converted++;
       } catch (err) {

@@ -1,4 +1,5 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { BACKUP_TABLES } from "../_shared/backup-tables.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -6,53 +7,7 @@ const corsHeaders = {
     "authorization, x-client-info, apikey, content-type",
 };
 
-const TABLES = [
-  "profiles",
-  "organizations",
-  "organization_members",
-  "user_roles",
-  "inspections",
-  "inspection_systems",
-  "inspection_equipment",
-  "inspection_standards",
-  "inspection_photos",
-  "inspection_ziplines",
-  "inspection_summary",
-  "inspection_reports",
-  "trainings",
-  "training_systems",
-  "training_equipment",
-  "training_photos",
-  "training_operating_systems",
-  "training_delivery_approaches",
-  "training_verifiable_items",
-  "training_immediate_attention",
-  "training_systems_in_place",
-  "training_summary",
-  "training_reports",
-  "daily_assessments",
-  "daily_assessment_beginning_of_day",
-  "daily_assessment_end_of_day",
-  "daily_assessment_environment_checks",
-  "daily_assessment_equipment_checks",
-  "daily_assessment_operating_systems",
-  "daily_assessment_structure_checks",
-  "daily_assessment_photos",
-  "user_field_history",
-  "global_field_history",
-  "audit_logs",
-  "admin_settings",
-  "notification_preferences",
-  "push_subscriptions",
-  "form_sections",
-  "form_fields",
-  "form_field_options",
-  "form_translations",
-  "form_versions",
-  "onboarding_resources",
-  "onboarding_progress",
-  "app_announcements",
-];
+const TABLES = BACKUP_TABLES;
 
 // Columns to exclude from backup JSON (large regenerable HTML)
 const EXCLUDE_COLUMNS: Record<string, string[]> = {

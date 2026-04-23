@@ -266,23 +266,60 @@ Deno.serve(async (req) => {
 
       case 'delete': {
         const { userId } = payload as DeleteUserPayload;
+        const hard = (payload as { hard?: boolean }).hard === true;
 
         // Prevent deleting self
         if (userId === user.id) {
           throw new Error('Cannot delete your own account');
         }
 
-        const { error: deleteError } = await supabaseAdmin.auth.admin.deleteUser(userId);
+        // M10: Default path is reversible deactivation. Hard delete is opt-in
+        // and requires true super-admin (not just admin-or-above).
+        if (!hard) {
+          const { error: banError } = await supabaseAdmin.auth.admin.updateUserById(userId, {
+            ban_duration: '876000h',
+          });
+          if (banError) {
+            console.error('Error banning user during soft-delete:', banError);
+            throw banError;
+          }
 
+          const { error: profileError } = await supabaseAdmin
+            .from('profiles')
+            .update({ is_active: false })
+            .eq('id', userId);
+          if (profileError) {
+            console.error('Error deactivating profile during soft-delete:', profileError);
+            throw profileError;
+          }
+
+          console.log(`User ${userId} deactivated by ${user.id} (soft delete)`);
+
+          return new Response(
+            JSON.stringify({ success: true, deactivated: true }),
+            { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+          );
+        }
+
+        // Hard delete — require true super_admin
+        const { data: isTrueSuperAdmin, error: superErr } = await supabase.rpc('is_super_admin');
+        if (superErr || !isTrueSuperAdmin) {
+          return new Response(
+            JSON.stringify({ success: false, error: 'Hard delete requires super admin privileges' }),
+            { status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+          );
+        }
+
+        const { error: deleteError } = await supabaseAdmin.auth.admin.deleteUser(userId);
         if (deleteError) {
           console.error('Error deleting user:', deleteError);
           throw deleteError;
         }
 
-        console.log(`User deleted: ${userId}`);
+        console.log(`User ${userId} hard-deleted by ${user.id}`);
 
         return new Response(
-          JSON.stringify({ success: true }),
+          JSON.stringify({ success: true, hardDeleted: true }),
           { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
         );
       }

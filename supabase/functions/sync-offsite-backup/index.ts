@@ -187,7 +187,9 @@ Deno.serve(async (req) => {
           headers: { ...corsHeaders, "Content-Type": "application/json" },
         });
       }
-      if (claims.claims.sub !== "759e973e-2484-4db3-862a-0cb2ec6d6ea3") {
+      // M1: Role-based check (backup_operator) instead of hardcoded UUID
+      const { data: isBackupAdmin, error: rpcError } = await sourceClient.rpc("is_backup_admin");
+      if (rpcError || !isBackupAdmin) {
         return new Response(JSON.stringify({ error: "Forbidden: backup admin only" }), {
           status: 403,
           headers: { ...corsHeaders, "Content-Type": "application/json" },
