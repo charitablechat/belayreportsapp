@@ -11,7 +11,7 @@ import { useQueryClient } from '@tanstack/react-query';
 import { isMobile, isIOS } from '@/lib/mobile-detection';
 import { useIsMobile } from '@/hooks/use-mobile';
 import { addSyncNotification } from '@/lib/notification-center';
-import { emitSyncComplete, setSyncInProgress, isRecentSelfWrite } from '@/lib/sync-events';
+import { emitSyncComplete, setSyncInProgress, isRecentSelfWrite, isActiveFormRecord, emitPendingRemoteUpdate, type ActiveFormTable } from '@/lib/sync-events';
 import { clearPendingSyncs } from '@/lib/background-sync';
 import { toast } from '@/components/ui/sonner';
 import { markSnapshotSynced } from '@/lib/local-backup-ledger';
