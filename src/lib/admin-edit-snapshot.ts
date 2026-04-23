@@ -52,9 +52,39 @@ export function capturePreEditSnapshot(
   ownerId: string,
   editorId: string,
 ): void {
+  // H10: Always capture intent. If offline (or capture fails), fall back to
+  // a local IDB queue that will be flushed on the next online sync cycle.
+  const online = typeof navigator !== 'undefined' ? navigator.onLine : true;
+
+  const enqueueFallback = (reason: string, err?: unknown) => {
+    if (err) console.warn(`[AdminEditSnapshot] ${reason}, queuing locally:`, err);
+    import('./admin-edit-snapshot-queue')
+      .then(({ enqueueAdminEditIntent }) =>
+        enqueueAdminEditIntent(reportType, reportId, ownerId, editorId))
+      .catch((qErr) => console.warn('[AdminEditSnapshot] enqueue failed:', qErr));
+  };
+
+  if (!online) {
+    enqueueFallback('offline at capture time');
+    return;
+  }
+
   _doCapture(reportType, reportId, ownerId, editorId).catch((err) => {
-    console.warn('[AdminEditSnapshot] Capture failed (non-blocking):', err);
+    enqueueFallback('Capture failed (will retry from queue)', err);
   });
+}
+
+/**
+ * Direct (online-only) capture used by the queue flusher. Throws on failure
+ * so the caller can decide whether to keep the queue entry.
+ */
+export async function captureAdminEditSnapshotNow(
+  reportType: ReportType,
+  reportId: string,
+  ownerId: string,
+  editorId: string,
+): Promise<void> {
+  await _doCapture(reportType, reportId, ownerId, editorId);
 }
 
 async function _doCapture(

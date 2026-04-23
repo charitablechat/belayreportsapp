@@ -834,13 +834,16 @@ export default function TrainingForm() {
         });
       }
 
+      // H10: Pre-edit snapshot: capture server state before admin overwrites it.
+      // Fires regardless of online state — capturePreEditSnapshot internally
+      // routes to a local queue when offline so the audit trail is never lost.
+      if (localSaveSucceeded && currentUser?.id && training?.inspector_id && currentUser.id !== training.inspector_id) {
+        const { capturePreEditSnapshot } = await import('@/lib/admin-edit-snapshot');
+        capturePreEditSnapshot('training', id!, training.inspector_id, currentUser.id);
+      }
+
       // If online AND local save succeeded, try to sync to Supabase
       if (isOnline && localSaveSucceeded) {
-        // Pre-edit snapshot: capture server state before admin overwrites it
-        if (currentUser?.id && training?.inspector_id && currentUser.id !== training.inspector_id) {
-          const { capturePreEditSnapshot } = await import('@/lib/admin-edit-snapshot');
-          capturePreEditSnapshot('training', id!, training.inspector_id, currentUser.id);
-        }
         try {
           // Update main training record WITHOUT synced_at (deferred pattern)
           const { data: updateResult, error: trainingError } = await supabase

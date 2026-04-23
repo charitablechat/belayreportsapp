@@ -841,7 +841,7 @@ export async function getDB() {
     // Version 8: Add report_versions store for append-only versioning
     // DB_NAME and DB_VERSION shared with public/db-config.js for SW consistency
     const DB_NAME = 'rope-works-inspections';
-    const DB_VERSION = 13;
+    const DB_VERSION = 14;
 
     // Phase 5 — Schema Migration Safety. Lazy-load to avoid circular imports
     // and to keep the boot path resilient if this module ever fails to parse.
@@ -1048,6 +1048,20 @@ export async function getDB() {
             (db as any).createObjectStore('sync_empty_local_conflicts', { keyPath: 'id' });
             if (import.meta.env.DEV) {
               console.log('[Offline Storage] Created sync_empty_local_conflicts store (v13 upgrade)');
+            }
+          }
+          // === NEW in v14: admin_edit_snapshot_queue store (H10) ===
+          // Queues admin pre-edit snapshot intents captured while offline so they
+          // can be uploaded to admin_edit_snapshots on the next online cycle —
+          // before the admin's edit itself syncs to the server.
+          if (!db.objectStoreNames.contains('admin_edit_snapshot_queue' as any)) {
+            const aeqStore = (db as any).createObjectStore('admin_edit_snapshot_queue', {
+              keyPath: 'id',
+              autoIncrement: true,
+            });
+            aeqStore.createIndex('by-report', ['reportType', 'reportId']);
+            if (import.meta.env.DEV) {
+              console.log('[Offline Storage] Created admin_edit_snapshot_queue store (v14 upgrade)');
             }
           }
         },
