@@ -3,7 +3,7 @@ import { safeSetItem, safeRemoveItem, type SafeSetItemResult } from '../safe-loc
 
 function asFailure(r: SafeSetItemResult): { ok: false; code: string; error: unknown } {
   if (r.ok) throw new Error('expected failure result, got ok');
-  return r;
+  return r as { ok: false; code: string; error: unknown };
 }
 
 describe('safeSetItem', () => {
