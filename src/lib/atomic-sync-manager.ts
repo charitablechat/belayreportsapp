@@ -1540,6 +1540,8 @@ export async function syncTrainingAtomic(trainingId: string, preValidatedUser?: 
       ...training,
       synced_at: serverTimestamp,
       updated_at: serverTimestamp,
+      // S9: clear marker post-sync.
+      user_cleared_at: null,
       inspector: inspectorProfile || { first_name: null, last_name: null, avatar_url: null },
     });
     
@@ -2289,6 +2291,8 @@ export async function syncDailyAssessmentAtomic(assessmentId: string, preValidat
       ...assessment,
       synced_at: serverTimestamp,
       updated_at: serverTimestamp,
+      // S9: clear marker post-sync.
+      user_cleared_at: null,
       inspector: inspectorProfile || { first_name: null, last_name: null, avatar_url: null },
     });
     
