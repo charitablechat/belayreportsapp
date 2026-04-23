@@ -239,6 +239,9 @@ export const useAutoSync = () => {
         syncInProgressRef.current = false;
         setSyncInProgress(false);
         setState(prev => ({ ...prev, isSyncing: false }));
+        // S21: unblock any awaiters piggy-backed on this run
+        inFlightSyncRef.current = null;
+        resolveInFlight();
       }
     }, dynamicTimeout + 2000); // 2 seconds after main timeout as final safety
     
