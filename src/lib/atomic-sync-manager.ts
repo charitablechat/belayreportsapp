@@ -2405,32 +2405,38 @@ export async function syncAllDailyAssessmentsAtomic(preValidatedUser?: CachedUse
     return { total: 0, success: 0, failed: 0, errors: [] };
   }
   
-  // Get unsynced assessments with extended timeout for mobile networks
-  // Increased to 15s to avoid racing with inner 5s timeout + 3s health check
+  // S11: getUnsyncedDailyAssessments now returns IdbReadFailure on failure
   let unsynced: any[];
-  let fetchTimedOut = false;
+  let fetchFailureReason: string | null = null;
   try {
     const timeoutPromise = new Promise<never>((_, reject) => 
       setTimeout(() => reject(new Error('IndexedDB timeout')), 15000)
     );
     
-    unsynced = await Promise.race([
+    const result = await Promise.race([
       getUnsyncedDailyAssessments(user.id),
       timeoutPromise
     ]);
+    const { isIdbReadFailure } = await import('./offline-storage');
+    if (isIdbReadFailure(result)) {
+      fetchFailureReason = result.error;
+      unsynced = [];
+    } else {
+      unsynced = result;
+    }
   } catch (e: any) {
     if (e.message === 'IndexedDB timeout') {
       console.warn('[Atomic Sync] IndexedDB timeout getting unsynced assessments - will retry next cycle');
-      fetchTimedOut = true;
+      fetchFailureReason = 'idb_outer_timeout';
     } else {
       console.warn('[Atomic Sync] Failed to get unsynced assessments:', e);
+      fetchFailureReason = e?.message || 'unknown';
     }
     unsynced = [];
   }
   
-  // Don't report success if we failed to fetch data (total: -1 signals fetch failure)
-  if (fetchTimedOut) {
-    return { total: -1, success: 0, failed: 0, errors: [{ id: 'indexeddb', error: 'Timeout fetching assessments' }] };
+  if (fetchFailureReason) {
+    return { total: -1, success: 0, failed: 0, errors: [{ id: 'idb_read_failure', error: fetchFailureReason }] };
   }
   
   if (unsynced.length === 0) {
