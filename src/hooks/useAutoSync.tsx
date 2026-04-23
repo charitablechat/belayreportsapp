@@ -265,6 +265,9 @@ export const useAutoSync = () => {
             syncInProgressRef.current = false;
             setSyncInProgress(false);
             setState(prev => ({ ...prev, isSyncing: false }));
+            // S21: unblock awaiters
+            inFlightSyncRef.current = null;
+            resolveInFlight();
             return;
           }
           liveUnsyncedCount =
