@@ -8,7 +8,7 @@ import {
 } from "@/components/ui/alert-dialog";
 import { toast } from "@/components/ui/sonner";
 import { addSaveNotification, addSyncNotification } from "@/lib/notification-center";
-import { onSyncComplete, markPendingDashboardRefresh, markDashboardStaleTimestamp } from "@/lib/sync-events";
+import { onSyncComplete, markPendingDashboardRefresh, markDashboardStaleTimestamp, registerActiveFormRecord, unregisterActiveFormRecord, onPendingRemoteUpdate } from "@/lib/sync-events";
 import { useNavigate, useParams } from "react-router-dom";
 import { goBack } from "@/lib/navigation";
 import { isLocalDataNewer } from "@/lib/local-data-guards";
@@ -544,6 +544,38 @@ export default function InspectionForm() {
       )
       .subscribe();
     return () => { supabase.removeChannel(channel); };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [id]);
+
+  // H3: Register this record as actively edited so the global Realtime IDB
+  // writer in useAutoSync doesn't silently overwrite our IDB row while we
+  // hold unsaved React state. Subscribe to skipped-overwrite notifications
+  // so we can offer the user a "Reload" toast on cross-device updates.
+  useEffect(() => {
+    if (!id || id.startsWith('temp-')) return;
+    registerActiveFormRecord('inspections', id);
+    const unsub = onPendingRemoteUpdate((p) => {
+      if (p.table !== 'inspections' || p.recordId !== id) return;
+      if (!hasUnsavedRef.current) {
+        // Safe path — no unsaved edits, just reload from server.
+        if (import.meta.env.DEV) console.log('[InspectionForm] Pending remote update — reloading (no unsaved changes)');
+        loadInspection();
+        return;
+      }
+      toast.warning('Remote update available', {
+        description: 'Another device updated this report. Reload from server (your unsaved edits will be lost) or keep your changes.',
+        duration: 30000,
+        action: {
+          label: 'Reload',
+          onClick: () => { loadInspection(); },
+        },
+        cancel: { label: 'Keep my changes', onClick: () => {} },
+      });
+    });
+    return () => {
+      unsub();
+      unregisterActiveFormRecord(id);
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [id]);
 

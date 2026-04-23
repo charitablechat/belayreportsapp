@@ -4,7 +4,7 @@ import { useReportTabHistory } from "@/hooks/useReportTabHistory";
 import { isLocalDataNewer } from "@/lib/local-data-guards";
 import { useParams, useNavigate } from "react-router-dom";
 import { goBack } from "@/lib/navigation";
-import { markPendingDashboardRefresh, markDashboardStaleTimestamp } from "@/lib/sync-events";
+import { markPendingDashboardRefresh, markDashboardStaleTimestamp, registerActiveFormRecord, unregisterActiveFormRecord, onPendingRemoteUpdate } from "@/lib/sync-events";
 import { supabase } from "@/integrations/supabase/client";
 import { getUserWithCache, getOfflineUserId } from "@/lib/cached-auth";
 import { useFormConfiguration } from "@/hooks/useFormConfiguration";
@@ -406,6 +406,36 @@ export default function DailyAssessmentForm() {
       )
       .subscribe();
     return () => { supabase.removeChannel(channel); };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [id]);
+
+  // H3: Register this record as actively edited so the global Realtime IDB
+  // writer in useAutoSync doesn't silently overwrite our IDB row while we
+  // hold unsaved React state.
+  useEffect(() => {
+    if (!id || id.startsWith('temp-')) return;
+    registerActiveFormRecord('daily_assessments', id);
+    const unsub = onPendingRemoteUpdate((p) => {
+      if (p.table !== 'daily_assessments' || p.recordId !== id) return;
+      if (!hasUnsavedRef.current) {
+        if (import.meta.env.DEV) console.log('[DailyAssessmentForm] Pending remote update — reloading (no unsaved changes)');
+        loadAssessment();
+        return;
+      }
+      toast.warning('Remote update available', {
+        description: 'Another device updated this report. Reload from server (your unsaved edits will be lost) or keep your changes.',
+        duration: 30000,
+        action: {
+          label: 'Reload',
+          onClick: () => { loadAssessment(); },
+        },
+        cancel: { label: 'Keep my changes', onClick: () => {} },
+      });
+    });
+    return () => {
+      unsub();
+      unregisterActiveFormRecord(id);
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [id]);
 
