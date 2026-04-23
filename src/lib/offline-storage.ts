@@ -1366,40 +1366,31 @@ export async function getDB() {
 
 // Inspection functions
 
+/**
+ * Save an inspection to IndexedDB.
+ * Throws `IdbSaveError` on hard failure (Gap 2.1) — callers MUST handle rejection
+ * to avoid clearing the form's dirty flag while data is unsaved.
+ * Returns `{ savedToBackup: true }` if the row was written to the localStorage
+ * emergency fallback instead of IDB.
+ */
 export async function saveInspectionOffline(
   inspection: any,
   opts?: { childCountHint?: number }
-) {
-  return withIndexedDBErrorBoundary(
+): Promise<SaveResult> {
+  return withIndexedDBSaveBoundary(
     async () => {
-      try {
-        const db = await getDB();
-
-        // S30: Prefer caller-provided hint to avoid IDB contention on every save.
-        // If not provided, preserve the existing hint already on the row (a stale
-        // hint is safe — the SW guard becomes more lenient, not stricter).
-        if (opts?.childCountHint != null && opts.childCountHint >= 0) {
-          inspection.child_count_hint = opts.childCountHint;
-        }
-        // else: keep inspection.child_count_hint as-is (no scan)
-
-        await db.put('inspections', inspection);
-
-        if (import.meta.env.DEV) {
-          console.log('[Offline Storage] Saved inspection:', inspection.id);
-        }
-      } catch (error: any) {
-        console.error('[Offline Storage] Failed to save inspection:', error);
-        
-        if (error.name === 'QuotaExceededError') {
-          throw new Error('Storage quota exceeded. Please sync and clear old data.');
-        }
-        
-        throw error;
+      const db = await getDB();
+      // S30: prefer caller-provided hint; otherwise preserve existing hint.
+      if (opts?.childCountHint != null && opts.childCountHint >= 0) {
+        inspection.child_count_hint = opts.childCountHint;
+      }
+      await db.put('inspections', inspection);
+      if (import.meta.env.DEV) {
+        console.log('[Offline Storage] Saved inspection:', inspection.id);
       }
     },
-    undefined,
-    'saveInspectionOffline'
+    'saveInspectionOffline',
+    inspection,
   );
 }
 
