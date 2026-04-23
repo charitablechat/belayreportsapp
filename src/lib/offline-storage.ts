@@ -1061,18 +1061,6 @@ export async function getDB() {
               console.log('[Offline Storage] Created dead_letter_soft_deletes store (v12 upgrade)');
             }
           }
-          // === NEW in v15: photo_upload_failures store (1.C) ===
-          // Persistent dead-letter for photos that crossed MAX_PHOTO_RETRIES.
-          // Surfaces in SyncDiagnosticsSheet so failures aren't silent orphans.
-          if (!db.objectStoreNames.contains('photo_upload_failures' as any)) {
-            const pufStore = (db as any).createObjectStore('photo_upload_failures', {
-              keyPath: 'id',
-            });
-            pufStore.createIndex('by-failed-at', 'lastErrorAt');
-            if (import.meta.env.DEV) {
-              console.log('[Offline Storage] Created photo_upload_failures store (v15 upgrade)');
-            }
-          }
           // === NEW in v13: sync_empty_local_conflicts store (C2) ===
           // Holds parent records where the empty-local-guard tripped — server has
           // child data but local cache is empty and the user_cleared_at marker
@@ -1096,6 +1084,18 @@ export async function getDB() {
             aeqStore.createIndex('by-report', ['reportType', 'reportId']);
             if (import.meta.env.DEV) {
               console.log('[Offline Storage] Created admin_edit_snapshot_queue store (v14 upgrade)');
+            }
+          }
+          // === NEW in v15: photo_upload_failures store (1.C) ===
+          // Persistent dead-letter for photos that crossed MAX_PHOTO_RETRIES.
+          // Surfaces in SyncDiagnosticsSheet so failures aren't silent orphans.
+          if (!db.objectStoreNames.contains('photo_upload_failures' as any)) {
+            const pufStore = (db as any).createObjectStore('photo_upload_failures', {
+              keyPath: 'id',
+            });
+            pufStore.createIndex('by-failed-at', 'lastErrorAt');
+            if (import.meta.env.DEV) {
+              console.log('[Offline Storage] Created photo_upload_failures store (v15 upgrade)');
             }
           }
         },
