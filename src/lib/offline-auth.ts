@@ -461,38 +461,13 @@ async function migrateUserData(oldUserId: string, newUserId: string): Promise<vo
       }
     }
 
-    try {
-      // Read phase: collect all photos and figure out which need rewriting.
-      const readTx = db.transaction('photos', 'readonly');
-      const allPhotos = await readTx.objectStore('photos').getAll();
-      await readTx.done;
-
-      const toMigrate: any[] = [];
-      for (const photo of allPhotos) {
-        let changed = false;
-        if (photo.photoUrl && typeof photo.photoUrl === 'string' && photo.photoUrl.includes(oldUserId)) {
-          photo.photoUrl = photo.photoUrl.replace(oldUserId, newUserId);
-          changed = true;
-        }
-        if (photo.fileName && typeof photo.fileName === 'string' && photo.fileName.includes(oldUserId)) {
-          photo.fileName = photo.fileName.replace(oldUserId, newUserId);
-          changed = true;
-        }
-        if (changed) toMigrate.push(photo);
-      }
-
-      if (toMigrate.length > 0) {
-        // Write phase: fire all puts synchronously inside a single tx.
-        const writeTx = db.transaction('photos', 'readwrite');
-        const writeStore = writeTx.objectStore('photos');
-        const puts = toMigrate.map((photo) => writeStore.put(photo));
-        await Promise.all(puts);
-        await writeTx.done;
-        totalMigrated += toMigrate.length;
-      }
-    } catch (storeError) {
-      console.warn('[OfflineAuth] Failed to migrate photos store:', storeError);
-    }
+    // C7: Photo paths are intentionally NOT rewritten. The storage object
+    // lives under <oldUserId>/... forever; rewriting the IDB pointer would
+    // make it point at a non-existent key. Reads use signed URLs that work
+    // regardless of which uid prefix is in the path, so the original key
+    // remains valid post-reconcile. Only `inspector_id` on the parent report
+    // rows needs migrating (handled above) so the Dashboard query surfaces
+    // them under the real account.
 
     if (import.meta.env.DEV) {
       console.log(`[OfflineAuth] Migrated ${totalMigrated} records ${oldUserId} → ${newUserId}`);
