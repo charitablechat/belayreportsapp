@@ -26,7 +26,7 @@ interface PhotoCaptureProps {
 
 // Supported image types
 const SUPPORTED_TYPES = ['image/jpeg', 'image/png', 'image/webp', 'image/heic', 'image/heif'];
-const MAX_FILE_SIZE_MB = 25;
+const MAX_FILE_SIZE_MB = 20;
 
 // Timeout constants — reduced to prevent long hangs
 const PER_FILE_TIMEOUT = 15000; // 15s per file (down from 30s)
@@ -36,6 +36,9 @@ const MAX_SAFETY_TIMEOUT = 45000; // 45s cap regardless of file count
  * Validate file type and size before processing
  */
 function validateFile(file: File): { valid: boolean; error?: string } {
+  if (file.size === 0) {
+    return { valid: false, error: 'File is empty (0 bytes). Please choose a different photo.' };
+  }
   if (!SUPPORTED_TYPES.includes(file.type) && !file.type.startsWith('image/')) {
     return { valid: false, error: `Unsupported file type: ${file.type || 'unknown'}. Please use JPEG, PNG, or WebP.` };
   }
