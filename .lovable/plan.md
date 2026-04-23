@@ -1,79 +1,56 @@
 
 
-## C6 — Fix `migrateUserData` silent partial-failure on transaction auto-close
+## C7 — Stop rewriting `photoUrl`/`fileName` during auth-id migration
 
 ### Finding
 
-`src/lib/offline-auth.ts:316-334` (inspections/trainings/daily_assessments loop) and `:339-360` (photos loop) both await `store.put()` inside a `for` loop after `await store.getAll()`. IndexedDB transactions auto-close as soon as the microtask queue yields without a pending request, so on Chromium/WebKit the second `put` typically throws `InvalidStateError: The transaction has finished`. The `catch (storeError)` swallows it with a `console.warn`, and migration aborts after the first row.
+`migrateUserData` (`src/lib/offline-auth.ts:336-366`) string-replaces `oldUserId` → `newUserId` inside every photo's `photoUrl` and `fileName`. But the actual storage objects live at `<oldUserId>/<reportId>/<file>` because that path was set when the offline user was running under the deterministic email-hash UUID. We never copy the bucket objects.
 
-Result on the offline→online reconcile path: any inspections/trainings/daily_assessments/photos saved under the deterministic email-hash UUID stay tagged with the old `inspector_id`. Dashboard queries filter by the real `inspector_id`, so the rows look "disappeared" to the user even though they exist in IDB.
+After the next reconcile:
+- `inspection_photos.photo_url` (DB) = `<newUserId>/...` — does not exist in storage.
+- Storage object still at `<oldUserId>/...` — orphaned, and unreadable under photo bucket RLS that pins `auth.uid() = (storage.foldername(name))[1]` (per memory `photo-access-safeguards-v2`).
+- Result: every photo taken in offline-auth mode 404s on first render after reconcile. Silent.
+
+Two options were called out: (a) copy the bucket objects in an edge function, (b) stop rewriting and treat the upload-time path as immutable. (a) is heavy (round-trips, partial-failure recovery, RLS bypass via service role, multi-bucket awareness) and the only thing it would buy us is *consistency* between storage path and the user's current uid — which storage RLS doesn't actually require, since the user signing the URL is already the authenticated user, and the *object* path is just a key. (b) is the natural fit: the upload happens against the bucket the user-of-the-moment can write to, the resulting key is canonical, and from then on it travels untouched.
+
+We already follow this pattern everywhere except inside `migrateUserData`. Removing the photo-rewrite block also eliminates the C6-style transaction risk on the photos store (Promise.all batch of mutations that we no longer need to perform).
 
 ### Fix
 
-Single file: `src/lib/offline-auth.ts`, function `migrateUserData` (~lines 304-365). Replace the awaited-put-in-loop pattern with the standard non-yielding pattern: collect all `put()` requests **synchronously** inside the same `readwrite` transaction, then `await Promise.all(puts).then(() => tx.done)`. No await between requests means the transaction stays open.
+**Single change in `src/lib/offline-auth.ts`** — drop the photo-path rewrite, keep the inspector_id rewrite for the three report stores (which is the part that actually fixes the dashboard "disappeared rows" symptom).
 
-**Before (each store loop):**
-```ts
-const tx = db.transaction(name, 'readwrite');
-const store = tx.objectStore(name);
-const allRecords = await store.getAll();
-for (const record of allRecords) {
-  if (record[idField] === oldUserId) {
-    record[idField] = newUserId;
-    await store.put(record);   // ← tx auto-closes here
-    totalMigrated++;
-  }
-}
-await tx.done;
-```
+In `migrateUserData`, delete the entire `try { ... 'photos' ... }` block (~lines 336-366). The three report-store loops above it stay exactly as they are post-C6 — they migrate `inspector_id` only.
 
-**After:**
-```ts
-// Read phase in its own readonly tx (free to await)
-const readTx = db.transaction(name, 'readonly');
-const allRecords = await readTx.objectStore(name).getAll();
-await readTx.done;
+Also drop the now-irrelevant comment lines about photo-path migration if any exist near that block.
 
-const toMigrate = allRecords.filter(r => r[idField] === oldUserId);
-if (toMigrate.length === 0) continue;
-
-// Write phase: open tx, fire all puts synchronously, then await tx.done
-const writeTx = db.transaction(name, 'readwrite');
-const writeStore = writeTx.objectStore(name);
-const puts = toMigrate.map(record => {
-  record[idField] = newUserId;
-  return writeStore.put(record);   // returns a promise; do NOT await here
-});
-await Promise.all(puts);
-await writeTx.done;
-totalMigrated += toMigrate.length;
-```
-
-Apply the identical pattern to the `photos` loop at ~lines 339-360 (the change-detection logic stays; just collect mutated records first, then fire puts in one synchronous batch).
+That's the entire code change. No new helpers, no edge function, no schema work, no storage round-trips.
 
 ### Why this is safe
 
-- `idb` `store.put()` returns a promise that resolves on transaction success. Firing all `put()` calls synchronously before any `await` is the canonical pattern documented in the `idb` README and works on every browser that supports IndexedDB.
-- Read tx and write tx are split — the read can safely `await getAll()`, the write never yields between requests.
-- No schema changes, no new stores, no consumers to update.
-- Worst-case if a single `put` rejects: `Promise.all` rejects, the `catch (storeError)` keeps the existing warn-and-continue behavior, but now we get **all-or-nothing per store** instead of "first row only," which is strictly better.
-- For very large stores (>10k matching rows) `Promise.all` over many `put`s is still fine — IDB handles them in the same tx and they all commit together. If we ever cross that threshold this can be chunked, but it's not in scope.
+- The **storage object** path is set at upload time by `sync-manager` using whoever the user is at that moment. After reconcile, the user's `auth.uid()` becomes the real account, and any *new* uploads will land at `<realUserId>/...` — but that's only for newly captured photos. Photos already uploaded under `<oldUserId>/...` keep their original key forever. Their DB row's `photo_url` is the canonical pointer and stays valid.
+- Photo bucket RLS gates **uploads** (write) on `auth.uid() = (storage.foldername(name))[1]`. **Reads** in this app go through signed URLs minted server-side by the existing photo helpers, which work regardless of which uid prefix is in the key — the signature is the access grant, not the path.
+- The `inspector_id` migration on the three report tables (post-C6) is what surfaces the user's offline-mode reports in the Dashboard. That stays. Photo `inspectionId` / `trainingId` / `dailyAssessmentId` foreign keys are UUIDs that don't change across the reconcile, so the photos still attach to the right report.
+- Removes the only remaining write-tx race in `migrateUserData` (the photo loop) — strict simplification.
+- No interaction with C1–C6.
 
-### Out of scope
+### What this does *not* try to fix (out of scope)
 
-- Restructuring the helper into a single transaction across all four stores (cross-store atomicity isn't required here — each store stands alone, and `report_deleted_items` audit is a separate concern).
-- Telemetry / progress UI for migration. The toast in the caller (`verifyAndReconcileOfflineAuth`) already announces the linkup; this fix just makes the count under it accurate.
-- The `inspector_id` field-name assumption — already correct for all three report stores.
+- Recovering photos that were uploaded under `<oldUserId>/...` *and* then went through a previous version of `migrateUserData` that already corrupted their `photoUrl` to `<newUserId>/...`. That's a one-time data-cleanup question — out of scope here, and easy to solve later with a maintenance script that, for every `inspection_photos` / `training_photos` / `daily_assessment_photos` row whose `photo_url` returns 404, retries the read by replacing the leading uid segment with the deterministic email-hash uid from `offline-auth-store.user_mappings` (which we already preserve). I'll log this as a follow-up if the user wants it.
+- Renaming bucket objects to match the real userId. Not required for correctness; would only be cosmetic.
+- The `fileName` field — same logic. It's a display/storage hint, not a path used for lookup post-upload. Don't touch it.
 
 ### Risk
 
-Trivial. Same function signature, same surrounding caller flow, same error-swallowing semantics. The behavior change is "migrate all matching rows per store" instead of "migrate one row per store and silently warn."
+Trivial. Removing dead-and-harmful code. Worst case for an existing offline-only user: the reconcile no longer attempts the broken rewrite — their photos go from "guaranteed 404 after reconcile" to "still readable under their original `<oldUserId>/...` key." Strictly better.
 
 ### Verification
 
 - `npx tsc --noEmit`.
-- DEV scenario A (the bug): in DevTools, seed IDB `inspections` with 5 rows whose `inspector_id` equals the deterministic email-hash UUID. Force a reconcile (`verifyAndReconcileOfflineAuth`). Expect: console log `[OfflineAuth] Migrated 5 records ...` (or the equivalent count including photos), all 5 rows now have the real `inspector_id`, dashboard renders them.
-- DEV scenario B (no matches): seed 5 rows with the real `inspector_id` already. Reconcile. Expect: count = 0, no errors, rows untouched.
-- DEV scenario C (mixed): 3 matching, 2 non-matching, 1 photo with `oldUserId` in `photoUrl`. Expect: count = 4, only the 3 inspector_id rows + 1 photo touched, the other 2 untouched.
-- Repeat for `trainings`, `daily_assessments`, `photos`.
+- DEV scenario A (the bug): seed an IDB photo `{ photoUrl: '<oldUserId>/<inspId>/abc.jpg', fileName: '<oldUserId>/<inspId>/abc.jpg', uploaded: true }` and an `inspection_photos` row with the same `photo_url`. Trigger `verifyAndReconcileOfflineAuth` so the deterministic uid maps to the real one. Expect:
+  - No `[OfflineAuth] Failed to migrate photos store` warning.
+  - The IDB photo's `photoUrl` is **unchanged** (still `<oldUserId>/...`).
+  - Re-rendering the report: the photo loads (signed URL against the existing object).
+- DEV scenario B (happy path, online-first user): nothing references `oldUserId` in any photo. Reconcile is a no-op for photos. Confirm no log noise.
+- DEV scenario C (post-reconcile capture): take a new photo after reconcile. Confirm the upload lands under `<realUserId>/...` (existing sync-manager behavior, unchanged).
+- Repeat A across `inspection_photos`, `training_photos`, `daily_assessment_photos`.
 
