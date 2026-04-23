@@ -279,6 +279,47 @@ export const SyncDiagnosticsSheet = () => {
             </div>
           )}
 
+          {regressionSkipEntries.length > 0 && (
+            <div>
+              <h3 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-2">
+                Held-Back Records ({regressionSkipEntries.length})
+              </h3>
+              <div className="rounded-md border border-border divide-y divide-border">
+                {regressionSkipEntries.map((entry) => (
+                  <HeldBackRow
+                    key={entry.id}
+                    entry={entry}
+                    label={heldBackLabels[entry.id]}
+                    busy={busyHeldBackId === entry.id}
+                    onForceRetry={async () => {
+                      setBusyHeldBackId(entry.id);
+                      try {
+                        await resetRegressionSkipCount(entry.id);
+                        await updatePhotoCount();
+                        await forceSync();
+                        toast.success('Force retry queued');
+                      } catch {
+                        toast.error('Could not force retry');
+                      } finally {
+                        setBusyHeldBackId(null);
+                      }
+                    }}
+                    onResetCounter={async () => {
+                      setBusyHeldBackId(entry.id);
+                      try {
+                        await resetRegressionSkipCount(entry.id);
+                        await updatePhotoCount();
+                        toast.success('Counter reset');
+                      } finally {
+                        setBusyHeldBackId(null);
+                      }
+                    }}
+                  />
+                ))}
+              </div>
+            </div>
+          )}
+
           <div className="flex flex-col gap-2 pt-2">
             <ForceSyncButton variant="default" />
             <Button
