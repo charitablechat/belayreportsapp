@@ -25,6 +25,13 @@ interface CounterRow {
   lastIncrementAt: number;
 }
 
+/** Public-facing shape used by diagnostics UI (S39). */
+export interface RegressionSkipEntry {
+  id: string;
+  count: number;
+  lastIncrementAt: number;
+}
+
 // In-memory hot cache so the existing call sites don't pay the IDB cost on
 // every guard hit. Writes go through to IDB AND update the cache.
 const cache = new Map<string, number>();
