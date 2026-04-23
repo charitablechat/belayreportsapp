@@ -70,6 +70,42 @@ import { isMobile } from './mobile-detection';
 // 200+ photos take 20+ sync cycles to drain.
 const MAX_PHOTO_BATCH_SIZE = 30;
 
+/**
+ * 1.C — Centralized "permanent failure" handler. Stamps lastError, bumps the
+ * retry counter, and when the photo crosses the dead-letter threshold persists
+ * a record to `photo_upload_failures` so it can be surfaced to the user/admin
+ * instead of becoming a silent orphan. Returns the new retry count, and a
+ * boolean indicating whether the photo just crossed the threshold (caller
+ * uses this to decide whether to emit a sync-center notification once per
+ * cycle).
+ */
+async function handlePermanentPhotoFailure(
+  photo: any,
+  message: string
+): Promise<{ retryCount: number; crossedThreshold: boolean }> {
+  await setPhotoLastError(photo.id, message);
+  const retryCount = await incrementPhotoRetryCount(photo.id);
+  const crossedThreshold = retryCount >= MAX_PHOTO_RETRIES;
+  if (crossedThreshold) {
+    try {
+      await recordPhotoUploadFailure({
+        id: photo.id,
+        inspectionId: photo.inspectionId,
+        fileName: photo.fileName,
+        photoUrl: photo.photoUrl,
+        section: photo.section,
+        retryCount,
+        lastError: message,
+        lastErrorAt: Date.now(),
+        capturedByUserId: photo.capturedByUserId ?? null,
+      });
+    } catch (e) {
+      console.warn('[Sync Manager] Failed to persist photo upload failure:', e);
+    }
+  }
+  return { retryCount, crossedThreshold };
+}
+
 export async function syncPhotos(signal?: AbortSignal): Promise<{ remaining: number; changed?: number; error?: string }> {
   if (signal?.aborted) return { remaining: 0, changed: 0 };
   if (!navigator.onLine) {
