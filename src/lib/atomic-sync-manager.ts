@@ -948,7 +948,7 @@ export async function syncAllInspectionsAtomic(preValidatedUser?: CachedUser, si
       syncProgressEmitter.emit({
         total: batch.length,
         current: progressCounter,
-        currentItem: `${inspection.organization} - ${inspection.location}${retryCount > 0 ? ` (retry ${retryCount})` : ''}${remaining > 0 ? ` (${remaining} more queued)` : ''}`,
+        currentItem: `${formatProgressLabel([inspection.organization, inspection.location], 'Untitled inspection')}${retryCount > 0 ? ` (retry ${retryCount})` : ''}${remaining > 0 ? ` (${remaining} more queued)` : ''}`,
         phase: 'inspections',
         errors,
       });
@@ -1793,7 +1793,7 @@ export async function syncAllTrainingsAtomic(preValidatedUser?: CachedUser, sign
       syncProgressEmitter.emit({
         total: batch.length,
         current: progressCounter,
-        currentItem: `${training.organization}${retryCount > 0 ? ` (retry ${retryCount})` : ''}${remaining > 0 ? ` (${remaining} more queued)` : ''}`,
+        currentItem: `${formatProgressLabel([training.organization, (training as { location?: string | null }).location], 'Untitled training')}${retryCount > 0 ? ` (retry ${retryCount})` : ''}${remaining > 0 ? ` (${remaining} more queued)` : ''}`,
         phase: 'trainings',
         errors,
       });
@@ -2579,7 +2579,7 @@ export async function syncAllDailyAssessmentsAtomic(preValidatedUser?: CachedUse
       syncProgressEmitter.emit({
         total: batch.length,
         current: progressCounter,
-        currentItem: `${assessment.organization} - ${assessment.site}${retryCount > 0 ? ` (retry ${retryCount})` : ''}${remaining > 0 ? ` (${remaining} more queued)` : ''}`,
+        currentItem: `${formatProgressLabel([assessment.organization, assessment.site], 'Untitled assessment')}${retryCount > 0 ? ` (retry ${retryCount})` : ''}${remaining > 0 ? ` (${remaining} more queued)` : ''}`,
         phase: 'assessments',
         errors,
       });
