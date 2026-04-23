@@ -1261,7 +1261,9 @@ export async function getUnsyncedInspections(userId?: string) {
       // Simple getAll() + filter — reliable across all browsers.
       // These stores typically hold <100 records so full scans are fast.
       const all = await db.getAll('inspections');
-      let unsynced = all.filter(record => {
+      // C9: Exclude quarantined records (remote was soft-deleted) from unsynced
+      // candidates so we don't keep re-attempting to upload them.
+      let unsynced = all.filter(record => !(record as any)._remote_deleted_at).filter(record => {
         if (!record.synced_at) return true; // never synced
         if (record.updated_at) {
           const drift = new Date(record.updated_at).getTime() - new Date(record.synced_at).getTime();
@@ -2416,7 +2418,8 @@ export async function getUnsyncedDailyAssessments(userId?: string) {
       const db = await getDB();
       
       const all = await db.getAll('daily_assessments');
-      let unsynced = all.filter(record => {
+      // C9: Exclude quarantined records.
+      let unsynced = all.filter(record => !(record as any)._remote_deleted_at).filter(record => {
         if (!record.synced_at) return true;
         if (record.updated_at) {
           return isUpdatedAheadOfSync(new Date(record.updated_at).getTime(), new Date(record.synced_at).getTime());
@@ -2758,7 +2761,8 @@ export async function getUnsyncedTrainings(userId?: string) {
       const db = await getDB();
       
       const all = await db.getAll('trainings');
-      let unsynced = all.filter(record => {
+      // C9: Exclude quarantined records.
+      let unsynced = all.filter(record => !(record as any)._remote_deleted_at).filter(record => {
         if (!record.synced_at) return true;
         if (record.updated_at) {
           return isUpdatedAheadOfSync(new Date(record.updated_at).getTime(), new Date(record.synced_at).getTime());
