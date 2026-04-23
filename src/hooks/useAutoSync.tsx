@@ -608,8 +608,13 @@ export const useAutoSync = () => {
       resolveInFlight();
       // Always refresh unsynced counts so the badge is accurate after every sync attempt
       updateUnsyncedCounts().catch(() => {});
-      // Always notify photo-count consumers so dead-letter / orphan filters re-evaluate
-      try { window.dispatchEvent(new Event('sync-photos-updated')); } catch {}
+      // S34: Only broadcast if real photo state changed during this cycle.
+      // The post-sync block above also dispatches on the success path; this
+      // finally-block fallback covers error/timeout paths where some photo
+      // mutations may have completed before the throw.
+      if (photoChangeCount > 0) {
+        try { window.dispatchEvent(new Event('sync-photos-updated')); } catch {}
+      }
     }
   }, [queryClient, isMobileDevice, isIOSDevice]);
   
