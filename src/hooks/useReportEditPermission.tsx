@@ -1,7 +1,14 @@
 import { useEffect, useState, useMemo } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { isLovablePreview } from "@/lib/environment";
-import { getUserWithCache, getSuperAdminStatusWithCache, getIsTrueSuperAdmin, getOfflineUserId } from "@/lib/cached-auth";
+import {
+  getUserWithCache,
+  getSuperAdminStatusWithCache,
+  getIsTrueSuperAdmin,
+  getOfflineUserId,
+  getAdminCacheKey,
+  getTrueSuperAdminCacheKey,
+} from "@/lib/cached-auth";
 
 interface UseReportEditPermissionProps {
   inspectorId: string | undefined | null;
@@ -95,11 +102,16 @@ export function useReportEditPermission({
             setIsTrueSuperAdmin(trueSuperAdminStatus);
           }).catch(() => {});
         } else if (navigator.onLine) {
-          const cachedAdmin = localStorage.getItem('cached-admin-status');
+          const offlineId = getOfflineUserId();
+          const cachedAdmin = offlineId
+            ? localStorage.getItem(getAdminCacheKey(offlineId))
+            : null;
           if (cachedAdmin !== 'true') {
             setIsAdmin(false);
           }
-          const cachedTrueSA = localStorage.getItem('cached-true-super-admin');
+          const cachedTrueSA = offlineId
+            ? localStorage.getItem(getTrueSuperAdminCacheKey(offlineId))
+            : null;
           if (cachedTrueSA !== 'true') {
             setIsTrueSuperAdmin(false);
           }
