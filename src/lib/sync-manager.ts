@@ -140,6 +140,10 @@ export async function syncPhotos(signal?: AbortSignal): Promise<{ remaining: num
     }
 
     let successCount = 0;
+    // S34: Count any state-changing photo outcome (success or dead-letter
+    // bump) so the per-cycle dispatch in useAutoSync can stay quiet on
+    // truly idle cycles.
+    let changedCount = 0;
     // Track IDs already processed in this batch to skip duplicates without N+1 queries.
     // Read-then-await pattern below makes this safe under bounded concurrency.
     const processedIds = new Set<string>();
