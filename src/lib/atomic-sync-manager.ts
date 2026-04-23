@@ -1768,10 +1768,11 @@ export async function syncAllTrainingsAtomic(preValidatedUser?: CachedUser, sign
   let progressCounter = 0;
 
   await runWithConcurrency(batch, itemConcurrency, async (training, i) => {
+    if (signal?.aborted) return;
     let retryCount = 0;
     let synced = false;
 
-    while (retryCount < maxRetries && !synced) {
+    while (retryCount < maxRetries && !synced && !signal?.aborted) {
       // Emit progress for current item
       progressCounter++;
       syncProgressEmitter.emit({
@@ -1785,7 +1786,7 @@ export async function syncAllTrainingsAtomic(preValidatedUser?: CachedUser, sign
       try {
         // Per-item timeout - pass pre-validated user to skip redundant session validation
         const itemResult = await Promise.race([
-          syncTrainingAtomic(training.id, user as CachedUser),
+          syncTrainingAtomic(training.id, user as CachedUser, signal),
           new Promise<never>((_, reject) => setTimeout(() => reject(new Error('Item sync timeout')), ITEM_SYNC_TIMEOUT))
         ]);
         if (itemResult && typeof itemResult === 'object' && (itemResult as any).skipped) {
@@ -2553,10 +2554,11 @@ export async function syncAllDailyAssessmentsAtomic(preValidatedUser?: CachedUse
   let progressCounter = 0;
 
   await runWithConcurrency(batch, itemConcurrency, async (assessment, i) => {
+    if (signal?.aborted) return;
     let retryCount = 0;
     let synced = false;
 
-    while (retryCount < maxRetries && !synced) {
+    while (retryCount < maxRetries && !synced && !signal?.aborted) {
       // Emit progress for current item
       progressCounter++;
       syncProgressEmitter.emit({
@@ -2570,7 +2572,7 @@ export async function syncAllDailyAssessmentsAtomic(preValidatedUser?: CachedUse
       try {
         // Per-item timeout - pass pre-validated user to skip redundant session validation
         const itemResult = await Promise.race([
-          syncDailyAssessmentAtomic(assessment.id, user as CachedUser),
+          syncDailyAssessmentAtomic(assessment.id, user as CachedUser, signal),
           new Promise<never>((_, reject) => setTimeout(() => reject(new Error('Item sync timeout')), ITEM_SYNC_TIMEOUT))
         ]);
         if (itemResult && typeof itemResult === 'object' && (itemResult as any).skipped) {
