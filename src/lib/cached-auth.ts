@@ -330,6 +330,8 @@ export function invalidateUserCache() {
   cachedTrueSuperAdmin = null;
   trueSuperAdminCacheTimestamp = 0;
   pendingTrueSuperAdminPromise = null;
+  // C7: sweep all per-user namespaced admin cache keys on sign-out
+  clearAllAdminCacheKeys();
   // Clear offline auth credentials on sign-out (online path)
   clearOfflineAuth().catch(() => {});
 }
@@ -367,43 +369,47 @@ export function clearSessionStateForOfflineSignout(): void {
  */
 export async function getAdminStatusWithCache(): Promise<boolean> {
   const now = Date.now();
-  
-  // Return cached value if still valid
+
   if (cachedAdminStatus !== null && (now - adminCacheTimestamp) < ADMIN_CACHE_TTL) {
     return cachedAdminStatus;
   }
-  
-  // Single-flight pattern - dedupe concurrent requests
+
   if (pendingAdminPromise) {
     return pendingAdminPromise;
   }
-  
-  // Check localStorage for offline fallback
-  const localCached = localStorage.getItem('cached-admin-status');
+
+  // C7: namespaced offline fallback (sync — no network)
+  const userId = getOfflineUserId();
+  const namespacedKey = userId ? getAdminCacheKey(userId) : null;
+  const localCached = namespacedKey ? localStorage.getItem(namespacedKey) : null;
+
   if (!navigator.onLine && localCached !== null) {
     return localCached === 'true';
   }
-  
+
   pendingAdminPromise = (async () => {
     try {
       const { data, error } = await supabase.rpc('is_admin_or_above');
       if (error) throw error;
-      
+
       const status = !!data;
       cachedAdminStatus = status;
       adminCacheTimestamp = Date.now();
-      localStorage.setItem('cached-admin-status', status.toString());
-      
+      const u = await getUserWithCache();
+      const id = u?.id ?? userId;
+      if (id) {
+        localStorage.setItem(getAdminCacheKey(id), status.toString());
+      }
+
       return status;
     } catch (error) {
       console.warn('[CachedAuth] Error checking admin status:', error);
-      // Return cached localStorage value on error
       return localCached === 'true';
     } finally {
       pendingAdminPromise = null;
     }
   })();
-  
+
   return pendingAdminPromise;
 }
 
@@ -445,7 +451,11 @@ export async function getIsTrueSuperAdmin(): Promise<boolean> {
     return pendingTrueSuperAdminPromise;
   }
 
-  const localCached = localStorage.getItem('cached-true-super-admin');
+  // C7: namespaced offline fallback (sync)
+  const userId = getOfflineUserId();
+  const namespacedKey = userId ? getTrueSuperAdminCacheKey(userId) : null;
+  const localCached = namespacedKey ? localStorage.getItem(namespacedKey) : null;
+
   if (!navigator.onLine && localCached !== null) {
     return localCached === 'true';
   }
@@ -458,7 +468,11 @@ export async function getIsTrueSuperAdmin(): Promise<boolean> {
       const status = !!data;
       cachedTrueSuperAdmin = status;
       trueSuperAdminCacheTimestamp = Date.now();
-      localStorage.setItem('cached-true-super-admin', status.toString());
+      const u = await getUserWithCache();
+      const id = u?.id ?? userId;
+      if (id) {
+        localStorage.setItem(getTrueSuperAdminCacheKey(id), status.toString());
+      }
       return status;
     } catch (error) {
       console.warn('[CachedAuth] Error checking true super admin status:', error);
