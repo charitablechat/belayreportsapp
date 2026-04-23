@@ -15,7 +15,10 @@ import {
   deleteOfflinePhoto,
   getDeadLetterSoftDeletes,
   removeDeadLetterSoftDelete,
+  listPhotoUploadFailures,
+  removePhotoUploadFailure,
   type DeadLetterSoftDelete,
+  type PhotoUploadFailureEntry,
 } from '@/lib/offline-storage';
 import { retryDeadLetterSoftDelete } from '@/lib/queued-soft-delete-processor';
 import {
@@ -81,6 +84,8 @@ export const SyncDiagnosticsSheet = () => {
   const [heldBackLabels, setHeldBackLabels] = useState<Record<string, string>>({});
   const [emptyLocalConflicts, setEmptyLocalConflicts] = useState<EmptyLocalConflictEntry[]>([]);
   const [busyConflictId, setBusyConflictId] = useState<string | null>(null);
+  const [photoFailures, setPhotoFailures] = useState<PhotoUploadFailureEntry[]>([]);
+  const [busyPhotoFailureId, setBusyPhotoFailureId] = useState<string | null>(null);
   const [diag, setDiag] = useState<DiagnosticsState>({
     swRegistered: false,
     swController: false,
@@ -111,6 +116,8 @@ export const SyncDiagnosticsSheet = () => {
     setDeadLetterDeletes(dlDeletes);
     const conflicts = await listEmptyLocalConflicts().catch(() => [] as EmptyLocalConflictEntry[]);
     setEmptyLocalConflicts(conflicts);
+    const failures = await listPhotoUploadFailures().catch(() => [] as PhotoUploadFailureEntry[]);
+    setPhotoFailures(failures);
     setDiag({
       swRegistered,
       swController,
