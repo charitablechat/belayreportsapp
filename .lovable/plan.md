@@ -1,15 +1,47 @@
 
 
-## S26 — Already implemented ✅
+## S27 — Harden conflict-audit insert against null `organization_id`
 
-This task was completed in the prior combined S25+S26 turn. Current state in `src/lib/sync-reconciliation.ts` (L185–L235):
+### Current state
 
-- `Promise.allSettled` replaces `Promise.all` so one thrown table never cancels its siblings.
-- Each rejection is logged via `console.error('[Reconcile] Table <x> threw:', reason)` and synthesized into a `{ deletedCount: 0, blocked: true, blockReason: 'reconcile_threw: <msg>' }` pseudo-result.
-- Failures flow into `blockedTables`, which makes `ReconcileAllResult.blocked === true`.
-- The caller in `src/lib/atomic-sync-manager.ts` (L620 region) already aborts the parent sync without advancing `synced_at` whenever `blocked === true`, so partial child-table failures correctly trigger a retry on the next cycle.
+`src/lib/atomic-sync-manager.ts` L420–434 already guards the `sync_conflicts` insert:
 
-### No changes needed
+```ts
+const organizationId = inspection.organization_id;
+if (organizationId) {
+  try { await supabase.from('sync_conflicts').insert({ ... }); }
+  catch (auditErr) { console.warn(...); }
+}
+```
 
-The behavior you described (one table fails → others delete → parent sync keeps going) is already prevented. If you'd like an additional safeguard — for example, **rolling back the successful sibling deletes** when one table fails — that would be a new task (S27) since reconcile deletes are currently not transactional across tables. Let me know if you want a plan for that.
+So the literal "throws and infinite-retries" scenario described in S27 cannot occur from this site today: the `if` skips the insert and the surrounding try/catch would swallow it anyway. DB confirms `sync_conflicts.organization_id` is `NOT NULL`, and exactly **1** inspection in production currently has `organization_id IS NULL`.
+
+### What's still worth doing
+
+Two small hardenings so the silent-skip path is observable and self-healing:
+
+1. **Backfill attempt before skipping.** When `inspection.organization_id` is null but `inspection.organization` (text) is set, try a one-shot lookup against `organizations` by name and use that id for the audit insert. Don't mutate the inspection row — just enable the audit row. If lookup fails, fall through to the skip.
+
+2. **Structured skip log + dev counter.** Replace the silent skip with a `console.warn('[Atomic Sync] sync_conflicts audit skipped: missing organization_id', { inspectionId })` so admins can spot orphaned records via diagnostics. Optional: bump a counter in `notification-center` if we want to surface it in the diagnostics sheet, but a console warn is enough for now.
+
+### Files
+
+- **`src/lib/atomic-sync-manager.ts`** (around L420–434):
+  - Extract a tiny local helper `resolveOrgIdForAudit(inspection): Promise<string | null>` that returns `inspection.organization_id ?? lookupByName(inspection.organization)`.
+  - Replace the inline `if (organizationId)` with `const organizationId = await resolveOrgIdForAudit(inspection);` then keep the existing guard + try/catch. On null, `console.warn` once with the inspection id.
+
+### Out of scope
+
+- Backfilling `inspections.organization_id` for the 1 legacy row — separate data task if desired.
+- Making `sync_conflicts.organization_id` nullable — schema is intentionally strict.
+- Adding analogous audit inserts for trainings / daily assessments (no `sync_conflicts` writes exist on those paths today).
+
+### Risk
+
+Negligible. The new lookup is a single indexed `select … where lower(name) = lower($1) limit 1`; failure mode is identical to today (skip the audit row).
+
+### Verification
+
+- `npx tsc --noEmit`.
+- Manual: trigger a merge on the 1 null-org inspection; confirm console shows the structured warn (and, if the org name matches, that the audit row lands with the resolved id).
 
