@@ -577,41 +577,29 @@ export async function syncInspectionAtomic(inspectionId: string, preValidatedUse
     const isNewRecord = !inspection.synced_at;
     const recordStatus = isNewRecord ? null : await checkRemoteRecordStatus('inspections', inspectionId);
     
-    // SAFEGUARD: Check if remote record was soft-deleted by someone else
+    // C9: Remote record was soft-deleted. If we have unsynced local edits,
+    // quarantine instead of wiping — the user resolves via dialog.
     if (recordStatus?.record_exists && recordStatus?.is_deleted) {
-      console.warn('[Atomic Sync] Remote record was soft-deleted - cleaning up local copy:', inspectionId);
-      
-      // PRE-DELETE BACKUP: Snapshot before destroying local data
-      try {
-        const localData = await getOfflineInspection(inspectionId);
-        if (localData) {
-          const [sys, zips, equip, stds, summ] = await Promise.all([
-            getRelatedDataOffline('systems', inspectionId),
-            getRelatedDataOffline('ziplines', inspectionId),
-            getRelatedDataOffline('equipment', inspectionId),
-            getRelatedDataOffline('standards', inspectionId),
-            getRelatedDataOffline('summary', inspectionId),
-          ]);
-          appendVersion('inspection', inspectionId, localData, {
-            systems: sys, ziplines: zips, equipment: equip, standards: stds, summary: summ,
-          }, 'pre_delete').catch(() => {});
-        }
-      } catch (backupErr) {
-        console.warn('[Atomic Sync] Pre-delete backup failed:', backupErr);
-      }
-      
-      try {
-        await deleteOfflineInspection(inspectionId);
-        syncLog.log('[Atomic Sync] Cleaned up orphaned local inspection:', inspectionId);
-      } catch (cleanupError) {
-        console.error('[Atomic Sync] Failed to clean up orphaned local data:', cleanupError);
-      }
-      
-      return { 
-        success: false, 
-        skipped: true, 
-        reason: 'remote_deleted',
-        message: 'This record was deleted by an administrator. Local copy has been cleaned up.'
+      const remoteDeletedAt = recordStatus.deleted_at ?? new Date().toISOString();
+      const result = await handleRemoteDeleted(
+        'inspections',
+        inspectionId,
+        inspection,
+        remoteDeletedAt,
+        async () => {
+          // Legacy hard-delete path: only runs when there are no unsynced edits.
+          // No version snapshot needed — local matches server's pre-delete state.
+          await deleteOfflineInspection(inspectionId);
+        },
+      );
+      return {
+        success: false,
+        skipped: true,
+        reason: 'remote_deleted' as const,
+        quarantined: result.quarantined,
+        message: result.quarantined
+          ? 'This record was deleted by an administrator while you had unsynced changes. Resolve in the conflict dialog.'
+          : 'This record was deleted by an administrator. Local copy has been cleaned up.',
       };
     }
     
