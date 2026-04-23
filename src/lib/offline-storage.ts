@@ -2123,32 +2123,44 @@ async function recomputeInspectionChildCountHint(
 
     const otherTypes: RelatedDataType[] = (['systems', 'ziplines', 'equipment', 'standards', 'summary'] as RelatedDataType[])
       .filter(t => t !== justSavedType);
+    let anyReadFailed = false;
     const counts = await Promise.all(
       otherTypes.map(async (t) => {
         try {
           const idx = db.transaction(storeNameMap[t]).store.index('by-inspection');
           return (await idx.count(inspectionId)) as number;
         } catch {
+          // M2: signal degradation instead of silently treating as 0.
+          anyReadFailed = true;
           return 0;
         }
       })
     );
-    const otherTotal = counts.reduce((a, b) => a + b, 0);
-    // Summary contributes 1 if any row exists; align with old "summary?.length > 0 ? 1 : 0" semantics.
-    const newHint = otherTotal + (justSavedType === 'summary' ? (justSavedCount > 0 ? 1 : 0) : justSavedCount);
 
     // H2: Bump parent updated_at on every child mutation. Without this, an
     // edit to a child row (e.g. zipline_name) leaves the parent's
     // updated_at == synced_at and `shouldPreserveLocalRecord` returns false,
     // so the Dashboard's network pipeline overwrites the parent and
     // downstream "empty-vs-populated" guards see a parent/child mismatch.
-    // H2: Bump parent updated_at on every child mutation. Without this, an
-    // edit to a child row (e.g. zipline_name) leaves the parent's
-    // updated_at == synced_at and `shouldPreserveLocalRecord` returns false,
-    // so the Dashboard's network pipeline overwrites the parent and
-    // downstream "empty-vs-populated" guards see a parent/child mismatch.
-    inspection.child_count_hint = newHint;
     inspection.updated_at = new Date().toISOString();
+
+    // M2: If any sibling-store count failed (e.g. circuit breaker open),
+    // do NOT overwrite child_count_hint with a partial total. A wrong hint
+    // (e.g. 0 when there are really 10 rows) defeats downstream regression
+    // detectors that compare hint vs live count. Preserve the existing hint
+    // so the SW guard still has a real signal to compare against.
+    if (!anyReadFailed) {
+      const otherTotal = counts.reduce((a, b) => a + b, 0);
+      // Summary contributes 1 if any row exists; align with old "summary?.length > 0 ? 1 : 0" semantics.
+      const newHint = otherTotal + (justSavedType === 'summary' ? (justSavedCount > 0 ? 1 : 0) : justSavedCount);
+      inspection.child_count_hint = newHint;
+    } else if (import.meta.env.DEV) {
+      console.warn('[Offline Storage] child_count_hint recompute skipped — sibling read failed', {
+        inspectionId,
+        justSavedType,
+      });
+    }
+
     await db.put('inspections', inspection);
   } catch {
     // non-fatal; SW guard tolerates a stale hint
@@ -2167,20 +2179,26 @@ async function recomputeAssessmentChildCountHint(
 
     const allTypes: AssessmentDataType[] = ['beginning_of_day', 'end_of_day', 'operating_systems', 'equipment_checks', 'structure_checks', 'environment_checks'];
     const otherTypes = allTypes.filter(t => t !== justSavedType);
+    let anyReadFailed = false;
     const counts = await Promise.all(
       otherTypes.map(async (t) => {
         try {
           const idx = db.transaction(assessmentStoreNameMap[t]).store.index('by-assessment');
           return (await idx.count(assessmentId)) as number;
         } catch {
+          anyReadFailed = true;
           return 0;
         }
       })
     );
-    const newHint = counts.reduce((a, b) => a + b, 0) + justSavedCount;
     // H2: Always bump parent updated_at on child mutation (see Inspection note).
-    assessment.child_count_hint = newHint;
     assessment.updated_at = new Date().toISOString();
+    // M2: preserve existing hint when any sibling read failed.
+    if (!anyReadFailed) {
+      assessment.child_count_hint = counts.reduce((a, b) => a + b, 0) + justSavedCount;
+    } else if (import.meta.env.DEV) {
+      console.warn('[Offline Storage] assessment child_count_hint recompute skipped — sibling read failed', { assessmentId, justSavedType });
+    }
     await db.put('daily_assessments', assessment);
   } catch {
     // non-fatal
@@ -2199,20 +2217,26 @@ async function recomputeTrainingChildCountHint(
 
     const allTypes: TrainingDataType[] = ['delivery_approaches', 'operating_systems', 'immediate_attention', 'verifiable_items', 'systems_in_place', 'summary'];
     const otherTypes = allTypes.filter(t => t !== justSavedType);
+    let anyReadFailed = false;
     const counts = await Promise.all(
       otherTypes.map(async (t) => {
         try {
           const idx = db.transaction(trainingStoreNameMap[t]).store.index('by-training');
           return (await idx.count(trainingId)) as number;
         } catch {
+          anyReadFailed = true;
           return 0;
         }
       })
     );
-    const newHint = counts.reduce((a, b) => a + b, 0) + justSavedCount;
     // H2: Always bump parent updated_at on child mutation (see Inspection note).
-    training.child_count_hint = newHint;
     training.updated_at = new Date().toISOString();
+    // M2: preserve existing hint when any sibling read failed.
+    if (!anyReadFailed) {
+      training.child_count_hint = counts.reduce((a, b) => a + b, 0) + justSavedCount;
+    } else if (import.meta.env.DEV) {
+      console.warn('[Offline Storage] training child_count_hint recompute skipped — sibling read failed', { trainingId, justSavedType });
+    }
     await db.put('trainings', training);
   } catch {
     // non-fatal
