@@ -2078,6 +2078,108 @@ const ensureValidUUID = (id: string | undefined): string => {
   return id;
 };
 
+// S30: Recompute child_count_hint on the parent record after a child mutation.
+// Called fire-and-forget from child-save helpers so it never blocks the save.
+// Uses cheap count() per "other" store (not getAllFromIndex) to minimize IDB load,
+// and skips entirely on read errors (a stale hint is safe for the SW guard).
+async function recomputeInspectionChildCountHint(
+  db: any,
+  inspectionId: string,
+  justSavedType: RelatedDataType,
+  justSavedCount: number,
+): Promise<void> {
+  try {
+    const inspection = await db.get('inspections', inspectionId).catch(() => null);
+    if (!inspection) return;
+
+    const otherTypes: RelatedDataType[] = (['systems', 'ziplines', 'equipment', 'standards', 'summary'] as RelatedDataType[])
+      .filter(t => t !== justSavedType);
+    const counts = await Promise.all(
+      otherTypes.map(async (t) => {
+        try {
+          const idx = db.transaction(storeNameMap[t]).store.index('by-inspection');
+          return (await idx.count(inspectionId)) as number;
+        } catch {
+          return 0;
+        }
+      })
+    );
+    const otherTotal = counts.reduce((a, b) => a + b, 0);
+    // Summary contributes 1 if any row exists; align with old "summary?.length > 0 ? 1 : 0" semantics.
+    const newHint = otherTotal + (justSavedType === 'summary' ? (justSavedCount > 0 ? 1 : 0) : justSavedCount);
+    if (inspection.child_count_hint !== newHint) {
+      inspection.child_count_hint = newHint;
+      await db.put('inspections', inspection);
+    }
+  } catch {
+    // non-fatal; SW guard tolerates a stale hint
+  }
+}
+
+async function recomputeAssessmentChildCountHint(
+  db: any,
+  assessmentId: string,
+  justSavedType: AssessmentDataType,
+  justSavedCount: number,
+): Promise<void> {
+  try {
+    const assessment = await db.get('daily_assessments', assessmentId).catch(() => null);
+    if (!assessment) return;
+
+    const allTypes: AssessmentDataType[] = ['beginning_of_day', 'end_of_day', 'operating_systems', 'equipment_checks', 'structure_checks', 'environment_checks'];
+    const otherTypes = allTypes.filter(t => t !== justSavedType);
+    const counts = await Promise.all(
+      otherTypes.map(async (t) => {
+        try {
+          const idx = db.transaction(assessmentStoreNameMap[t]).store.index('by-assessment');
+          return (await idx.count(assessmentId)) as number;
+        } catch {
+          return 0;
+        }
+      })
+    );
+    const newHint = counts.reduce((a, b) => a + b, 0) + justSavedCount;
+    if (assessment.child_count_hint !== newHint) {
+      assessment.child_count_hint = newHint;
+      await db.put('daily_assessments', assessment);
+    }
+  } catch {
+    // non-fatal
+  }
+}
+
+async function recomputeTrainingChildCountHint(
+  db: any,
+  trainingId: string,
+  justSavedType: TrainingDataType,
+  justSavedCount: number,
+): Promise<void> {
+  try {
+    const training = await db.get('trainings', trainingId).catch(() => null);
+    if (!training) return;
+
+    const allTypes: TrainingDataType[] = ['delivery_approaches', 'operating_systems', 'immediate_attention', 'verifiable_items', 'systems_in_place', 'summary'];
+    const otherTypes = allTypes.filter(t => t !== justSavedType);
+    const counts = await Promise.all(
+      otherTypes.map(async (t) => {
+        try {
+          const idx = db.transaction(trainingStoreNameMap[t]).store.index('by-training');
+          return (await idx.count(trainingId)) as number;
+        } catch {
+          return 0;
+        }
+      })
+    );
+    const newHint = counts.reduce((a, b) => a + b, 0) + justSavedCount;
+    if (training.child_count_hint !== newHint) {
+      training.child_count_hint = newHint;
+      await db.put('trainings', training);
+    }
+  } catch {
+    // non-fatal
+  }
+}
+
 export async function saveRelatedDataOffline(
   type: RelatedDataType,
   inspectionId: string,
