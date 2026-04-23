@@ -719,27 +719,27 @@ export default function TrainingForm() {
       // Guard: Only write child data if it was successfully loaded OR has items
       const childOps: Promise<any>[] = [saveTrainingOffline(updatedTraining)];
       if (deliveryApproaches.length > 0 || childDataLoadedRef.current.delivery_approaches) {
-        childOps.push(saveTrainingDataOffline('delivery_approaches', id, deliveryApproaches));
+        childOps.push(saveTrainingDataOffline('delivery_approaches', id, deliveryApproaches, { allowEmpty: true }));
       } else {
         console.warn('[Training Save] Skipping delivery_approaches save — empty array not confirmed as loaded');
       }
       if (operatingSystems.length > 0 || childDataLoadedRef.current.operating_systems) {
-        childOps.push(saveTrainingDataOffline('operating_systems', id, operatingSystems));
+        childOps.push(saveTrainingDataOffline('operating_systems', id, operatingSystems, { allowEmpty: true }));
       } else {
         console.warn('[Training Save] Skipping operating_systems save — empty array not confirmed as loaded');
       }
       if (immediateAttention.length > 0 || childDataLoadedRef.current.immediate_attention) {
-        childOps.push(saveTrainingDataOffline('immediate_attention', id, immediateAttention));
+        childOps.push(saveTrainingDataOffline('immediate_attention', id, immediateAttention, { allowEmpty: true }));
       } else {
         console.warn('[Training Save] Skipping immediate_attention save — empty array not confirmed as loaded');
       }
       if (verifiableItems.length > 0 || childDataLoadedRef.current.verifiable_items) {
-        childOps.push(saveTrainingDataOffline('verifiable_items', id, verifiableItems));
+        childOps.push(saveTrainingDataOffline('verifiable_items', id, verifiableItems, { allowEmpty: true }));
       } else {
         console.warn('[Training Save] Skipping verifiable_items save — empty array not confirmed as loaded');
       }
       if (systemsInPlace.length > 0 || childDataLoadedRef.current.systems_in_place) {
-        childOps.push(saveTrainingDataOffline('systems_in_place', id, systemsInPlace));
+        childOps.push(saveTrainingDataOffline('systems_in_place', id, systemsInPlace, { allowEmpty: true }));
       } else {
         console.warn('[Training Save] Skipping systems_in_place save — empty array not confirmed as loaded');
       }
