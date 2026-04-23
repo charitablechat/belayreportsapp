@@ -1540,44 +1540,26 @@ export async function syncTrainingAtomic(trainingId: string, preValidatedUser?: 
     const isNewTraining = !training.synced_at;
     const recordStatus = isNewTraining ? null : await checkRemoteRecordStatus('trainings', trainingId);
     
-    // SAFEGUARD: Check if remote record was soft-deleted by someone else
-    // This works for ALL users (regular and super admin) by bypassing RLS
+    // C9: Remote training was soft-deleted. Quarantine if unsynced edits exist.
     if (recordStatus?.record_exists && recordStatus?.is_deleted) {
-      console.warn('[Atomic Sync] Remote training was soft-deleted - cleaning up local copy:', trainingId);
-      
-      // PRE-DELETE BACKUP: Snapshot before destroying local data
-      try {
-        const localData = await getOfflineTraining(trainingId);
-        if (localData) {
-          const [da, os, ia, vi, sip, summ] = await Promise.all([
-            getTrainingDataOffline('delivery_approaches', trainingId),
-            getTrainingDataOffline('operating_systems', trainingId),
-            getTrainingDataOffline('immediate_attention', trainingId),
-            getTrainingDataOffline('verifiable_items', trainingId),
-            getTrainingDataOffline('systems_in_place', trainingId),
-            getTrainingDataOffline('summary', trainingId),
-          ]);
-          appendVersion('training', trainingId, localData, {
-            delivery_approaches: da, operating_systems: os, immediate_attention: ia,
-            verifiable_items: vi, systems_in_place: sip, summary: summ,
-          }, 'pre_delete').catch(() => {});
-        }
-      } catch (backupErr) {
-        console.warn('[Atomic Sync] Pre-delete training backup failed:', backupErr);
-      }
-      
-      try {
-        await deleteOfflineTraining(trainingId);
-        syncLog.log('[Atomic Sync] Cleaned up orphaned local training:', trainingId);
-      } catch (cleanupError) {
-        console.error('[Atomic Sync] Failed to clean up orphaned local training:', cleanupError);
-      }
-      
-      return { 
-        success: false, 
-        skipped: true, 
-        reason: 'remote_deleted',
-        message: 'This training was deleted by an administrator. Local copy has been cleaned up.'
+      const remoteDeletedAt = recordStatus.deleted_at ?? new Date().toISOString();
+      const result = await handleRemoteDeleted(
+        'trainings',
+        trainingId,
+        training,
+        remoteDeletedAt,
+        async () => {
+          await deleteOfflineTraining(trainingId);
+        },
+      );
+      return {
+        success: false,
+        skipped: true,
+        reason: 'remote_deleted' as const,
+        quarantined: result.quarantined,
+        message: result.quarantined
+          ? 'This training was deleted by an administrator while you had unsynced changes. Resolve in the conflict dialog.'
+          : 'This training was deleted by an administrator. Local copy has been cleaned up.',
       };
     }
     
