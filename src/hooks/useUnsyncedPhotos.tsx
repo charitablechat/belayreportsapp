@@ -6,10 +6,22 @@ import {
 } from '@/lib/offline-storage';
 import { getUserWithCache } from '@/lib/cached-auth';
 
+export interface DeadLetterPhotoInfo {
+  id: string;
+  inspectionId: string;
+  fileName: string;
+  retryCount: number;
+  lastError: string | null;
+  lastErrorAt: number | null;
+  section?: string;
+}
+
 export interface UnsyncedPhotosStatus {
   unsyncedPhotoCount: number;
   photosByInspection: Record<string, number>;
   deadLetterCount: number;
+  /** S22: Per-photo dead-letter info for the diagnostics UI. */
+  deadLetterPhotos: DeadLetterPhotoInfo[];
   /**
    * S11: Set when an IDB read failure prevents us from getting a fresh photo
    * count. Last-known counts are preserved (don't zero the badge) and this
@@ -25,15 +37,17 @@ export const useUnsyncedPhotos = () => {
     unsyncedPhotoCount: 0,
     photosByInspection: {},
     deadLetterCount: 0,
+    deadLetterPhotos: [],
     idbReadError: null,
   });
 
   // Keep a ref of last-known counts so we can preserve them on a transient
   // IDB read failure instead of dropping the badge to 0.
-  const lastKnownRef = useRef<{ count: number; byInspection: Record<string, number>; deadLetter: number }>({
+  const lastKnownRef = useRef<{ count: number; byInspection: Record<string, number>; deadLetter: number; deadLetterPhotos: DeadLetterPhotoInfo[] }>({
     count: 0,
     byInspection: {},
     deadLetter: 0,
+    deadLetterPhotos: [],
   });
 
   const updatePhotoCount = useCallback(async () => {
