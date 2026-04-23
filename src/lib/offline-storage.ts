@@ -2196,22 +2196,18 @@ export async function getAssessmentDataOfflineWithStatus(
   if (isCircuitBreakerOpen()) {
     return { items: [], readSucceeded: false };
   }
-  const READ_TIMEOUT_MS = IDB_TIMEOUTS.batch;
-  const TIMEOUT_SENTINEL: any = Symbol('with-status-timeout');
-  try {
-    const result = await Promise.race([
-      getAssessmentDataOffline(type, assessmentId),
-      new Promise<any>((resolve) => setTimeout(() => resolve(TIMEOUT_SENTINEL), READ_TIMEOUT_MS)),
-    ]);
-    if (result === TIMEOUT_SENTINEL) {
-      console.warn(`[Offline Storage] getAssessmentDataOfflineWithStatus(${type}) timed out — read marked unsuccessful`);
-      return { items: [], readSucceeded: false };
-    }
-    return { items: result || [], readSucceeded: true };
-  } catch (err) {
-    console.warn(`[Offline Storage] getAssessmentDataOfflineWithStatus(${type}) failed:`, err);
-    return { items: [], readSucceeded: false };
-  }
+  let ok = false;
+  const { data } = await withIDBTimeout(
+    `getAssessmentDataOfflineWithStatus(${type})`,
+    'batch',
+    async () => {
+      const d = await getAssessmentDataOffline(type, assessmentId);
+      ok = true;
+      return d;
+    },
+    [] as any[]
+  );
+  return { items: data || [], readSucceeded: ok };
 }
 
 export async function clearAssessmentDataOffline(
