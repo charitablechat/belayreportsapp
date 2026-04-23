@@ -11,6 +11,7 @@
 
 import { isMobile } from './mobile-detection';
 import { uploadSnapshotToCloud } from './cloud-backup';
+import { safeSetItem } from './safe-local-storage';
 
 const BACKUP_PREFIX = 'rw_backup_';
 const SCHEMA_VERSION = 1;
@@ -144,15 +145,32 @@ export function saveReportSnapshot(
     // Evict old synced snapshots if needed
     evictIfNeeded(estimatedBytes);
 
-    localStorage.setItem(key, json);
+    const result = safeSetItem(key, json, {
+      scope: 'backup-ledger.save',
+      critical: !isSynced,
+      onFail: (code) => {
+        if (code === 'quota') {
+          // Aggressive eviction with doubled budget, then retry once
+          evictIfNeeded(estimatedBytes * 2);
+          const retry = safeSetItem(key, json, { scope: 'backup-ledger.save.retry' });
+          if (retry.ok) {
+            _storageBytesTs = 0; // invalidate cache
+          }
+        }
+      },
+    });
+
+    if (result.ok) {
+      _storageBytesTs = 0; // invalidate cached storage size after successful write
+    }
 
     console.debug(`[Backup Ledger] Saved ${reportType} snapshot:`, reportId.substring(0, 8), 
-      `(${(json.length / 1024).toFixed(1)}KB, synced=${isSynced})`);
+      `(${(json.length / 1024).toFixed(1)}KB, synced=${isSynced}, ok=${result.ok})`);
 
     // Fire-and-forget cloud upload — non-blocking, silent on failure
     uploadSnapshotToCloud(reportType, reportId, snapshot);
   } catch (error) {
-    // localStorage is full or unavailable — fail silently
+    // Unexpected error (JSON.stringify, etc.) — fail silently
     console.warn('[Backup Ledger] Failed to save snapshot:', error);
   }
 }
@@ -281,7 +299,13 @@ export function markSnapshotSynced(
     const snapshot: ReportSnapshot = JSON.parse(raw);
     if (snapshot.synced) return; // Already marked — skip redundant write + cloud call
     snapshot.synced = true;
-    localStorage.setItem(key, JSON.stringify(snapshot));
+    const result = safeSetItem(key, JSON.stringify(snapshot), {
+      scope: 'backup-ledger.markSynced',
+      critical: false,
+    });
+    if (result.ok) {
+      _storageBytesTs = 0; // invalidate cache
+    }
 
     // Fire-and-forget: also update the cloud backup's synced flag
     import('./cloud-backup').then(({ markCloudBackupSynced }) => {
