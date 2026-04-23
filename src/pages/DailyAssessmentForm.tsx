@@ -72,7 +72,7 @@ import { CompletionLockDialog } from "@/components/CompletionLockDialog";
 import { SaveBeforeLeaveDialog } from "@/components/SaveBeforeLeaveDialog";
 import { Lock } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { reconcileAllChildTables } from "@/lib/sync-reconciliation";
+import { reconcileAllChildTables, restoreReconciledDeletions, type ReconciledTableDelete } from "@/lib/sync-reconciliation";
 import { useEmergencySave } from "@/hooks/useEmergencySave";
 import { saveReportSnapshot, getReportSnapshot, markSnapshotSynced, downloadReportBackup } from "@/lib/local-backup-ledger";
 import { onCloudBackupError } from "@/lib/cloud-backup";
