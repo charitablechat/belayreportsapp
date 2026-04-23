@@ -2179,20 +2179,26 @@ async function recomputeAssessmentChildCountHint(
 
     const allTypes: AssessmentDataType[] = ['beginning_of_day', 'end_of_day', 'operating_systems', 'equipment_checks', 'structure_checks', 'environment_checks'];
     const otherTypes = allTypes.filter(t => t !== justSavedType);
+    let anyReadFailed = false;
     const counts = await Promise.all(
       otherTypes.map(async (t) => {
         try {
           const idx = db.transaction(assessmentStoreNameMap[t]).store.index('by-assessment');
           return (await idx.count(assessmentId)) as number;
         } catch {
+          anyReadFailed = true;
           return 0;
         }
       })
     );
-    const newHint = counts.reduce((a, b) => a + b, 0) + justSavedCount;
     // H2: Always bump parent updated_at on child mutation (see Inspection note).
-    assessment.child_count_hint = newHint;
     assessment.updated_at = new Date().toISOString();
+    // M2: preserve existing hint when any sibling read failed.
+    if (!anyReadFailed) {
+      assessment.child_count_hint = counts.reduce((a, b) => a + b, 0) + justSavedCount;
+    } else if (import.meta.env.DEV) {
+      console.warn('[Offline Storage] assessment child_count_hint recompute skipped — sibling read failed', { assessmentId, justSavedType });
+    }
     await db.put('daily_assessments', assessment);
   } catch {
     // non-fatal
