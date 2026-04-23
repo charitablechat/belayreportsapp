@@ -69,7 +69,7 @@ import { CompletionLockDialog } from "@/components/CompletionLockDialog";
 import { SaveBeforeLeaveDialog } from "@/components/SaveBeforeLeaveDialog";
 import { Lock } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { reconcileAllChildTables } from "@/lib/sync-reconciliation";
+import { reconcileAllChildTables, restoreReconciledDeletions, type ReconciledTableDelete } from "@/lib/sync-reconciliation";
 import { useEmergencySave } from "@/hooks/useEmergencySave";
 import { saveReportSnapshot, getReportSnapshot, markSnapshotSynced, downloadReportBackup } from "@/lib/local-backup-ledger";
 import { onCloudBackupError } from "@/lib/cloud-backup";
@@ -849,9 +849,11 @@ export default function TrainingForm() {
           const parallelOps: Promise<void>[] = [];
 
           // RECONCILE: Delete server rows removed locally before upserting
+          // C4: capture pre-images for restore-on-failure.
+          let trainingReconciledDeletes: ReconciledTableDelete[] = [];
           const user = await getUserWithCache();
           if (user) {
-            await reconcileAllChildTables(
+            const reconcileResult = await reconcileAllChildTables(
               [
                 { childTable: 'training_delivery_approaches', parentIdColumn: 'training_id', localItems: deliveryApproaches },
                 { childTable: 'training_operating_systems', parentIdColumn: 'training_id', localItems: operatingSystems },
@@ -864,6 +866,7 @@ export default function TrainingForm() {
               'training',
               user.id,
             );
+            trainingReconciledDeletes = reconcileResult.deletedByTable;
           }
           
           // Helper to convert PromiseLike to proper Promise
@@ -915,7 +918,19 @@ export default function TrainingForm() {
           }
 
           // Execute all in parallel
-          await Promise.all(parallelOps);
+          try {
+            await Promise.all(parallelOps);
+          } catch (parErr) {
+            // C4: parallel upsert(s) failed — restore the rows reconcile already deleted.
+            if (trainingReconciledDeletes.length > 0) {
+              try {
+                await restoreReconciledDeletions(trainingReconciledDeletes, id!);
+              } catch (restoreErr) {
+                console.error('[C4] TrainingForm: restoreReconciledDeletions threw', restoreErr);
+              }
+            }
+            throw parErr;
+          }
 
           // DEFERRED: Set synced_at ONLY after all child data committed successfully
           const syncTimestamp = new Date().toISOString();

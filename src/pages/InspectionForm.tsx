@@ -46,7 +46,7 @@ import { AttestationDialog } from "@/components/AttestationDialog";
 import { useUserProfile } from "@/hooks/useUserProfile";
 import type { AttestationPayload } from "@/lib/attestation";
 import { APP_VERSION } from "@/lib/attestation";
-import { reconcileAllChildTables } from "@/lib/sync-reconciliation";
+import { reconcileAllChildTables, restoreReconciledDeletions, type ReconciledTableDelete } from "@/lib/sync-reconciliation";
 import { cn } from "@/lib/utils";
 import { useNetworkStatus } from "@/hooks/useNetworkStatus";
 import { useStorageHealthCheck } from "@/hooks/useStorageHealthCheck";
@@ -1716,9 +1716,11 @@ export default function InspectionForm() {
             const parallelOperations: Promise<void>[] = [];
 
             // RECONCILE: Delete server rows removed locally before upserting
+            // C4: capture pre-images so we can restore them if the parallel upserts fail.
+            let inspReconciledDeletes: ReconciledTableDelete[] = [];
             const user = await getUserWithCache();
             if (user) {
-              await reconcileAllChildTables(
+              const reconcileResult = await reconcileAllChildTables(
                 [
                   { childTable: 'inspection_systems', parentIdColumn: 'inspection_id', localItems: systems },
                   { childTable: 'inspection_ziplines', parentIdColumn: 'inspection_id', localItems: ziplines },
@@ -1730,6 +1732,7 @@ export default function InspectionForm() {
                 'inspection',
                 user.id,
               );
+              inspReconciledDeletes = reconcileResult.deletedByTable;
             }
             
             // Helper to convert PromiseLike to proper Promise
@@ -1843,7 +1846,19 @@ export default function InspectionForm() {
             );
 
             // Execute all in parallel
-            await Promise.all(parallelOperations);
+            try {
+              await Promise.all(parallelOperations);
+            } catch (parErr) {
+              // C4: parallel upsert(s) failed — restore the rows reconcile already deleted.
+              if (inspReconciledDeletes.length > 0) {
+                try {
+                  await restoreReconciledDeletions(inspReconciledDeletes, id!);
+                } catch (restoreErr) {
+                  console.error('[C4] InspectionForm: restoreReconciledDeletions threw', restoreErr);
+                }
+              }
+              throw parErr;
+            }
 
             // DEFERRED: Set synced_at ONLY after all child data committed successfully
             const hadFilteredItems = validSystems.length !== systems.length

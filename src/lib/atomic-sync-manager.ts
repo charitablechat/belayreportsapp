@@ -92,7 +92,7 @@ import {
   TransactionStep,
   fetchRollbackData
 } from "./transaction-manager";
-import { reconcileAllChildTables } from "./sync-reconciliation";
+import { reconcileAllChildTables, restoreReconciledDeletions, type ReconciledTableDelete } from "./sync-reconciliation";
 import { syncProgressEmitter } from "@/hooks/useSyncProgress";
 import { getMobileCapabilities } from "./mobile-detection";
 import { getCachedProfile } from "./profile-cache";
@@ -787,6 +787,7 @@ export async function syncInspectionAtomic(inspectionId: string, preValidatedUse
 
     // Step 2: RECONCILE then UPSERT child data
     // Delete server rows that were removed locally, then upsert current local data
+    let inspectionReconciledDeletes: ReconciledTableDelete[] = [];
     if (recordStatus?.record_exists && !recordStatus?.is_deleted) {
       // S25: when prefetch was skipped, pass `undefined` (not `[]`) so
       // reconcileChildTable falls back to its own live fetch when needed.
@@ -803,6 +804,8 @@ export async function syncInspectionAtomic(inspectionId: string, preValidatedUse
         'inspection',
         user.id,
       );
+      // C4: capture per-table pre-images so we can restore them if the upsert tx fails.
+      inspectionReconciledDeletes = reconcileResult.deletedByTable;
       // If any child table's reconcile was blocked by a safety guard, do NOT mark
       // the parent as synced — the user still has unflushed deletions to retry.
       if (reconcileResult.blocked) {
@@ -885,6 +888,24 @@ export async function syncInspectionAtomic(inspectionId: string, preValidatedUse
     const result = await executeTransaction(steps, { signal });
     
     if (!result.success) {
+      // C4: rollback can only undo the steps the transaction itself executed.
+      // The reconcile pass that ran *before* the transaction already hard-deleted
+      // server child rows, so re-insert their pre-images here. report_deleted_items
+      // still has the audit copy if this best-effort restore also fails.
+      if (inspectionReconciledDeletes.length > 0) {
+        try {
+          const r = await restoreReconciledDeletions(inspectionReconciledDeletes, inspectionId);
+          if (r.failed > 0) {
+            console.error('[C4] Inspection sync: some reconciled rows could not be auto-restored', {
+              inspectionId: inspectionId.substring(0, 8),
+              restored: r.restored,
+              failed: r.failed,
+            });
+          }
+        } catch (restoreErr) {
+          console.error('[C4] Inspection sync: restoreReconciledDeletions threw', restoreErr);
+        }
+      }
       throw new Error(`Transaction failed after ${result.completedSteps}/${result.totalSteps} steps. Rollback: ${result.rollbackSuccess ? 'successful' : 'failed'}`);
     }
     
@@ -1652,6 +1673,7 @@ export async function syncTrainingAtomic(trainingId: string, preValidatedUser?: 
 
     // Step 2: RECONCILE then UPSERT child data
     // Delete server rows that were removed locally, then upsert current local data
+    let trainingReconciledDeletes: ReconciledTableDelete[] = [];
     if (recordStatus?.record_exists && !recordStatus?.is_deleted) {
       const pf = (arr: any[]) => (serverUnchangedSinceBaseline ? undefined : arr);
       const reconcileResult = await reconcileAllChildTables(
@@ -1667,6 +1689,8 @@ export async function syncTrainingAtomic(trainingId: string, preValidatedUser?: 
         'training',
         user.id,
       );
+      // C4: capture per-table pre-images for restore-on-failure.
+      trainingReconciledDeletes = reconcileResult.deletedByTable;
       if (reconcileResult.blocked) {
         console.warn('[Atomic Sync] Training reconcile blocked — marking sync as failed so user can retry', {
           trainingId: trainingId.substring(0, 8),
@@ -1756,6 +1780,21 @@ export async function syncTrainingAtomic(trainingId: string, preValidatedUser?: 
     const result = await executeTransaction(steps, { signal });
     
     if (!result.success) {
+      // C4: restore reconciled deletions when the upsert tx fails (rollback can't undo them).
+      if (trainingReconciledDeletes.length > 0) {
+        try {
+          const r = await restoreReconciledDeletions(trainingReconciledDeletes, trainingId);
+          if (r.failed > 0) {
+            console.error('[C4] Training sync: some reconciled rows could not be auto-restored', {
+              trainingId: trainingId.substring(0, 8),
+              restored: r.restored,
+              failed: r.failed,
+            });
+          }
+        } catch (restoreErr) {
+          console.error('[C4] Training sync: restoreReconciledDeletions threw', restoreErr);
+        }
+      }
       throw new Error(`Transaction failed after ${result.completedSteps}/${result.totalSteps} steps. Rollback: ${result.rollbackSuccess ? 'successful' : 'failed'}`);
     }
     
@@ -2456,6 +2495,7 @@ export async function syncDailyAssessmentAtomic(assessmentId: string, preValidat
 
     // Step 2: RECONCILE then UPSERT child data
     // Delete server rows that were removed locally, then upsert current local data
+    let assessmentReconciledDeletes: ReconciledTableDelete[] = [];
     if (recordStatus?.record_exists && !recordStatus?.is_deleted) {
       const pf = (arr: any[]) => (serverUnchangedSinceBaseline ? undefined : arr);
       const reconcileResult = await reconcileAllChildTables(
@@ -2471,6 +2511,8 @@ export async function syncDailyAssessmentAtomic(assessmentId: string, preValidat
         'daily_assessment',
         user.id,
       );
+      // C4: capture per-table pre-images for restore-on-failure.
+      assessmentReconciledDeletes = reconcileResult.deletedByTable;
       if (reconcileResult.blocked) {
         console.warn('[Atomic Sync] Daily assessment reconcile blocked — marking sync as failed so user can retry', {
           assessmentId: assessmentId.substring(0, 8),
@@ -2554,6 +2596,21 @@ export async function syncDailyAssessmentAtomic(assessmentId: string, preValidat
     const result = await executeTransaction(steps, { signal });
     
     if (!result.success) {
+      // C4: restore reconciled deletions when the upsert tx fails (rollback can't undo them).
+      if (assessmentReconciledDeletes.length > 0) {
+        try {
+          const r = await restoreReconciledDeletions(assessmentReconciledDeletes, assessmentId);
+          if (r.failed > 0) {
+            console.error('[C4] Daily assessment sync: some reconciled rows could not be auto-restored', {
+              assessmentId: assessmentId.substring(0, 8),
+              restored: r.restored,
+              failed: r.failed,
+            });
+          }
+        } catch (restoreErr) {
+          console.error('[C4] Daily assessment sync: restoreReconciledDeletions threw', restoreErr);
+        }
+      }
       throw new Error(`Transaction failed after ${result.completedSteps}/${result.totalSteps} steps. Rollback: ${result.rollbackSuccess ? 'successful' : 'failed'}`);
     }
     

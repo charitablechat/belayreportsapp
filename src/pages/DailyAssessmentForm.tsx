@@ -72,7 +72,7 @@ import { CompletionLockDialog } from "@/components/CompletionLockDialog";
 import { SaveBeforeLeaveDialog } from "@/components/SaveBeforeLeaveDialog";
 import { Lock } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { reconcileAllChildTables } from "@/lib/sync-reconciliation";
+import { reconcileAllChildTables, restoreReconciledDeletions, type ReconciledTableDelete } from "@/lib/sync-reconciliation";
 import { useEmergencySave } from "@/hooks/useEmergencySave";
 import { saveReportSnapshot, getReportSnapshot, markSnapshotSynced, downloadReportBackup } from "@/lib/local-backup-ledger";
 import { onCloudBackupError } from "@/lib/cloud-backup";
@@ -859,9 +859,11 @@ export default function DailyAssessmentForm() {
         if (import.meta.env.DEV) console.log('[Save] Online - syncing to database...');
         try {
           // RECONCILE: Delete server rows removed locally before upserting
+          // C4: capture pre-images for restore-on-failure.
+          let assessmentReconciledDeletes: ReconciledTableDelete[] = [];
           const user = await getUserWithCache();
           if (user) {
-            await reconcileAllChildTables(
+            const reconcileResult = await reconcileAllChildTables(
               [
                 { childTable: 'daily_assessment_beginning_of_day', parentIdColumn: 'assessment_id', localItems: beginningOfDay },
                 { childTable: 'daily_assessment_end_of_day', parentIdColumn: 'assessment_id', localItems: endOfDay },
@@ -874,6 +876,7 @@ export default function DailyAssessmentForm() {
               'daily_assessment',
               user.id,
             );
+            assessmentReconciledDeletes = reconcileResult.deletedByTable;
           }
 
           // Use upsert with onConflict to prevent duplicates
@@ -944,6 +947,14 @@ export default function DailyAssessmentForm() {
           const errors = upsertResults.filter(r => r.error);
           if (errors.length > 0) {
             console.error('[Save] Upsert errors:', errors.map(e => e.error));
+            // C4: parallel upsert(s) failed — restore the rows reconcile already deleted.
+            if (assessmentReconciledDeletes.length > 0) {
+              try {
+                await restoreReconciledDeletions(assessmentReconciledDeletes, id!);
+              } catch (restoreErr) {
+                console.error('[C4] DailyAssessmentForm: restoreReconciledDeletions threw', restoreErr);
+              }
+            }
             throw new Error(`Failed to save ${errors.length} section(s)`);
           }
           if (import.meta.env.DEV) console.log('[Save] Child tables synced successfully');

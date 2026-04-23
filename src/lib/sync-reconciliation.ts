@@ -159,10 +159,54 @@ export async function reconcileChildTable({
   return { deletedCount: rowsToDelete.length, deletedRows: rowsToDelete, blocked: false };
 }
 
+export interface ReconciledTableDelete {
+  table: string;
+  rows: any[];
+}
+
 export interface ReconcileAllResult {
   totalDeleted: number;
   blocked: boolean;
   blockedTables: Array<{ table: string; reason: string }>;
+  /**
+   * C4: Per-table deleted row pre-images, kept in memory so the caller can
+   * re-insert them if a downstream transaction (or parallel upsert batch) fails.
+   * Empty array when nothing was deleted.
+   */
+  deletedByTable: ReconciledTableDelete[];
+}
+
+/**
+ * C4: Re-insert rows that `reconcileAllChildTables` deleted from the server,
+ * to be called when a downstream transaction or parallel upsert batch fails.
+ * The audit row in `report_deleted_items` is preserved either way so the
+ * admin recovery tool remains a fallback if this best-effort restore fails.
+ */
+export async function restoreReconciledDeletions(
+  deletes: ReconciledTableDelete[],
+  parentId: string,
+): Promise<{ restored: number; failed: number }> {
+  let restored = 0;
+  let failed = 0;
+  for (const { table, rows } of deletes) {
+    if (!rows || rows.length === 0) continue;
+    try {
+      // Re-insert in batches of 50 (matches the existing audit batch size).
+      for (let i = 0; i < rows.length; i += 50) {
+        const batch = rows.slice(i, i + 50);
+        const { error } = await (supabase as any).from(table).insert(batch);
+        if (error) throw error;
+      }
+      restored += rows.length;
+      console.warn(
+        `[C4] Restored ${rows.length} reconciled row(s) into ${table} for ${parentId.substring(0, 8)}`,
+      );
+    } catch (e) {
+      console.error('[C4] Failed to restore reconciled rows', { table, parentId, error: e });
+      failed += rows.length;
+    }
+  }
+  return { restored, failed };
 }
 
 /**
@@ -220,6 +264,10 @@ export async function reconcileAllChildTables(
   const blockedTables = results
     .filter(r => r.result.blocked)
     .map(r => ({ table: r.table, reason: r.result.blockReason || 'unknown' }));
+  // C4: capture per-table deleted row pre-images for restore-on-failure.
+  const deletedByTable: ReconciledTableDelete[] = results
+    .filter(r => r.result.deletedRows && r.result.deletedRows.length > 0)
+    .map(r => ({ table: r.table, rows: r.result.deletedRows }));
 
   if (totalDeleted > 0) {
     console.log(`[Reconcile] Total ${totalDeleted} orphaned rows deleted for ${reportType} ${parentId.substring(0, 8)}...`);
@@ -232,5 +280,6 @@ export async function reconcileAllChildTables(
     totalDeleted,
     blocked: blockedTables.length > 0,
     blockedTables,
+    deletedByTable,
   };
 }
