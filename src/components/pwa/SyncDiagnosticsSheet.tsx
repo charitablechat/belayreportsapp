@@ -136,6 +136,48 @@ export const SyncDiagnosticsSheet = () => {
             <Row label="Child-row deletions blocked (24 h)" value={String(diag.tripwireBlocks24h)} />
           </Section>
 
+          {deadLetterPhotos.length > 0 && (
+            <div>
+              <h3 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-2">
+                Stuck Photos ({deadLetterPhotos.length})
+              </h3>
+              <div className="rounded-md border border-border divide-y divide-border">
+                {deadLetterPhotos.map((p) => (
+                  <StuckPhotoRow
+                    key={p.id}
+                    photo={p}
+                    busy={busyPhotoId === p.id}
+                    onRetry={async () => {
+                      setBusyPhotoId(p.id);
+                      try {
+                        const ok = await resetPhotoForRetry(p.id);
+                        if (ok) {
+                          toast.success('Photo queued for retry');
+                          await updatePhotoCount();
+                        } else {
+                          toast.error('Could not reset photo');
+                        }
+                      } finally {
+                        setBusyPhotoId(null);
+                      }
+                    }}
+                    onDiscard={async () => {
+                      if (!confirm('Discard this photo? It will be removed from this device.')) return;
+                      setBusyPhotoId(p.id);
+                      try {
+                        await deleteOfflinePhoto(p.id);
+                        toast.success('Photo discarded');
+                        await updatePhotoCount();
+                      } finally {
+                        setBusyPhotoId(null);
+                      }
+                    }}
+                  />
+                ))}
+              </div>
+            </div>
+          )}
+
           <div className="flex flex-col gap-2 pt-2">
             <ForceSyncButton variant="default" />
             <Button
