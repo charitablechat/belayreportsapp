@@ -54,6 +54,8 @@ interface InspectionDB extends DBSchema {
       foreignKeyColumn?: string; // FK column (e.g. 'training_id')
       caption?: string; // Photo caption for gallery labeling
       retryCount?: number; // Failed upload retry counter
+      lastError?: string | null; // S22: Human-readable last upload error
+      lastErrorAt?: number | null; // S22: epoch ms when lastError was stamped
     };
     indexes: { 'by-inspection': string; 'by-uploaded': number };
   };
