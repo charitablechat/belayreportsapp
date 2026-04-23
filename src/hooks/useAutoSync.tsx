@@ -667,15 +667,26 @@ export const useAutoSync = () => {
   }, [performSync]);
   
   /**
-   * Handle online event - sync immediately when network reconnects
+   * S33: The actual online-reconcile work — refresh session, verify offline auth,
+   * trigger sync. Wrapped by `handleOnline` (and `pageshow`) behind a debounce so
+   * flaky networks don't stack 5s refreshes.
    */
-  const handleOnline = useCallback(async () => {
+  const runOnlineReconcile = useCallback(async () => {
+    if (!navigator.onLine) {
+      // Went offline again before the debounce fired — wait for the next stable online.
+      if (import.meta.env.DEV) {
+        console.log('[AutoSync] Skipping online reconcile — navigator.onLine is false');
+      }
+      return;
+    }
+
     if (import.meta.env.DEV) {
       console.log('[AutoSync] Network reconnected - refreshing session then syncing');
     }
-    
-    // Pre-refresh session BEFORE sync to ensure fresh JWT
-    // This eliminates race conditions between getUserWithCache and ensureValidSession
+
+    // Pre-refresh session BEFORE sync to ensure fresh JWT.
+    // Keep the 5s race as belt-and-suspenders: even though the outer handler is now
+    // debounced, refreshSession() can occasionally hang on a half-open connection.
     try {
       const refreshResult = await Promise.race([
         supabase.auth.refreshSession(),
@@ -691,7 +702,7 @@ export const useAutoSync = () => {
     } catch (e) {
       console.warn('[AutoSync] Session refresh error:', e);
     }
-    
+
     // Verify offline credentials before syncing to prevent RLS failures
     if (hasPendingOfflineAuth()) {
       try {
@@ -700,10 +711,24 @@ export const useAutoSync = () => {
         console.warn('[AutoSync] Offline auth verification failed:', e);
       }
     }
-    
+
     // Use debounced sync to prevent rapid re-syncs on network flicker
     triggerDebouncedSync();
   }, [triggerDebouncedSync]);
+
+  /**
+   * Handle online event — debounced so a burst of online/offline flaps coalesces
+   * into one refresh+reconcile+sync pass.
+   */
+  const handleOnline = useCallback(() => {
+    if (onlineHandlerTimerRef.current) {
+      clearTimeout(onlineHandlerTimerRef.current);
+    }
+    onlineHandlerTimerRef.current = setTimeout(() => {
+      onlineHandlerTimerRef.current = null;
+      runOnlineReconcile();
+    }, ONLINE_HANDLER_DEBOUNCE);
+  }, [runOnlineReconcile]);
   
   /**
    * Handle visibility change - sync when app becomes visible
