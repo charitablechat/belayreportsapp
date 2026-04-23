@@ -503,7 +503,6 @@ export const useAutoSync = () => {
                 performSync(true);
               }
             }, drainDelay);
-          }
           } else {
             // S7: Reports are clean. If photos are still draining, schedule a
             // photo-only cycle so we don't wait for the next periodic tick.
