@@ -2183,10 +2183,15 @@ export async function syncDailyAssessmentAtomic(assessmentId: string, preValidat
       }
     }
     
-    // Fetch child records using the ORIGINAL ID (before temp-to-UUID swap)
-    // because they are stored in IndexedDB under the original assessment_id
-    const fetchId = assessmentIdMapping ? assessmentIdMapping.oldId : assessmentId;
-    
+    // C8: If we swapped the assessment ID, rewrite IDB children oldId → newId
+    // BEFORE reading them. See syncTrainingAtomic for full rationale.
+    if (assessmentIdMapping) {
+      await rewriteAssessmentChildrenIdb(assessmentIdMapping.oldId, assessmentIdMapping.newId);
+    }
+
+    // C8: Always read children at the canonical (post-migration) id.
+    const fetchId = assessmentId;
+
     // S32: Serialized to avoid Safari IDB lock contention (see syncInspectionAtomic).
     const bodRead = await getAssessmentDataOfflineWithStatus('beginning_of_day', fetchId);
     const eodRead = await getAssessmentDataOfflineWithStatus('end_of_day', fetchId);
@@ -2208,15 +2213,10 @@ export async function syncDailyAssessmentAtomic(assessmentId: string, preValidat
       structure_checks: stRead.readSucceeded,
       environment_checks: envRead.readSucceeded,
     };
-    
-    // If we swapped the assessment ID, propagate new ID to all child records
-    if (assessmentIdMapping) {
-      rawBeginningOfDay.forEach(item => item.assessment_id = assessmentIdMapping!.newId);
-      rawEndOfDay.forEach(item => item.assessment_id = assessmentIdMapping!.newId);
-      rawOperatingSystems.forEach(item => item.assessment_id = assessmentIdMapping!.newId);
-      rawEquipmentChecks.forEach(item => item.assessment_id = assessmentIdMapping!.newId);
-      rawStructureChecks.forEach(item => item.assessment_id = assessmentIdMapping!.newId);
-      rawEnvironmentChecks.forEach(item => item.assessment_id = assessmentIdMapping!.newId);
+
+    // C8: Invariant — by this point fetchId must equal the canonical assessmentId.
+    if (import.meta.env.DEV && fetchId !== assessmentId) {
+      console.error('[C8] fetchId/assessmentId divergence detected', { fetchId, assessmentId });
     }
     
     // Transform temp- IDs to valid UUIDs before validation
