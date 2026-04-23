@@ -891,22 +891,14 @@ export const useAutoSync = () => {
     window.addEventListener('online', handleOnline);
     document.addEventListener('visibilitychange', handleVisibilityChange);
     
-    // RC-4: iOS page restore — refresh session before syncing (same as handleOnline)
-    const handlePageShow = async (event: PageTransitionEvent) => {
+    // RC-4 / S33: iOS page restore — route through the same debounced reconcile
+    // so a quick app-resume → re-suspend → resume burst doesn't double-refresh.
+    const handlePageShow = (event: PageTransitionEvent) => {
       if (event.persisted && navigator.onLine) {
         if (import.meta.env.DEV) {
-          console.log('[AutoSync] Page restored from bfcache - refreshing session then syncing');
+          console.log('[AutoSync] Page restored from bfcache - scheduling debounced reconcile');
         }
-        // Pre-refresh session before sync to ensure fresh JWT after bfcache restore
-        try {
-          await Promise.race([
-            supabase.auth.refreshSession(),
-            new Promise<void>((resolve) => setTimeout(resolve, 5000)),
-          ]);
-        } catch (e) {
-          console.warn('[AutoSync] Session refresh on pageshow failed:', e);
-        }
-        performSync(true);
+        handleOnline();
       }
     };
     
