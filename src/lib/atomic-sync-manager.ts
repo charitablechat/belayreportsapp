@@ -2202,6 +2202,12 @@ export async function syncDailyAssessmentAtomic(assessmentId: string, preValidat
             skipCount,
             maxSkips: MAX_REGRESSION_SKIPS,
           });
+          notifyRegressionBlock(
+            'assessment',
+            assessmentId,
+            (assessment as any)?.organization || (assessment as any)?.site || '',
+            skipCount,
+          );
           return { success: false, skipped: true, reason: 'field_count_regression' };
         }
         console.warn('[SAFETY] Allowing assessment sync after max regression skips reached', {
@@ -2209,8 +2215,10 @@ export async function syncDailyAssessmentAtomic(assessmentId: string, preValidat
           skipCount,
         });
         await resetRegressionSkipCount(assessmentId);
+        notifyRegressionRelease();
       } else {
         await resetRegressionSkipCount(assessmentId);
+        notifyRegressionRelease();
       }
     }
 
