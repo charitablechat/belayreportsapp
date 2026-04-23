@@ -1,119 +1,72 @@
-## H3 — Stop the global Realtime handler from clobbering a form that's currently editing the record
+## H4 — Close the silent-overwrite window in cross-device conflict detection
 
 ### Finding
 
-`useAutoSync.tsx` ~lines 804–840: the global Realtime subscription writes `payload.new` into IDB via `saveInspectionOffline(enriched)` (and the training/assessment equivalents), gated only by `shouldPreserveLocalRecord(record)`. That guard compares the *server* timestamp against the *IDB* timestamp — but in-flight React form state hasn't been written to IDB yet (autosave is debounced 1500 ms). So if User A is mid-keystroke on inspection X and User B (or A on another device) saves X, the Realtime UPDATE arrives, IDB silently swaps to B's row, A's next 1500 ms autosave writes A's React state on top of B's IDB row, and the reconcile/empty-local-guard pipeline downstream sees a parent/child timestamp mismatch and ends up clobbering one side's edits.
+`src/lib/atomic-sync-manager.ts` line 197: `CONFLICT_THRESHOLD_MS = 30_000` (already raised from 5s; the report's "5s" was outdated, but the failure mode is real and worse than described).
 
-The form-level subscriptions in `InspectionForm.tsx` / `TrainingForm.tsx` / `DailyAssessmentForm.tsx` already correctly suppress reload when `hasUnsavedRef.current` is true — but the global IDB writer in `useAutoSync` has no equivalent gate. That's the gap.
+The S16 field-merge path (lines 610–665 inspections, 1567–1590 trainings, 2367–2391 assessments) is **only entered** when `timeDiff > 30_000 && remoteUpdated > localUpdated`. Below that window the merge is **skipped entirely** and the local row upserts straight over the server row, silently dropping any remote field the local device hasn't seen.
 
-### Fix — active-form registry consulted by the global Realtime IDB writer
+Concrete failure: User B saves inspection X at 10:00:00. User A's autosave at 10:00:25 carries A's older `field_timestamps` for fields A didn't touch. `timeDiff = 25s < 30s`, merge is skipped, A's upsert lands and clobbers B's edits on every field A's row mentions — even fields A never touched, because the upsert ships the whole row.
 
-1. **Add an in-memory active-form registry** in `src/lib/sync-events.ts` (it already hosts the self-write registry and remote-deleted bus, so it's the natural home):
+The threshold was put there to filter clock skew between devices, but it's the wrong signal. The correct signal — "did remote actually change since *our* last sync?" — is already computed for inspections (`remoteUpdatedAfterOurSync`) but only consumed *inside* the `timeDiff` gate, and isn't computed at all for trainings/assessments. The `mergeRecordFields` function itself is idempotent and safe to run on identical inputs (verified in `src/lib/field-merge.ts` lines 73–127): same field timestamps → local wins by strict `>`; unaffected fields stay equal on both sides; no spurious churn.
 
-   ```ts
-   // H3: forms register the (table, id) they are currently mounted-and-editing.
-   // The global Realtime IDB writer in useAutoSync skips overwriting a record
-   // that is in this set, since the form has unsaved React state that is not
-   // yet flushed to IDB and an IDB swap would be silently clobbered on the
-   // next debounced autosave.
-   type ActiveFormTable = 'inspections' | 'trainings' | 'daily_assessments';
-   const activeFormRecords = new Map<string, ActiveFormTable>(); // id -> table
+The right fix is to drop the brittle time-window gate and merge whenever the remote *could* have changed since our last sync.
 
-   export function registerActiveFormRecord(table, id) { ... }
-   export function unregisterActiveFormRecord(id) { ... }
-   export function isActiveFormRecord(table, id): boolean { ... }
-   ```
+### Fix
 
-   Plus a parallel `pendingRemoteUpdates` bus so the form can show a "Updates available — reload" banner when the writer skipped an overwrite:
+1. **Remove `CONFLICT_THRESHOLD_MS` from the merge gate** in all three sync functions (inspections, trainings, daily assessments). Replace with a single "remote updated after our last sync" check:
 
    ```ts
-   export interface PendingRemoteUpdate {
-     table: ActiveFormTable;
-     recordId: string;
-     remoteUpdatedAt: string;
+   const remoteUpdated = Date.parse(recordStatus.updated_at!);
+   const localSyncedAt = inspection.synced_at ? Date.parse(inspection.synced_at) : 0;
+   // Merge whenever remote changed after our last successful sync — we may
+   // have missed remote field edits regardless of how recent the local edit is.
+   const remoteChangedSinceOurSync = !localSyncedAt || remoteUpdated > localSyncedAt + SYNC_DRIFT_TOLERANCE_MS;
+   if (remoteChangedSinceOurSync) {
+     // fetch remoteRow, mergeRecordFields(local, remote, TRACKED_FIELDS.X), Object.assign
    }
-   export function emitPendingRemoteUpdate(p: PendingRemoteUpdate): void { ... }
-   export function onPendingRemoteUpdate(cb): () => void { ... }
    ```
 
-2. **Gate the IDB writer in `useAutoSync.handleRemoteChange`** (~line 814):
+   - `SYNC_DRIFT_TOLERANCE_MS` (already exported from `src/lib/local-data-guards.ts` at 30s) absorbs benign clock skew between server and client without re-introducing a 30s blind spot — we still merge whenever remote drifted *outside* tolerance, and skip only when it's plausibly the same logical version we already synced.
+   - First-time sync (no `synced_at`) always merges — correct.
+   - We no longer require `remoteUpdated > localUpdated`. If local is newer, the per-field merge still picks local for every field it changed; but it preserves remote for fields only the other device touched.
 
-   ```ts
-   const persistToIDB = async () => {
-     try {
-       // H3: if the form for this record is currently mounted and editing,
-       // skip the IDB overwrite. The form holds the truth in React state;
-       // an IDB swap here would be silently clobbered by the next debounced
-       // autosave and trigger downstream parent/child timestamp mismatches.
-       if (isActiveFormRecord(payload.table, record.id)) {
-         emitPendingRemoteUpdate({
-           table: payload.table,
-           recordId: record.id,
-           remoteUpdatedAt: record.updated_at,
-         });
-         return;
-       }
-       if (shouldPreserveLocalRecord(record)) return;
-       // ... existing enriched save ...
-     } catch (e) { ... }
-   };
-   ```
+2. **Apply identically to all three branches** (inspections at 610–665, trainings at 1567–1590, assessments at 2367–2391). Trainings and assessments currently lack the `isAlreadySynced` / `remoteUpdatedAfterOurSync` plumbing — this fix unifies them.
 
-   Note: still allow `scheduleFullRefetch` and the queryClient invalidation to run as today — those refresh the in-memory dashboard list (which doesn't touch the form's React state) and will re-arm IDB the moment the form unregisters.
+3. **Keep the audit insert** (`sync_conflicts.insert(... resolved: true)`) only on the inspections branch, mirroring today's behavior. No new UI surface — merges remain silent (consistent with the existing "silent collaborative merge" memory).
 
-3. **Register/unregister in the three forms** — one effect each in `InspectionForm.tsx`, `TrainingForm.tsx`, `DailyAssessmentForm.tsx`:
+4. **Constant cleanup.** `CONFLICT_THRESHOLD_MS` becomes unused — remove the declaration and its doc comment to avoid future drift between sites that re-import it.
 
-   ```ts
-   useEffect(() => {
-     if (!id || id.startsWith('temp-')) return;
-     registerActiveFormRecord('inspections', id);
-     return () => unregisterActiveFormRecord(id);
-   }, [id]);
-   ```
+### Why a content-hash compare isn't needed
 
-   Place adjacent to the existing form-level Realtime subscription effect so the lifecycles match exactly. Temp-id records are excluded — they aren't in the server yet, so cross-device Realtime can't target them.
-
-4. **Surface the deferred update in the form** — extend the existing form-level Realtime effect to also subscribe to `onPendingRemoteUpdate` for this `id`. When fired *and* `hasUnsavedRef.current` is true, set a small `pendingRemoteUpdate` state. Render the existing "Remote update detected" banner pattern (already used by `CollaboratorPresence`) with two actions:
-   - **Reload from server** — calls the existing `loadInspection()` / equivalent (will discard local React edits; the user explicitly chose this).
-   - **Keep my changes** — clears the banner; next autosave proceeds normally; field-merge on the next sync (per the existing silent-merge memory) handles per-field reconciliation.
-
-   If the user has no unsaved changes when the pending update arrives, fall through to the form's existing reload path immediately (matches today's behavior).
-
-5. **Cleanup edge cases:**
-   - Form unmounts → `unregisterActiveFormRecord` runs in cleanup → next Realtime event writes IDB normally.
-   - User saves and the form is still mounted → after the save flushes IDB, the form stays registered; that's correct, because the form still holds React state and a Realtime event from another device is still ambiguous. The pending-update banner is the right UX.
-   - HMR / fast refresh in dev → registry is module-scoped; cleanup runs in StrictMode double-mount. Harmless.
+The original suggestion ("compare content hashes before declaring a conflict") would only matter if the merge itself were destructive. It isn't: `mergeRecordFields` is a per-field max-timestamp picker, deterministic and idempotent. Hashing parent rows would add CPU cost on every sync without changing the outcome. Skip.
 
 ### Files changed
 
-- **`src/lib/sync-events.ts`** — add `registerActiveFormRecord` / `unregisterActiveFormRecord` / `isActiveFormRecord` and the `pendingRemoteUpdate` bus.
-- **`src/hooks/useAutoSync.tsx`** — consult `isActiveFormRecord` in `handleRemoteChange`'s `persistToIDB`, emit `pendingRemoteUpdate` when skipping.
-- **`src/pages/InspectionForm.tsx`** — register on mount with `id`; add `onPendingRemoteUpdate` subscription + banner.
-- **`src/pages/TrainingForm.tsx`** — same.
-- **`src/pages/DailyAssessmentForm.tsx`** — same.
+- **`src/lib/atomic-sync-manager.ts`**:
+  - Remove `CONFLICT_THRESHOLD_MS` constant + doc comment (~lines 192–197).
+  - Replace the merge gate in `syncInspectionAtomic` (~lines 610–664) with the `remoteChangedSinceOurSync` check.
+  - Replace the merge gate in `syncTrainingAtomic` (~lines 1567–1590) — same pattern, using `training.synced_at`.
+  - Replace the merge gate in `syncDailyAssessmentAtomic` (~lines 2367–2391) — same pattern, using `assessment.synced_at`.
+  - Add `import { SYNC_DRIFT_TOLERANCE_MS } from './local-data-guards'` if not already present.
 
-No new components needed; reuse the existing inline banner pattern that the form-level Realtime subscription already uses for the "remote-detected, no unsaved" reload path.
-
-### Why this is safe
-
-- The change is *more conservative* than today: today we always overwrite IDB; after the fix we sometimes skip.
-- The gate is precise (`isActiveFormRecord(table, id)`) — it doesn't suppress overwrites for other records on other tabs or for records the user isn't actively editing.
-- The skip path still emits a pending-update event, so the user is never silently denied the remote change. If the form is unmounted before the user reacts, the next sync cycle (or the next form open) reconciles via the existing per-field merge.
-- No interaction with C8/C9: those operate inside the sync transaction; this change only gates the side-effect IDB writer in the cross-device Realtime listener.
-
-### Out of scope
-
-- A multi-device "live" co-editing view (operational transform / CRDT). The existing field-level merge and the new banner are sufficient.
-- Realtime gating for child-row events (zipline_name etc.). Those don't have their own Realtime subscriptions today; `scheduleFullRefetch` already debounces and the form-mounted gate above transitively protects them.
-
-### Risk
-
-Low. Two-line gate in the writer, one effect added per form, one new module-scoped Map. Worst-case bug: the registry leaks an id after unmount (StrictMode oddity) → user gets a "pending update" banner they have to dismiss; no data loss.
+No other files affected. `mergeRecordFields`, `field_timestamps`, and the `sync_conflicts` table remain unchanged.
 
 ### Verification
 
-- DEV scenario A (the bug): open inspection X on device 1 in InspectionForm, type 5 characters, then on device 2 (or a second tab) open the same inspection, change a field, save. Expect: device 1 shows a "Remote update available — reload?" banner; device 1's typed characters are still visible in the textarea; device 1's IDB row is unchanged. Today: device 1's IDB row silently swaps to device 2's copy and the next autosave clobbers one side's edits.
-- DEV scenario B (passive viewer): device 1 is on Dashboard (form unmounted); device 2 saves X. Expect: identical to today — IDB updates, dashboard list refreshes.
-- DEV scenario C (form mounted, no unsaved edits): device 1 has the form open but hasn't typed anything; device 2 saves. Expect: form auto-reloads from server (existing path, since `hasUnsavedRef` is false).
-- DEV scenario D (training + daily assessment): repeat A.
-- Regression: `npx tsc --noEmit`; existing form-level realtime subscription behavior is unchanged when no remote events arrive; existing self-write suppression still functions (the active-form gate runs *before* `shouldPreserveLocalRecord` but doesn't interact with `isRecentSelfWrite`).
+- DEV scenario A (the bug): Device A and Device B both have inspection X loaded. B edits the `notes` field and saves at T=0. A edits `location` and autosaves at T=5s (well inside the old 30s window). Expect: server ends with B's `notes` AND A's `location`. Today: server ends with A's row entirely, B's `notes` lost.
+- DEV scenario B (clock skew): two devices with synced clocks, neither has edited the row, but server-side trigger jitter pushes `updated_at` 2s past `synced_at`. Expect: no merge fetch (within 30s drift tolerance), no spurious round-trip.
+- DEV scenario C (idempotent merge): same device syncs twice in a row with no remote changes. Expect: second sync sees `remoteUpdated <= synced_at + 30s`, skips merge fetch, normal upsert proceeds.
+- DEV scenario D (training + daily assessment): repeat A for both. Today these branches are even worse (no `isAlreadySynced` check at all) — fix lifts them to parity.
+- DEV scenario E (first-time sync): brand-new local record, no `synced_at`. Expect: merge fetch runs once (harmless — server returns nothing for a brand-new id), then upsert proceeds.
+- Regression: `npx tsc --noEmit`. Existing `field-merge.test.ts` continues to pass (function unchanged). Existing `sync_conflicts` audit insert behavior unchanged for the inspection branch.
+
+### Risk
+
+Low. The change is **strictly more conservative**: today the merge is skipped in a 30s window where data loss occurs; after the fix the merge runs whenever it could matter. The merge itself is deterministic and proven (it's been the field-merge engine since S16). Worst-case bug: an extra `select * from inspections where id = X` round-trip per sync when clocks are skewed — negligible cost, no correctness impact.
+
+### Out of scope
+
+- Tightening `SYNC_DRIFT_TOLERANCE_MS` itself (used by many other call sites; would need its own analysis).
+- Surfacing merged conflicts in the UI (silent merge is the documented design — see `mem://features/silent-conflict-resolution-v7`).
+- Hashing for child-row reconciliation (different code path, different problem).
