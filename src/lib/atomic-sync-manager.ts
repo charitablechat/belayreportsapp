@@ -824,6 +824,22 @@ export async function syncInspectionAtomic(inspectionId: string, preValidatedUse
       const wasEdited = (updatedAt - createdAt) > 60000; // edited if updated > 60s after creation
 
       if (localIsCompletelyEmpty && wasEdited && ageMinutes > 5) {
+        // M4: If EVERY child IDB read failed, this empty payload is not real —
+        // it's a circuit-breaker / silent-IDB-failure fingerprint. Refuse to
+        // sync so we don't overwrite the server's canonical state with zeros.
+        const allIdbReadsFailed =
+          !idbReadFlags.systems &&
+          !idbReadFlags.ziplines &&
+          !idbReadFlags.equipment &&
+          !idbReadFlags.standards &&
+          !idbReadFlags.summary;
+        if (allIdbReadsFailed) {
+          console.warn('[SAFETY] suspicious_empty_guard: all IDB child reads failed, skipping inspection sync', {
+            inspectionId: inspectionId.substring(0, 8),
+            ageMinutes: Math.round(ageMinutes),
+          });
+          return { success: false, skipped: true, reason: 'suspicious_empty_idb_read_failure' };
+        }
         if (recordStatus?.record_exists && !recordStatus?.is_deleted) {
           // Guard 1 already ran and didn't block — server is also empty. Allow sync.
           syncLog.log('[SYNC] suspicious_empty_guard: both local and server are empty, allowing sync for genuinely blank inspection', {
@@ -1746,6 +1762,21 @@ export async function syncTrainingAtomic(trainingId: string, preValidatedUser?: 
       const wasEdited = (updatedAt - createdAt) > 60000;
 
       if (localIsCompletelyEmpty && wasEdited && ageMinutes > 5) {
+        // M4: If EVERY child IDB read failed, refuse to sync the empty payload.
+        const allIdbReadsFailed =
+          !trainingIdbReadFlags.delivery_approaches &&
+          !trainingIdbReadFlags.operating_systems &&
+          !trainingIdbReadFlags.immediate_attention &&
+          !trainingIdbReadFlags.verifiable_items &&
+          !trainingIdbReadFlags.systems_in_place &&
+          !trainingIdbReadFlags.summary;
+        if (allIdbReadsFailed) {
+          console.warn('[SAFETY] suspicious_empty_guard: all IDB child reads failed, skipping training sync', {
+            trainingId: trainingId.substring(0, 8),
+            ageMinutes: Math.round(ageMinutes),
+          });
+          return { success: false, skipped: true, reason: 'suspicious_empty_idb_read_failure' };
+        }
         if (recordStatus?.record_exists && !recordStatus?.is_deleted) {
           // Guard 1 already ran and didn't block — server is also empty. Allow sync.
           syncLog.log('[SYNC] suspicious_empty_guard: both local and server are empty, allowing sync for genuinely blank training', {
@@ -2552,6 +2583,21 @@ export async function syncDailyAssessmentAtomic(assessmentId: string, preValidat
       const wasEdited = (updatedAt - createdAt) > 60000;
 
       if (localIsCompletelyEmpty && wasEdited && ageMinutes > 5) {
+        // M4: If EVERY child IDB read failed, refuse to sync the empty payload.
+        const allIdbReadsFailed =
+          !assessmentIdbReadFlags.beginning_of_day &&
+          !assessmentIdbReadFlags.end_of_day &&
+          !assessmentIdbReadFlags.operating_systems &&
+          !assessmentIdbReadFlags.equipment_checks &&
+          !assessmentIdbReadFlags.structure_checks &&
+          !assessmentIdbReadFlags.environment_checks;
+        if (allIdbReadsFailed) {
+          console.warn('[SAFETY] suspicious_empty_guard: all IDB child reads failed, skipping assessment sync', {
+            assessmentId: assessmentId.substring(0, 8),
+            ageMinutes: Math.round(ageMinutes),
+          });
+          return { success: false, skipped: true, reason: 'suspicious_empty_idb_read_failure' };
+        }
         if (recordStatus?.record_exists && !recordStatus?.is_deleted) {
           // Guard 1 already ran and didn't block — server is also empty. Allow sync.
           syncLog.log('[SYNC] suspicious_empty_guard: both local and server are empty, allowing sync for genuinely blank form', {
