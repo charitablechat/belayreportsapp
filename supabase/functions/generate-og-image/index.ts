@@ -4,11 +4,7 @@ import { ImageResponse } from "https://deno.land/x/og_edge@0.0.6/mod.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2?target=deno";
 import { checkRateLimit, getClientIP, createRateLimitResponse } from "../_shared/rate-limiter.ts";
 
-const corsHeaders = {
-  'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version',
-};
-
+import { corsHeaders } from "../_shared/cors.ts";
 type ReportType = "inspection" | "training" | "daily_assessment";
 
 interface ReportMeta {
