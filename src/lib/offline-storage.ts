@@ -584,6 +584,107 @@ function emergencyLocalStorageFallback(operationName: string, data: any): boolea
 // Track if DB has been successfully opened (skip health check after first success)
 let dbConnectionVerified = false;
 
+// ============================================================================
+// S11: Tagged IDB read failure sentinel.
+// The default `withIndexedDBErrorBoundary` returns `fallbackValue` on failure,
+// which makes "read failed" indistinguishable from "no rows" at every call
+// site (the unsynced badge silently reads 0 when IDB is unhealthy).
+// `withIndexedDBReadBoundary` is a parallel helper used by the few read paths
+// that gate user-visible sync state (unsynced inspections / trainings /
+// assessments / unuploaded photos). It returns a tagged failure object that
+// callers MUST inspect via `isIdbReadFailure` so the badge keeps the
+// last-known count and the existing `syncError` UI lights up instead.
+// ============================================================================
+export const IDB_READ_FAILED = Symbol.for('rw.idb-read-failed');
+export type IdbReadFailure = {
+  __idbReadFailed: typeof IDB_READ_FAILED;
+  error: string;
+  context: string;
+};
+
+export function isIdbReadFailure(v: unknown): v is IdbReadFailure {
+  return !!v && typeof v === 'object' && (v as any).__idbReadFailed === IDB_READ_FAILED;
+}
+
+function makeIdbReadFailure(context: string, error: unknown): IdbReadFailure {
+  const message = error instanceof Error ? error.message : String(error ?? 'unknown');
+  return { __idbReadFailed: IDB_READ_FAILED, error: message, context };
+}
+
+/**
+ * Strict read boundary for sync-gating reads. Unlike `withIndexedDBErrorBoundary`
+ * (which silently swallows errors and returns `fallbackValue`), this returns
+ * `IdbReadFailure` so the caller can preserve last-known state and surface
+ * a real error to the user.
+ *
+ * Mirrors the same circuit-breaker / timeout / health-check semantics as the
+ * silent boundary so sync paths don't regress on resilience.
+ */
+async function withIndexedDBReadBoundary<T>(
+  operation: () => Promise<T>,
+  operationName: string,
+): Promise<T | IdbReadFailure> {
+  if (isCircuitBreakerOpen()) {
+    if (import.meta.env.DEV) {
+      console.log(`[Offline Storage] Circuit breaker open, returning IdbReadFailure for ${operationName}`);
+    }
+    return makeIdbReadFailure(operationName, 'circuit_breaker_open');
+  }
+
+  const opLowerForTier = operationName.toLowerCase();
+  let OPERATION_TIMEOUT: number;
+  if (opLowerForTier.includes('photo')) {
+    OPERATION_TIMEOUT = IDB_TIMEOUTS.write;
+  } else if (
+    opLowerForTier.includes('batch') ||
+    opLowerForTier.includes('related') ||
+    opLowerForTier.includes('training') ||
+    opLowerForTier.includes('assessment') ||
+    opLowerForTier.includes('getall') ||
+    opLowerForTier.includes('unsynced')
+  ) {
+    OPERATION_TIMEOUT = IDB_TIMEOUTS.batch;
+  } else {
+    OPERATION_TIMEOUT = IDB_TIMEOUTS.light;
+  }
+  const TIMEOUT_SENTINEL = Symbol('timeout');
+
+  try {
+    const result = await withTimeout(
+      (async () => {
+        if (!dbConnectionVerified) {
+          const isHealthy = await checkIndexedDBHealth();
+          if (!isHealthy) {
+            throw new Error('idb_unhealthy');
+          }
+          dbConnectionVerified = true;
+        }
+        return await operation();
+      })(),
+      OPERATION_TIMEOUT,
+      TIMEOUT_SENTINEL as any,
+    );
+
+    if (result === TIMEOUT_SENTINEL) {
+      console.warn(`[Offline Storage] Read timeout for ${operationName}, resetting DB connection`);
+      dbConnectionVerified = false;
+      recordIndexedDBFailure();
+      if (dbPromise) {
+        dbPromise.then(db => db.close()).catch(() => {});
+        dbPromise = null;
+      }
+      return makeIdbReadFailure(operationName, 'idb_read_timeout');
+    }
+
+    recordIndexedDBSuccess();
+    return result as T;
+  } catch (err) {
+    console.error(`[Offline Storage] Read failed for ${operationName}:`, err);
+    recordIndexedDBFailure();
+    return makeIdbReadFailure(operationName, err);
+  }
+}
+
 /**
  * Wrapper for IndexedDB operations with error boundary, timeout protection, and circuit breaker
  * Prevents any single IndexedDB operation from blocking the app
