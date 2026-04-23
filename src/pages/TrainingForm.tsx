@@ -716,8 +716,8 @@ export default function TrainingForm() {
       };
 
       // S9: Reconcile user-clear intent across all child collections + summary.
-      const summaryHasContent = !!(trainingSummary && (
-        trainingSummary.observations || trainingSummary.recommendations
+      const summaryHasContent = !!(summary && (
+        summary.observations || summary.recommendations
       ));
       const totalChildCount =
         deliveryApproaches.length + operatingSystems.length +
