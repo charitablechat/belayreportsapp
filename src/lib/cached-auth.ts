@@ -252,7 +252,7 @@ export async function getUserWithCache(): Promise<CachedUser | null> {
           // Session expiring soon — refresh non-blocking
           if (!pendingUserPromise) {
             setTimeout(() => {
-              supabase.auth.refreshSession().catch((e) => {
+              refreshSessionSingleFlight()?.catch?.((e) => {
                 if (import.meta.env.DEV) {
                   console.log('[CachedAuth] Pre-emptive refresh failed (non-critical):', e);
                 }
@@ -680,7 +680,7 @@ export async function ensureValidSession(): Promise<CachedUser | null> {
             // Non-blocking refresh
             if (navigator.onLine) {
               setTimeout(() => {
-                supabase.auth.refreshSession().catch(() => {});
+                refreshSessionSingleFlight()?.catch?.(() => {});
               }, 0);
             }
             return parsed.user;
@@ -731,8 +731,9 @@ export async function ensureValidSession(): Promise<CachedUser | null> {
           console.log('[CachedAuth] No active session — attempting refresh via stored token');
         }
         try {
-          const { data: { session: refreshedSession }, error: refreshError } = 
-            await supabase.auth.refreshSession();
+          const refreshResult = await refreshSessionSingleFlight();
+          const refreshedSession = refreshResult?.data?.session ?? null;
+          const refreshError = refreshResult?.error ?? null;
           if (refreshedSession && !refreshError) {
             cachedUser = refreshedSession.user;
             cacheTimestamp = Date.now();
@@ -762,8 +763,9 @@ export async function ensureValidSession(): Promise<CachedUser | null> {
         });
       }
       
-      const { data: { session: refreshedSession }, error: refreshError } = 
-        await supabase.auth.refreshSession();
+      const refreshResult = await refreshSessionSingleFlight();
+      const refreshedSession = refreshResult?.data?.session ?? null;
+      const refreshError = refreshResult?.error ?? null;
       
       if (refreshError || !refreshedSession) {
         console.error('[CachedAuth] Failed to refresh session:', refreshError);
