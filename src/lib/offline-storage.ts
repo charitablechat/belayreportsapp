@@ -2405,7 +2405,6 @@ export async function getUnsyncedDailyAssessments(userId?: string) {
       let unsynced = all.filter(record => {
         if (!record.synced_at) return true;
         if (record.updated_at) {
-          const drift = new Date(record.updated_at).getTime() - new Date(record.synced_at).getTime();
           return isUpdatedAheadOfSync(new Date(record.updated_at).getTime(), new Date(record.synced_at).getTime());
         }
         return false;
