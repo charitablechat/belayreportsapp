@@ -261,6 +261,54 @@ export const SyncDiagnosticsSheet = () => {
             </div>
           )}
 
+          {photoFailures.length > 0 && (
+            <div>
+              <h3 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-2 flex items-center gap-1.5">
+                <AlertTriangle className="h-3.5 w-3.5 text-destructive" />
+                Failed Uploads ({photoFailures.length})
+              </h3>
+              <p className="text-xs text-muted-foreground mb-2">
+                These photos exceeded the upload retry limit. They may be lost
+                unless you retry or re-capture.
+              </p>
+              <div className="rounded-md border border-border divide-y divide-border">
+                {photoFailures.map((entry) => (
+                  <PhotoFailureRow
+                    key={entry.id}
+                    entry={entry}
+                    busy={busyPhotoFailureId === entry.id}
+                    onRetry={async () => {
+                      setBusyPhotoFailureId(entry.id);
+                      try {
+                        const ok = await resetPhotoForRetry(entry.id);
+                        await removePhotoUploadFailure(entry.id);
+                        if (ok) {
+                          toast.success('Photo queued for retry');
+                        } else {
+                          toast('Failure record cleared');
+                        }
+                        await refresh();
+                        await updatePhotoCount();
+                      } finally {
+                        setBusyPhotoFailureId(null);
+                      }
+                    }}
+                    onDismiss={async () => {
+                      setBusyPhotoFailureId(entry.id);
+                      try {
+                        await removePhotoUploadFailure(entry.id);
+                        toast('Failure dismissed');
+                        await refresh();
+                      } finally {
+                        setBusyPhotoFailureId(null);
+                      }
+                    }}
+                  />
+                ))}
+              </div>
+            </div>
+          )}
+
           {deadLetterDeletes.length > 0 && (
             <div>
               <h3 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-2">
