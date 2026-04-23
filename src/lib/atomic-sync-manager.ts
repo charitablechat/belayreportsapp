@@ -2596,6 +2596,21 @@ export async function syncDailyAssessmentAtomic(assessmentId: string, preValidat
     const result = await executeTransaction(steps, { signal });
     
     if (!result.success) {
+      // C4: restore reconciled deletions when the upsert tx fails (rollback can't undo them).
+      if (assessmentReconciledDeletes.length > 0) {
+        try {
+          const r = await restoreReconciledDeletions(assessmentReconciledDeletes, assessmentId);
+          if (r.failed > 0) {
+            console.error('[C4] Daily assessment sync: some reconciled rows could not be auto-restored', {
+              assessmentId: assessmentId.substring(0, 8),
+              restored: r.restored,
+              failed: r.failed,
+            });
+          }
+        } catch (restoreErr) {
+          console.error('[C4] Daily assessment sync: restoreReconciledDeletions threw', restoreErr);
+        }
+      }
       throw new Error(`Transaction failed after ${result.completedSteps}/${result.totalSteps} steps. Rollback: ${result.rollbackSuccess ? 'successful' : 'failed'}`);
     }
     
