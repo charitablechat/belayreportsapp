@@ -568,26 +568,107 @@ async function ensureStorage(): Promise<void> {
 }
 
 /**
+ * Gap 2.2 dead-letter ring buffer (sessionStorage).
+ * IDB has already failed when this is invoked, so we cannot persist to IDB.
+ * sessionStorage survives the current tab session and lets diagnostics surface
+ * "N records could not be saved this session." Cap at 20 entries (FIFO eviction).
+ */
+type EmergencyFallbackFailure = {
+  code: 'localstorage_quota' | 'localstorage_blocked' | 'localstorage_unknown';
+  reportType: string;
+  id: string;
+  operationName: string;
+  approxBytes: number;
+  ts: number;
+};
+
+const EMERGENCY_FAILURE_KEY = 'rw_emergency_fallback_failures';
+const EMERGENCY_FAILURE_MAX = 20;
+
+function recordEmergencyFallbackFailure(entry: EmergencyFallbackFailure): void {
+  try {
+    if (typeof sessionStorage === 'undefined') return;
+    let arr: EmergencyFallbackFailure[] = [];
+    try {
+      const raw = sessionStorage.getItem(EMERGENCY_FAILURE_KEY);
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        if (Array.isArray(parsed)) arr = parsed;
+      }
+    } catch {
+      arr = [];
+    }
+    arr.push(entry);
+    if (arr.length > EMERGENCY_FAILURE_MAX) {
+      arr = arr.slice(arr.length - EMERGENCY_FAILURE_MAX);
+    }
+    sessionStorage.setItem(EMERGENCY_FAILURE_KEY, JSON.stringify(arr));
+  } catch {
+    // sessionStorage may also be full / blocked — best-effort, never throw
+  }
+}
+
+/**
+ * Read accessor for diagnostics UI. Returns the in-session list of records
+ * that could not be persisted to either IDB or localStorage.
+ */
+export function getEmergencyFallbackFailures(): EmergencyFallbackFailure[] {
+  try {
+    if (typeof sessionStorage === 'undefined') return [];
+    const raw = sessionStorage.getItem(EMERGENCY_FAILURE_KEY);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+}
+
+/**
+ * Classify a localStorage write error so we can route to the right diagnostic.
+ */
+function classifyLocalStorageError(
+  err: unknown,
+): 'localstorage_quota' | 'localstorage_blocked' | 'localstorage_unknown' {
+  if (err && typeof err === 'object') {
+    const e = err as { name?: string; code?: number };
+    if (e.name === 'QuotaExceededError' || e.code === 22 || e.code === 1014) {
+      return 'localstorage_quota';
+    }
+    if (e.name === 'SecurityError') {
+      return 'localstorage_blocked';
+    }
+  }
+  return 'localstorage_unknown';
+}
+
+/**
  * Emergency localStorage fallback for write operations when circuit breaker is open.
  * Attempts to persist critical report data via the backup ledger so it isn't lost.
+ *
+ * Gap 2.2: when this returns false the caller (`withIndexedDBSaveBoundary`) throws
+ * `IdbSaveError('storage_unavailable')` so the form auto-save UI surfaces the
+ * persistent "Save failed" state. We additionally classify + log the failure and
+ * record it to a sessionStorage ring buffer for later diagnostics.
  */
 function emergencyLocalStorageFallback(operationName: string, data: any): boolean {
+  // Only attempt for report-level saves that carry meaningful data
+  if (!data || typeof data !== 'object') return false;
+  const id = data.id;
+  if (!id || typeof id !== 'string') return false;
+
+  let reportType: 'inspection' | 'training' | 'daily_assessment' | null = null;
+  const opLower = operationName.toLowerCase();
+  if (opLower.includes('inspection')) reportType = 'inspection';
+  else if (opLower.includes('training')) reportType = 'training';
+  else if (opLower.includes('assessment') || opLower.includes('daily')) reportType = 'daily_assessment';
+
+  if (!reportType) return false;
+
+  // Build snapshot up-front so `json.length` is available in the failure path
+  const key = `rw_backup_${reportType}_${id}`;
+  let json = '';
   try {
-    // Only attempt for report-level saves that carry meaningful data
-    if (!data || typeof data !== 'object') return false;
-    const id = data.id;
-    if (!id || typeof id !== 'string') return false;
-
-    let reportType: 'inspection' | 'training' | 'daily_assessment' | null = null;
-    const opLower = operationName.toLowerCase();
-    if (opLower.includes('inspection')) reportType = 'inspection';
-    else if (opLower.includes('training')) reportType = 'training';
-    else if (opLower.includes('assessment') || opLower.includes('daily')) reportType = 'daily_assessment';
-
-    if (!reportType) return false;
-
-    // Synchronous localStorage write — must return immediately so caller knows success/failure
-    const key = `rw_backup_${reportType}_${id}`;
     const snapshot = {
       v: 1,
       ts: Date.now(),
@@ -596,12 +677,74 @@ function emergencyLocalStorageFallback(operationName: string, data: any): boolea
       parent: data,
       children: {},
     };
-    const json = JSON.stringify(snapshot);
+    json = JSON.stringify(snapshot);
     localStorage.setItem(key, json);
-    console.warn(`[Offline Storage] Emergency localStorage save for ${reportType} ${id.substring(0, 8)} (${(json.length / 1024).toFixed(1)}KB)`);
+    console.warn(
+      `[Offline Storage] Emergency localStorage save for ${reportType} ${id.substring(0, 8)} (${(json.length / 1024).toFixed(1)}KB)`,
+    );
     return true;
-  } catch {
-    // localStorage full or unavailable
+  } catch (err: unknown) {
+    const code = classifyLocalStorageError(err);
+    const approxBytes = json.length;
+
+    // Operational signal — always logged, not gated by debug flag
+    console.error('[Offline Storage] Emergency localStorage fallback FAILED', {
+      code,
+      reportType,
+      id: id.substring(0, 8),
+      op: operationName,
+      bytes: approxBytes,
+      error: err,
+    });
+
+    // Forward to centralized error logger → audit_logs.client.error (best-effort)
+    try {
+      void import('./log-error').then(({ logError }) => {
+        try {
+          logError(err, {
+            scope: 'emergency-localstorage-fallback',
+            extra: {
+              code,
+              reportType,
+              id: id.substring(0, 8),
+              operationName,
+              approxBytes,
+            },
+          });
+        } catch {
+          /* swallow */
+        }
+      });
+    } catch {
+      /* dynamic import failure — never throw out of fallback */
+    }
+
+    // Persist to sessionStorage ring buffer for SyncDiagnosticsSheet
+    recordEmergencyFallbackFailure({
+      code,
+      reportType,
+      id,
+      operationName,
+      approxBytes,
+      ts: Date.now(),
+    });
+
+    // Best-effort user-visible notification (dynamic import — never throws)
+    try {
+      void import('./notification-center').then(({ addSyncNotification }) => {
+        try {
+          const failures = getEmergencyFallbackFailures();
+          addSyncNotification(
+            `Storage is full — ${failures.length} record(s) could NOT be saved. Free space immediately.`,
+          );
+        } catch {
+          /* swallow */
+        }
+      });
+    } catch {
+      /* swallow */
+    }
+
     return false;
   }
 }
