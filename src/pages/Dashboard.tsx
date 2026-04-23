@@ -651,6 +651,48 @@ export default function Dashboard() {
     ]);
   };
 
+  /**
+   * M13: Paginated fetch for dashboard lists.
+   *
+   * Supabase/PostgREST caps any single response at ~1000 rows. A hardcoded
+   * `.limit(500)` truncated super-admin views, and the truncated set was then
+   * written into the dashboard cache — making older records vanish offline
+   * (and look like orphans to the cleanup pass).
+   *
+   * Caller passes a `buildPage(from, to)` factory that returns a *fresh*
+   * PostgREST query for the requested range. We page until a short page is
+   * returned (or the safety cap is hit), then concatenate.
+   */
+  const fetchAllPaginated = async <T,>(
+    label: string,
+    buildPage: (from: number, to: number) => PromiseLike<{ data: T[] | null; error: any }>,
+    pageSize: number = 500,
+    maxRows: number = 10000,
+  ): Promise<T[]> => {
+    const all: T[] = [];
+    let from = 0;
+    // Safety cap protects against pathological loops / runaway data sets.
+    while (all.length < maxRows) {
+      const to = from + pageSize - 1;
+      const { data, error } = await buildPage(from, to);
+      if (error) {
+        console.error(`[Dashboard] Paginated fetch error (${label}, range ${from}-${to}):`, error);
+        throw error;
+      }
+      if (!data || data.length === 0) break;
+      all.push(...data);
+      // Short page = last page. Avoids one extra round-trip when the total
+      // count is an exact multiple of pageSize, which is rare and harmless.
+      if (data.length < pageSize) break;
+      from += pageSize;
+    }
+    if (all.length >= maxRows && import.meta.env.DEV) {
+      console.warn(`[Dashboard] Paginated fetch (${label}) hit safety cap of ${maxRows} rows`);
+    }
+    return all;
+  };
+
+
   const loadInspections = async (cachedUserId?: string, cachedIsSuperAdmin?: boolean, sessionValid: boolean = true): Promise<{ networkSuccess: boolean; definitive: boolean }> => {
     try {
       // Use passed userId or fetch from cache
