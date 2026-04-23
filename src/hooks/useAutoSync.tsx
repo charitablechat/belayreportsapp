@@ -775,6 +775,24 @@ export const useAutoSync = () => {
   }, [runOnlineReconcile]);
   
   /**
+   * M3: Reconcile any pending offline-auth synthetic session BEFORE firing
+   * a sync. Without this, iOS resume paths (pageshow / focus / visibilitychange)
+   * can hit performSync while the session is still the deterministic-UUID
+   * placeholder — RLS rejects (data stuck) or, worse, races with a half-completed
+   * refreshSession and writes under the wrong inspector_id.
+   */
+  const reconcileThenSync = useCallback(async (force = true) => {
+    if (navigator.onLine && hasPendingOfflineAuth()) {
+      try {
+        await verifyAndReconcileOfflineAuth();
+      } catch (e) {
+        console.warn('[AutoSync] Reconcile before resume sync failed:', e);
+      }
+    }
+    performSync(force);
+  }, [performSync]);
+
+  /**
    * Handle visibility change - sync when app becomes visible
    */
   const handleVisibilityChange = useCallback(() => {
@@ -782,9 +800,10 @@ export const useAutoSync = () => {
       if (import.meta.env.DEV) {
         console.log('[AutoSync] App became visible - syncing');
       }
-      performSync(true);
+      reconcileThenSync();
     }
-  }, [performSync]);
+  }, [reconcileThenSync]);
+
   
   /**
    * S12: Debounced full-package refetch (parent + all child collections).
