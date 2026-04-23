@@ -365,6 +365,7 @@ export async function syncPhotos(signal?: AbortSignal): Promise<{ remaining: num
         await markPhotoAsUploaded(photo.id, fileName);
         processedIds.add(photo.id);
         successCount++;
+        changedCount++;
 
         if (import.meta.env.DEV) {
           console.log('[Sync Manager] Uploaded photo:', photo.id);
