@@ -2610,22 +2610,18 @@ export async function getTrainingDataOfflineWithStatus(
   if (isCircuitBreakerOpen()) {
     return { items: [], readSucceeded: false };
   }
-  const READ_TIMEOUT_MS = IDB_TIMEOUTS.batch;
-  const TIMEOUT_SENTINEL: any = Symbol('with-status-timeout');
-  try {
-    const result = await Promise.race([
-      getTrainingDataOffline(type, trainingId),
-      new Promise<any>((resolve) => setTimeout(() => resolve(TIMEOUT_SENTINEL), READ_TIMEOUT_MS)),
-    ]);
-    if (result === TIMEOUT_SENTINEL) {
-      console.warn(`[Offline Storage] getTrainingDataOfflineWithStatus(${type}) timed out — read marked unsuccessful`);
-      return { items: [], readSucceeded: false };
-    }
-    return { items: result || [], readSucceeded: true };
-  } catch (err) {
-    console.warn(`[Offline Storage] getTrainingDataOfflineWithStatus(${type}) failed:`, err);
-    return { items: [], readSucceeded: false };
-  }
+  let ok = false;
+  const { data } = await withIDBTimeout(
+    `getTrainingDataOfflineWithStatus(${type})`,
+    'batch',
+    async () => {
+      const d = await getTrainingDataOffline(type, trainingId);
+      ok = true;
+      return d;
+    },
+    [] as any[]
+  );
+  return { items: data || [], readSucceeded: ok };
 }
 
 export async function clearTrainingDataOffline(
