@@ -416,6 +416,11 @@ export async function verifyAndReconcileOfflineAuth(): Promise<boolean> {
         to: realUserId,
       });
       await migrateUserData(syntheticUserId, realUserId);
+      // 1.A — Rewrite queued (not-yet-uploaded) photo paths so the next
+      // syncPhotos() cycle POSTs to <newUid>/... and passes storage RLS.
+      // Already-uploaded photos keep their <oldUid>/ path (see C7 note in
+      // migrateUserData) — their storage object lives there forever.
+      await migratePendingPhotoPaths(syntheticUserId, realUserId);
       toast.success('Your offline data has been linked to your account.');
     } else {
       toast.success('Offline session verified.');
