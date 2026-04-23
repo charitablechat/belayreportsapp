@@ -1,22 +1,31 @@
 
 
-## L6 — Toast/notification coupling
+## L7 — Per-device sync batch size
 
-This is a code-organization observation, not a defect. No code change recommended now.
+Acknowledged as a minor tuning observation. Recommend a small, low-risk change: derive the batch size from `isMobile()` (same helper photo sync already uses) instead of a single global constant.
 
-### Current state
-- `src/lib/toast-helpers.ts` already centralizes `toast.*` + notification-center routing (mobile-aware), and is the canonical entry point (`toastSuccess`, `toastError`, `toastProgress`, etc.).
-- `src/lib/sync-events.ts` already centralizes sync lifecycle events (`emitSyncComplete`, `onSyncComplete`, remote-deleted bus, pending-remote-update bus, active-form registry).
-- The "coupling" is that some sync-adjacent modules still call `toast.success(...)` and `addSyncNotification(...)` directly instead of routing through `toast-helpers` or emitting a single `syncEventBus` signal that one subscriber translates into UX.
+### Change
 
-### Why defer
-- Both surfaces are already abstracted; the remaining direct calls are intentional (e.g. terminal-styled `HARD-SAVED` toast, error toasts that must always show).
-- A new `syncEventBus` layer would duplicate `sync-events.ts` for stylistic uniformity only — zero behavior change, non-trivial churn across `useAutoSync`, `atomic-sync-manager`, `background-sync`, photo-sync, and the notification-center.
-- Risk/reward is poor: every touched call site is a chance to drop a notification or double-fire one.
+In `src/hooks/useAutoSync.tsx` (around the `MAX_BATCH_SIZE = 5` constant near lines 210-216):
 
-### Recommendation
-- Keep as-is. If a future change adds a *new* sync notification surface (e.g. in-app activity feed, push-notification mirror), introduce `syncEventBus` at that point and migrate call sites opportunistically — touching the files anyway is the right time.
-- Soft rule going forward: new sync-side modules should call `toastSuccess/toastError` from `toast-helpers` and emit via `sync-events.ts`, not call `toast.*` / `addSyncNotification` directly.
+- Replace the module-level constant with a per-cycle value:
+  - Mobile: `5` (unchanged — current behavior preserved)
+  - Desktop: `15` (3× throughput on capable machines, well below Postgres/PostgREST comfort)
+- Source: `isMobile()` from `src/lib/mobile-detection.ts` (already imported elsewhere in the sync layer; matches the pattern `syncPhotos` uses for `photoConcurrency`).
+- Keep the name `MAX_BATCH_SIZE` as a `const` computed once per hook instantiation so behavior inside a session is stable and logs stay readable.
 
-No files edited. L6 acknowledged as a style/coupling note.
+### Why this and not more
+- Mirrors the existing mobile/desktop split already proven in `sync-manager.ts` (3 vs 5 photo concurrency). No new config surface, no new env var, no settings UI.
+- Bounded: 15 is conservative — each record is one PostgREST call; 15/cycle on desktop is still gentle.
+- Reversible: single constant, easy to tune later if telemetry shows issues.
+
+### Out of scope
+- No user-facing setting.
+- No adaptive/network-quality-based sizing (would need real measurement; not worth it for a backlog drainer that already runs every few seconds).
+- No change to photo batch size (`MAX_PHOTO_BATCH_SIZE = 30` in `sync-manager.ts`) — already tuned.
+
+### Files touched
+- `src/hooks/useAutoSync.tsx` — one constant becomes one `isMobile() ? 5 : 15` expression; add `isMobile` import if not already present.
+
+No DB, no edge functions, no UI changes.
 
