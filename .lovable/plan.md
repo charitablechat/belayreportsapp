@@ -1,100 +1,68 @@
 
 
-## C8 — Fix `syncTrainingAtomic` / `syncDailyAssessmentAtomic` reading children under stale ID
+## C9 — Don't silently wipe local data when remote is soft-deleted
 
-### Finding
+### Problem
 
-In `src/lib/atomic-sync-manager.ts`, `syncTrainingAtomic` (~lines 1028–1067) and `syncDailyAssessmentAtomic` (analogous block) compute:
+`src/lib/atomic-sync-manager.ts` ~lines 288–322: when a sync sees `recordStatus.is_deleted` on the server, it writes a single `appendVersion(..., 'pre_delete')` snapshot and then hard-deletes the local parent + all children from IDB. Recovery relies entirely on the version ring, which is capped at 5 entries (`MAX_VERSIONS_PER_RECORD` in `report-version-manager.ts`). With debounced auto-saves it's trivial to push the pre-delete snapshot off the end of the ring before the user notices, at which point their unsynced edits are unrecoverable.
 
-```ts
-const fetchId = trainingIdMapping ? trainingIdMapping.oldId : trainingId;
-```
+This affects all three report types (inspection, training, daily assessment) — the remote-deleted branch lives in the shared sync entry path.
 
-…then read all child stores at `fetchId` (oldId), and only after the read remap `child.training_id = newId` in memory.
+### Fix — quarantine instead of delete
 
-This was correct on the **first** sync of a temp-id training. But the cleanup block at ~lines 1448–1472 already rewrites IDB children to live under `newId` once the temp-id mapping resolves. On every **subsequent** sync of the same training:
+When the sync detects `remote_deleted` AND the local record has unsynced edits, **do not** wipe IDB. Instead:
 
-- `trainingIdMapping` is still present in the in-flight call (constructed from the parent's id swap at sync entry), so `fetchId = oldId`.
-- IDB children no longer exist at `oldId` — they were relinked to `newId` by the prior cleanup.
-- Reads return `[]` with `readSucceeded: true`.
-- `expectedNonEmpty` is computed from that empty array → `false`.
-- The reconcile path treats the server's populated state as orphaned and either preserves (P4 guard) or, worst case, deletes server children that the user still has locally under `newId`.
-- All future edits made under `newId` ship to nowhere, because we keep reading `oldId`.
+1. **Mark the local row as quarantined** by setting two new fields on the parent IDB row:
+   - `_remote_deleted_at: <ISO timestamp from server>` — set from `recordStatus.deleted_at`.
+   - `_quarantine_reason: 'remote_soft_delete'`.
+   
+   Children stay attached to their parent, untouched.
 
-The inspection path (`syncInspectionAtomic`) does not have this bug because it derives `fetchId` from the post-mapping id. Trainings and daily assessments diverged.
+2. **Skip the rest of the sync for this record.** No upsert, no reconcile, no child writes — the server considers it deleted and we must not resurrect it without user intent.
 
-### Fix
+3. **Emit a `sync-conflict` event** (the existing event bus already used by `sync-events.ts`) with `{ table, recordId, kind: 'remote_deleted', remoteDeletedAt }` so the UI can react.
 
-**One file: `src/lib/atomic-sync-manager.ts`.** Two analogous edits.
+4. **Filter quarantined rows out of normal list/dashboard queries** — `getOfflineInspections`, `getOfflineTrainings`, `getOfflineDailyAssessments` already iterate locally; add a `_remote_deleted_at == null` filter at the same point they currently filter `deleted_at == null`. Quarantined records still exist in IDB but stop appearing in the dashboard.
 
-For both `syncTrainingAtomic` and `syncDailyAssessmentAtomic`:
+5. **Surface a conflict UI** — extend the existing conflict banner (`useConflicts` / `CollaboratorPresence` already render sync-status UI) with a new dialog `RemoteDeletedConflictDialog` showing: "This report was deleted by an admin while you had unsynced changes. Restore your local copy as a new report, or discard your local changes?"
+   - **Restore as new**: clones the quarantined row + children under a fresh UUID, clears the quarantine fields, marks it dirty so the next sync uploads it as a new report.
+   - **Discard local**: performs the original hard-delete (parent + children + version snapshot), exactly today's behavior, but now gated on explicit user consent.
 
-1. **Always read at the post-migration id.** Replace:
-   ```ts
-   const fetchId = trainingIdMapping ? trainingIdMapping.oldId : trainingId;
-   ```
-   with:
-   ```ts
-   // C8: Always read children at the canonical (post-migration) id.
-   // The temp-id cleanup block below is the single source of truth that
-   // bridges oldId → newId in IDB; reads must follow that contract or
-   // they will silently return [] on every sync after the first.
-   const fetchId = trainingId;
-   ```
+6. **Keep today's behavior for the no-local-edits case.** If the local row has no unsynced edits (synced_at >= updated_at) at the moment of detection, the data on the device matches the server-side pre-delete state. We can safely delete locally without snapshotting — there's nothing to lose. The version-ring snapshot is only needed when there are unsynced edits, and in that case we now keep the *full* row in IDB instead, which is strictly better than a 5-deep ring.
 
-2. **Drop the now-redundant in-memory remap.** Remove the `if (trainingIdMapping) { rawDeliveryApproaches.forEach(...) ...; rawOperatingSystems.forEach(...) ...; ... }` block immediately following the reads — children are already keyed under `trainingId`, so no rewrite is needed.
+### Files changed
 
-3. **Belt-and-braces invariant.** Right before constructing the upsert transaction steps, add:
-   ```ts
-   // C8: Invariant — by this point the parent id is canonical and all
-   // child reads must have used the same id. If a future refactor
-   // reintroduces a divergence, fail loudly in DEV instead of silently
-   // shipping an empty children payload.
-   if (import.meta.env.DEV && fetchId !== trainingId) {
-     console.error('[C8] fetchId/trainingId divergence detected', { fetchId, trainingId });
-   }
-   ```
-   (Identical invariant in the daily assessment path with the assessment id.)
+- **`src/lib/atomic-sync-manager.ts`** — replace the `is_deleted` branch in all three sync functions (inspection / training / daily assessment) with the quarantine logic. Single shared helper `quarantineLocalForRemoteDelete(table, id, deletedAt)` to avoid drift.
+- **`src/lib/offline-storage.ts`** — add `_remote_deleted_at IS NULL` filter to the three list-getters; add `quarantineRecord` and `restoreQuarantinedAsNew` helpers; export `getQuarantinedRecords(table)`.
+- **`src/lib/sync-events.ts`** — add `'remote-deleted-conflict'` event type.
+- **`src/hooks/useConflicts.tsx`** — subscribe to the new event, expose `remoteDeletedConflicts` alongside the existing field-merge conflicts.
+- **`src/components/RemoteDeletedConflictDialog.tsx`** *(new)* — modal with Restore-as-New / Discard actions, mounted once in `RootLayout` next to the existing global dialogs.
+- **`src/lib/report-version-manager.ts`** — no change. The ring stays at 5 for legitimate revision history; we just stop relying on it for delete recovery.
 
-4. **Keep the cleanup block at ~lines 1448–1472 unchanged.** It remains the single bridge. It runs *after* a successful first sync and rewrites any leftover oldId-keyed IDB children to newId, so by the time this function is re-entered, IDB is already canonical.
+### Edge cases handled
 
-5. **Sanity-check the temp-id cleanup runs before any second sync attempt.** It already does — it's awaited inside the same atomic call that produced the `newId`. No change needed; just confirmed.
-
-### Why this is safe
-
-- **First sync of a temp-id training/assessment:** the temp-id-to-real-uuid swap on the *parent* happens at the top of `syncTrainingAtomic` (the existing dedup/temp-id logic, unchanged). After that swap, `trainingId` is the real UUID. Children in IDB are still keyed under the temp id at this exact moment — **but** the existing cleanup block at 1448–1472 is the place that rewrites them. We need to make sure children are read *after* that rewrite, or we need a different bridge for the very first sync.
-
-   Looking at the actual flow: on first sync, the parent id swap happens, then we read children. At this instant children are still under the temp id. So `fetchId = trainingId` (real id) would read empty on the first sync.
-
-   **Resolution:** restructure slightly. The temp-id cleanup that rewrites children from oldId → newId in IDB must run **before** the children read on first sync, not after the upsert. Concretely:
-
-   - Move the IDB child-rewrite portion of the 1448–1472 cleanup to *immediately after* the parent id swap and *before* the children reads.
-   - Keep the rest of that block (e.g., audit / mapping store cleanup) where it is.
-
-   With that, the contract becomes: by the time we read children, IDB is canonical under `trainingId` whether this is the first or Nth sync. `fetchId = trainingId` works for both.
-
-   If moving the rewrite is more invasive than warranted, the safer and smaller alternative is to keep `fetchId` derivation but compute it post-rewrite — same end state, fewer moved lines. We'll prefer the smaller diff: add a new `await rewriteChildrenIdbFromOldToNew(trainingIdMapping)` call in this function (extracted from the existing cleanup block, idempotent) right after the parent id swap, then set `fetchId = trainingId`.
-
-- **Subsequent syncs:** `trainingIdMapping` may or may not be present; `fetchId = trainingId` always points at the canonical id; reads return the user's actual children; reconcile sees a real `localCount`; `expectedNonEmpty` reflects reality; P4 guards behave correctly.
-
-- **No interaction with C1–C7.** The P4 guard added in C2/the reconcile-blocked machinery still protects against true read failures (`readSucceeded: false`); this fix just stops generating fake "local is empty" reads in the first place.
+- **Permanent delete (>60d retention or admin force-delete):** server returns 404/row-missing instead of `is_deleted=true`. Existing not-found path is unchanged. (Out of scope for C9.)
+- **Restore-as-new collisions:** new UUID generated client-side; child FKs rewritten via the same idempotent path as C8's temp-id rewrite helpers.
+- **Quarantine while offline:** local row is already quarantined; the dialog appears next time the user opens the dashboard while online.
+- **Multiple devices, same report:** each device that has unsynced edits gets its own quarantine + dialog independently. Devices with no unsynced edits silently clean up as today.
+- **Admin restores the report on the server later:** quarantine doesn't auto-clear (we don't poll for un-deletes). User chooses Restore-as-New if they want their edits; the server-restored report continues to exist alongside. Acceptable trade-off for correctness.
 
 ### Out of scope
 
-- The inspection path. It already derives `fetchId` correctly. No changes there.
-- Reworking the temp-id mapping store schema. Idempotent rewrite helper is enough.
-- Backfill for trainings/assessments that already silently lost child edits on a previous sync. If the user wants a one-shot recovery script (compare server children to local under newId, push the union), that's a follow-up.
+- Auto-merging local edits back into the server-restored row if an admin un-deletes. Different problem; users can copy/paste from the quarantined view if needed.
+- Telemetry on how often this fires.
+- Trimming the version ring or reworking version history.
 
 ### Risk
 
-Small. Two functions in one file. The behavior change is "child reads happen at the canonical id" — the same id every other downstream step (reconcile, upsert, mapping cleanup) already uses. Worst case if the rewrite-helper extraction has a bug: first sync of a brand-new temp-id training reads empty children → reconcile P4 guard blocks the destructive deletion → next sync (after cleanup) succeeds. Strictly safer than today.
+Low. The change is *additive* in the dangerous direction: today we delete; tomorrow we quarantine and ask. Worst-case bug is "dialog never appears" → data sits safely in IDB under a hidden flag and the user can be recovered manually. No silent data loss path is introduced.
 
 ### Verification
 
-- `npx tsc --noEmit`.
-- DEV scenario A (the bug): create a training offline (temp id), add 3 delivery approaches + 2 operating systems, go online, let it sync. Confirm parent + children land on the server. Edit one delivery approach, save, trigger another sync. Expect: the edit reaches the server. Today: it doesn't.
-- DEV scenario B (subsequent sync, no edits): nothing changed locally. Trigger sync. Expect: no spurious child upserts, no reconcile-blocked log, no `[C8]` divergence warning.
-- DEV scenario C (first sync end-to-end): brand-new offline training with 5 children, single sync cycle. Expect: parent + all 5 children on server, IDB children rekeyed to newId, no warnings.
-- DEV scenario D (daily assessment): repeat A and C for `syncDailyAssessmentAtomic`.
-- Inspection regression check: confirm `syncInspectionAtomic` is untouched and a normal inspection sync still works.
+- DEV scenario A (the bug): create an inspection, make 6+ debounced edits offline, have an admin soft-delete the report on the server, go online. Expect: dialog appears, "Restore as New" produces a new report on the server with all 6 edits intact. Today: edits gone.
+- DEV scenario B (no unsynced edits): synced inspection, admin deletes, device syncs. Expect: local row removed silently, no dialog, dashboard updates. Same UX as today.
+- DEV scenario C (offline quarantine): unsynced edits, sync detects remote-delete while user is mid-session, user dismisses dialog, closes app, reopens online. Expect: dialog re-appears (quarantine flag persists).
+- DEV scenario D (restore-as-new round-trip): Restore-as-New, then sync, then refresh dashboard on a second device. Expect: new report visible on second device with the local edits.
+- DEV scenario E (training + daily assessment): repeat A for the other two report types.
+- Regression: `npx tsc --noEmit`; existing inspection/training/assessment list views still hide soft-deleted rows.
 
