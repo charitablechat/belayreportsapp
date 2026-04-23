@@ -42,7 +42,7 @@ function withSyncTimeout<T>(
   promise: Promise<T>,
   timeoutMs: number
 ): Promise<{ result: T | null; timedOut: boolean }> {
-  let timeoutHandle: NodeJS.Timeout;
+  let timeoutHandle: ReturnType<typeof setTimeout>;
   
   const timeoutPromise = new Promise<{ result: null; timedOut: true }>((resolve) => {
     timeoutHandle = setTimeout(() => {
@@ -98,17 +98,17 @@ export const useAutoSync = () => {
   // Refs for debouncing and preventing duplicate syncs
   const lastSyncAttemptRef = useRef<number>(0);
   const syncInProgressRef = useRef(false);
-  const debounceTimerRef = useRef<NodeJS.Timeout | null>(null);
-  const periodicSyncIntervalRef = useRef<NodeJS.Timeout | null>(null);
+  const debounceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const periodicSyncIntervalRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const channelRef = useRef<ReturnType<typeof supabase.channel> | null>(null);
   const staleWarningShownRef = useRef(false);
   const lastSyncCompletedAtRef = useRef<number>(0);
   const realtimeErrorCountRef = useRef<number>(0);
-  const realtimeReconnectTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const realtimeReconnectTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const realtimeBackoffRef = useRef<number>(60000); // Start at 60s, doubles up to 300s cap
   // S12: Per-id debounced full-package refetch on Realtime parent events.
   // Coalesces bursts of UPDATEs to the same record into one refetch (~300ms window).
-  const refetchTimersRef = useRef<Map<string, NodeJS.Timeout>>(new Map());
+  const refetchTimersRef = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map());
   const REFETCH_DEBOUNCE_MS = 300;
   
   /**
