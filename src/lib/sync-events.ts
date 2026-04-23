@@ -159,3 +159,57 @@ export function emitRemoteDeletedConflict(payload: RemoteDeletedConflictPayload)
     window.dispatchEvent(new CustomEvent('sync-remote-deleted-conflict', { detail: payload }));
   } catch {}
 }
+
+// ─── H3: Active-form record registry ──────────────────────────────────────
+// Forms register the (table, id) they are currently mounted-and-editing.
+// The global Realtime IDB writer in useAutoSync skips overwriting a record
+// that is in this set, since the form holds unsaved React state that hasn't
+// been flushed to IDB and an IDB swap would be silently clobbered by the
+// next debounced autosave (causing downstream parent/child timestamp
+// mismatches and ultimately data loss).
+
+export type ActiveFormTable = 'inspections' | 'trainings' | 'daily_assessments';
+
+const activeFormRecords = new Map<string, ActiveFormTable>(); // id -> table
+
+export function registerActiveFormRecord(table: ActiveFormTable, id: string): void {
+  if (!id) return;
+  activeFormRecords.set(id, table);
+}
+
+export function unregisterActiveFormRecord(id: string): void {
+  if (!id) return;
+  activeFormRecords.delete(id);
+}
+
+export function isActiveFormRecord(table: ActiveFormTable, id: string): boolean {
+  if (!id) return false;
+  return activeFormRecords.get(id) === table;
+}
+
+// ─── H3: Pending remote update bus ────────────────────────────────────────
+// Emitted when the global Realtime writer SKIPS an IDB overwrite because the
+// target record is currently mounted in a form. The form subscribes to this
+// to surface a "Remote update available — reload?" banner.
+
+export interface PendingRemoteUpdate {
+  table: ActiveFormTable;
+  recordId: string;
+  remoteUpdatedAt: string;
+}
+
+type PendingRemoteUpdateListener = (p: PendingRemoteUpdate) => void;
+const pendingRemoteUpdateListeners = new Set<PendingRemoteUpdateListener>();
+
+export function onPendingRemoteUpdate(listener: PendingRemoteUpdateListener): () => void {
+  pendingRemoteUpdateListeners.add(listener);
+  return () => pendingRemoteUpdateListeners.delete(listener);
+}
+
+export function emitPendingRemoteUpdate(payload: PendingRemoteUpdate): void {
+  pendingRemoteUpdateListeners.forEach((l) => {
+    try { l(payload); } catch (err) {
+      console.error('[SyncEvents] Pending-remote-update listener error:', err);
+    }
+  });
+}
