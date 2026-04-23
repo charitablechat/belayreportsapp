@@ -1093,6 +1093,7 @@ export async function getDB() {
             { storeName: 'report_versions', indexes: ['by-report', 'by-timestamp', 'by-report-version'] },
             { storeName: 'autocomplete_history', indexes: ['by-field-type', 'by-synced'] },
             { storeName: 'equipment_type_cache', indexes: ['by-category'] },
+            { storeName: 'dead_letter_soft_deletes' },
           ];
           const fp = await migrationSafety.validateSchemaFingerprint(db as any, expected);
           await migrationSafety.recordMigrationOutcome({
