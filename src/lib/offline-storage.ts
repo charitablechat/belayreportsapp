@@ -1715,6 +1715,9 @@ export async function markPhotoAsUploaded(id: string, photoUrl: string) {
         // Release the binary blob to free IndexedDB storage quota
         photo.blob = null;
         photo.retryCount = 0;
+        // S22: Clear any prior error state on success
+        photo.lastError = null;
+        photo.lastErrorAt = null;
         await db.put('photos', photo);
         
         if (import.meta.env.DEV) {
@@ -1760,6 +1763,48 @@ export async function incrementPhotoRetryCount(id: string): Promise<number> {
     },
     0,
     'incrementPhotoRetryCount'
+  );
+}
+
+/**
+ * S22: Stamp a human-readable last-error message on a photo so the diagnostics
+ * UI can show why it's stuck. Does NOT touch retryCount — callers decide
+ * whether the error counts toward the dead-letter ceiling.
+ */
+export async function setPhotoLastError(id: string, message: string): Promise<void> {
+  return withIndexedDBErrorBoundary(
+    async () => {
+      const db = await getDB();
+      const photo = await db.get('photos', id);
+      if (photo) {
+        photo.lastError = message.slice(0, 500);
+        photo.lastErrorAt = Date.now();
+        await db.put('photos', photo);
+      }
+    },
+    undefined,
+    'setPhotoLastError'
+  );
+}
+
+/**
+ * S22: Manual "Retry" action — zero retryCount and clear lastError so the
+ * photo is eligible again on the next sync cycle.
+ */
+export async function resetPhotoForRetry(id: string): Promise<boolean> {
+  return withIndexedDBErrorBoundary(
+    async () => {
+      const db = await getDB();
+      const photo = await db.get('photos', id);
+      if (!photo) return false;
+      photo.retryCount = 0;
+      photo.lastError = null;
+      photo.lastErrorAt = null;
+      await db.put('photos', photo);
+      return true;
+    },
+    false,
+    'resetPhotoForRetry'
   );
 }
 
