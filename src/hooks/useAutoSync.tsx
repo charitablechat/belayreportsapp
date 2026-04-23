@@ -1,6 +1,6 @@
 import { useEffect, useCallback, useRef, useState } from 'react';
 import { supabase } from '@/integrations/supabase/client';
-import { syncAllInspectionsAtomic, syncAllTrainingsAtomic, syncAllDailyAssessmentsAtomic } from '@/lib/atomic-sync-manager';
+import { syncAllInspectionsAtomic, syncAllTrainingsAtomic, syncAllDailyAssessmentsAtomic, noteBatchOutcome } from '@/lib/atomic-sync-manager';
 import { syncPhotos } from '@/lib/sync-manager';
 import { saveInspectionOffline, saveTrainingOffline, saveDailyAssessmentOffline } from '@/lib/offline-storage';
 import { shouldPreserveLocalRecord } from '@/lib/local-data-guards';
@@ -476,13 +476,25 @@ export const useAutoSync = () => {
             clearPendingSyncs();
           }
           
-          // ACCELERATED RE-SYNC: If items remain in queue, schedule next cycle sooner.
-          // S6: Skip the wait entirely if the previous batch had no failures.
-          if (totalRemaining > 0) {
-            const totalFailed = results.reduce((sum, r) => sum + (r?.failed || 0), 0);
-            const drainDelay = totalFailed > 0 ? ACCELERATED_SYNC_DELAY : 0;
+          // S7: Decouple photo drain from report cycle. Photos sync on their own
+          // bounded-parallel pipeline inside syncPhotos(); we should NOT re-trigger
+          // the heavy report cycle just because photos are still uploading. Compute
+          // report-only remaining (results[0..2]) for the accelerated-resync gate.
+          const reportResults = results.slice(0, 3);
+          const reportRemaining = reportResults.reduce((sum, r) => sum + (r?.remaining || 0), 0);
+          const reportFailed = reportResults.reduce((sum, r) => sum + (r?.failed || 0), 0);
+
+          // S7: Feed batch outcome back to atomic-sync-manager so the next cycle's
+          // batch size grows on success (drains a 22-report backlog in ~2 cycles).
+          noteBatchOutcome(reportFailed);
+
+          if (reportRemaining > 0) {
+            // S7: With adaptive batch sizing the queue drains fast. No need for
+            // a wall-clock delay on success — schedule the next cycle immediately
+            // (still gated by syncInProgressRef + POST_SYNC_COOLDOWN downstream).
+            const drainDelay = reportFailed > 0 ? ACCELERATED_SYNC_DELAY : 0;
             if (import.meta.env.DEV) {
-              console.log(`[AutoSync] ${totalRemaining} items remaining - scheduling accelerated sync in ${drainDelay}ms (failed: ${totalFailed})`);
+              console.log(`[AutoSync] ${reportRemaining} report items remaining - scheduling accelerated sync in ${drainDelay}ms (failed: ${reportFailed})`);
             }
             // Reset the min sync interval guard so the accelerated sync can proceed
             lastSyncAttemptRef.current = Date.now() - MIN_SYNC_INTERVAL + drainDelay;
