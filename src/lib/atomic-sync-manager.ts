@@ -818,33 +818,41 @@ export async function syncAllInspectionsAtomic(preValidatedUser?: CachedUser) {
   }
   
   // Only get unsynced inspections for the current user (with extended timeout for mobile)
-  // Note: getUnsyncedInspections already has internal timeout via withIndexedDBErrorBoundary
-  // The outer timeout here is a safety net for very slow mobile networks
-  // Increased to 15s to avoid racing with inner 5s timeout + 3s health check
+  // Note: getUnsyncedInspections has its own internal timeout via withIndexedDBReadBoundary;
+  // the outer 15s timeout here is a safety net for very slow mobile networks.
+  // S11: getUnsyncedInspections now returns IdbReadFailure on failure (silent [] fallback removed).
   let unsynced: any[];
-  let fetchTimedOut = false;
+  let fetchFailureReason: string | null = null;
   try {
     const timeoutPromise = new Promise<never>((_, reject) => 
       setTimeout(() => reject(new Error('IndexedDB timeout')), 15000)
     );
     
-    unsynced = await Promise.race([
+    const result = await Promise.race([
       getUnsyncedInspections(user.id),
       timeoutPromise
     ]);
+    const { isIdbReadFailure } = await import('./offline-storage');
+    if (isIdbReadFailure(result)) {
+      fetchFailureReason = result.error;
+      unsynced = [];
+    } else {
+      unsynced = result;
+    }
   } catch (e: any) {
     if (e.message === 'IndexedDB timeout') {
       console.warn('[Atomic Sync] IndexedDB timeout getting unsynced inspections - will retry next cycle');
-      fetchTimedOut = true;
+      fetchFailureReason = 'idb_outer_timeout';
     } else {
       console.warn('[Atomic Sync] Failed to get unsynced inspections:', e);
+      fetchFailureReason = e?.message || 'unknown';
     }
     unsynced = [];
   }
   
   // Don't report success if we failed to fetch data (total: -1 signals fetch failure)
-  if (fetchTimedOut) {
-    return { total: -1, success: 0, failed: 0, errors: [{ id: 'indexeddb', error: 'Timeout fetching inspections' }] };
+  if (fetchFailureReason) {
+    return { total: -1, success: 0, failed: 0, errors: [{ id: 'idb_read_failure', error: fetchFailureReason }] };
   }
   
   // Early return for empty batch (consistent with trainings/assessments)
@@ -1640,32 +1648,39 @@ export async function syncAllTrainingsAtomic(preValidatedUser?: CachedUser) {
     return { total: 0, success: 0, failed: 0, errors: [] };
   }
   
-  // Get unsynced trainings with extended timeout for mobile networks
-  // Increased to 15s to avoid racing with inner 5s timeout + 3s health check
+  // S11: getUnsyncedTrainings now returns IdbReadFailure on failure
   let unsynced: any[];
-  let fetchTimedOut = false;
+  let fetchFailureReason: string | null = null;
   try {
     const timeoutPromise = new Promise<never>((_, reject) => 
       setTimeout(() => reject(new Error('IndexedDB timeout')), 15000)
     );
     
-    unsynced = await Promise.race([
+    const result = await Promise.race([
       getUnsyncedTrainings(user.id),
       timeoutPromise
     ]);
+    const { isIdbReadFailure } = await import('./offline-storage');
+    if (isIdbReadFailure(result)) {
+      fetchFailureReason = result.error;
+      unsynced = [];
+    } else {
+      unsynced = result;
+    }
   } catch (e: any) {
     if (e.message === 'IndexedDB timeout') {
       console.warn('[Atomic Sync] IndexedDB timeout getting unsynced trainings - will retry next cycle');
-      fetchTimedOut = true;
+      fetchFailureReason = 'idb_outer_timeout';
     } else {
       console.warn('[Atomic Sync] Failed to get unsynced trainings:', e);
+      fetchFailureReason = e?.message || 'unknown';
     }
     unsynced = [];
   }
   
   // Don't report success if we failed to fetch data (total: -1 signals fetch failure)
-  if (fetchTimedOut) {
-    return { total: -1, success: 0, failed: 0, errors: [{ id: 'indexeddb', error: 'Timeout fetching trainings' }] };
+  if (fetchFailureReason) {
+    return { total: -1, success: 0, failed: 0, errors: [{ id: 'idb_read_failure', error: fetchFailureReason }] };
   }
   
   if (unsynced.length === 0) {
