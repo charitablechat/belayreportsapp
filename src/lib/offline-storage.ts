@@ -1252,7 +1252,7 @@ export async function getUnsyncedInspections(userId?: string) {
         if (!record.synced_at) return true; // never synced
         if (record.updated_at) {
           const drift = new Date(record.updated_at).getTime() - new Date(record.synced_at).getTime();
-          const isUnsynced = drift > SYNC_DRIFT_TOLERANCE_MS;
+          const isUnsynced = isUpdatedAheadOfSync(new Date(record.updated_at).getTime(), new Date(record.synced_at).getTime());
           if (isUnsynced && import.meta.env.DEV) {
             console.log('[Offline Storage] Inspection flagged unsynced:', {
               id: String(record.id).substring(0, 12),
