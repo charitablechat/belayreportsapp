@@ -188,6 +188,7 @@ export async function syncPhotos(signal?: AbortSignal): Promise<{ remaining: num
             console.warn('[Sync Manager] Photo belongs to a different signed-in user (>7d old) — dead-lettering:', photo.id);
             await setPhotoLastError(photo.id, 'Photo belongs to a different signed-in user');
             await incrementPhotoRetryCount(photo.id);
+            changedCount++;
           } else if (import.meta.env.DEV) {
             console.log('[Sync Manager] Skipping photo captured by different user:', photo.id, 'capturedBy=', capturedBy, 'currentUser=', currentUserId);
           }
