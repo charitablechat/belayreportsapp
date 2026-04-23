@@ -400,6 +400,38 @@ export const IDB_TIMEOUTS = {
 export type TimeoutTier = keyof typeof IDB_TIMEOUTS;
 
 /**
+ * Wraps an IDB operation with a per-tier timeout.
+ * Returns { data, timedOut } so callers can distinguish
+ * real empties from timeout fallbacks.
+ */
+export async function withIDBTimeout<T>(
+  operationName: string,
+  tier: TimeoutTier,
+  fn: () => Promise<T>,
+  fallback: T
+): Promise<{ data: T; timedOut: boolean }> {
+  const ms = IDB_TIMEOUTS[tier];
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const timeout = new Promise<never>((_, reject) => {
+    timer = setTimeout(() => {
+      reject(new Error(`[IDB] ${operationName} timed out after ${ms}ms (tier: ${tier})`));
+    }, ms);
+  });
+  try {
+    const data = await Promise.race([fn(), timeout]);
+    return { data, timedOut: false };
+  } catch (err) {
+    const isTimeout = err instanceof Error && err.message.includes('timed out');
+    console.warn(
+      `[IDB] ${operationName} ${isTimeout ? 'timed out' : 'failed'}: ${err instanceof Error ? err.message : err}`
+    );
+    return { data: fallback, timedOut: isTimeout };
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+/**
  * Helper to wrap a promise with a timeout
  */
 // Track timeout suppression to avoid console spam
@@ -1805,22 +1837,18 @@ export async function getRelatedDataOfflineWithStatus(
   if (isCircuitBreakerOpen()) {
     return { items: [], readSucceeded: false };
   }
-  const READ_TIMEOUT_MS = IDB_TIMEOUTS.batch;
-  const TIMEOUT_SENTINEL: any = Symbol('with-status-timeout');
-  try {
-    const result = await Promise.race([
-      getRelatedDataOffline(type, inspectionId),
-      new Promise<any>((resolve) => setTimeout(() => resolve(TIMEOUT_SENTINEL), READ_TIMEOUT_MS)),
-    ]);
-    if (result === TIMEOUT_SENTINEL) {
-      console.warn(`[Offline Storage] getRelatedDataOfflineWithStatus(${type}) timed out — read marked unsuccessful`);
-      return { items: [], readSucceeded: false };
-    }
-    return { items: result || [], readSucceeded: true };
-  } catch (err) {
-    console.warn(`[Offline Storage] getRelatedDataOfflineWithStatus(${type}) failed:`, err);
-    return { items: [], readSucceeded: false };
-  }
+  let ok = false;
+  const { data } = await withIDBTimeout(
+    `getRelatedDataOfflineWithStatus(${type})`,
+    'batch',
+    async () => {
+      const d = await getRelatedDataOffline(type, inspectionId);
+      ok = true;
+      return d;
+    },
+    [] as any[]
+  );
+  return { items: data || [], readSucceeded: ok };
 }
 
 export async function clearRelatedDataOffline(
@@ -2168,22 +2196,18 @@ export async function getAssessmentDataOfflineWithStatus(
   if (isCircuitBreakerOpen()) {
     return { items: [], readSucceeded: false };
   }
-  const READ_TIMEOUT_MS = IDB_TIMEOUTS.batch;
-  const TIMEOUT_SENTINEL: any = Symbol('with-status-timeout');
-  try {
-    const result = await Promise.race([
-      getAssessmentDataOffline(type, assessmentId),
-      new Promise<any>((resolve) => setTimeout(() => resolve(TIMEOUT_SENTINEL), READ_TIMEOUT_MS)),
-    ]);
-    if (result === TIMEOUT_SENTINEL) {
-      console.warn(`[Offline Storage] getAssessmentDataOfflineWithStatus(${type}) timed out — read marked unsuccessful`);
-      return { items: [], readSucceeded: false };
-    }
-    return { items: result || [], readSucceeded: true };
-  } catch (err) {
-    console.warn(`[Offline Storage] getAssessmentDataOfflineWithStatus(${type}) failed:`, err);
-    return { items: [], readSucceeded: false };
-  }
+  let ok = false;
+  const { data } = await withIDBTimeout(
+    `getAssessmentDataOfflineWithStatus(${type})`,
+    'batch',
+    async () => {
+      const d = await getAssessmentDataOffline(type, assessmentId);
+      ok = true;
+      return d;
+    },
+    [] as any[]
+  );
+  return { items: data || [], readSucceeded: ok };
 }
 
 export async function clearAssessmentDataOffline(
@@ -2586,22 +2610,18 @@ export async function getTrainingDataOfflineWithStatus(
   if (isCircuitBreakerOpen()) {
     return { items: [], readSucceeded: false };
   }
-  const READ_TIMEOUT_MS = IDB_TIMEOUTS.batch;
-  const TIMEOUT_SENTINEL: any = Symbol('with-status-timeout');
-  try {
-    const result = await Promise.race([
-      getTrainingDataOffline(type, trainingId),
-      new Promise<any>((resolve) => setTimeout(() => resolve(TIMEOUT_SENTINEL), READ_TIMEOUT_MS)),
-    ]);
-    if (result === TIMEOUT_SENTINEL) {
-      console.warn(`[Offline Storage] getTrainingDataOfflineWithStatus(${type}) timed out — read marked unsuccessful`);
-      return { items: [], readSucceeded: false };
-    }
-    return { items: result || [], readSucceeded: true };
-  } catch (err) {
-    console.warn(`[Offline Storage] getTrainingDataOfflineWithStatus(${type}) failed:`, err);
-    return { items: [], readSucceeded: false };
-  }
+  let ok = false;
+  const { data } = await withIDBTimeout(
+    `getTrainingDataOfflineWithStatus(${type})`,
+    'batch',
+    async () => {
+      const d = await getTrainingDataOffline(type, trainingId);
+      ok = true;
+      return d;
+    },
+    [] as any[]
+  );
+  return { items: data || [], readSucceeded: ok };
 }
 
 export async function clearTrainingDataOffline(
