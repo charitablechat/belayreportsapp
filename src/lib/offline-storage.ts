@@ -2128,12 +2128,14 @@ async function recomputeInspectionChildCountHint(
     // updated_at == synced_at and `shouldPreserveLocalRecord` returns false,
     // so the Dashboard's network pipeline overwrites the parent and
     // downstream "empty-vs-populated" guards see a parent/child mismatch.
-    const hintChanged = inspection.child_count_hint !== newHint;
+    // H2: Bump parent updated_at on every child mutation. Without this, an
+    // edit to a child row (e.g. zipline_name) leaves the parent's
+    // updated_at == synced_at and `shouldPreserveLocalRecord` returns false,
+    // so the Dashboard's network pipeline overwrites the parent and
+    // downstream "empty-vs-populated" guards see a parent/child mismatch.
     inspection.child_count_hint = newHint;
     inspection.updated_at = new Date().toISOString();
-    if (hintChanged || true) {
-      await db.put('inspections', inspection);
-    }
+    await db.put('inspections', inspection);
   } catch {
     // non-fatal; SW guard tolerates a stale hint
   }
