@@ -1,36 +1,44 @@
 
 
-## Close out H2: gate `/base64-converter` behind admin
+## PR 4 Status & Remaining Work
 
-The only remaining gap from the C7/H1/H2 trio. Two small changes:
+### Status of each item
 
-### 1. `src/pages/Base64Converter.tsx`
-Add `useRequireAdmin()` at the top of the component (mirroring `UploadLogos.tsx`):
-- Pull `loading` and `isAdmin` from the hook.
-- Render `null` (or a minimal "Checking permissions…" state) while `loading` is true.
-- Render `null` if `!isAdmin` (the hook already redirects to `/dashboard`).
+**H3 — Admin gate on `convert-heic-photos`: ❌ NOT DONE**
+The function currently authenticates the caller (lines 20–40) but does not check admin status. Any signed-in user can pass arbitrary `table`/`bucket` values and rewrite photo paths across other users' reports.
 
-### 2. `src/App.tsx` route table
-Wrap the route in `<RequireAuth>` for defense-in-depth so unauthenticated users don't even mount the component:
+**H4 — Unify version scheme: ✅ DONE**
+- `src/lib/version-calculator.ts` is already reduced to pure parse/format helpers; the 1–9 rollover calculator was removed in an earlier phase (comment confirms this).
+- `vite-auto-version.ts` owns the patch via monotonic git commit count.
+- `src/lib/attestation.ts` reads `import.meta.env.APP_VERSION` injected by `vite-auto-version.ts` — same source.
+- No remaining callers of any rollover logic.
 
-```tsx
-{ path: "/base64-converter", element: <RequireAuth><Base64Converter /></RequireAuth> },
+**H7 — Don't wipe all roles on update: ✅ DONE**
+`admin-manage-user/index.ts` lines 214–259 already implement the conditional rewrite: reads current top-level role, skips if unchanged, and scopes the delete to `organization_id IS NULL` so per-org role rows are preserved.
+
+---
+
+### Plan to close H3
+
+One file: `supabase/functions/convert-heic-photos/index.ts`.
+
+After the existing `getUser()` check (around line 40), add an admin check using the user-scoped client so RLS context is preserved:
+
+```ts
+const { data: isAdmin, error: adminErr } = await userClient.rpc('is_admin_or_above');
+if (adminErr || !isAdmin) {
+  return new Response(
+    JSON.stringify({ error: 'Forbidden: admin privileges required' }),
+    { status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+  );
+}
 ```
 
-Same treatment for consistency on `/admin`:
-
-```tsx
-{ path: "/admin", element: <RequireAuth><SuperAdminDashboard /></RequireAuth> },
-```
-
-### Why this is enough
-- C7 is already complete — every read/write of the admin cache flows through `getAdminCacheKey(userId)`, so User B on a shared device cannot inherit User A's admin bit.
-- H1 is already complete — every authenticated page in the router is wrapped in `<RequireAuth>` (the route-element form of the hook the original note suggested).
-- After this change, every admin-or-utility surface (`/upload-logos`, `/upload-logos-storage`, `/admin`, `/admin/logos`, `/base64-converter`, `/onboarding`) is gated by `useRequireAdmin()` AND the route itself sits behind `<RequireAuth>`.
+Why `is_admin_or_above` (not `is_super_admin`): mirrors the pattern used by `admin-manage-user` and matches the project's RBAC memory (`is_admin_or_above` is the canonical admin gate; True Super Admin is read-only/invisible).
 
 ### Files touched
-- `src/pages/Base64Converter.tsx` (add hook + loading/redirect guard)
-- `src/App.tsx` (wrap `/base64-converter` and `/admin` in `<RequireAuth>`)
+- `supabase/functions/convert-heic-photos/index.ts` — insert ~6 lines after the existing auth check.
 
-Risk: trivial. No DB, no edge functions, no schema changes.
+### Risk
+Trivial. No DB migration, no schema change, no client changes. Behavior change: non-admin authenticated users calling the function now receive `403` instead of executing conversions on photos they may not own.
 
