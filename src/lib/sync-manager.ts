@@ -53,7 +53,8 @@ import { isMobile } from './mobile-detection';
 // 200+ photos take 20+ sync cycles to drain.
 const MAX_PHOTO_BATCH_SIZE = 30;
 
-export async function syncPhotos(): Promise<{ remaining: number; error?: string }> {
+export async function syncPhotos(signal?: AbortSignal): Promise<{ remaining: number; error?: string }> {
+  if (signal?.aborted) return { remaining: 0 };
   if (!navigator.onLine) {
     if (import.meta.env.DEV) {
       console.log('[Sync Manager] Offline - skipping photo sync');
@@ -97,6 +98,7 @@ export async function syncPhotos(): Promise<{ remaining: number; error?: string 
     const photoConcurrency = isMobile() ? 3 : 5;
 
     await runWithConcurrency(batch, photoConcurrency, async (photo) => {
+      if (signal?.aborted) return;
       try {
         if (processedIds.has(photo.id)) {
           successCount++;
