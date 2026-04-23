@@ -595,12 +595,15 @@ export const useAutoSync = () => {
       console.error('[AutoSync] Sync failed:', error);
       clearTimeout(safetyTimeoutHandle);
       
-      // Show explicit error toast for sync failures (bypass mobile notification center for visibility)
-      // Import toast from 'sonner' at the top (already imported via addSyncNotification usage)
-      if (isMobileDevice) {
-        addSyncNotification(`Sync failed: ${error?.message || 'will retry automatically'}`);
+      // Surface sync failures on every platform. toastError pushes to the
+      // notification center AND shows a sonner toast on desktop; on mobile
+      // the toast is suppressed and the notification center entry stands in.
+      try {
+        const { toastError } = await import('@/lib/toast-helpers');
+        toastError('Sync failed', error?.message || 'will retry automatically');
+      } catch {
+        // Chunk-load failure must not break the catch block.
       }
-      // Desktop toast is not needed here since errors are usually transient and auto-retry handles them
     } finally {
       // S6: Set completed-at BEFORE clearing the in-progress gate so any Realtime
       // event that races past `syncInProgressRef` immediately hits the cooldown gate.
