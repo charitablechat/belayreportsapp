@@ -1,4 +1,19 @@
 import { supabase } from "@/integrations/supabase/client";
+
+/**
+ * Build a user-facing label from a list of parts, skipping empty/nullish values.
+ * Returns `fallback` when no usable parts remain so we never show " - " or a
+ * leading separator.
+ */
+function formatProgressLabel(
+  parts: Array<string | null | undefined>,
+  fallback: string
+): string {
+  const cleaned = parts
+    .map((p) => (typeof p === 'string' ? p.trim() : ''))
+    .filter((p) => p.length > 0);
+  return cleaned.length > 0 ? cleaned.join(' - ') : fallback;
+}
 import { getUserWithCache, ensureValidSession, type CachedUser } from "@/lib/cached-auth";
 import { 
   getUnsyncedInspections,
@@ -933,7 +948,7 @@ export async function syncAllInspectionsAtomic(preValidatedUser?: CachedUser, si
       syncProgressEmitter.emit({
         total: batch.length,
         current: progressCounter,
-        currentItem: `${inspection.organization} - ${inspection.location}${retryCount > 0 ? ` (retry ${retryCount})` : ''}${remaining > 0 ? ` (${remaining} more queued)` : ''}`,
+        currentItem: `${formatProgressLabel([inspection.organization, inspection.location], 'Untitled inspection')}${retryCount > 0 ? ` (retry ${retryCount})` : ''}${remaining > 0 ? ` (${remaining} more queued)` : ''}`,
         phase: 'inspections',
         errors,
       });
@@ -1778,7 +1793,7 @@ export async function syncAllTrainingsAtomic(preValidatedUser?: CachedUser, sign
       syncProgressEmitter.emit({
         total: batch.length,
         current: progressCounter,
-        currentItem: `${training.organization}${retryCount > 0 ? ` (retry ${retryCount})` : ''}${remaining > 0 ? ` (${remaining} more queued)` : ''}`,
+        currentItem: `${formatProgressLabel([training.organization, training.location], 'Untitled training')}${retryCount > 0 ? ` (retry ${retryCount})` : ''}${remaining > 0 ? ` (${remaining} more queued)` : ''}`,
         phase: 'trainings',
         errors,
       });
@@ -2564,7 +2579,7 @@ export async function syncAllDailyAssessmentsAtomic(preValidatedUser?: CachedUse
       syncProgressEmitter.emit({
         total: batch.length,
         current: progressCounter,
-        currentItem: `${assessment.organization} - ${assessment.site}${retryCount > 0 ? ` (retry ${retryCount})` : ''}${remaining > 0 ? ` (${remaining} more queued)` : ''}`,
+        currentItem: `${formatProgressLabel([assessment.organization, assessment.site], 'Untitled assessment')}${retryCount > 0 ? ` (retry ${retryCount})` : ''}${remaining > 0 ? ` (${remaining} more queued)` : ''}`,
         phase: 'assessments',
         errors,
       });
