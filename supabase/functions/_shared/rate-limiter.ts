@@ -1,5 +1,12 @@
-// In-memory rate limiter for Deno Edge Functions
-// Note: Resets on function cold start, suitable for basic rate limiting
+// In-memory rate limiter for Deno Edge Functions.
+//
+// NOTE (M13, deferred): This Map resets on every function cold start, so a
+// determined caller spread across cold starts can exceed the configured cap.
+// A Postgres-backed counter would solve this but project policy defers backend
+// rate limiting until centrally-managed primitives exist (see
+// <important-info> "Do Not Implement Backend Rate Limiting"). Layered defenses
+// (honeypot fields, strict input validation, and downstream webhook limits)
+// remain in place at each call site as the practical mitigation.
 
 const rateLimitMap = new Map<string, { count: number; resetAt: number }>();
 
