@@ -225,12 +225,39 @@ export const useAutoSync = () => {
     }, dynamicTimeout + 2000); // 2 seconds after main timeout as final safety
     
     try {
-      if (import.meta.env.DEV) {
-        console.log('[AutoSync] Starting sync...', { unsyncedCount: unsyncedCountRef.current, timeout: dynamicTimeout });
+      // Refresh real unsynced counts BEFORE deciding whether to skip the pipeline.
+      // The in-memory ref can be stale (e.g. immediately after a save, or after an
+      // IDB timeout returned 0). Trust a fresh IDB read instead.
+      let liveUnsyncedCount = unsyncedCountRef.current;
+      try {
+        const freshUser = await getUserWithCache();
+        if (freshUser) {
+          const freshCounts = await getUnsyncedCounts(freshUser.id);
+          liveUnsyncedCount =
+            freshCounts.inspections.length +
+            freshCounts.trainings.length +
+            freshCounts.assessments.length;
+          if (liveUnsyncedCount !== unsyncedCountRef.current) {
+            unsyncedCountRef.current = liveUnsyncedCount;
+            setState(prev => ({
+              ...prev,
+              unsyncedCount: liveUnsyncedCount,
+              unsyncedInspections: freshCounts.inspections,
+              unsyncedTrainings: freshCounts.trainings,
+              unsyncedDailyAssessments: freshCounts.assessments,
+            }));
+          }
+        }
+      } catch (refreshErr) {
+        console.warn('[AutoSync] Pre-sync count refresh failed (non-blocking):', refreshErr);
       }
-      
+
+      if (import.meta.env.DEV) {
+        console.log('[AutoSync] Starting sync...', { unsyncedCount: liveUnsyncedCount, timeout: dynamicTimeout });
+      }
+
       // EARLY EXIT: When nothing to sync, only clean stale queues and skip heavy pipeline
-      const hasUnsyncedItems = unsyncedCountRef.current > 0;
+      const hasUnsyncedItems = liveUnsyncedCount > 0;
       let hasQueuedOps = false;
       
       if (!hasUnsyncedItems) {
