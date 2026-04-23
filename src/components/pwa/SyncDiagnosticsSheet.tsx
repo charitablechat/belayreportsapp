@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle, SheetTrigger } from '@/components/ui/sheet';
 import { Button } from '@/components/ui/button';
-import { Activity, Trash2 } from 'lucide-react';
+import { Activity, RefreshCw, Trash2, X } from 'lucide-react';
 import { usePWA } from '@/hooks/usePWA';
 import { ForceSyncButton } from '@/components/pwa/ForceSyncButton';
 import { getMobileCapabilities, checkStorageQuota } from '@/lib/mobile-detection';
@@ -9,6 +9,8 @@ import { isServiceWorkerAllowed } from '@/lib/environment';
 import { getRecentTripwireBlockCount } from '@/lib/child-row-deletion-tripwire';
 import { format } from 'date-fns';
 import { toast } from 'sonner';
+import { useUnsyncedPhotos, type DeadLetterPhotoInfo } from '@/hooks/useUnsyncedPhotos';
+import { resetPhotoForRetry, deleteOfflinePhoto } from '@/lib/offline-storage';
 
 interface DiagnosticsState {
   swRegistered: boolean;
@@ -39,7 +41,9 @@ export const SyncDiagnosticsSheet = () => {
     isCheckingForUpdate,
     checkForUpdates,
   } = usePWA();
+  const { deadLetterPhotos, updatePhotoCount } = useUnsyncedPhotos();
   const [open, setOpen] = useState(false);
+  const [busyPhotoId, setBusyPhotoId] = useState<string | null>(null);
   const [diag, setDiag] = useState<DiagnosticsState>({
     swRegistered: false,
     swController: false,
@@ -132,6 +136,48 @@ export const SyncDiagnosticsSheet = () => {
             <Row label="Child-row deletions blocked (24 h)" value={String(diag.tripwireBlocks24h)} />
           </Section>
 
+          {deadLetterPhotos.length > 0 && (
+            <div>
+              <h3 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-2">
+                Stuck Photos ({deadLetterPhotos.length})
+              </h3>
+              <div className="rounded-md border border-border divide-y divide-border">
+                {deadLetterPhotos.map((p) => (
+                  <StuckPhotoRow
+                    key={p.id}
+                    photo={p}
+                    busy={busyPhotoId === p.id}
+                    onRetry={async () => {
+                      setBusyPhotoId(p.id);
+                      try {
+                        const ok = await resetPhotoForRetry(p.id);
+                        if (ok) {
+                          toast.success('Photo queued for retry');
+                          await updatePhotoCount();
+                        } else {
+                          toast.error('Could not reset photo');
+                        }
+                      } finally {
+                        setBusyPhotoId(null);
+                      }
+                    }}
+                    onDiscard={async () => {
+                      if (!confirm('Discard this photo? It will be removed from this device.')) return;
+                      setBusyPhotoId(p.id);
+                      try {
+                        await deleteOfflinePhoto(p.id);
+                        toast.success('Photo discarded');
+                        await updatePhotoCount();
+                      } finally {
+                        setBusyPhotoId(null);
+                      }
+                    }}
+                  />
+                ))}
+              </div>
+            </div>
+          )}
+
           <div className="flex flex-col gap-2 pt-2">
             <ForceSyncButton variant="default" />
             <Button
@@ -193,5 +239,61 @@ const Row = ({ label, value }: { label: string; value: string }) => (
   <div className="flex items-center justify-between px-3 py-2">
     <span className="text-muted-foreground">{label}</span>
     <span className="font-medium text-foreground">{value}</span>
+  </div>
+);
+
+const StuckPhotoRow = ({
+  photo,
+  busy,
+  onRetry,
+  onDiscard,
+}: {
+  photo: DeadLetterPhotoInfo;
+  busy: boolean;
+  onRetry: () => void;
+  onDiscard: () => void;
+}) => (
+  <div className="flex flex-col gap-2 px-3 py-2">
+    <div className="flex items-start justify-between gap-2">
+      <div className="min-w-0 flex-1">
+        <div className="text-xs font-medium text-foreground truncate">
+          {photo.fileName || photo.id}
+        </div>
+        {photo.section && (
+          <div className="text-xs text-muted-foreground truncate">{photo.section}</div>
+        )}
+        <div className="text-xs text-muted-foreground">
+          Retries: {photo.retryCount}
+          {photo.lastErrorAt ? ` · ${format(new Date(photo.lastErrorAt), 'PPp')}` : ''}
+        </div>
+        {photo.lastError && (
+          <div className="text-xs text-destructive mt-1 break-words">
+            Last error: {photo.lastError}
+          </div>
+        )}
+      </div>
+      <div className="flex shrink-0 gap-1">
+        <Button
+          size="sm"
+          variant="outline"
+          onClick={onRetry}
+          disabled={busy}
+          className="h-7 px-2"
+        >
+          <RefreshCw className="h-3 w-3 mr-1" />
+          Retry
+        </Button>
+        <Button
+          size="sm"
+          variant="ghost"
+          onClick={onDiscard}
+          disabled={busy}
+          className="h-7 px-2 text-destructive hover:text-destructive"
+        >
+          <X className="h-3 w-3 mr-1" />
+          Discard
+        </Button>
+      </div>
+    </div>
   </div>
 );

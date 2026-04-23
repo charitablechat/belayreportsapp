@@ -4,8 +4,59 @@ import {
   getUnuploadedPhotos,
   markPhotoAsUploaded,
   incrementPhotoRetryCount,
+  setPhotoLastError,
   MAX_PHOTO_RETRIES,
 } from "./offline-storage";
+
+/**
+ * S22: Classify a photo upload / DB error into a sync-policy bucket.
+ *  - 'transient'           — retry next cycle, do NOT bump retryCount
+ *  - 'permanent'           — bump retryCount + stamp lastError
+ *  - 'success-equivalent'  — already-applied (duplicate); treat as success
+ */
+export type PhotoErrorClass = 'transient' | 'permanent' | 'success-equivalent';
+
+export function classifyPhotoError(err: unknown): { kind: PhotoErrorClass; message: string } {
+  const e: any = err || {};
+  // Numeric-ish status / statusCode from Supabase StorageError / PostgrestError
+  const statusRaw = e.status ?? e.statusCode ?? e.httpStatus ?? null;
+  const status = typeof statusRaw === 'string' ? parseInt(statusRaw, 10) : statusRaw;
+  const code: string | undefined = typeof e.code === 'string' ? e.code : undefined;
+  const name: string | undefined = typeof e.name === 'string' ? e.name : undefined;
+  const rawMsg: string = typeof e.message === 'string' ? e.message : String(err ?? 'Unknown error');
+  const msg = rawMsg.toLowerCase();
+
+  // Postgres unique violation — already covered upstream as success.
+  if (code === '23505' || msg.includes('duplicate key')) {
+    return { kind: 'success-equivalent', message: rawMsg };
+  }
+  // Storage "duplicate" with upsert — treat as success.
+  if (status === 409 && (msg.includes('duplicate') || msg.includes('already exists'))) {
+    return { kind: 'success-equivalent', message: rawMsg };
+  }
+
+  // Transient: network / abort / 5xx / 429 / generic 409 conflict / fetch failed.
+  if (
+    name === 'AbortError' ||
+    name === 'TypeError' && msg.includes('fetch') ||
+    msg.includes('network') ||
+    msg.includes('failed to fetch') ||
+    msg.includes('load failed') ||
+    msg.includes('timeout') ||
+    msg.includes('timed out') ||
+    status === 408 ||
+    status === 425 ||
+    status === 429 ||
+    status === 409 ||
+    (typeof status === 'number' && status >= 500 && status < 600)
+  ) {
+    return { kind: 'transient', message: rawMsg };
+  }
+
+  // Everything else (400/401/403/404/413/415/422, RLS, bucket missing, invalid key…)
+  return { kind: 'permanent', message: rawMsg };
+}
+
 
 /**
  * @deprecated Use syncAllInspectionsAtomic from atomic-sync-manager.ts instead
@@ -175,7 +226,26 @@ export async function syncPhotos(signal?: AbortSignal): Promise<{ remaining: num
             upsert: true,
           });
 
-        if (uploadError) throw uploadError;
+        if (uploadError) {
+          // S22: Classify upload errors instead of treating all as permanent.
+          const cls = classifyPhotoError(uploadError);
+          if (import.meta.env.DEV) {
+            console.log(`[Sync Manager] Upload error classified as ${cls.kind} for ${photo.id}:`, cls.message);
+          }
+          if (cls.kind === 'success-equivalent') {
+            // Storage already has the object — proceed to DB insert path.
+          } else if (cls.kind === 'transient') {
+            console.warn('[Sync Manager] Transient upload error, will retry next cycle:', photo.id, cls.message);
+            // Do NOT bump retryCount; do NOT stamp lastError persistently.
+            return;
+          } else {
+            // permanent
+            console.error('[Sync Manager] Permanent upload error for photo:', photo.id, cls.message);
+            await setPhotoLastError(photo.id, cls.message);
+            await incrementPhotoRetryCount(photo.id);
+            return;
+          }
+        }
 
         // Deduplication guard: check if a DB row already exists for this photo_url
         const { data: existing } = await (supabase
@@ -196,22 +266,32 @@ export async function syncPhotos(signal?: AbortSignal): Promise<{ remaining: num
               caption: photo.caption || photo.section || 'Photo',
             });
 
-          // Treat unique-constraint violations as success (another path inserted first)
           if (dbError) {
-            const isUniqueViolation = dbError.code === '23505' || dbError.message?.includes('duplicate');
-            if (isUniqueViolation) {
+            // S22: Classify DB errors. 23505 / duplicate already maps to
+            // success-equivalent in classifyPhotoError.
+            const cls = classifyPhotoError(dbError);
+            if (import.meta.env.DEV) {
+              console.log(`[Sync Manager] DB insert error classified as ${cls.kind} for ${photo.id}:`, cls.message);
+            }
+            if (cls.kind === 'success-equivalent') {
               if (import.meta.env.DEV) {
                 console.log('[Sync Manager] Unique constraint hit (race OK), treating as success:', photo.id);
               }
+            } else if (cls.kind === 'transient') {
+              console.warn('[Sync Manager] Transient DB insert error, will retry next cycle:', photo.id, cls.message);
+              return;
             } else {
-              throw dbError;
+              console.error('[Sync Manager] Permanent DB insert error for photo:', photo.id, cls.message);
+              await setPhotoLastError(photo.id, cls.message);
+              await incrementPhotoRetryCount(photo.id);
+              return;
             }
           }
         } else if (import.meta.env.DEV) {
           console.log('[Sync Manager] Skipped duplicate DB row for photo:', photo.id);
         }
 
-        // Mark as uploaded and release blob from IndexedDB
+        // Mark as uploaded and release blob from IndexedDB (also clears lastError)
         await markPhotoAsUploaded(photo.id, fileName);
         processedIds.add(photo.id);
         successCount++;
@@ -220,8 +300,15 @@ export async function syncPhotos(signal?: AbortSignal): Promise<{ remaining: num
           console.log('[Sync Manager] Uploaded photo:', photo.id);
         }
       } catch (error) {
-        console.error('[Sync Manager] Failed to upload photo:', photo.id, error);
-        // Increment retry counter so we eventually stop retrying broken photos
+        // S22: Unexpected throws (e.g. auth/network exceptions outside the
+        // explicit error checks). Classify before bumping retryCount.
+        const cls = classifyPhotoError(error);
+        console.error(`[Sync Manager] Failed to upload photo (${cls.kind}):`, photo.id, cls.message);
+        if (cls.kind === 'transient') {
+          // Retry next cycle without counting toward the dead-letter ceiling.
+          return;
+        }
+        await setPhotoLastError(photo.id, cls.message);
         await incrementPhotoRetryCount(photo.id);
       }
     });

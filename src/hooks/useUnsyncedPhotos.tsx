@@ -6,10 +6,22 @@ import {
 } from '@/lib/offline-storage';
 import { getUserWithCache } from '@/lib/cached-auth';
 
+export interface DeadLetterPhotoInfo {
+  id: string;
+  inspectionId: string;
+  fileName: string;
+  retryCount: number;
+  lastError: string | null;
+  lastErrorAt: number | null;
+  section?: string;
+}
+
 export interface UnsyncedPhotosStatus {
   unsyncedPhotoCount: number;
   photosByInspection: Record<string, number>;
   deadLetterCount: number;
+  /** S22: Per-photo dead-letter info for the diagnostics UI. */
+  deadLetterPhotos: DeadLetterPhotoInfo[];
   /**
    * S11: Set when an IDB read failure prevents us from getting a fresh photo
    * count. Last-known counts are preserved (don't zero the badge) and this
@@ -25,15 +37,17 @@ export const useUnsyncedPhotos = () => {
     unsyncedPhotoCount: 0,
     photosByInspection: {},
     deadLetterCount: 0,
+    deadLetterPhotos: [],
     idbReadError: null,
   });
 
   // Keep a ref of last-known counts so we can preserve them on a transient
   // IDB read failure instead of dropping the badge to 0.
-  const lastKnownRef = useRef<{ count: number; byInspection: Record<string, number>; deadLetter: number }>({
+  const lastKnownRef = useRef<{ count: number; byInspection: Record<string, number>; deadLetter: number; deadLetterPhotos: DeadLetterPhotoInfo[] }>({
     count: 0,
     byInspection: {},
     deadLetter: 0,
+    deadLetterPhotos: [],
   });
 
   const updatePhotoCount = useCallback(async () => {
@@ -46,6 +60,7 @@ export const useUnsyncedPhotos = () => {
           unsyncedPhotoCount: 0,
           photosByInspection: {},
           deadLetterCount: 0,
+          deadLetterPhotos: [],
           idbReadError: null,
         });
         return;
@@ -64,6 +79,7 @@ export const useUnsyncedPhotos = () => {
           unsyncedPhotoCount: lastKnownRef.current.count,
           photosByInspection: lastKnownRef.current.byInspection,
           deadLetterCount: lastKnownRef.current.deadLetter,
+          deadLetterPhotos: lastKnownRef.current.deadLetterPhotos,
           idbReadError: 'Local data unreadable — refreshing may help',
         });
         return;
@@ -79,16 +95,29 @@ export const useUnsyncedPhotos = () => {
         byInspection[photo.inspectionId] = (byInspection[photo.inspectionId] || 0) + 1;
       });
 
+      // S22: Surface per-photo dead-letter info (id + lastError) for the diagnostics UI.
+      const deadLetterPhotos: DeadLetterPhotoInfo[] = deadLetter.map((p: any) => ({
+        id: p.id,
+        inspectionId: p.inspectionId,
+        fileName: p.fileName,
+        retryCount: p.retryCount || 0,
+        lastError: p.lastError ?? null,
+        lastErrorAt: p.lastErrorAt ?? null,
+        section: p.section,
+      }));
+
       lastKnownRef.current = {
         count: unuploaded.length,
         byInspection,
         deadLetter: deadLetter.length,
+        deadLetterPhotos,
       };
 
       setStatus({
         unsyncedPhotoCount: unuploaded.length,
         photosByInspection: byInspection,
         deadLetterCount: deadLetter.length,
+        deadLetterPhotos,
         idbReadError: null,
       });
 
