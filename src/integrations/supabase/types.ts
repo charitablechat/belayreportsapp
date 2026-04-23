@@ -479,6 +479,7 @@ export type Database = {
           systems_comments: string | null
           trainer_of_record: string | null
           updated_at: string
+          user_cleared_at: string | null
         }
         Insert: {
           active_duration_seconds?: number | null
@@ -516,6 +517,7 @@ export type Database = {
           systems_comments?: string | null
           trainer_of_record?: string | null
           updated_at?: string
+          user_cleared_at?: string | null
         }
         Update: {
           active_duration_seconds?: number | null
@@ -553,6 +555,7 @@ export type Database = {
           systems_comments?: string | null
           trainer_of_record?: string | null
           updated_at?: string
+          user_cleared_at?: string | null
         }
         Relationships: [
           {
@@ -1294,6 +1297,7 @@ export type Database = {
           status: string
           synced_at: string | null
           updated_at: string | null
+          user_cleared_at: string | null
         }
         Insert: {
           acct_number?: string | null
@@ -1333,6 +1337,7 @@ export type Database = {
           status?: string
           synced_at?: string | null
           updated_at?: string | null
+          user_cleared_at?: string | null
         }
         Update: {
           acct_number?: string | null
@@ -1372,6 +1377,7 @@ export type Database = {
           status?: string
           synced_at?: string | null
           updated_at?: string | null
+          user_cleared_at?: string | null
         }
         Relationships: [
           {
@@ -2189,6 +2195,7 @@ export type Database = {
           trainee_names: string | null
           trainer_of_record: string | null
           updated_at: string
+          user_cleared_at: string | null
         }
         Insert: {
           active_duration_seconds?: number | null
@@ -2225,6 +2232,7 @@ export type Database = {
           trainee_names?: string | null
           trainer_of_record?: string | null
           updated_at?: string
+          user_cleared_at?: string | null
         }
         Update: {
           active_duration_seconds?: number | null
@@ -2261,6 +2269,7 @@ export type Database = {
           trainee_names?: string | null
           trainer_of_record?: string | null
           updated_at?: string
+          user_cleared_at?: string | null
         }
         Relationships: [
           {

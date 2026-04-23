@@ -737,7 +737,7 @@ export async function getDB() {
     // Version 8: Add report_versions store for append-only versioning
     // DB_NAME and DB_VERSION shared with public/db-config.js for SW consistency
     const DB_NAME = 'rope-works-inspections';
-    const DB_VERSION = 10;
+    const DB_VERSION = 11;
 
     // Phase 5 — Schema Migration Safety. Lazy-load to avoid circular imports
     // and to keep the boot path resilient if this module ever fails to parse.
@@ -914,6 +914,16 @@ export async function getDB() {
             etStore.createIndex('by-category', 'equipment_category');
             if (import.meta.env.DEV) {
               console.log('[Offline Storage] Created equipment_type_cache store (v10 upgrade)');
+            }
+          }
+          // === NEW in v11: sync_regression_counters store (S10) ===
+          // Persists field-count regression skip counters across reloads so the
+          // guard's "after MAX_REGRESSION_SKIPS, allow sync" release isn't lost
+          // when a user happens to refresh between sync cycles.
+          if (!db.objectStoreNames.contains('sync_regression_counters' as any)) {
+            (db as any).createObjectStore('sync_regression_counters', { keyPath: 'id' });
+            if (import.meta.env.DEV) {
+              console.log('[Offline Storage] Created sync_regression_counters store (v11 upgrade)');
             }
           }
         },

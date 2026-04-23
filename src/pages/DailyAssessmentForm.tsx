@@ -783,13 +783,23 @@ export default function DailyAssessmentForm() {
         guardedSave('environment_checks', environmentChecks);
 
         // Include parent assessment save in the same atomic batch
-        const updatedAssessment = { 
+        const baseUpdatedAssessment = { 
           ...assessment, 
           updated_at: new Date().toISOString(),
           ...(currentUser?.id && currentUser.id !== assessment.inspector_id 
             ? { last_modified_by: currentUser.id } 
             : {}),
         };
+        // S9: Reconcile user-clear intent across all six section collections.
+        const totalChildCount =
+          beginningOfDay.length + endOfDay.length + operatingSystems.length +
+          equipmentChecks.length + structureChecks.length + environmentChecks.length;
+        const { reconcileClearIntent } = await import('@/lib/clear-intent');
+        const updatedAssessment = reconcileClearIntent(
+          baseUpdatedAssessment,
+          totalChildCount,
+          !!baseUpdatedAssessment.synced_at,
+        );
         childOps.push(
           withTimeout(saveDailyAssessmentOffline(updatedAssessment), 3000, 'Assessment offline save')
         );

@@ -57,6 +57,12 @@ import { appendVersion, getLatestFieldCount, calculateFieldCount } from "./repor
 import { runWithConcurrency } from "./concurrency";
 import { assertNoTempIds, assertNoTempIdsInArray } from "./sw-sync-validators";
 import { registerSelfWrite } from "./sync-events";
+import {
+  getRegressionSkipCount,
+  incrementRegressionSkipCount,
+  resetRegressionSkipCount,
+} from "./regression-skip-store";
+import { wasClearedAfterLastSync } from "./clear-intent";
 
 /**
  * Adaptive batch size for sync cycles.
@@ -82,8 +88,11 @@ export function getAdaptiveBatchSize(): number { return currentBatchSize; }
  * Tracks consecutive field_count_regression skips per record.
  * After MAX_REGRESSION_SKIPS consecutive skips, the guard allows sync to proceed.
  * This prevents legitimate large deletions from being blocked indefinitely.
+ *
+ * S10: counter is now persisted via regression-skip-store.ts so it survives
+ * tab refresh / PWA wake / SW restart. The helpers there maintain an in-memory
+ * hot cache; we just call them directly.
  */
-const regressionSkipCounter = new Map<string, number>();
 const MAX_REGRESSION_SKIPS = 3;
 
 /**
@@ -425,8 +434,7 @@ export async function syncInspectionAtomic(inspectionId: string, preValidatedUse
     if (previousFieldCount !== null && previousFieldCount > 0) {
       const dropPercent = ((previousFieldCount - currentFieldCount) / previousFieldCount) * 100;
       if (dropPercent > 50) {
-        const skipCount = (regressionSkipCounter.get(inspectionId) || 0) + 1;
-        regressionSkipCounter.set(inspectionId, skipCount);
+        const skipCount = await incrementRegressionSkipCount(inspectionId);
         if (skipCount <= MAX_REGRESSION_SKIPS) {
           console.error('[SAFETY] Blocked inspection sync: field count regression >50%', {
             inspectionId: inspectionId.substring(0, 8),
@@ -442,10 +450,10 @@ export async function syncInspectionAtomic(inspectionId: string, preValidatedUse
           inspectionId: inspectionId.substring(0, 8),
           skipCount,
         });
-        regressionSkipCounter.delete(inspectionId);
+        await resetRegressionSkipCount(inspectionId);
       } else {
         // Field count is healthy — clear any previous skip counter
-        regressionSkipCounter.delete(inspectionId);
+        await resetRegressionSkipCount(inspectionId);
       }
     }
 
@@ -509,7 +517,7 @@ export async function syncInspectionAtomic(inspectionId: string, preValidatedUse
       const localIsCompletelyEmpty = systems.length === 0 && ziplines.length === 0 && 
         equipment.length === 0 && standards.length === 0 && !summary;
       
-      if (serverHasChildData && localIsCompletelyEmpty) {
+      if (serverHasChildData && localIsCompletelyEmpty && !wasClearedAfterLastSync(inspection)) {
         console.warn('[SAFETY] empty_local_guard: server has child data but local is empty', {
           inspectionId,
           serverCounts: {
@@ -714,6 +722,9 @@ export async function syncInspectionAtomic(inspectionId: string, preValidatedUse
       ...inspection,
       synced_at: serverTimestamp,
       updated_at: serverTimestamp,
+      // S9: marker has done its job — clear it so a future stale-IDB read
+      // isn't misinterpreted as fresh user-clear intent.
+      user_cleared_at: null,
       inspector: inspectorProfile || { first_name: null, last_name: null, avatar_url: null },
     });
     
@@ -1243,8 +1254,7 @@ export async function syncTrainingAtomic(trainingId: string, preValidatedUser?: 
     if (previousFieldCount !== null && previousFieldCount > 0) {
       const dropPercent = ((previousFieldCount - currentFieldCount) / previousFieldCount) * 100;
       if (dropPercent > 50) {
-        const skipCount = (regressionSkipCounter.get(trainingId) || 0) + 1;
-        regressionSkipCounter.set(trainingId, skipCount);
+        const skipCount = await incrementRegressionSkipCount(trainingId);
         if (skipCount <= MAX_REGRESSION_SKIPS) {
           console.error('[SAFETY] Blocked training sync: field count regression >50%', {
             trainingId: trainingId.substring(0, 8),
@@ -1260,9 +1270,9 @@ export async function syncTrainingAtomic(trainingId: string, preValidatedUser?: 
           trainingId: trainingId.substring(0, 8),
           skipCount,
         });
-        regressionSkipCounter.delete(trainingId);
+        await resetRegressionSkipCount(trainingId);
       } else {
-        regressionSkipCounter.delete(trainingId);
+        await resetRegressionSkipCount(trainingId);
       }
     }
 
@@ -1329,7 +1339,7 @@ export async function syncTrainingAtomic(trainingId: string, preValidatedUser?: 
         immediate_attention.length === 0 && verifiable_items.length === 0 && 
         systems_in_place.length === 0 && !summary;
       
-      if (serverHasChildData && localIsCompletelyEmpty) {
+      if (serverHasChildData && localIsCompletelyEmpty && !wasClearedAfterLastSync(training)) {
         console.warn('[SAFETY] empty_local_guard: training server has child data but local is empty', {
           trainingId,
           serverCounts: {
@@ -1530,6 +1540,8 @@ export async function syncTrainingAtomic(trainingId: string, preValidatedUser?: 
       ...training,
       synced_at: serverTimestamp,
       updated_at: serverTimestamp,
+      // S9: clear marker post-sync.
+      user_cleared_at: null,
       inspector: inspectorProfile || { first_name: null, last_name: null, avatar_url: null },
     });
     
@@ -1996,8 +2008,7 @@ export async function syncDailyAssessmentAtomic(assessmentId: string, preValidat
     if (previousFieldCount !== null && previousFieldCount > 0) {
       const dropPercent = ((previousFieldCount - currentFieldCount) / previousFieldCount) * 100;
       if (dropPercent > 50) {
-        const skipCount = (regressionSkipCounter.get(assessmentId) || 0) + 1;
-        regressionSkipCounter.set(assessmentId, skipCount);
+        const skipCount = await incrementRegressionSkipCount(assessmentId);
         if (skipCount <= MAX_REGRESSION_SKIPS) {
           console.error('[SAFETY] Blocked assessment sync: field count regression >50%', {
             assessmentId: assessmentId.substring(0, 8),
@@ -2013,9 +2024,9 @@ export async function syncDailyAssessmentAtomic(assessmentId: string, preValidat
           assessmentId: assessmentId.substring(0, 8),
           skipCount,
         });
-        regressionSkipCounter.delete(assessmentId);
+        await resetRegressionSkipCount(assessmentId);
       } else {
-        regressionSkipCounter.delete(assessmentId);
+        await resetRegressionSkipCount(assessmentId);
       }
     }
 
@@ -2082,7 +2093,7 @@ export async function syncDailyAssessmentAtomic(assessmentId: string, preValidat
         operating_systems.length === 0 && equipment_checks.length === 0 && 
         structure_checks.length === 0 && environment_checks.length === 0;
       
-      if (serverHasChildData && localIsCompletelyEmpty) {
+      if (serverHasChildData && localIsCompletelyEmpty && !wasClearedAfterLastSync(assessment)) {
         console.warn('[SAFETY] empty_local_guard: assessment server has child data but local is empty', {
           assessmentId,
           serverCounts: {
@@ -2280,6 +2291,8 @@ export async function syncDailyAssessmentAtomic(assessmentId: string, preValidat
       ...assessment,
       synced_at: serverTimestamp,
       updated_at: serverTimestamp,
+      // S9: clear marker post-sync.
+      user_cleared_at: null,
       inspector: inspectorProfile || { first_name: null, last_name: null, avatar_url: null },
     });
     
