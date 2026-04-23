@@ -353,6 +353,7 @@ export async function syncPhotos(signal?: AbortSignal): Promise<{ remaining: num
               console.error('[Sync Manager] Permanent DB insert error for photo:', photo.id, cls.message);
               await setPhotoLastError(photo.id, cls.message);
               await incrementPhotoRetryCount(photo.id);
+              changedCount++;
               return;
             }
           }
