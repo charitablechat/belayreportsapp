@@ -93,6 +93,16 @@ export function HtmlReportViewer({
 
         {/* Report Content */}
         <div className="flex-1 min-h-0 overflow-hidden">
+          {/*
+            L7: sandbox is intentionally restrictive.
+            - "allow-same-origin" lets the iframe access its own srcDoc origin
+              for image/font loading, BUT without "allow-scripts" it cannot
+              execute JS. This is MORE restrictive than adding scripts, not less.
+            - "allow-modals" only permits alert/confirm dialogs from print previews.
+            Do NOT remove "allow-same-origin" thinking it's a security upgrade —
+            without "allow-scripts" present, this combination blocks all script
+            execution while still letting the report render correctly.
+          */}
           <iframe
             ref={iframeRef}
             srcDoc={enhancedHtml}

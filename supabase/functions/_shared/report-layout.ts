@@ -40,7 +40,10 @@ export async function getLogoBase64(): Promise<{ropeWorks: string, acct: string}
     return cachedLogos;
   }
 
-  const storageBaseUrl = 'https://ssgzcgvygnsrqalisshx.supabase.co/storage/v1/object/public/pdf-templates';
+  // L4 / PDF logos: derive base URL from env so a project-ref rotation doesn't
+  // silently break PDF logo rendering.
+  const supabaseUrl = Deno.env.get('SUPABASE_URL') ?? 'https://ssgzcgvygnsrqalisshx.supabase.co';
+  const storageBaseUrl = `${supabaseUrl}/storage/v1/object/public/pdf-templates`;
   const ropeWorksUrl = `${storageBaseUrl}/rope-works-logo-embedded.png`;
   const acctUrl = `${storageBaseUrl}/acct-logo-embedded.png`;
   

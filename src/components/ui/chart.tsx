@@ -66,6 +66,11 @@ const ChartStyle = ({ id, config }: { id: string; config: ChartConfig }) => {
   }
 
   return (
+    // L6: dangerouslySetInnerHTML is safe here. The CSS string is built entirely
+    // from internal constants: a static THEMES map, the caller-supplied numeric
+    // chart `id`, and theme-driven CSS color values from the chart config.
+    // No user-supplied input ever crosses into this <style> block, so a DOM
+    // (HTML) sanitizer like DOMPurify would not apply — it sanitizes HTML, not CSS.
     <style
       dangerouslySetInnerHTML={{
         __html: Object.entries(THEMES)
