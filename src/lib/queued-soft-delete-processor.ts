@@ -121,11 +121,18 @@ export async function processQueuedSoftDeletes(signal?: AbortSignal): Promise<So
     for (const op of inspOps) {
       if (signal?.aborted) return result;
       if (!isSoftDeleteOp(op)) continue;
-      const table = resolveTable(op.data);
-      if (!table) continue;
+      const table: TableName = 'inspections';
 
       const recordId = op.inspectionId || op.data?.id;
-      if (!recordId) continue;
+      if (!recordId || !op.data?.deleted_at) {
+        console.warn('[QueuedSoftDelete] Skipping malformed inspection op (missing id or deleted_at):', {
+          opId: op.id,
+          hasData: !!op.data,
+          hasId: !!recordId,
+          hasDeletedAt: !!op.data?.deleted_at,
+        });
+        continue;
+      }
 
       try {
         const { error } = await supabase
