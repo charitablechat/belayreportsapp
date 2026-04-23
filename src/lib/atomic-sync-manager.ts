@@ -2495,6 +2495,7 @@ export async function syncDailyAssessmentAtomic(assessmentId: string, preValidat
 
     // Step 2: RECONCILE then UPSERT child data
     // Delete server rows that were removed locally, then upsert current local data
+    let assessmentReconciledDeletes: ReconciledTableDelete[] = [];
     if (recordStatus?.record_exists && !recordStatus?.is_deleted) {
       const pf = (arr: any[]) => (serverUnchangedSinceBaseline ? undefined : arr);
       const reconcileResult = await reconcileAllChildTables(
@@ -2510,6 +2511,8 @@ export async function syncDailyAssessmentAtomic(assessmentId: string, preValidat
         'daily_assessment',
         user.id,
       );
+      // C4: capture per-table pre-images for restore-on-failure.
+      assessmentReconciledDeletes = reconcileResult.deletedByTable;
       if (reconcileResult.blocked) {
         console.warn('[Atomic Sync] Daily assessment reconcile blocked — marking sync as failed so user can retry', {
           assessmentId: assessmentId.substring(0, 8),
