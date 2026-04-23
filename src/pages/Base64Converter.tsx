@@ -1,10 +1,12 @@
 import { useState, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import { toast } from 'sonner';
+import { useRequireAdmin } from '@/hooks/useRequireAdmin';
 import ropeWorksLogo from '@/assets/rope-works-logo-final.png';
 import acctLogo from '@/assets/acct-logo-final.png';
 
 const Base64Converter = () => {
+  const { isAdmin, loading: adminLoading } = useRequireAdmin();
   const [ropeWorksBase64, setRopeWorksBase64] = useState<string>('');
   const [acctBase64, setAcctBase64] = useState<string>('');
   const [loading, setLoading] = useState(true);
@@ -46,6 +48,9 @@ const Base64Converter = () => {
       toast.error('Failed to copy to clipboard');
     });
   };
+
+  if (adminLoading) return null;
+  if (!isAdmin) return null;
 
   return (
     <div className="container mx-auto p-8">
