@@ -4,10 +4,12 @@ import { assertSafeToDeleteChildRows } from "./child-row-deletion-tripwire";
 /**
  * Reconcile child table rows: delete server rows not present locally,
  * then log the deletions for audit/recovery.
- * 
- * This is the core fix for "deleted rows reappear after sync".
+ *
  * The approach: compare server IDs with local IDs, delete the difference,
  * and log deleted rows to report_deleted_items for recovery.
+ *
+ * Returns a structured status so callers can refuse to mark the parent
+ * synced when reconcile was blocked by a safety guard.
  */
 
 interface ReconcileOptions {
@@ -25,11 +27,18 @@ interface ReconcileOptions {
   expectedNonEmpty?: boolean;
 }
 
+export interface ReconcileResult {
+  deletedCount: number;
+  deletedRows: any[];
+  /** True when a safety guard or the final tripwire refused to perform the planned delete. */
+  blocked: boolean;
+  /** Short machine-readable reason when `blocked === true`. */
+  blockReason?: string;
+}
+
 /**
  * Delete server-side child rows that are no longer present in the local state,
  * and log them to report_deleted_items for audit/recovery.
- * 
- * Returns the rollback data (deleted rows) in case the caller needs to undo.
  */
 export async function reconcileChildTable({
   childTable,
@@ -40,7 +49,7 @@ export async function reconcileChildTable({
   userId,
   prefetchedServerRows,
   expectedNonEmpty,
-}: ReconcileOptions): Promise<{ deletedCount: number; deletedRows: any[] }> {
+}: ReconcileOptions): Promise<ReconcileResult> {
   // 1. Use pre-fetched rows if available, otherwise fetch from server
   let serverRows: any[];
   if (prefetchedServerRows !== undefined) {
@@ -53,13 +62,13 @@ export async function reconcileChildTable({
 
     if (fetchError) {
       console.error(`[Reconcile] Failed to fetch ${childTable}:`, fetchError);
-      return { deletedCount: 0, deletedRows: [] };
+      return { deletedCount: 0, deletedRows: [], blocked: true, blockReason: 'fetch_failed' };
     }
     serverRows = data || [];
   }
 
   if (serverRows.length === 0) {
-    return { deletedCount: 0, deletedRows: [] };
+    return { deletedCount: 0, deletedRows: [], blocked: false };
   }
 
   // 2. Build set of local IDs (only real UUIDs, not temp-)
@@ -72,38 +81,31 @@ export async function reconcileChildTable({
   const localCount = localItems.filter(i => i.id && !i.id.startsWith('temp-')).length;
   const serverCount = serverRows.length;
 
-  // V5: If caller couldn't confirm a successful IDB read AND local is empty, never prune.
+  // GUARD A: If the caller couldn't confirm a successful IDB read AND local is empty,
+  // never prune — this is almost certainly a fallback / timeout, not user intent.
   if (expectedNonEmpty === false && localCount === 0) {
-    console.warn(`[Reconcile] BLOCKED: ${childTable} local IDB read failed (expectedNonEmpty=false) -- preserving server data`);
-    return { deletedCount: 0, deletedRows: [] };
+    console.warn(`[Reconcile] BLOCKED: ${childTable} local IDB read failed and local is empty -- preserving server data`);
+    return { deletedCount: 0, deletedRows: [], blocked: true, blockReason: 'local_read_failed_and_empty' };
   }
 
-  // V4: 50% rule applies at any server size where serverCount >= 1
-  // (Previously only fired when serverCount > 2; small reports could still be wiped.)
-  if (serverCount >= 1 && localCount > 0 && localCount < serverCount * 0.5) {
-    console.warn(`[Reconcile] BLOCKED: ${childTable} local has ${localCount}/${serverCount} rows (<50%) -- possible partial read or foreign-device sync window, preserving server data`);
-    return { deletedCount: 0, deletedRows: [] };
+  // GUARD B: Local has zero non-temp items but server has data, AND we don't have
+  // an explicit confirmation that the read succeeded. Treat as suspicious empty.
+  // When expectedNonEmpty === true, the caller is explicitly saying "I read it,
+  // user emptied this section" — honor that and let the delete proceed.
+  if (expectedNonEmpty !== true && localCount === 0 && serverCount > 0) {
+    console.warn(`[Reconcile] BLOCKED: ${childTable} local empty but server has ${serverCount}; read status unknown -- preserving server data`);
+    return { deletedCount: 0, deletedRows: [], blocked: true, blockReason: 'local_empty_unconfirmed' };
   }
 
-  // V4: Absolute-delta tripwire. Catches the case where local lost 3+ items
-  // in one read regardless of percentage (e.g. 5 -> 2 = 40% drop).
-  if (serverCount - localCount >= 3) {
-    console.warn(`[Reconcile] BLOCKED: ${childTable} server-local delta is ${serverCount - localCount} (>=3) -- preserving server data`);
-    return { deletedCount: 0, deletedRows: [] };
-  }
+  // (Removed: V4 50% rule and V4 absolute-delta-of-3 rule.
+  //  Both blocked legitimate user deletions and were causing "deleted rows reappear".
+  //  The final tripwire below + per-read expectedNonEmpty flag now provide safety.)
 
-  // V3 extra guard: if local has zero non-temp items but server has data, never prune.
-  // This prevents wiping a freshly-loaded device that hasn't yet rendered local children.
-  if (localCount === 0 && serverCount > 0) {
-    console.warn(`[Reconcile] BLOCKED: ${childTable} local has 0 items but server has ${serverCount} -- preserving server data`);
-    return { deletedCount: 0, deletedRows: [] };
-  }
-
-  // 4. Find server rows not in local state (these were deleted by user)
+  // 3. Find server rows not in local state (these were deleted by user)
   const rowsToDelete = serverRows.filter((row: any) => !localIdSet.has(row.id));
 
   if (rowsToDelete.length === 0) {
-    return { deletedCount: 0, deletedRows: [] };
+    return { deletedCount: 0, deletedRows: [], blocked: false };
   }
 
   console.log(`[Reconcile] ${childTable}: ${rowsToDelete.length} rows to delete for ${parentId.substring(0, 8)}...`);
@@ -120,7 +122,7 @@ export async function reconcileChildTable({
     context: { source: 'reconcileChildTable', reportType, userId },
   });
   if (!tripwire.allowed) {
-    return { deletedCount: 0, deletedRows: [] };
+    return { deletedCount: 0, deletedRows: [], blocked: true, blockReason: 'tripwire_refused' };
   }
 
   const { error: deleteError } = await (supabase as any)
@@ -130,7 +132,7 @@ export async function reconcileChildTable({
 
   if (deleteError) {
     console.error(`[Reconcile] Failed to delete from ${childTable}:`, deleteError);
-    return { deletedCount: 0, deletedRows: [] };
+    return { deletedCount: 0, deletedRows: [], blocked: true, blockReason: 'delete_error' };
   }
 
   // 5. Log deletions to audit table (fire-and-forget, don't block sync)
@@ -154,12 +156,19 @@ export async function reconcileChildTable({
     console.warn(`[Reconcile] Audit logging failed for ${childTable}:`, auditError);
   }
 
-  return { deletedCount: rowsToDelete.length, deletedRows: rowsToDelete };
+  return { deletedCount: rowsToDelete.length, deletedRows: rowsToDelete, blocked: false };
+}
+
+export interface ReconcileAllResult {
+  totalDeleted: number;
+  blocked: boolean;
+  blockedTables: Array<{ table: string; reason: string }>;
 }
 
 /**
  * Reconcile multiple child tables for a report in parallel.
- * Returns total count of deleted rows across all tables.
+ * Returns total count of deleted rows across all tables AND whether any
+ * table's reconciliation was blocked by a safety guard.
  */
 export async function reconcileAllChildTables(
   tables: Array<{
@@ -172,25 +181,38 @@ export async function reconcileAllChildTables(
   parentId: string,
   reportType: 'inspection' | 'training' | 'daily_assessment',
   userId: string,
-): Promise<number> {
+): Promise<ReconcileAllResult> {
   const results = await Promise.all(
-    tables.map(t => reconcileChildTable({
-      childTable: t.childTable,
-      parentIdColumn: t.parentIdColumn,
-      parentId,
-      localItems: t.localItems,
-      reportType,
-      userId,
-      prefetchedServerRows: t.prefetchedServerRows,
-      expectedNonEmpty: t.expectedNonEmpty,
+    tables.map(async (t) => ({
+      table: t.childTable,
+      result: await reconcileChildTable({
+        childTable: t.childTable,
+        parentIdColumn: t.parentIdColumn,
+        parentId,
+        localItems: t.localItems,
+        reportType,
+        userId,
+        prefetchedServerRows: t.prefetchedServerRows,
+        expectedNonEmpty: t.expectedNonEmpty,
+      }),
     }))
   );
 
-  const totalDeleted = results.reduce((sum, r) => sum + r.deletedCount, 0);
-  
+  const totalDeleted = results.reduce((sum, r) => sum + r.result.deletedCount, 0);
+  const blockedTables = results
+    .filter(r => r.result.blocked)
+    .map(r => ({ table: r.table, reason: r.result.blockReason || 'unknown' }));
+
   if (totalDeleted > 0) {
     console.log(`[Reconcile] Total ${totalDeleted} orphaned rows deleted for ${reportType} ${parentId.substring(0, 8)}...`);
   }
+  if (blockedTables.length > 0) {
+    console.warn(`[Reconcile] ${blockedTables.length} table(s) blocked for ${reportType} ${parentId.substring(0, 8)}:`, blockedTables);
+  }
 
-  return totalDeleted;
+  return {
+    totalDeleted,
+    blocked: blockedTables.length > 0,
+    blockedTables,
+  };
 }

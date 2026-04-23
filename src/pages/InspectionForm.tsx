@@ -1528,27 +1528,27 @@ export default function InspectionForm() {
           saveInspectionOffline(inspectionToSave),
         ];
         if (systems.length > 0 || childDataLoadedRef.current.systems) {
-          childSaveOps.push(saveRelatedDataOffline('systems', id!, systems.map((s, i) => ({ ...s, display_order: i }))));
+          childSaveOps.push(saveRelatedDataOffline('systems', id!, systems.map((s, i) => ({ ...s, display_order: i })), { allowEmpty: true }));
         } else {
           console.warn('[InspectionForm Save] Skipping systems save — empty array not confirmed as loaded');
         }
         if (ziplines.length > 0 || childDataLoadedRef.current.ziplines) {
-          childSaveOps.push(saveRelatedDataOffline('ziplines', id!, ziplines.map((z, i) => ({ ...z, display_order: i }))));
+          childSaveOps.push(saveRelatedDataOffline('ziplines', id!, ziplines.map((z, i) => ({ ...z, display_order: i })), { allowEmpty: true }));
         } else {
           console.warn('[InspectionForm Save] Skipping ziplines save — empty array not confirmed as loaded');
         }
         if (equipment.length > 0 || childDataLoadedRef.current.equipment) {
-          childSaveOps.push(saveRelatedDataOffline('equipment', id!, equipment.map((e, i) => ({ ...e, display_order: i }))));
+          childSaveOps.push(saveRelatedDataOffline('equipment', id!, equipment.map((e, i) => ({ ...e, display_order: i })), { allowEmpty: true }));
         } else {
           console.warn('[InspectionForm Save] Skipping equipment save — empty array not confirmed as loaded');
         }
         if (standards.length > 0 || childDataLoadedRef.current.standards) {
-          childSaveOps.push(saveRelatedDataOffline('standards', id!, standards));
+          childSaveOps.push(saveRelatedDataOffline('standards', id!, standards, { allowEmpty: true }));
         } else {
           console.warn('[InspectionForm Save] Skipping standards save — empty array not confirmed as loaded');
         }
         if ([currentSummary].length > 0 || childDataLoadedRef.current.summary) {
-          childSaveOps.push(saveRelatedDataOffline('summary', id!, [currentSummary]));
+          childSaveOps.push(saveRelatedDataOffline('summary', id!, [currentSummary], { allowEmpty: true }));
         } else {
           console.warn('[InspectionForm Save] Skipping summary save — empty array not confirmed as loaded');
         }

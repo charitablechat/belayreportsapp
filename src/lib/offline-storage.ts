@@ -1763,21 +1763,34 @@ export async function getRelatedDataOffline(
 }
 
 /**
- * Status-aware variant: returns whether the IDB read truly succeeded.
- * `readSucceeded === false` means the value came from a fallback (timeout / circuit breaker / error)
- * and the caller should NOT treat an empty array as "user deleted everything".
+ * Status-aware variant: returns whether THIS specific read truly succeeded.
+ * Uses a local try/catch + timeout instead of diffing global counters, so a
+ * concurrent failing IDB call cannot poison this read's status flag.
  */
 export async function getRelatedDataOfflineWithStatus(
   type: RelatedDataType,
   inspectionId: string
 ): Promise<{ items: any[]; readSucceeded: boolean }> {
-  const failuresBefore = indexedDBFailureCount;
-  const cbOpenBefore = isCircuitBreakerOpen();
-  const items = await getRelatedDataOffline(type, inspectionId);
-  const failuresAfter = indexedDBFailureCount;
-  const cbOpenAfter = isCircuitBreakerOpen();
-  const readSucceeded = !cbOpenBefore && !cbOpenAfter && failuresAfter === failuresBefore;
-  return { items, readSucceeded };
+  // If the circuit breaker is already open, the read is guaranteed to be a fallback.
+  if (isCircuitBreakerOpen()) {
+    return { items: [], readSucceeded: false };
+  }
+  const READ_TIMEOUT_MS = 7000;
+  const TIMEOUT_SENTINEL: any = Symbol('with-status-timeout');
+  try {
+    const result = await Promise.race([
+      getRelatedDataOffline(type, inspectionId),
+      new Promise<any>((resolve) => setTimeout(() => resolve(TIMEOUT_SENTINEL), READ_TIMEOUT_MS)),
+    ]);
+    if (result === TIMEOUT_SENTINEL) {
+      console.warn(`[Offline Storage] getRelatedDataOfflineWithStatus(${type}) timed out — read marked unsuccessful`);
+      return { items: [], readSucceeded: false };
+    }
+    return { items: result || [], readSucceeded: true };
+  } catch (err) {
+    console.warn(`[Offline Storage] getRelatedDataOfflineWithStatus(${type}) failed:`, err);
+    return { items: [], readSucceeded: false };
+  }
 }
 
 export async function clearRelatedDataOffline(
@@ -2122,13 +2135,25 @@ export async function getAssessmentDataOfflineWithStatus(
   type: AssessmentDataType,
   assessmentId: string
 ): Promise<{ items: any[]; readSucceeded: boolean }> {
-  const failuresBefore = indexedDBFailureCount;
-  const cbOpenBefore = isCircuitBreakerOpen();
-  const items = await getAssessmentDataOffline(type, assessmentId);
-  const failuresAfter = indexedDBFailureCount;
-  const cbOpenAfter = isCircuitBreakerOpen();
-  const readSucceeded = !cbOpenBefore && !cbOpenAfter && failuresAfter === failuresBefore;
-  return { items, readSucceeded };
+  if (isCircuitBreakerOpen()) {
+    return { items: [], readSucceeded: false };
+  }
+  const READ_TIMEOUT_MS = 7000;
+  const TIMEOUT_SENTINEL: any = Symbol('with-status-timeout');
+  try {
+    const result = await Promise.race([
+      getAssessmentDataOffline(type, assessmentId),
+      new Promise<any>((resolve) => setTimeout(() => resolve(TIMEOUT_SENTINEL), READ_TIMEOUT_MS)),
+    ]);
+    if (result === TIMEOUT_SENTINEL) {
+      console.warn(`[Offline Storage] getAssessmentDataOfflineWithStatus(${type}) timed out — read marked unsuccessful`);
+      return { items: [], readSucceeded: false };
+    }
+    return { items: result || [], readSucceeded: true };
+  } catch (err) {
+    console.warn(`[Offline Storage] getAssessmentDataOfflineWithStatus(${type}) failed:`, err);
+    return { items: [], readSucceeded: false };
+  }
 }
 
 export async function clearAssessmentDataOffline(
@@ -2528,13 +2553,25 @@ export async function getTrainingDataOfflineWithStatus(
   type: TrainingDataType,
   trainingId: string
 ): Promise<{ items: any[]; readSucceeded: boolean }> {
-  const failuresBefore = indexedDBFailureCount;
-  const cbOpenBefore = isCircuitBreakerOpen();
-  const items = await getTrainingDataOffline(type, trainingId);
-  const failuresAfter = indexedDBFailureCount;
-  const cbOpenAfter = isCircuitBreakerOpen();
-  const readSucceeded = !cbOpenBefore && !cbOpenAfter && failuresAfter === failuresBefore;
-  return { items, readSucceeded };
+  if (isCircuitBreakerOpen()) {
+    return { items: [], readSucceeded: false };
+  }
+  const READ_TIMEOUT_MS = 7000;
+  const TIMEOUT_SENTINEL: any = Symbol('with-status-timeout');
+  try {
+    const result = await Promise.race([
+      getTrainingDataOffline(type, trainingId),
+      new Promise<any>((resolve) => setTimeout(() => resolve(TIMEOUT_SENTINEL), READ_TIMEOUT_MS)),
+    ]);
+    if (result === TIMEOUT_SENTINEL) {
+      console.warn(`[Offline Storage] getTrainingDataOfflineWithStatus(${type}) timed out — read marked unsuccessful`);
+      return { items: [], readSucceeded: false };
+    }
+    return { items: result || [], readSucceeded: true };
+  } catch (err) {
+    console.warn(`[Offline Storage] getTrainingDataOfflineWithStatus(${type}) failed:`, err);
+    return { items: [], readSucceeded: false };
+  }
 }
 
 export async function clearTrainingDataOffline(

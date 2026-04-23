@@ -770,7 +770,7 @@ export default function DailyAssessmentForm() {
       const childOps: Promise<any>[] = [];
       const guardedSave = (key: Parameters<typeof saveAssessmentDataOffline>[0], data: any[]) => {
         if (data.length > 0 || childDataLoadedRef.current[key]) {
-          childOps.push(saveAssessmentDataOffline(key, id!, data));
+          childOps.push(saveAssessmentDataOffline(key, id!, data, { allowEmpty: true }));
           } else {
             console.warn(`[DailyAssessment Save] Skipping ${key} save — empty array not confirmed as loaded`);
           }
