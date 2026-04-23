@@ -672,9 +672,39 @@ export async function getDB() {
     // DB_NAME and DB_VERSION shared with public/db-config.js for SW consistency
     const DB_NAME = 'rope-works-inspections';
     const DB_VERSION = 10;
+
+    // Phase 5 — Schema Migration Safety. Lazy-load to avoid circular imports
+    // and to keep the boot path resilient if this module ever fails to parse.
+    let migrationSafety: typeof import('./idb-migration-safety') | null = null;
+    try {
+      migrationSafety = await import('./idb-migration-safety');
+    } catch (err) {
+      console.warn('[Offline Storage] migration-safety unavailable:', err);
+    }
+
+    let upgradeStartTs = 0;
+    let upgradeFromVersion = 0;
+    let upgradeError: string | undefined;
+    let snapshotCreated = false;
+
     const openDBV8WithTimeout = async () => {
       return openDB<InspectionDB>(DB_NAME, DB_VERSION, {
+        async blocked() {
+          console.warn('[Offline Storage] DB upgrade blocked by another tab');
+        },
+        async blocking() {
+          console.warn('[Offline Storage] This tab is blocking a newer DB version');
+        },
         upgrade(db, oldVersion, newVersion, transaction) {
+          upgradeStartTs = Date.now();
+          upgradeFromVersion = oldVersion;
+          if (import.meta.env.DEV) {
+            console.log(`[Offline Storage] Upgrade v${oldVersion} → v${newVersion}`);
+          }
+          // Best-effort audit (fire-and-forget; we cannot await inside upgrade).
+          try {
+            migrationSafety?.recordMigrationStarted(DB_NAME, oldVersion, newVersion ?? DB_VERSION);
+          } catch { /* ignore */ }
           // === All existing v6 upgrade logic ===
           let inspectionStore;
           
@@ -824,6 +854,27 @@ export async function getDB() {
       });
     };
 
+    // Phase 5 — pre-flight snapshot when an actual version bump is coming.
+    // We detect the existing version by opening with no upgrade hook first.
+    try {
+      if (migrationSafety) {
+        let existingVersion = 0;
+        try {
+          const probe = await openDB(DB_NAME);
+          existingVersion = probe.version;
+          probe.close();
+        } catch { /* fresh install */ }
+        if (existingVersion > 0 && existingVersion < DB_VERSION) {
+          const snap = await migrationSafety.createPreMigrationSnapshot(DB_NAME, existingVersion, DB_VERSION);
+          snapshotCreated = !!snap.ok;
+        }
+        // Always prune old snapshots to keep storage bounded.
+        migrationSafety.pruneOldSnapshots().catch(() => {});
+      }
+    } catch (err) {
+      console.warn('[Offline Storage] pre-migration snapshot failed:', err);
+    }
+
     // RC-3: Use 8s timeout on mobile (Safari bfcache restore + iPad cold boot can take 5-6s)
     const DB_OPEN_TIMEOUT = isMobile() ? 8000 : 5000;
     dbPromise = Promise.race([
@@ -834,8 +885,62 @@ export async function getDB() {
           reject(new Error('IndexedDB open timed out'));
         }, DB_OPEN_TIMEOUT)
       )
-    ]).catch(error => {
+    ]).then(async (db) => {
+      // Phase 5 — post-upgrade fingerprint validation.
+      if (upgradeStartTs > 0 && migrationSafety) {
+        try {
+          const expected = [
+            { storeName: 'inspections', indexes: ['by-status', 'by-synced'] },
+            { storeName: 'operations' },
+            { storeName: 'photos', indexes: ['by-inspection', 'by-uploaded'] },
+            { storeName: 'inspection_systems', indexes: ['by-inspection'] },
+            { storeName: 'inspection_ziplines', indexes: ['by-inspection'] },
+            { storeName: 'inspection_equipment', indexes: ['by-inspection'] },
+            { storeName: 'inspection_standards', indexes: ['by-inspection'] },
+            { storeName: 'inspection_summary', indexes: ['by-inspection'] },
+            { storeName: 'daily_assessments', indexes: ['by-status', 'by-synced'] },
+            { storeName: 'trainings', indexes: ['by-status', 'by-synced'] },
+            { storeName: 'report_backups', indexes: ['by-report', 'by-timestamp'] },
+            { storeName: 'report_versions', indexes: ['by-report', 'by-timestamp', 'by-report-version'] },
+            { storeName: 'autocomplete_history', indexes: ['by-field-type', 'by-synced'] },
+            { storeName: 'equipment_type_cache', indexes: ['by-category'] },
+          ];
+          const fp = await migrationSafety.validateSchemaFingerprint(db as any, expected);
+          await migrationSafety.recordMigrationOutcome({
+            dbName: DB_NAME,
+            fromVersion: upgradeFromVersion,
+            toVersion: DB_VERSION,
+            ok: true,
+            durationMs: Date.now() - upgradeStartTs,
+            fingerprintMissing: fp.ok ? undefined : fp.missing,
+          });
+          if (!fp.ok && import.meta.env.DEV) {
+            console.warn('[Offline Storage] Post-upgrade fingerprint mismatch:', fp.missing);
+          }
+        } catch (err) {
+          console.warn('[Offline Storage] post-upgrade validation failed:', err);
+        }
+      }
+      return db;
+    }).catch(error => {
       console.error('[Offline Storage] Failed to open IndexedDB:', error);
+      // Phase 5 — record the failure so the recovery UI can offer rollback.
+      if (upgradeStartTs > 0 && migrationSafety) {
+        upgradeError = (error as any)?.message || String(error);
+        migrationSafety.recordMigrationOutcome({
+          dbName: DB_NAME,
+          fromVersion: upgradeFromVersion,
+          toVersion: DB_VERSION,
+          ok: false,
+          durationMs: Date.now() - upgradeStartTs,
+          error: upgradeError,
+        }).catch(() => {});
+      }
+      if (snapshotCreated) {
+        try {
+          localStorage.setItem('idb-migration-rollback-available', '1');
+        } catch { /* ignore */ }
+      }
       dbPromise = null; // Reset so next attempt can retry
       throw error;
     });
