@@ -841,7 +841,7 @@ export async function getDB() {
     // Version 8: Add report_versions store for append-only versioning
     // DB_NAME and DB_VERSION shared with public/db-config.js for SW consistency
     const DB_NAME = 'rope-works-inspections';
-    const DB_VERSION = 12;
+    const DB_VERSION = 13;
 
     // Phase 5 — Schema Migration Safety. Lazy-load to avoid circular imports
     // and to keep the boot path resilient if this module ever fails to parse.
@@ -1037,6 +1037,17 @@ export async function getDB() {
             (db as any).createObjectStore('dead_letter_soft_deletes', { keyPath: 'id' });
             if (import.meta.env.DEV) {
               console.log('[Offline Storage] Created dead_letter_soft_deletes store (v12 upgrade)');
+            }
+          }
+          // === NEW in v13: sync_empty_local_conflicts store (C2) ===
+          // Holds parent records where the empty-local-guard tripped — server has
+          // child data but local cache is empty and the user_cleared_at marker
+          // wasn't stamped. Surfaced in SyncDiagnosticsSheet for user resolution
+          // instead of silently restoring server data.
+          if (!db.objectStoreNames.contains('sync_empty_local_conflicts' as any)) {
+            (db as any).createObjectStore('sync_empty_local_conflicts', { keyPath: 'id' });
+            if (import.meta.env.DEV) {
+              console.log('[Offline Storage] Created sync_empty_local_conflicts store (v13 upgrade)');
             }
           }
         },

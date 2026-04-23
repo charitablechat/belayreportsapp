@@ -1,13 +1,13 @@
 import { useEffect, useState } from 'react';
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle, SheetTrigger } from '@/components/ui/sheet';
 import { Button } from '@/components/ui/button';
-import { Activity, RefreshCw, Trash2, X } from 'lucide-react';
+import { Activity, RefreshCw, Trash2, X, AlertTriangle } from 'lucide-react';
 import { usePWA } from '@/hooks/usePWA';
 import { ForceSyncButton } from '@/components/pwa/ForceSyncButton';
 import { getMobileCapabilities, checkStorageQuota } from '@/lib/mobile-detection';
 import { isServiceWorkerAllowed } from '@/lib/environment';
 import { getRecentTripwireBlockCount } from '@/lib/child-row-deletion-tripwire';
-import { format } from 'date-fns';
+import { format, formatDistanceToNow } from 'date-fns';
 import { toast } from 'sonner';
 import { useUnsyncedPhotos, type DeadLetterPhotoInfo } from '@/hooks/useUnsyncedPhotos';
 import {
@@ -27,7 +27,20 @@ import {
   getOfflineInspection,
   getOfflineTraining,
   getOfflineDailyAssessment,
+  saveInspectionOffline,
+  saveTrainingOffline,
+  saveDailyAssessmentOffline,
+  saveRelatedDataOffline,
+  saveTrainingDataOffline,
+  saveAssessmentDataOffline,
 } from '@/lib/offline-storage';
+import {
+  listEmptyLocalConflicts,
+  clearEmptyLocalConflict,
+  type EmptyLocalConflictEntry,
+} from '@/lib/empty-local-conflict-store';
+import { markUserCleared } from '@/lib/clear-intent';
+import { supabase } from '@/integrations/supabase/client';
 
 interface DiagnosticsState {
   swRegistered: boolean;
@@ -66,6 +79,8 @@ export const SyncDiagnosticsSheet = () => {
   const [busyDeadLetterId, setBusyDeadLetterId] = useState<string | null>(null);
   const [busyHeldBackId, setBusyHeldBackId] = useState<string | null>(null);
   const [heldBackLabels, setHeldBackLabels] = useState<Record<string, string>>({});
+  const [emptyLocalConflicts, setEmptyLocalConflicts] = useState<EmptyLocalConflictEntry[]>([]);
+  const [busyConflictId, setBusyConflictId] = useState<string | null>(null);
   const [diag, setDiag] = useState<DiagnosticsState>({
     swRegistered: false,
     swController: false,
@@ -94,6 +109,8 @@ export const SyncDiagnosticsSheet = () => {
     const tripwireBlocks24h = await getRecentTripwireBlockCount(24).catch(() => 0);
     const dlDeletes = await getDeadLetterSoftDeletes().catch(() => []);
     setDeadLetterDeletes(dlDeletes);
+    const conflicts = await listEmptyLocalConflicts().catch(() => [] as EmptyLocalConflictEntry[]);
+    setEmptyLocalConflicts(conflicts);
     setDiag({
       swRegistered,
       swController,
@@ -312,6 +329,74 @@ export const SyncDiagnosticsSheet = () => {
                         toast.success('Counter reset');
                       } finally {
                         setBusyHeldBackId(null);
+                      }
+                    }}
+                  />
+                ))}
+              </div>
+            </div>
+          )}
+
+          {emptyLocalConflicts.length > 0 && (
+            <div>
+              <h3 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-2 flex items-center gap-1.5">
+                <AlertTriangle className="h-3.5 w-3.5 text-warning" />
+                Empty-Local Conflicts ({emptyLocalConflicts.length})
+              </h3>
+              <p className="text-xs text-muted-foreground mb-2">
+                Local cache is empty for these reports but the server has data.
+                Sync is paused until you choose how to resolve.
+              </p>
+              <div className="rounded-md border border-border divide-y divide-border">
+                {emptyLocalConflicts.map((entry) => (
+                  <EmptyLocalConflictRow
+                    key={entry.id}
+                    entry={entry}
+                    busy={busyConflictId === entry.id}
+                    onRestoreFromServer={async () => {
+                      setBusyConflictId(entry.id);
+                      try {
+                        await restoreEmptyLocalFromServer(entry);
+                        await clearEmptyLocalConflict(entry.id);
+                        await refresh();
+                        toast.success('Server data restored to this device');
+                      } catch (err) {
+                        console.error('[C2] restore failed:', err);
+                        toast.error('Could not restore from server');
+                      } finally {
+                        setBusyConflictId(null);
+                      }
+                    }}
+                    onConfirmLocalEmpty={async () => {
+                      if (
+                        !confirm(
+                          'Confirm this report should be empty? On the next sync, the matching rows on the server will be deleted.',
+                        )
+                      ) {
+                        return;
+                      }
+                      setBusyConflictId(entry.id);
+                      try {
+                        await confirmEmptyLocal(entry);
+                        await clearEmptyLocalConflict(entry.id);
+                        await refresh();
+                        await forceSync();
+                        toast.success('Marked empty — sync will clear server rows');
+                      } catch (err) {
+                        console.error('[C2] confirm-empty failed:', err);
+                        toast.error('Could not confirm empty');
+                      } finally {
+                        setBusyConflictId(null);
+                      }
+                    }}
+                    onDismiss={async () => {
+                      setBusyConflictId(entry.id);
+                      try {
+                        await clearEmptyLocalConflict(entry.id);
+                        await refresh();
+                        toast('Conflict dismissed');
+                      } finally {
+                        setBusyConflictId(null);
                       }
                     }}
                   />
@@ -539,6 +624,187 @@ const HeldBackRow = ({
             Reset
           </Button>
         </div>
+      </div>
+    </div>
+  );
+};
+
+// ─── C2: Empty-Local-Conflict resolvers ────────────────────────────────────
+//
+// Three actions are exposed in the diagnostics sheet:
+//   • Restore from server   — pulls server children into IDB (the prior auto-
+//                              behavior, now opt-in).
+//   • Confirm local empty   — stamps `user_cleared_at` so the next sync deletes
+//                              server rows via the normal reconcile path.
+//   • Dismiss               — just removes the conflict entry.
+
+type ChildSection = { table: string; column: string };
+
+const SECTIONS_BY_TYPE: Record<EmptyLocalConflictEntry['reportType'], ChildSection[]> = {
+  inspection: [
+    { table: 'inspection_systems', column: 'inspection_id' },
+    { table: 'inspection_ziplines', column: 'inspection_id' },
+    { table: 'inspection_equipment', column: 'inspection_id' },
+    { table: 'inspection_standards', column: 'inspection_id' },
+    { table: 'inspection_summary', column: 'inspection_id' },
+  ],
+  training: [
+    { table: 'training_delivery_approaches', column: 'training_id' },
+    { table: 'training_operating_systems', column: 'training_id' },
+    { table: 'training_immediate_attention', column: 'training_id' },
+    { table: 'training_verifiable_items', column: 'training_id' },
+    { table: 'training_systems_in_place', column: 'training_id' },
+    { table: 'training_summary', column: 'training_id' },
+  ],
+  daily_assessment: [
+    { table: 'daily_assessment_beginning_of_day', column: 'assessment_id' },
+    { table: 'daily_assessment_end_of_day', column: 'assessment_id' },
+    { table: 'daily_assessment_operating_systems', column: 'assessment_id' },
+    { table: 'daily_assessment_equipment_checks', column: 'assessment_id' },
+    { table: 'daily_assessment_structure_checks', column: 'assessment_id' },
+    { table: 'daily_assessment_environment_checks', column: 'assessment_id' },
+  ],
+};
+
+// inspection_systems -> 'systems', training_delivery_approaches -> 'delivery_approaches', etc.
+function offlineSectionKey(reportType: EmptyLocalConflictEntry['reportType'], table: string): string {
+  if (reportType === 'inspection') return table.replace(/^inspection_/, '');
+  if (reportType === 'training') return table.replace(/^training_/, '');
+  return table.replace(/^daily_assessment_/, '');
+}
+
+async function restoreEmptyLocalFromServer(entry: EmptyLocalConflictEntry): Promise<void> {
+  const sections = SECTIONS_BY_TYPE[entry.reportType];
+  // Pull each section from server in parallel.
+  const fetched = await Promise.all(
+    sections.map(async (s) => {
+      const { data, error } = await supabase
+        .from(s.table as any)
+        .select('*')
+        .eq(s.column, entry.id);
+      if (error) throw error;
+      return { section: offlineSectionKey(entry.reportType, s.table), rows: data || [] };
+    }),
+  );
+
+  // Persist into the appropriate local store.
+  await Promise.all(
+    fetched.map(({ section, rows }) => {
+      if (rows.length === 0) return Promise.resolve();
+      if (entry.reportType === 'inspection') {
+        return saveRelatedDataOffline(section as any, entry.id, rows);
+      }
+      if (entry.reportType === 'training') {
+        return saveTrainingDataOffline(section as any, entry.id, rows);
+      }
+      return saveAssessmentDataOffline(section as any, entry.id, rows);
+    }),
+  );
+
+  // Re-align parent timestamps so it stops appearing as unsynced.
+  const aligned = new Date().toISOString();
+  if (entry.reportType === 'inspection') {
+    const parent = await getOfflineInspection(entry.id);
+    if (parent) {
+      await saveInspectionOffline({ ...parent, synced_at: aligned, updated_at: aligned } as any);
+    }
+  } else if (entry.reportType === 'training') {
+    const parent = await getOfflineTraining(entry.id);
+    if (parent) {
+      await saveTrainingOffline({ ...parent, synced_at: aligned, updated_at: aligned } as any);
+    }
+  } else {
+    const parent = await getOfflineDailyAssessment(entry.id);
+    if (parent) {
+      await saveDailyAssessmentOffline({ ...parent, synced_at: aligned, updated_at: aligned } as any);
+    }
+  }
+}
+
+async function confirmEmptyLocal(entry: EmptyLocalConflictEntry): Promise<void> {
+  if (entry.reportType === 'inspection') {
+    const parent = await getOfflineInspection(entry.id);
+    if (!parent) throw new Error('Local inspection not found');
+    await saveInspectionOffline(markUserCleared(parent as any) as any);
+  } else if (entry.reportType === 'training') {
+    const parent = await getOfflineTraining(entry.id);
+    if (!parent) throw new Error('Local training not found');
+    await saveTrainingOffline(markUserCleared(parent as any) as any);
+  } else {
+    const parent = await getOfflineDailyAssessment(entry.id);
+    if (!parent) throw new Error('Local assessment not found');
+    await saveDailyAssessmentOffline(markUserCleared(parent as any) as any);
+  }
+}
+
+const REPORT_TYPE_LABEL: Record<EmptyLocalConflictEntry['reportType'], string> = {
+  inspection: 'Inspection',
+  training: 'Training',
+  daily_assessment: 'Daily Assessment',
+};
+
+const EmptyLocalConflictRow = ({
+  entry,
+  busy,
+  onRestoreFromServer,
+  onConfirmLocalEmpty,
+  onDismiss,
+}: {
+  entry: EmptyLocalConflictEntry;
+  busy: boolean;
+  onRestoreFromServer: () => void;
+  onConfirmLocalEmpty: () => void;
+  onDismiss: () => void;
+}) => {
+  const title =
+    entry.organizationLabel?.trim() || `${REPORT_TYPE_LABEL[entry.reportType]} ${entry.id.substring(0, 8)}`;
+  const sectionSummary = Object.entries(entry.serverCounts)
+    .filter(([, count]) => count > 0)
+    .map(([key, count]) => `${count} ${key}`)
+    .join(', ');
+  return (
+    <div className="flex flex-col gap-2 px-3 py-2">
+      <div className="min-w-0">
+        <div className="text-xs font-medium text-foreground truncate">
+          {title} <span className="text-muted-foreground">— {REPORT_TYPE_LABEL[entry.reportType]}</span>
+        </div>
+        <div className="text-xs text-muted-foreground mt-0.5">
+          Server has {sectionSummary || 'data'}.
+        </div>
+        <div className="text-xs text-muted-foreground">
+          Detected {formatDistanceToNow(new Date(entry.detectedAt), { addSuffix: true })}.
+        </div>
+      </div>
+      <div className="flex flex-wrap gap-1.5">
+        <Button
+          size="sm"
+          variant="outline"
+          onClick={onRestoreFromServer}
+          disabled={busy}
+          className="h-7 px-2"
+        >
+          <RefreshCw className="h-3 w-3 mr-1" />
+          Restore from server
+        </Button>
+        <Button
+          size="sm"
+          variant="outline"
+          onClick={onConfirmLocalEmpty}
+          disabled={busy}
+          className="h-7 px-2 text-destructive hover:text-destructive"
+        >
+          Confirm local empty
+        </Button>
+        <Button
+          size="sm"
+          variant="ghost"
+          onClick={onDismiss}
+          disabled={busy}
+          className="h-7 px-2"
+        >
+          <X className="h-3 w-3 mr-1" />
+          Dismiss
+        </Button>
       </div>
     </div>
   );
