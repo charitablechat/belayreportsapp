@@ -36,7 +36,6 @@ import PhotoGallery from "@/components/PhotoGallery";
 import {
   saveInspectionOffline, 
   getOfflineInspection, 
-  queueOperation,
   saveRelatedDataOffline,
   getRelatedDataOffline,
   getOfflinePhotos
@@ -1949,16 +1948,10 @@ export default function InspectionForm() {
           console.error('[InspectionForm Sync] Failed after retries:', error);
           // Use "Pending sync" instead of error - less alarming, auto-retry handles it
           setSaveError('pending_sync');
-          // Queue for later sync
-          try {
-            await Promise.race([
-              queueOperation('update', id!, saveData),
-              new Promise((_, reject) => setTimeout(() => reject(new Error('Queue timeout')), 5000)),
-            ]);
-          } catch (queueErr) {
-            console.warn('[InspectionForm] Queue operation failed/timed out:', queueErr);
-          }
-          console.log('[InspectionForm Sync] Queued for later sync');
+          // H5: No queueOperation call — IDB drift (updated_at > synced_at from
+          // the earlier saveInspectionOffline) is the sole sync trigger.
+          // useAutoSync's next cycle will pick this up via getUnsyncedInspections.
+          console.log('[InspectionForm Sync] Sync failed — IDB drift will trigger retry on next auto-sync cycle');
           
           // If local save ALSO failed, warn the user urgently
           if (!localSaveSucceeded) {
@@ -1982,16 +1975,10 @@ export default function InspectionForm() {
           }
         }
       } else {
-        // Queue operation when offline
-        try {
-          await Promise.race([
-            queueOperation('update', id!, saveData),
-            new Promise((_, reject) => setTimeout(() => reject(new Error('Queue timeout')), 5000)),
-          ]);
-        } catch (queueErr) {
-          console.warn('[InspectionForm] Queue operation failed/timed out:', queueErr);
-        }
-        console.log('[InspectionForm Sync] Queued for sync when online');
+        // H5: Offline — no queueOperation call. The earlier saveInspectionOffline
+        // already set updated_at > synced_at; useAutoSync will detect this drift
+        // and sync via syncInspectionAtomic when the device comes back online.
+        console.log('[InspectionForm Sync] Offline — IDB drift will trigger sync when online');
       }
     } catch (error: any) {
       console.error('[InspectionForm] Save error:', error);
@@ -2199,17 +2186,11 @@ export default function InspectionForm() {
           console.log('[InspectionForm] Inspection completed online');
         }
       } else {
-        // Save completion offline
+        // Save completion offline. H5: no queueOperation — saveInspectionOffline
+        // bumps updated_at and useAutoSync's IDB drift check will sync it on
+        // the next online cycle via syncInspectionAtomic.
         const updatedInspection = { ...inspection, ...updatePayload };
         await saveInspectionOffline(updatedInspection);
-        try {
-          await Promise.race([
-            queueOperation('update', id!, updatedInspection),
-            new Promise((_, reject) => setTimeout(() => reject(new Error('Queue timeout')), 5000)),
-          ]);
-        } catch (queueErr) {
-          console.warn('[InspectionForm] Queue operation failed/timed out:', queueErr);
-        }
         
         // Update local state to reflect completion
         setInspection(updatedInspection);
