@@ -849,9 +849,11 @@ export default function TrainingForm() {
           const parallelOps: Promise<void>[] = [];
 
           // RECONCILE: Delete server rows removed locally before upserting
+          // C4: capture pre-images for restore-on-failure.
+          let trainingReconciledDeletes: ReconciledTableDelete[] = [];
           const user = await getUserWithCache();
           if (user) {
-            await reconcileAllChildTables(
+            const reconcileResult = await reconcileAllChildTables(
               [
                 { childTable: 'training_delivery_approaches', parentIdColumn: 'training_id', localItems: deliveryApproaches },
                 { childTable: 'training_operating_systems', parentIdColumn: 'training_id', localItems: operatingSystems },
@@ -864,6 +866,7 @@ export default function TrainingForm() {
               'training',
               user.id,
             );
+            trainingReconciledDeletes = reconcileResult.deletedByTable;
           }
           
           // Helper to convert PromiseLike to proper Promise
