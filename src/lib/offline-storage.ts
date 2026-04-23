@@ -2122,6 +2122,10 @@ export async function saveRelatedDataOffline(
       if (import.meta.env.DEV) {
         console.log(`[Offline Storage] Saved ${type}:`, data.length, 'items');
       }
+
+      // S30: Recompute child_count_hint on the parent only when children mutate.
+      // Fire-and-forget; never block the child save.
+      void recomputeInspectionChildCountHint(db, inspectionId, type, data.length);
     },
     undefined,
     `saveRelatedDataOffline:${type}`
@@ -2465,6 +2469,9 @@ export async function saveAssessmentDataOffline(
       if (import.meta.env.DEV) {
         console.log(`[Offline Storage] Saved assessment ${type}:`, data.length, 'items');
       }
+
+      // S30: Recompute child_count_hint on the parent (fire-and-forget).
+      void recomputeAssessmentChildCountHint(db, assessmentId, type, data.length);
     },
     undefined,
     `saveAssessmentDataOffline:${type}`
@@ -2859,6 +2866,9 @@ export async function saveTrainingDataOffline(
       if (import.meta.env.DEV) {
         console.log(`[Offline Storage] Saved training ${type}:`, items.length, 'items');
       }
+
+      // S30: Recompute child_count_hint on the parent (fire-and-forget).
+      void recomputeTrainingChildCountHint(db, trainingId, type, items.length);
     },
     undefined,
     `saveTrainingDataOffline:${type}`
