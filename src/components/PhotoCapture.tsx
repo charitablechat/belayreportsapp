@@ -149,15 +149,32 @@ export default function PhotoCapture({
     const photoId = `${inspectionId}-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
     const fileExt = processedFile.name.split('.').pop() || 'jpg';
 
-    let storagePath: string;
+    // S23: resolve the capturing user up-front (online → cached; offline → cached id).
+    let capturedByUserId: string | null = null;
     try {
-      const user = await getUserWithCache();
-      if (user?.id) {
-        storagePath = `${user.id}/${inspectionId}/${photoId}.${fileExt}`;
+      const onlineUser = await getUserWithCache();
+      if (onlineUser?.id) {
+        capturedByUserId = onlineUser.id;
       } else {
-        storagePath = `pending/${inspectionId}/${photoId}.${fileExt}`;
+        const { getOfflineUserId } = await import('@/lib/cached-auth');
+        capturedByUserId = getOfflineUserId();
       }
     } catch {
+      try {
+        const { getOfflineUserId } = await import('@/lib/cached-auth');
+        capturedByUserId = getOfflineUserId();
+      } catch {
+        capturedByUserId = null;
+      }
+    }
+
+    // Build storage path bound to the capturing user when known.
+    let storagePath: string;
+    if (capturedByUserId) {
+      storagePath = `${capturedByUserId}/${inspectionId}/${photoId}.${fileExt}`;
+    } else {
+      // Truly anonymous capture (extremely rare). Will be routed to dead-letter
+      // by the sync guard if no user surfaces.
       storagePath = `pending/${inspectionId}/${photoId}.${fileExt}`;
     }
 
@@ -200,6 +217,7 @@ export default function PhotoCapture({
       storageBucket,
       foreignKeyColumn,
       photoUrl: storagePath,
+      capturedByUserId, // S23
     });
 
     if (!saved) {
