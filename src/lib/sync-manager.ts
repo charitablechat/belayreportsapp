@@ -265,15 +265,25 @@ export async function syncPhotos(signal?: AbortSignal): Promise<{ remaining: num
         const fkColumn = photo.foreignKeyColumn || 'inspection_id';
 
         const fileExt = photo.fileName.split('.').pop();
-        const fallbackFileName = `${user.id}/${photo.inspectionId}/${Date.now()}.${fileExt}`;
+        // M7: Include a short random suffix to make filenames collision-resistant
+        // even when two devices share Date.now() (clock skew on offline restore).
+        // Combined with upsert: false below, this prevents one device's blob from
+        // silently overwriting another's at the storage layer.
+        const randomSuffix = (typeof crypto !== 'undefined' && crypto.randomUUID)
+          ? crypto.randomUUID().slice(0, 8)
+          : Math.random().toString(36).slice(2, 10);
+        const fallbackFileName = `${user.id}/${photo.inspectionId}/${Date.now()}-${randomSuffix}.${fileExt}`;
         const fileName = photo.photoUrl || fallbackFileName;
         
-        // Upload to storage
+        // Upload to storage. M7: upsert: false — refuse silent overwrites.
+        // The existing `classifyPhotoError` ("success-equivalent" branch) treats
+        // a duplicate-object 409 as success and proceeds to the DB insert path,
+        // which is correct on retry of an already-uploaded photo.
         const { error: uploadError } = await supabase.storage
           .from(bucket as any)
           .upload(fileName, photo.blob, {
             contentType: photo.blob.type || 'image/jpeg',
-            upsert: true,
+            upsert: false,
           });
 
         if (uploadError) {
