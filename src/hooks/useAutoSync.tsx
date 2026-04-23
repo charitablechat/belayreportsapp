@@ -138,6 +138,9 @@ export const useAutoSync = () => {
   }, [state.unsyncedCount]);
 
   const performSync = useCallback(async (silent = true) => {
+    // S34: Track per-cycle photo state changes so we only dispatch
+    // `sync-photos-updated` when something actually moved.
+    let photoChangeCount = 0;
     // Block all writes in Lovable preview to protect production data
     if ((await import('@/lib/environment')).isLovablePreview()) return;
     // Skip if offline
