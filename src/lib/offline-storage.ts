@@ -672,9 +672,39 @@ export async function getDB() {
     // DB_NAME and DB_VERSION shared with public/db-config.js for SW consistency
     const DB_NAME = 'rope-works-inspections';
     const DB_VERSION = 10;
+
+    // Phase 5 — Schema Migration Safety. Lazy-load to avoid circular imports
+    // and to keep the boot path resilient if this module ever fails to parse.
+    let migrationSafety: typeof import('./idb-migration-safety') | null = null;
+    try {
+      migrationSafety = await import('./idb-migration-safety');
+    } catch (err) {
+      console.warn('[Offline Storage] migration-safety unavailable:', err);
+    }
+
+    let upgradeStartTs = 0;
+    let upgradeFromVersion = 0;
+    let upgradeError: string | undefined;
+    let snapshotCreated = false;
+
     const openDBV8WithTimeout = async () => {
       return openDB<InspectionDB>(DB_NAME, DB_VERSION, {
+        async blocked() {
+          console.warn('[Offline Storage] DB upgrade blocked by another tab');
+        },
+        async blocking() {
+          console.warn('[Offline Storage] This tab is blocking a newer DB version');
+        },
         upgrade(db, oldVersion, newVersion, transaction) {
+          upgradeStartTs = Date.now();
+          upgradeFromVersion = oldVersion;
+          if (import.meta.env.DEV) {
+            console.log(`[Offline Storage] Upgrade v${oldVersion} → v${newVersion}`);
+          }
+          // Best-effort audit (fire-and-forget; we cannot await inside upgrade).
+          try {
+            migrationSafety?.recordMigrationStarted(DB_NAME, oldVersion, newVersion ?? DB_VERSION);
+          } catch { /* ignore */ }
           // === All existing v6 upgrade logic ===
           let inspectionStore;
           
