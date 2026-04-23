@@ -787,6 +787,7 @@ export async function syncInspectionAtomic(inspectionId: string, preValidatedUse
 
     // Step 2: RECONCILE then UPSERT child data
     // Delete server rows that were removed locally, then upsert current local data
+    let inspectionReconciledDeletes: ReconciledTableDelete[] = [];
     if (recordStatus?.record_exists && !recordStatus?.is_deleted) {
       // S25: when prefetch was skipped, pass `undefined` (not `[]`) so
       // reconcileChildTable falls back to its own live fetch when needed.
@@ -803,6 +804,8 @@ export async function syncInspectionAtomic(inspectionId: string, preValidatedUse
         'inspection',
         user.id,
       );
+      // C4: capture per-table pre-images so we can restore them if the upsert tx fails.
+      inspectionReconciledDeletes = reconcileResult.deletedByTable;
       // If any child table's reconcile was blocked by a safety guard, do NOT mark
       // the parent as synced — the user still has unflushed deletions to retry.
       if (reconcileResult.blocked) {
