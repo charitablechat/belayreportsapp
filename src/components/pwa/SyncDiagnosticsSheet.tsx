@@ -79,6 +79,8 @@ export const SyncDiagnosticsSheet = () => {
   const [busyDeadLetterId, setBusyDeadLetterId] = useState<string | null>(null);
   const [busyHeldBackId, setBusyHeldBackId] = useState<string | null>(null);
   const [heldBackLabels, setHeldBackLabels] = useState<Record<string, string>>({});
+  const [emptyLocalConflicts, setEmptyLocalConflicts] = useState<EmptyLocalConflictEntry[]>([]);
+  const [busyConflictId, setBusyConflictId] = useState<string | null>(null);
   const [diag, setDiag] = useState<DiagnosticsState>({
     swRegistered: false,
     swController: false,
@@ -107,6 +109,8 @@ export const SyncDiagnosticsSheet = () => {
     const tripwireBlocks24h = await getRecentTripwireBlockCount(24).catch(() => 0);
     const dlDeletes = await getDeadLetterSoftDeletes().catch(() => []);
     setDeadLetterDeletes(dlDeletes);
+    const conflicts = await listEmptyLocalConflicts().catch(() => [] as EmptyLocalConflictEntry[]);
+    setEmptyLocalConflicts(conflicts);
     setDiag({
       swRegistered,
       swController,
