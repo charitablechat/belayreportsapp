@@ -1397,6 +1397,12 @@ export async function syncTrainingAtomic(trainingId: string, preValidatedUser?: 
             skipCount,
             maxSkips: MAX_REGRESSION_SKIPS,
           });
+          notifyRegressionBlock(
+            'training',
+            trainingId,
+            (training as any)?.organization || (training as any)?.location || '',
+            skipCount,
+          );
           return { success: false, skipped: true, reason: 'field_count_regression' };
         }
         console.warn('[SAFETY] Allowing training sync after max regression skips reached', {
@@ -1404,8 +1410,10 @@ export async function syncTrainingAtomic(trainingId: string, preValidatedUser?: 
           skipCount,
         });
         await resetRegressionSkipCount(trainingId);
+        notifyRegressionRelease();
       } else {
         await resetRegressionSkipCount(trainingId);
+        notifyRegressionRelease();
       }
     }
 
