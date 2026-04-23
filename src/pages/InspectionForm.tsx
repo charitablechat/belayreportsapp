@@ -584,6 +584,11 @@ export default function InspectionForm() {
 
   // Clear save error when background sync completes successfully
   useEffect(() => {
+    // M9: Subscribe to versioning health so the banner reflects live state.
+    const unsubHealth = subscribeVersioningHealth((h) => {
+      setVersioningFailures(h.consecutiveFailures);
+    });
+
     const unsubscribe = onSyncComplete(() => {
       // Clear pending_sync and any sync-related errors
       setSaveError(prev => {
