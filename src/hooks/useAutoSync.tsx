@@ -1,6 +1,6 @@
 import { useEffect, useCallback, useRef, useState } from 'react';
 import { supabase } from '@/integrations/supabase/client';
-import { syncAllInspectionsAtomic, syncAllTrainingsAtomic, syncAllDailyAssessmentsAtomic, noteBatchOutcome } from '@/lib/atomic-sync-manager';
+import { syncAllInspectionsAtomic, syncAllTrainingsAtomic, syncAllDailyAssessmentsAtomic, noteBatchOutcome, refetchInspectionPackage, refetchTrainingPackage, refetchAssessmentPackage } from '@/lib/atomic-sync-manager';
 import { syncPhotos } from '@/lib/sync-manager';
 import { saveInspectionOffline, saveTrainingOffline, saveDailyAssessmentOffline } from '@/lib/offline-storage';
 import { shouldPreserveLocalRecord } from '@/lib/local-data-guards';
@@ -106,6 +106,10 @@ export const useAutoSync = () => {
   const realtimeErrorCountRef = useRef<number>(0);
   const realtimeReconnectTimerRef = useRef<NodeJS.Timeout | null>(null);
   const realtimeBackoffRef = useRef<number>(60000); // Start at 60s, doubles up to 300s cap
+  // S12: Per-id debounced full-package refetch on Realtime parent events.
+  // Coalesces bursts of UPDATEs to the same record into one refetch (~300ms window).
+  const refetchTimersRef = useRef<Map<string, NodeJS.Timeout>>(new Map());
+  const REFETCH_DEBOUNCE_MS = 300;
   
   /**
    * Perform the actual sync operation
