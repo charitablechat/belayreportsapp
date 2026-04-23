@@ -146,6 +146,10 @@ export async function syncPhotos(signal?: AbortSignal): Promise<{ remaining: num
     // bump) so the per-cycle dispatch in useAutoSync can stay quiet on
     // truly idle cycles.
     let changedCount = 0;
+    // 1.C — Per-cycle count of photos that JUST crossed the dead-letter
+    // threshold this cycle. Drives a single user-facing notification at end
+    // of cycle (instead of one per photo).
+    let newlyDeadLettered = 0;
     // Track IDs already processed in this batch to skip duplicates without N+1 queries.
     // Read-then-await pattern below makes this safe under bounded concurrency.
     const processedIds = new Set<string>();
@@ -188,8 +192,8 @@ export async function syncPhotos(signal?: AbortSignal): Promise<{ remaining: num
           if (ageMs > SEVEN_DAYS) {
             // Surface to dead-letter UI via S22 plumbing.
             console.warn('[Sync Manager] Photo belongs to a different signed-in user (>7d old) — dead-lettering:', photo.id);
-            await setPhotoLastError(photo.id, 'Photo belongs to a different signed-in user');
-            await incrementPhotoRetryCount(photo.id);
+            const r = await handlePermanentPhotoFailure(photo, 'Photo belongs to a different signed-in user');
+            if (r.crossedThreshold) newlyDeadLettered++;
             changedCount++;
           } else if (import.meta.env.DEV) {
             console.log('[Sync Manager] Skipping photo captured by different user:', photo.id, 'capturedBy=', capturedBy, 'currentUser=', currentUserId);
@@ -206,8 +210,8 @@ export async function syncPhotos(signal?: AbortSignal): Promise<{ remaining: num
             const parentOwnerId = parent?.inspector_id || parent?.user_id || null;
             if (parentOwnerId && parentOwnerId !== capturedBy) {
               console.warn('[Sync Manager] Photo capturer does not match inspection owner — dead-lettering:', photo.id);
-              await setPhotoLastError(photo.id, 'Photo belongs to a different signed-in user');
-              await incrementPhotoRetryCount(photo.id);
+              const r = await handlePermanentPhotoFailure(photo, 'Photo belongs to a different signed-in user');
+              if (r.crossedThreshold) newlyDeadLettered++;
               changedCount++;
               return;
             }
@@ -240,8 +244,8 @@ export async function syncPhotos(signal?: AbortSignal): Promise<{ remaining: num
           }
           if (parentOwnerId && parentOwnerId !== currentUserId) {
             console.warn('[Sync Manager] Legacy pending photo belongs to a different user — dead-lettering:', photo.id);
-            await setPhotoLastError(photo.id, 'Photo belongs to a different signed-in user');
-            await incrementPhotoRetryCount(photo.id);
+            const r = await handlePermanentPhotoFailure(photo, 'Photo belongs to a different signed-in user');
+            if (r.crossedThreshold) newlyDeadLettered++;
             changedCount++;
             return;
           }
