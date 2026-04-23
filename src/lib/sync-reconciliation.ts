@@ -182,10 +182,12 @@ export async function reconcileAllChildTables(
   reportType: 'inspection' | 'training' | 'daily_assessment',
   userId: string,
 ): Promise<ReconcileAllResult> {
-  const results = await Promise.all(
-    tables.map(async (t) => ({
-      table: t.childTable,
-      result: await reconcileChildTable({
+  // S26: Use allSettled so a single thrown table doesn't take down the batch.
+  // Rejections are surfaced via blockedTables so the caller's existing
+  // `blocked === true` short-circuit triggers a retry on the next sync cycle.
+  const settled = await Promise.allSettled(
+    tables.map((t) =>
+      reconcileChildTable({
         childTable: t.childTable,
         parentIdColumn: t.parentIdColumn,
         parentId,
@@ -194,9 +196,25 @@ export async function reconcileAllChildTables(
         userId,
         prefetchedServerRows: t.prefetchedServerRows,
         expectedNonEmpty: t.expectedNonEmpty,
-      }),
-    }))
+      }).then((result) => ({ table: t.childTable, result }))
+    )
   );
+
+  const results = settled.map((s, idx) => {
+    if (s.status === 'fulfilled') return s.value;
+    const tableName = tables[idx].childTable;
+    const reason = s.reason instanceof Error ? s.reason.message : String(s.reason);
+    console.error(`[Reconcile] Table ${tableName} threw:`, s.reason);
+    return {
+      table: tableName,
+      result: {
+        deletedCount: 0,
+        deletedRows: [],
+        blocked: true,
+        blockReason: `reconcile_threw: ${reason}`,
+      } as ReconcileResult,
+    };
+  });
 
   const totalDeleted = results.reduce((sum, r) => sum + r.result.deletedCount, 0);
   const blockedTables = results

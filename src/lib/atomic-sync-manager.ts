@@ -510,8 +510,21 @@ export async function syncInspectionAtomic(inspectionId: string, preValidatedUse
     let existingEquipment: any[] = [];
     let existingStandards: any[] = [];
     let existingSummary: any[] = [];
-    
-    if (recordStatus?.record_exists && !recordStatus?.is_deleted) {
+
+    // S25: When the server row is at exactly our last-known baseline, skip the
+    // 5x rollback pre-fetch. reconcileChildTable will fall back to its own
+    // single-table fetch only if it actually needs to compute a delete; the
+    // empty-local-guard here only matters when server has child data we don't
+    // know about, which can't be the case if updated_at hasn't moved.
+    // Trade-off: rollbackData is missing for mid-transaction failures, but
+    // synced_at won't advance unless the final step succeeds, so the next
+    // cycle re-syncs idempotently against the same upsert IDs.
+    const serverUnchangedSinceBaseline =
+      !!inspection.synced_at &&
+      !!recordStatus?.updated_at &&
+      recordStatus.updated_at === inspection.synced_at;
+
+    if (recordStatus?.record_exists && !recordStatus?.is_deleted && !serverUnchangedSinceBaseline) {
       [
         existingSystems,
         existingZiplines,
