@@ -2,7 +2,7 @@ import { useState, useEffect } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { useQuery } from "@tanstack/react-query";
-import { getUserWithCache } from "@/lib/cached-auth";
+import { getUserWithCache, getAdminCacheKey } from "@/lib/cached-auth";
 import { UserProfileDropdown } from "@/components/UserProfileDropdown";
 // UpdateBadge intentionally omitted from header — update affordance lives in the profile dropdown.
 import { usePWA } from "@/hooks/usePWA";
@@ -70,9 +70,11 @@ export function AuthenticatedHeader() {
 
   // Check super admin status
   const { data: isSuperAdmin } = useQuery({
-    queryKey: ["is-super-admin-global"],
+    queryKey: ["is-super-admin-global", currentUser?.id],
     queryFn: async () => {
-      const cachedValue = localStorage.getItem("cached-admin-status");
+      const userId = currentUser?.id;
+      const namespacedKey = userId ? getAdminCacheKey(userId) : null;
+      const cachedValue = namespacedKey ? localStorage.getItem(namespacedKey) : null;
 
       if (!navigator.onLine) return cachedValue === "true";
 
@@ -84,13 +86,12 @@ export function AuthenticatedHeader() {
       }
 
       try {
-        // P3 FIX: Use SECURITY DEFINER RPC instead of direct table query
         const { data, error } = await supabase.rpc('is_admin_or_above');
 
         if (error) return cachedValue === "true";
 
         const isAdmin = !!data;
-        localStorage.setItem("cached-admin-status", isAdmin.toString());
+        localStorage.setItem(getAdminCacheKey(user.id), isAdmin.toString());
         return isAdmin;
       } catch {
         return cachedValue === "true";
@@ -99,7 +100,11 @@ export function AuthenticatedHeader() {
     staleTime: 2 * 60 * 1000,
     retry: 2,
     retryDelay: 1000,
-    placeholderData: () => localStorage.getItem("cached-admin-status") === "true",
+    placeholderData: () => {
+      const userId = currentUser?.id;
+      if (!userId) return false;
+      return localStorage.getItem(getAdminCacheKey(userId)) === "true";
+    },
     enabled: !!currentUser,
   });
 

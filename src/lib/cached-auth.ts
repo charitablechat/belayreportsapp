@@ -31,6 +31,56 @@ const AUTH_NETWORK_TIMEOUT = 8000; // 8 seconds max for network auth fetch
 /** Supabase auth-token localStorage key — derived from project ref. */
 const SUPABASE_SESSION_KEY = `sb-${import.meta.env.VITE_SUPABASE_PROJECT_ID || 'ssgzcgvygnsrqalisshx'}-auth-token`;
 
+// ── C7: Per-user-namespaced admin cache keys ──
+const ADMIN_CACHE_PREFIX = 'cached-admin-status:';
+const TRUE_SUPER_ADMIN_CACHE_PREFIX = 'cached-true-super-admin:';
+
+export function getAdminCacheKey(userId: string): string {
+  return `${ADMIN_CACHE_PREFIX}${userId}`;
+}
+
+export function getTrueSuperAdminCacheKey(userId: string): string {
+  return `${TRUE_SUPER_ADMIN_CACHE_PREFIX}${userId}`;
+}
+
+/** Sweep ALL namespaced admin cache entries (any user). */
+export function clearAllAdminCacheKeys(): void {
+  try {
+    const keys: string[] = [];
+    for (let i = 0; i < localStorage.length; i++) {
+      const k = localStorage.key(i);
+      if (
+        k &&
+        (k.startsWith(ADMIN_CACHE_PREFIX) ||
+          k.startsWith(TRUE_SUPER_ADMIN_CACHE_PREFIX))
+      ) {
+        keys.push(k);
+      }
+    }
+    keys.forEach((k) => localStorage.removeItem(k));
+  } catch {
+    // ignore
+  }
+}
+
+/** Targeted clear for a single user-id. */
+export function clearAdminCacheForUser(userId: string): void {
+  try {
+    localStorage.removeItem(getAdminCacheKey(userId));
+    localStorage.removeItem(getTrueSuperAdminCacheKey(userId));
+  } catch {
+    // ignore
+  }
+}
+
+// One-time migration: remove legacy unscoped keys (stale by definition)
+try {
+  localStorage.removeItem('cached-admin-status');
+  localStorage.removeItem('cached-true-super-admin');
+} catch {
+  // ignore (e.g. SSR / restricted storage)
+}
+
 /**
  * Detects Navigator LockManager timeout errors from Supabase auth-js.
  * These occur when too many concurrent auth requests compete for the session lock.
@@ -53,6 +103,38 @@ function initAuthListener() {
         // P1 FIX: Only invalidate cache on genuine sign-out (online).
         // Offline SIGNED_OUT events are often transient token refresh failures.
         invalidateUserCache();
+      }
+      // C7: When a different user signs in or current user changes, drop any
+      // namespaced admin cache entries that don't belong to the new user-id
+      // and invalidate in-memory caches so the next read re-fetches fresh.
+      if (event === 'SIGNED_IN' || event === 'USER_UPDATED') {
+        try {
+          const newId = session?.user?.id;
+          if (newId) {
+            const stale: string[] = [];
+            for (let i = 0; i < localStorage.length; i++) {
+              const k = localStorage.key(i);
+              if (
+                k &&
+                (k.startsWith('cached-admin-status:') ||
+                  k.startsWith('cached-true-super-admin:')) &&
+                !k.endsWith(`:${newId}`)
+              ) {
+                stale.push(k);
+              }
+            }
+            stale.forEach((k) => localStorage.removeItem(k));
+          }
+          // In-memory caches are user-agnostic — wipe them so next call re-fetches
+          cachedAdminStatus = null;
+          adminCacheTimestamp = 0;
+          pendingAdminPromise = null;
+          cachedTrueSuperAdmin = null;
+          trueSuperAdminCacheTimestamp = 0;
+          pendingTrueSuperAdminPromise = null;
+        } catch {
+          // ignore
+        }
       }
       // C4: capture refresh token whenever the auth state changes with a real session.
       if (event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED') {
@@ -248,6 +330,8 @@ export function invalidateUserCache() {
   cachedTrueSuperAdmin = null;
   trueSuperAdminCacheTimestamp = 0;
   pendingTrueSuperAdminPromise = null;
+  // C7: sweep all per-user namespaced admin cache keys on sign-out
+  clearAllAdminCacheKeys();
   // Clear offline auth credentials on sign-out (online path)
   clearOfflineAuth().catch(() => {});
 }
@@ -285,43 +369,47 @@ export function clearSessionStateForOfflineSignout(): void {
  */
 export async function getAdminStatusWithCache(): Promise<boolean> {
   const now = Date.now();
-  
-  // Return cached value if still valid
+
   if (cachedAdminStatus !== null && (now - adminCacheTimestamp) < ADMIN_CACHE_TTL) {
     return cachedAdminStatus;
   }
-  
-  // Single-flight pattern - dedupe concurrent requests
+
   if (pendingAdminPromise) {
     return pendingAdminPromise;
   }
-  
-  // Check localStorage for offline fallback
-  const localCached = localStorage.getItem('cached-admin-status');
+
+  // C7: namespaced offline fallback (sync — no network)
+  const userId = getOfflineUserId();
+  const namespacedKey = userId ? getAdminCacheKey(userId) : null;
+  const localCached = namespacedKey ? localStorage.getItem(namespacedKey) : null;
+
   if (!navigator.onLine && localCached !== null) {
     return localCached === 'true';
   }
-  
+
   pendingAdminPromise = (async () => {
     try {
       const { data, error } = await supabase.rpc('is_admin_or_above');
       if (error) throw error;
-      
+
       const status = !!data;
       cachedAdminStatus = status;
       adminCacheTimestamp = Date.now();
-      localStorage.setItem('cached-admin-status', status.toString());
-      
+      const u = await getUserWithCache();
+      const id = u?.id ?? userId;
+      if (id) {
+        localStorage.setItem(getAdminCacheKey(id), status.toString());
+      }
+
       return status;
     } catch (error) {
       console.warn('[CachedAuth] Error checking admin status:', error);
-      // Return cached localStorage value on error
       return localCached === 'true';
     } finally {
       pendingAdminPromise = null;
     }
   })();
-  
+
   return pendingAdminPromise;
 }
 
@@ -363,7 +451,11 @@ export async function getIsTrueSuperAdmin(): Promise<boolean> {
     return pendingTrueSuperAdminPromise;
   }
 
-  const localCached = localStorage.getItem('cached-true-super-admin');
+  // C7: namespaced offline fallback (sync)
+  const userId = getOfflineUserId();
+  const namespacedKey = userId ? getTrueSuperAdminCacheKey(userId) : null;
+  const localCached = namespacedKey ? localStorage.getItem(namespacedKey) : null;
+
   if (!navigator.onLine && localCached !== null) {
     return localCached === 'true';
   }
@@ -376,7 +468,11 @@ export async function getIsTrueSuperAdmin(): Promise<boolean> {
       const status = !!data;
       cachedTrueSuperAdmin = status;
       trueSuperAdminCacheTimestamp = Date.now();
-      localStorage.setItem('cached-true-super-admin', status.toString());
+      const u = await getUserWithCache();
+      const id = u?.id ?? userId;
+      if (id) {
+        localStorage.setItem(getTrueSuperAdminCacheKey(id), status.toString());
+      }
       return status;
     } catch (error) {
       console.warn('[CachedAuth] Error checking true super admin status:', error);

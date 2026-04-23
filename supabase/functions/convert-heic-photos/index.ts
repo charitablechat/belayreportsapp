@@ -17,6 +17,28 @@ Deno.serve(async (req) => {
       Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
     );
 
+    // ── H3: Authentication gate — require a valid user JWT ──
+    const authHeader = req.headers.get("Authorization");
+    if (!authHeader) {
+      return new Response(
+        JSON.stringify({ error: "Unauthorized: missing Authorization header" }),
+        { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
+    const userClient = createClient(
+      Deno.env.get("SUPABASE_URL")!,
+      Deno.env.get("SUPABASE_ANON_KEY")!,
+      { global: { headers: { Authorization: authHeader } } }
+    );
+    const { data: userResult, error: userErr } = await userClient.auth.getUser();
+    if (userErr || !userResult?.user) {
+      return new Response(
+        JSON.stringify({ error: "Unauthorized: invalid session" }),
+        { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
     const { table = "training_photos", bucket = "training-photos", dryRun = false, limit = 20, offset = 0 } = await req.json().catch(() => ({}));
 
     const allowedTables: Record<string, string> = {

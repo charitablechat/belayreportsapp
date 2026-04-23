@@ -211,32 +211,51 @@ Deno.serve(async (req) => {
           }
         }
 
-        // Update role if provided
-        if (role) {
-          // Remove all existing roles for this user
-          const { error: deleteRolesError } = await supabaseAdmin
+        // ── H7: Conditional role rewrite — only mutate user_roles when role
+        // explicitly changed; preserve per-organization role rows ──
+        if (role !== undefined) {
+          // Read current top-level role (organization_id IS NULL)
+          const { data: currentRoleRow, error: currentRoleErr } = await supabaseAdmin
             .from('user_roles')
-            .delete()
-            .eq('user_id', userId);
+            .select('role')
+            .eq('user_id', userId)
+            .is('organization_id', null)
+            .maybeSingle();
 
-          if (deleteRolesError) {
-            console.error('Error removing old roles:', deleteRolesError);
+          if (currentRoleErr) {
+            console.error('Error reading current top-level role:', currentRoleErr);
           }
 
-          // Insert new role
-          const { error: roleError } = await supabaseAdmin
-            .from('user_roles')
-            .insert({
-              user_id: userId,
-              role: role,
-              organization_id: null,
-            });
+          const currentRole = currentRoleRow?.role ?? null;
 
-          if (roleError) {
-            console.error('Error setting new role:', roleError);
+          if (currentRole === role) {
+            console.log(`Role unchanged (${role}) for user ${userId}, skipping rewrite`);
+          } else {
+            // Scope delete to top-level rows only — preserve per-org roles
+            const { error: deleteRolesError } = await supabaseAdmin
+              .from('user_roles')
+              .delete()
+              .eq('user_id', userId)
+              .is('organization_id', null);
+
+            if (deleteRolesError) {
+              console.error('Error removing old top-level role:', deleteRolesError);
+            }
+
+            const { error: roleError } = await supabaseAdmin
+              .from('user_roles')
+              .insert({
+                user_id: userId,
+                role: role,
+                organization_id: null,
+              });
+
+            if (roleError) {
+              console.error('Error setting new role:', roleError);
+            }
+
+            console.log(`Role updated from ${currentRole ?? 'none'} to ${role} for user: ${userId}`);
           }
-
-          console.log(`Role updated to ${role} for user: ${userId}`);
         }
 
         return new Response(

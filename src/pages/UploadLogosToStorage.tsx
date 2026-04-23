@@ -3,10 +3,12 @@ import { supabase } from '@/integrations/supabase/client';
 import { Button } from '@/components/ui/button';
 import { toast } from 'sonner';
 import { Upload, CheckCircle2 } from 'lucide-react';
+import { useRequireAdmin } from '@/hooks/useRequireAdmin';
 import ropeWorksLogo from '@/assets/rope-works-logo-final.png';
 import acctLogo from '@/assets/acct-logo-final.png';
 
 export default function UploadLogosToStorage() {
+  const { loading: adminLoading } = useRequireAdmin();
   const [uploading, setUploading] = useState(false);
   const [uploaded, setUploaded] = useState(false);
 
@@ -75,6 +77,8 @@ export default function UploadLogosToStorage() {
       setUploading(false);
     }
   };
+
+  if (adminLoading) return null;
 
   return (
     <div className="container mx-auto p-8">
