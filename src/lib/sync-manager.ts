@@ -122,7 +122,7 @@ export async function syncPhotos(signal?: AbortSignal): Promise<{ remaining: num
     const unuploadedPhotosResult = await getUnuploadedPhotos();
     if (isIdbReadFailure(unuploadedPhotosResult)) {
       console.warn('[Sync Manager] IDB read failure for unuploaded photos:', unuploadedPhotosResult.error);
-      return { remaining: -1, error: unuploadedPhotosResult.error };
+      return { remaining: -1, changed: 0, error: unuploadedPhotosResult.error };
     }
     const unuploadedPhotos = unuploadedPhotosResult;
     // Skip photos that have exceeded retry limit
