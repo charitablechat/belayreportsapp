@@ -434,8 +434,7 @@ export async function syncInspectionAtomic(inspectionId: string, preValidatedUse
     if (previousFieldCount !== null && previousFieldCount > 0) {
       const dropPercent = ((previousFieldCount - currentFieldCount) / previousFieldCount) * 100;
       if (dropPercent > 50) {
-        const skipCount = (regressionSkipCounter.get(inspectionId) || 0) + 1;
-        regressionSkipCounter.set(inspectionId, skipCount);
+        const skipCount = await incrementRegressionSkipCount(inspectionId);
         if (skipCount <= MAX_REGRESSION_SKIPS) {
           console.error('[SAFETY] Blocked inspection sync: field count regression >50%', {
             inspectionId: inspectionId.substring(0, 8),
@@ -451,10 +450,10 @@ export async function syncInspectionAtomic(inspectionId: string, preValidatedUse
           inspectionId: inspectionId.substring(0, 8),
           skipCount,
         });
-        regressionSkipCounter.delete(inspectionId);
+        await resetRegressionSkipCount(inspectionId);
       } else {
         // Field count is healthy — clear any previous skip counter
-        regressionSkipCounter.delete(inspectionId);
+        await resetRegressionSkipCount(inspectionId);
       }
     }
 
@@ -1252,8 +1251,7 @@ export async function syncTrainingAtomic(trainingId: string, preValidatedUser?: 
     if (previousFieldCount !== null && previousFieldCount > 0) {
       const dropPercent = ((previousFieldCount - currentFieldCount) / previousFieldCount) * 100;
       if (dropPercent > 50) {
-        const skipCount = (regressionSkipCounter.get(trainingId) || 0) + 1;
-        regressionSkipCounter.set(trainingId, skipCount);
+        const skipCount = await incrementRegressionSkipCount(trainingId);
         if (skipCount <= MAX_REGRESSION_SKIPS) {
           console.error('[SAFETY] Blocked training sync: field count regression >50%', {
             trainingId: trainingId.substring(0, 8),
@@ -1269,9 +1267,9 @@ export async function syncTrainingAtomic(trainingId: string, preValidatedUser?: 
           trainingId: trainingId.substring(0, 8),
           skipCount,
         });
-        regressionSkipCounter.delete(trainingId);
+        await resetRegressionSkipCount(trainingId);
       } else {
-        regressionSkipCounter.delete(trainingId);
+        await resetRegressionSkipCount(trainingId);
       }
     }
 
@@ -2005,8 +2003,7 @@ export async function syncDailyAssessmentAtomic(assessmentId: string, preValidat
     if (previousFieldCount !== null && previousFieldCount > 0) {
       const dropPercent = ((previousFieldCount - currentFieldCount) / previousFieldCount) * 100;
       if (dropPercent > 50) {
-        const skipCount = (regressionSkipCounter.get(assessmentId) || 0) + 1;
-        regressionSkipCounter.set(assessmentId, skipCount);
+        const skipCount = await incrementRegressionSkipCount(assessmentId);
         if (skipCount <= MAX_REGRESSION_SKIPS) {
           console.error('[SAFETY] Blocked assessment sync: field count regression >50%', {
             assessmentId: assessmentId.substring(0, 8),
@@ -2022,9 +2019,9 @@ export async function syncDailyAssessmentAtomic(assessmentId: string, preValidat
           assessmentId: assessmentId.substring(0, 8),
           skipCount,
         });
-        regressionSkipCounter.delete(assessmentId);
+        await resetRegressionSkipCount(assessmentId);
       } else {
-        regressionSkipCounter.delete(assessmentId);
+        await resetRegressionSkipCount(assessmentId);
       }
     }
 
