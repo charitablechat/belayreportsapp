@@ -1471,6 +1471,8 @@ export async function syncTrainingAtomic(trainingId: string, preValidatedUser?: 
     });
     
     // 5. Execute transaction
+    // S6: register self-write so the Realtime handler doesn't re-trigger sync from our own writes
+    registerSelfWrite(trainingId);
     const result = await executeTransaction(steps);
     
     if (!result.success) {
