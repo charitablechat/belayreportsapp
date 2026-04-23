@@ -1195,7 +1195,9 @@ export async function getOfflineInspections(userId?: string, isSuperAdmin?: bool
       const allInspections = await db.getAll('inspections');
       
       // Filter out soft-deleted records so they don't reappear on dashboard
-      const activeInspections = allInspections.filter(i => !i.deleted_at);
+      // C9: Also filter out records quarantined due to remote soft-delete; they
+      // remain in IDB pending user resolution via RemoteDeletedConflictDialog.
+      const activeInspections = allInspections.filter(i => !i.deleted_at && !(i as any)._remote_deleted_at);
       
       // Super admins see all reports - bypass user filtering
       if (isSuperAdmin) {
@@ -2355,7 +2357,8 @@ export async function getOfflineDailyAssessments(userId?: string, isSuperAdmin?:
       const allAssessments = await db.getAll('daily_assessments');
       
       // Filter out soft-deleted records so they don't reappear on dashboard
-      const activeAssessments = allAssessments.filter(a => !a.deleted_at);
+      // C9: Also filter out quarantined remote-deleted records.
+      const activeAssessments = allAssessments.filter(a => !a.deleted_at && !(a as any)._remote_deleted_at);
       
       // Super admins see all reports - bypass user filtering
       if (isSuperAdmin) {
@@ -2696,7 +2699,8 @@ export async function getOfflineTrainings(userId?: string, isSuperAdmin?: boolea
       const allTrainings = await db.getAll('trainings');
       
       // Filter out soft-deleted records so they don't reappear on dashboard
-      const activeTrainings = allTrainings.filter(t => !t.deleted_at);
+      // C9: Also filter out quarantined remote-deleted records.
+      const activeTrainings = allTrainings.filter(t => !t.deleted_at && !(t as any)._remote_deleted_at);
       
       // Super admins see all reports - bypass user filtering
       if (isSuperAdmin) {
