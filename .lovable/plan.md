@@ -1,43 +1,46 @@
 
 
-## Simplify `*WithStatus` helpers using `withIDBTimeout`'s `timedOut` flag
+## Tag remaining IDB operations with `withIDBTimeout` tiers
 
 ### What
 
-The user is proposing a cleaner pattern: drop the `let ok = false` closure trick and derive `readSucceeded` directly from `!timedOut`. Apply this to all three status helpers.
+Replace ad-hoc `Promise.race` / raw `setTimeout` patterns in `src/lib/offline-storage.ts` with `withIDBTimeout`, using the right tier per operation weight.
 
-### Tradeoff
+### Tier mapping
 
-`withIDBTimeout` returns `timedOut: false` for **both** success and non-timeout errors (e.g. IDB transaction abort, quota error). So `readSucceeded: !timedOut` will return `true` on a thrown error — which means an empty fallback `[]` could be misread as a real empty.
+| Operation pattern | Tier |
+|---|---|
+| Single record lookup (`getInspection`, `getTraining`, `getAssessment`, `getPhoto`, single `.get(id)`) | `light` |
+| Save / delete child arrays, batched puts, batched deletes | `write` |
+| `getUnsyncedX` across stores, `getAllUnsynced*`, full-table scans, multi-store reads | `heavy` |
+| Single flag/count read (`getMeta`, count queries, single key from kv store) | `light` |
 
-**Mitigation:** non-timeout IDB errors here are rare (the underlying `getRelatedDataOffline` already wraps in `withIndexedDBErrorBoundary`, so most failures surface as the boundary's own fallback rather than a throw to `withIDBTimeout`). The existing reconcile guards (V3 zero-local + final live-count tripwire) still catch catastrophic empties. Net safety remains acceptable, and the code is meaningfully simpler.
+### Approach
 
-### Files
+1. **Audit pass:** grep `src/lib/offline-storage.ts` for:
+   - `Promise.race(`
+   - `setTimeout(` (excluding the one inside `withIDBTimeout` itself)
+   - `READ_TIMEOUT_MS`, `OPERATION_TIMEOUT`, any inline `ms` constants
+   - bare `await tx.done` / `await store.get/getAll/put/delete` in exported helpers that don't already go through `withIndexedDBErrorBoundary`
 
-**`src/lib/offline-storage.ts`**
+2. **Classify each call site** into one of the four tiers above.
 
-Replace the current `ok`-closure pattern in all three helpers with the user's pattern:
+3. **Wrap each** with `withIDBTimeout(name, tier, fn, fallback)`:
+   - `name`: short, includes key (e.g. `getInspection(${id})`, `saveRelatedData(${type}/${inspectionId})`).
+   - `fallback`: matches the function's documented empty/null return (`null`, `[]`, `0`, `false`).
+   - Discard `timedOut` for non-status helpers (only the three `*WithStatus` helpers care).
 
-1. `getRelatedDataOfflineWithStatus` (~line 1808):
-   ```ts
-   const { data, timedOut } = await withIDBTimeout(
-     `getRelatedData(${type}/${inspectionId})`,
-     'batch',
-     () => getRelatedDataOffline(type, inspectionId),
-     [] as any[]
-   );
-   return { items: data || [], readSucceeded: !timedOut };
-   ```
+4. **Remove** the now-redundant local `Promise.race` + timeout constant blocks.
 
-2. `getAssessmentDataOfflineWithStatus` (~line 2199): same pattern with `getAssessmentDataOffline(type, assessmentId)`.
-
-3. `getTrainingDataOfflineWithStatus` (~line 2613): same pattern with `getTrainingDataOffline(type, trainingId)`.
+5. **Leave `withIndexedDBErrorBoundary` alone** — it stays the outer error wrapper. Inner `withIDBTimeout` provides the per-call tier-aware deadline. (Where a function already uses `withIndexedDBErrorBoundary` AND has its own race, drop the race; the boundary's tier-aware timeout from the previous turn is sufficient. Only add `withIDBTimeout` where there is currently a raw `Promise.race` or no timeout.)
 
 ### Out of scope
 
-- Not changing `withIDBTimeout`'s return shape to distinguish thrown errors from success (would require a third state). If this becomes a real problem in practice, a follow-up can add `{ data, timedOut, errored }`.
+- Not touching `batch-storage.ts`, `auth-resilience.ts`, or other IDB modules — separate PRs.
+- Not changing `withIDBTimeout`'s shape to expose `errored` separately from `timedOut`.
+- Not retro-fitting consumers; existing return contracts are preserved.
 
 ### Risk
 
-Low. Behavioral change vs. current `ok`-flag version: a non-timeout throw inside `getRelatedDataOffline` now yields `readSucceeded: true` with `items: []` (previously `false`). This is a regression in strictness but very narrow given the inner boundary already absorbs most errors.
+Low. `withIDBTimeout` already swallows errors into the fallback (matching prior `Promise.race` behavior), and tier ceilings (5–15s) are at or above the previous flat 5s, so legitimate slow operations get more headroom, not less.
 
