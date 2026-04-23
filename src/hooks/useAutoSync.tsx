@@ -19,6 +19,7 @@ import { markSnapshotSynced } from '@/lib/local-backup-ledger';
 // Sync configuration with mobile optimization
 // Tuned for fast user-driven sync (S5/S6/S7) — duplicate prevention is handled by syncInProgressRef
 const DEBOUNCE_DELAY = 1500; // 1.5s after local changes (was 3s) — matches AUTO_SAVE_DEBOUNCE_MS
+const ONLINE_HANDLER_DEBOUNCE = 1500; // S33: coalesce online-event flaps so flaky networks don't stack session refreshes
 const DESKTOP_SYNC_INTERVAL = 30000; // 30 seconds for desktop
 const DESKTOP_IDLE_SYNC_INTERVAL = 120000; // 120 seconds when idle (no unsynced items)
 const MOBILE_SYNC_INTERVAL = 60000; // 60 seconds for mobile (reduced from 5min for faster sync)
