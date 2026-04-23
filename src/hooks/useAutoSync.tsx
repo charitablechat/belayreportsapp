@@ -232,7 +232,20 @@ export const useAutoSync = () => {
       try {
         const freshUser = await getUserWithCache();
         if (freshUser) {
-          const freshCounts = await getUnsyncedCounts(freshUser.id);
+          const { data: freshCounts, timedOut } = await withIDBTimeout(
+            'refreshUnsyncedCounts',
+            'heavy',
+            () => getUnsyncedCounts(freshUser.id),
+            { inspections: [], trainings: [], assessments: [] }
+          );
+          if (timedOut) {
+            console.warn('[AutoSync] Could not get reliable unsynced counts — retrying next cycle');
+            clearTimeout(safetyTimeoutHandle);
+            syncInProgressRef.current = false;
+            setSyncInProgress(false);
+            setState(prev => ({ ...prev, isSyncing: false }));
+            return;
+          }
           liveUnsyncedCount =
             freshCounts.inspections.length +
             freshCounts.trainings.length +
