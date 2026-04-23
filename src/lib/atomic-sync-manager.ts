@@ -557,7 +557,7 @@ export async function syncInspectionAtomic(inspectionId: string, preValidatedUse
     // Step 2: RECONCILE then UPSERT child data
     // Delete server rows that were removed locally, then upsert current local data
     if (recordStatus?.record_exists && !recordStatus?.is_deleted) {
-      await reconcileAllChildTables(
+      const reconcileResult = await reconcileAllChildTables(
         [
           { childTable: 'inspection_systems', parentIdColumn: 'inspection_id', localItems: systems, prefetchedServerRows: existingSystems, expectedNonEmpty: idbReadFlags.systems },
           { childTable: 'inspection_ziplines', parentIdColumn: 'inspection_id', localItems: ziplines, prefetchedServerRows: existingZiplines, expectedNonEmpty: idbReadFlags.ziplines },
@@ -569,6 +569,20 @@ export async function syncInspectionAtomic(inspectionId: string, preValidatedUse
         'inspection',
         user.id,
       );
+      // If any child table's reconcile was blocked by a safety guard, do NOT mark
+      // the parent as synced — the user still has unflushed deletions to retry.
+      if (reconcileResult.blocked) {
+        console.warn('[Atomic Sync] Inspection reconcile blocked — marking sync as failed so user can retry', {
+          inspectionId: inspectionId.substring(0, 8),
+          blockedTables: reconcileResult.blockedTables,
+        });
+        return {
+          success: false,
+          skipped: true,
+          reason: 'reconcile_blocked',
+          message: 'Some local deletions could not be confirmed against the server. Will retry on next sync.',
+        };
+      }
     }
 
     if (systems.length > 0) {
@@ -1341,7 +1355,7 @@ export async function syncTrainingAtomic(trainingId: string, preValidatedUser?: 
     // Step 2: RECONCILE then UPSERT child data
     // Delete server rows that were removed locally, then upsert current local data
     if (recordStatus?.record_exists && !recordStatus?.is_deleted) {
-      await reconcileAllChildTables(
+      const reconcileResult = await reconcileAllChildTables(
         [
           { childTable: 'training_delivery_approaches', parentIdColumn: 'training_id', localItems: delivery_approaches, prefetchedServerRows: existingApproaches, expectedNonEmpty: trainingIdbReadFlags.delivery_approaches },
           { childTable: 'training_operating_systems', parentIdColumn: 'training_id', localItems: operating_systems, prefetchedServerRows: existingSystems, expectedNonEmpty: trainingIdbReadFlags.operating_systems },
@@ -1354,6 +1368,18 @@ export async function syncTrainingAtomic(trainingId: string, preValidatedUser?: 
         'training',
         user.id,
       );
+      if (reconcileResult.blocked) {
+        console.warn('[Atomic Sync] Training reconcile blocked — marking sync as failed so user can retry', {
+          trainingId: trainingId.substring(0, 8),
+          blockedTables: reconcileResult.blockedTables,
+        });
+        return {
+          success: false,
+          skipped: true,
+          reason: 'reconcile_blocked',
+          message: 'Some local deletions could not be confirmed against the server. Will retry on next sync.',
+        };
+      }
     }
 
     if (delivery_approaches.length > 0) {
