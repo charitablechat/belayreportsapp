@@ -1837,18 +1837,13 @@ export async function getRelatedDataOfflineWithStatus(
   if (isCircuitBreakerOpen()) {
     return { items: [], readSucceeded: false };
   }
-  let ok = false;
-  const { data } = await withIDBTimeout(
-    `getRelatedDataOfflineWithStatus(${type})`,
+  const { data, timedOut } = await withIDBTimeout(
+    `getRelatedData(${type}/${inspectionId})`,
     'batch',
-    async () => {
-      const d = await getRelatedDataOffline(type, inspectionId);
-      ok = true;
-      return d;
-    },
+    () => getRelatedDataOffline(type, inspectionId),
     [] as any[]
   );
-  return { items: data || [], readSucceeded: ok };
+  return { items: data || [], readSucceeded: !timedOut };
 }
 
 export async function clearRelatedDataOffline(
@@ -2196,18 +2191,13 @@ export async function getAssessmentDataOfflineWithStatus(
   if (isCircuitBreakerOpen()) {
     return { items: [], readSucceeded: false };
   }
-  let ok = false;
-  const { data } = await withIDBTimeout(
-    `getAssessmentDataOfflineWithStatus(${type})`,
+  const { data, timedOut } = await withIDBTimeout(
+    `getAssessmentData(${type}/${assessmentId})`,
     'batch',
-    async () => {
-      const d = await getAssessmentDataOffline(type, assessmentId);
-      ok = true;
-      return d;
-    },
+    () => getAssessmentDataOffline(type, assessmentId),
     [] as any[]
   );
-  return { items: data || [], readSucceeded: ok };
+  return { items: data || [], readSucceeded: !timedOut };
 }
 
 export async function clearAssessmentDataOffline(
@@ -2610,18 +2600,13 @@ export async function getTrainingDataOfflineWithStatus(
   if (isCircuitBreakerOpen()) {
     return { items: [], readSucceeded: false };
   }
-  let ok = false;
-  const { data } = await withIDBTimeout(
-    `getTrainingDataOfflineWithStatus(${type})`,
+  const { data, timedOut } = await withIDBTimeout(
+    `getTrainingData(${type}/${trainingId})`,
     'batch',
-    async () => {
-      const d = await getTrainingDataOffline(type, trainingId);
-      ok = true;
-      return d;
-    },
+    () => getTrainingDataOffline(type, trainingId),
     [] as any[]
   );
-  return { items: data || [], readSucceeded: ok };
+  return { items: data || [], readSucceeded: !timedOut };
 }
 
 export async function clearTrainingDataOffline(
