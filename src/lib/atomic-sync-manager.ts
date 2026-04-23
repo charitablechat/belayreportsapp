@@ -1267,6 +1267,53 @@ function transformTempIds<T extends { id?: string }>(items: T[]): T[] {
 }
 
 /**
+ * C8: Idempotently rewrite training child rows in IndexedDB from oldId → newId.
+ * Reads each child store at oldId; if non-empty, mutates the foreign-key
+ * (`training_id`) on each row to newId, saves the rewritten array under newId,
+ * and clears the oldId entry. Safe to call multiple times — if oldId has no
+ * children (because a prior call already migrated them), it's a no-op.
+ *
+ * MUST be called before any read at the canonical id post-swap, so that
+ * `fetchId = trainingId` returns the user's actual local children on every
+ * sync (first or Nth) instead of silently shipping an empty payload.
+ */
+async function rewriteTrainingChildrenIdb(oldId: string, newId: string): Promise<void> {
+  if (oldId === newId) return;
+  const childStores = ['delivery_approaches', 'operating_systems', 'immediate_attention', 'verifiable_items', 'systems_in_place', 'summary'] as const;
+  for (const store of childStores) {
+    try {
+      const items = await getTrainingDataOffline(store, oldId);
+      if (!items || items.length === 0) continue;
+      const rewritten = items.map((item: any) => ({ ...item, training_id: newId }));
+      await saveTrainingDataOffline(store, newId, rewritten);
+      await clearTrainingDataOffline(store, oldId);
+    } catch (e) {
+      console.warn(`[C8] rewriteTrainingChildrenIdb failed for store ${store}`, e);
+    }
+  }
+}
+
+/**
+ * C8: Idempotently rewrite daily assessment child rows in IndexedDB
+ * from oldId → newId. See rewriteTrainingChildrenIdb for rationale.
+ */
+async function rewriteAssessmentChildrenIdb(oldId: string, newId: string): Promise<void> {
+  if (oldId === newId) return;
+  const childStores = ['beginning_of_day', 'end_of_day', 'operating_systems', 'equipment_checks', 'structure_checks', 'environment_checks'] as const;
+  for (const store of childStores) {
+    try {
+      const items = await getAssessmentDataOffline(store, oldId);
+      if (!items || items.length === 0) continue;
+      const rewritten = items.map((item: any) => ({ ...item, assessment_id: newId }));
+      await saveAssessmentDataOffline(store, newId, rewritten);
+      await clearAssessmentDataOffline(store, oldId);
+    } catch (e) {
+      console.warn(`[C8] rewriteAssessmentChildrenIdb failed for store ${store}`, e);
+    }
+  }
+}
+
+/**
  * Sync training with all related data atomically
  */
 export async function syncTrainingAtomic(trainingId: string, preValidatedUser?: CachedUser, signal?: AbortSignal) {
@@ -1353,10 +1400,21 @@ export async function syncTrainingAtomic(trainingId: string, preValidatedUser?: 
       }
     }
     
-    // Fetch child records using the ORIGINAL ID (before temp-to-UUID swap)
-    // because they are stored in IndexedDB under the original training_id
-    const fetchId = trainingIdMapping ? trainingIdMapping.oldId : trainingId;
-    
+    // C8: If we swapped the training ID, rewrite IDB children oldId → newId
+    // BEFORE reading them. The post-upsert cleanup block also performs this
+    // rewrite, but on the *first* sync children still live under the temp id
+    // at this point, and on every *subsequent* sync they live under the new
+    // id. Reading at a single canonical id (trainingId, post-swap) requires
+    // the rewrite to happen here, idempotently. Without this, subsequent
+    // syncs read [] from oldId and ship empty children payloads, silently
+    // breaking edits and tripping reconcile guards.
+    if (trainingIdMapping) {
+      await rewriteTrainingChildrenIdb(trainingIdMapping.oldId, trainingIdMapping.newId);
+    }
+
+    // C8: Always read children at the canonical (post-migration) id.
+    const fetchId = trainingId;
+
     // S32: Serialized to avoid Safari IDB lock contention (see syncInspectionAtomic).
     const daRead = await getTrainingDataOfflineWithStatus('delivery_approaches', fetchId);
     const osRead = await getTrainingDataOfflineWithStatus('operating_systems', fetchId);
@@ -1378,19 +1436,13 @@ export async function syncTrainingAtomic(trainingId: string, preValidatedUser?: 
       systems_in_place: sipRead.readSucceeded,
       summary: summaryReadT.readSucceeded,
     };
-    
+
     let rawSummary = summaryArray[0] || null;
-    
-    // If we swapped the training ID, propagate new ID to all child records
-    if (trainingIdMapping) {
-      rawDeliveryApproaches.forEach(item => item.training_id = trainingIdMapping!.newId);
-      rawOperatingSystems.forEach(item => item.training_id = trainingIdMapping!.newId);
-      rawImmediateAttention.forEach(item => item.training_id = trainingIdMapping!.newId);
-      rawVerifiableItems.forEach(item => item.training_id = trainingIdMapping!.newId);
-      rawSystemsInPlace.forEach(item => item.training_id = trainingIdMapping!.newId);
-      if (rawSummary) {
-        rawSummary = { ...rawSummary, training_id: trainingIdMapping.newId };
-      }
+
+    // C8: Invariant — by this point fetchId must equal the canonical trainingId.
+    // If a future refactor reintroduces divergence, fail loudly in DEV.
+    if (import.meta.env.DEV && fetchId !== trainingId) {
+      console.error('[C8] fetchId/trainingId divergence detected', { fetchId, trainingId });
     }
     
     // Transform temp- IDs to valid UUIDs before validation
@@ -2178,10 +2230,15 @@ export async function syncDailyAssessmentAtomic(assessmentId: string, preValidat
       }
     }
     
-    // Fetch child records using the ORIGINAL ID (before temp-to-UUID swap)
-    // because they are stored in IndexedDB under the original assessment_id
-    const fetchId = assessmentIdMapping ? assessmentIdMapping.oldId : assessmentId;
-    
+    // C8: If we swapped the assessment ID, rewrite IDB children oldId → newId
+    // BEFORE reading them. See syncTrainingAtomic for full rationale.
+    if (assessmentIdMapping) {
+      await rewriteAssessmentChildrenIdb(assessmentIdMapping.oldId, assessmentIdMapping.newId);
+    }
+
+    // C8: Always read children at the canonical (post-migration) id.
+    const fetchId = assessmentId;
+
     // S32: Serialized to avoid Safari IDB lock contention (see syncInspectionAtomic).
     const bodRead = await getAssessmentDataOfflineWithStatus('beginning_of_day', fetchId);
     const eodRead = await getAssessmentDataOfflineWithStatus('end_of_day', fetchId);
@@ -2203,15 +2260,10 @@ export async function syncDailyAssessmentAtomic(assessmentId: string, preValidat
       structure_checks: stRead.readSucceeded,
       environment_checks: envRead.readSucceeded,
     };
-    
-    // If we swapped the assessment ID, propagate new ID to all child records
-    if (assessmentIdMapping) {
-      rawBeginningOfDay.forEach(item => item.assessment_id = assessmentIdMapping!.newId);
-      rawEndOfDay.forEach(item => item.assessment_id = assessmentIdMapping!.newId);
-      rawOperatingSystems.forEach(item => item.assessment_id = assessmentIdMapping!.newId);
-      rawEquipmentChecks.forEach(item => item.assessment_id = assessmentIdMapping!.newId);
-      rawStructureChecks.forEach(item => item.assessment_id = assessmentIdMapping!.newId);
-      rawEnvironmentChecks.forEach(item => item.assessment_id = assessmentIdMapping!.newId);
+
+    // C8: Invariant — by this point fetchId must equal the canonical assessmentId.
+    if (import.meta.env.DEV && fetchId !== assessmentId) {
+      console.error('[C8] fetchId/assessmentId divergence detected', { fetchId, assessmentId });
     }
     
     // Transform temp- IDs to valid UUIDs before validation
