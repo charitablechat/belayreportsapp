@@ -1233,7 +1233,7 @@ export async function deleteOfflineInspection(id: string) {
 }
 
 export async function getUnsyncedInspections(userId?: string) {
-  return withIndexedDBErrorBoundary(
+  return withIndexedDBReadBoundary(
     async () => {
       const db = await getDB();
       
@@ -1278,7 +1278,6 @@ export async function getUnsyncedInspections(userId?: string) {
       
       return unsynced;
     },
-    [],
     'getUnsyncedInspections'
   );
 }
@@ -1561,7 +1560,7 @@ export const MAX_PHOTO_RETRIES = 5;
  *    (orphan: the parent was deleted before sync, so they can never upload)
  */
 export async function getUnuploadedPhotos(userId?: string) {
-  return withIndexedDBErrorBoundary(
+  return withIndexedDBReadBoundary(
     async () => {
       const db = await getDB();
       const tx = db.transaction('photos', 'readonly');
@@ -1587,7 +1586,6 @@ export async function getUnuploadedPhotos(userId?: string) {
       }
       return eligible.filter(p => !orphanIds.has(p.id));
     },
-    [],
     'getUnuploadedPhotos'
   );
 }
@@ -2085,7 +2083,7 @@ export async function deleteOfflineDailyAssessment(id: string) {
 }
 
 export async function getUnsyncedDailyAssessments(userId?: string) {
-  return withIndexedDBErrorBoundary(
+  return withIndexedDBReadBoundary(
     async () => {
       const db = await getDB();
       
@@ -2119,7 +2117,6 @@ export async function getUnsyncedDailyAssessments(userId?: string) {
       
       return unsynced;
     },
-    [],
     'getUnsyncedDailyAssessments'
   );
 }
@@ -2434,7 +2431,7 @@ export async function deleteOfflineTraining(id: string) {
 }
 
 export async function getUnsyncedTrainings(userId?: string) {
-  return withIndexedDBErrorBoundary(
+  return withIndexedDBReadBoundary(
     async () => {
       const db = await getDB();
       
@@ -2468,7 +2465,6 @@ export async function getUnsyncedTrainings(userId?: string) {
       
       return unsynced;
     },
-    [],
     'getUnsyncedTrainings'
   );
 }
