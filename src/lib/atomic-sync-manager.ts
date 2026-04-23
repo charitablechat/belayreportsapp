@@ -616,13 +616,16 @@ export async function syncInspectionAtomic(inspectionId: string, preValidatedUse
     // Step 2: RECONCILE then UPSERT child data
     // Delete server rows that were removed locally, then upsert current local data
     if (recordStatus?.record_exists && !recordStatus?.is_deleted) {
+      // S25: when prefetch was skipped, pass `undefined` (not `[]`) so
+      // reconcileChildTable falls back to its own live fetch when needed.
+      const pf = (arr: any[]) => (serverUnchangedSinceBaseline ? undefined : arr);
       const reconcileResult = await reconcileAllChildTables(
         [
-          { childTable: 'inspection_systems', parentIdColumn: 'inspection_id', localItems: systems, prefetchedServerRows: existingSystems, expectedNonEmpty: idbReadFlags.systems },
-          { childTable: 'inspection_ziplines', parentIdColumn: 'inspection_id', localItems: ziplines, prefetchedServerRows: existingZiplines, expectedNonEmpty: idbReadFlags.ziplines },
-          { childTable: 'inspection_equipment', parentIdColumn: 'inspection_id', localItems: equipment, prefetchedServerRows: existingEquipment, expectedNonEmpty: idbReadFlags.equipment },
-          { childTable: 'inspection_standards', parentIdColumn: 'inspection_id', localItems: standards, prefetchedServerRows: existingStandards, expectedNonEmpty: idbReadFlags.standards },
-          { childTable: 'inspection_summary', parentIdColumn: 'inspection_id', localItems: summary ? [summary] : [], prefetchedServerRows: existingSummary, expectedNonEmpty: idbReadFlags.summary },
+          { childTable: 'inspection_systems', parentIdColumn: 'inspection_id', localItems: systems, prefetchedServerRows: pf(existingSystems), expectedNonEmpty: idbReadFlags.systems },
+          { childTable: 'inspection_ziplines', parentIdColumn: 'inspection_id', localItems: ziplines, prefetchedServerRows: pf(existingZiplines), expectedNonEmpty: idbReadFlags.ziplines },
+          { childTable: 'inspection_equipment', parentIdColumn: 'inspection_id', localItems: equipment, prefetchedServerRows: pf(existingEquipment), expectedNonEmpty: idbReadFlags.equipment },
+          { childTable: 'inspection_standards', parentIdColumn: 'inspection_id', localItems: standards, prefetchedServerRows: pf(existingStandards), expectedNonEmpty: idbReadFlags.standards },
+          { childTable: 'inspection_summary', parentIdColumn: 'inspection_id', localItems: summary ? [summary] : [], prefetchedServerRows: pf(existingSummary), expectedNonEmpty: idbReadFlags.summary },
         ],
         inspectionId,
         'inspection',
