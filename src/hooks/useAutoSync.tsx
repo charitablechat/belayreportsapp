@@ -357,8 +357,8 @@ export const useAutoSync = () => {
         clearTimeout(safetyTimeoutHandle);
         // Always refresh counts so badge reflects reality (fixes stale badge after circuit breaker)
         updateUnsyncedCounts().catch(() => {});
-        // Notify photo-count consumers so dead-letter / orphan filters re-evaluate
-        try { window.dispatchEvent(new Event('sync-photos-updated')); } catch {}
+        // S34: No work happened — skip the photo-count broadcast. The 5-min
+        // safety tick in useUnsyncedPhotos handles any out-of-band drift.
         setState(prev => ({ ...prev, isSyncing: false, lastSyncTime: new Date() }));
         return;
       }
