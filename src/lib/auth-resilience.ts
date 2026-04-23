@@ -27,6 +27,11 @@
  */
 
 import { openDB, type IDBPDatabase } from 'idb';
+import {
+  encryptForStorage,
+  decryptFromStorage,
+  isEncryptedPayload,
+} from './auth-crypto';
 
 // ────────────────────────────────────────────────────────────────────────────
 // Constants
