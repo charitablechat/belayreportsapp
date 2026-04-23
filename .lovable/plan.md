@@ -1,44 +1,62 @@
 
 
-## S30 — Eliminate redundant child-count-hint scans on every save
+## S31 — Standardize drift comparison operator across `local-data-guards`
 
-### Problem
+### Finding
 
-`saveInspectionOffline`, `saveDailyAssessmentOffline`, and `saveTrainingOffline` each run **5–6 parallel `getAllFromIndex` reads on every call** to compute `child_count_hint`. During typing-driven auto-save (every 1.5 s), this is 5–6 extra IDB reads per burst per report — purely diagnostic data consumed only by the service-worker sync regression guard. On iOS this measurably worsens the IDB contention that S2/S11 were built to mitigate.
+Two call sites compare drift against `SYNC_DRIFT_TOLERANCE_MS` with **different operators**:
 
-### Design
+- `src/lib/local-data-guards.ts` L48 (`isLocalDataNewer`) uses `Math.abs(localMs - serverMs) <= SYNC_DRIFT_TOLERANCE_MS` → drift exactly equal to tolerance is treated as **within tolerance** (server wins).
+- `src/lib/local-data-guards.ts` L77 (`shouldPreserveLocalRecord`) uses `drift > CLOCK_SKEW_TOLERANCE_MS` → drift exactly equal to tolerance is treated as **within tolerance** (don't preserve).
+- `src/lib/offline-storage.ts` L961–977 (the unsynced-counts query referenced in the task) follows the same `>` pattern.
 
-**Move hint computation off the parent-save hot path** by giving it three cheaper sources of truth, in priority order:
+These are actually **already consistent in semantics** ("at exactly N ms drift, treat as synced"), but the operator choice differs (`<=` vs `>`). The task asks to standardize the wording so future readers and any new call site can't drift apart.
 
-1. **Caller-provided hint (preferred).** Add an optional second argument `opts?: { childCountHint?: number }`. The form components that mutate children (InspectionForm, TrainingForm, DailyAssessmentForm) already hold the in-memory arrays they just modified, so they can pass `{ childCountHint: systems.length + ziplines.length + … }` for free. No IDB reads.
+### Decision
 
-2. **Stamp on child writes, not parent writes.** The functions that actually mutate children — `saveRelatedDataOffline`, `saveTrainingDataOffline`, `saveAssessmentDataOffline` — already touch the relevant child store. After their write, do one cheap `count()` per affected store (or use the array length they were just passed) and patch `child_count_hint` onto the parent row inline. This way the hint is recomputed only when children actually change, not on every keystroke that updates parent fields.
+Standardize on **"drift strictly greater than tolerance ⇒ unsynced"** everywhere — i.e. `>` for the "is dirty" direction, `<=` for the "within tolerance" direction. This matches the existing offline-storage query, which is the hottest path and the one most likely to be copied. A record with drift == 5000 ms (or whatever the tolerance is, currently 30000) stays "synced".
 
-3. **Preserve existing value when neither is available.** If the caller doesn't pass a hint and the save is a parent-only save (no child mutation), keep the existing `inspection.child_count_hint` value already on the row — do NOT scan. A stale hint is fine for the SW guard (the guard is "is current count drastically below the last known total?"; a slightly old hint just means the guard is slightly more permissive on the next sync, which is the safe direction).
+### Changes
 
-### Files
+**`src/lib/local-data-guards.ts`**
 
-- **`src/lib/offline-storage.ts`**
-  - `saveInspectionOffline(inspection, opts?)` — replace the 5-read scan (L1149–1163) with: `if (opts?.childCountHint != null) inspection.child_count_hint = opts.childCountHint;` else preserve existing value. Same shape change for `saveDailyAssessmentOffline` (L2218–2236) and `saveTrainingOffline` (L2566–2585).
-  - `saveRelatedDataOffline` / `saveTrainingDataOffline` / `saveAssessmentDataOffline` — after the child write, fetch the parent row, compute the new total from `data.length` plus `count()` on the *other* relevant stores via a single shared transaction (one read per other store, but only on actual child mutation, not every parent save). Patch `child_count_hint` on the parent and `put` it back. Keep this fire-and-forget so it never blocks the child save.
+1. Extract the comparison into a single named helper so the operator lives in exactly one place:
+   ```ts
+   /** True when the gap between two timestamps exceeds the sync drift tolerance. */
+   export function exceedsDriftTolerance(aMs: number, bMs: number): boolean {
+     return Math.abs(aMs - bMs) > SYNC_DRIFT_TOLERANCE_MS;
+   }
+   ```
+2. Rewrite `isLocalDataNewer` to use it:
+   - Replace `if (Math.abs(localMs - serverMs) <= SYNC_DRIFT_TOLERANCE_MS) return false;` with `if (!exceedsDriftTolerance(localMs, serverMs)) return false;`. Behavior unchanged.
+3. Rewrite `shouldPreserveLocalRecord` to use it:
+   - Replace `if (drift > CLOCK_SKEW_TOLERANCE_MS) return true;` with `if (exceedsDriftTolerance(updatedMs, syncedMs)) return true;` (computing `updatedMs`/`syncedMs` from the record, removing the `drift` local since it's now subsumed). Behavior unchanged for positive drift; for negative drift (synced_at > updated_at, possible after Part B server-anchored timestamps) the new version correctly treats large negative drift as a clock anomaly worth preserving — a small consistency win.
+4. Drop the deprecated `CLOCK_SKEW_TOLERANCE_MS` alias (now unused after the rewrite).
 
-- **`src/pages/InspectionForm.tsx`, `src/pages/TrainingForm.tsx`, `src/pages/DailyAssessmentForm.tsx`** — at each `saveInspectionOffline`/`saveTrainingOffline`/`saveDailyAssessmentOffline` call site that already knows the in-memory child arrays, pass `{ childCountHint: <sum> }` so the parent save path requires zero extra reads.
+**`src/lib/offline-storage.ts` L961–977**
 
-- **No changes** to `public/sw-sync.js` — the guard contract (compare live count to `child_count_hint`) is unchanged.
+5. Replace the inline `Math.abs(...) > SYNC_DRIFT_TOLERANCE_MS` comparison in the unsynced-counts query with `exceedsDriftTolerance(...)` imported from `local-data-guards`. Single source of truth; no behavior change (already uses `>`).
+
+**Tests (`src/lib/local-data-guards.test.ts`)**
+
+6. Add three boundary cases to lock in the contract:
+   - drift == tolerance ⇒ `isLocalDataNewer` returns `false`, `shouldPreserveLocalRecord` returns `false`.
+   - drift == tolerance + 1 ⇒ both return `true`.
+   - drift == tolerance - 1 ⇒ both return `false`.
 
 ### Out of scope
 
-- Redesigning the SW regression guard itself (separate concern, S6/S11 territory).
-- Removing the field entirely — it's still a valuable safety net for partial-read SW scenarios.
+- Changing the tolerance value itself (still 30 s, per the existing comment block).
+- Auditing other places that compute timestamp diffs for unrelated purposes (sync-reconciliation cooldowns, photo retention, etc.) — different semantics.
+- Changing the symmetric/absolute-value choice (still `Math.abs`; negative-drift handling was clarified above as a small win, not a behavior reversal in any real case).
 
 ### Risk
 
-Low. Worst case: if a caller forgets to pass the hint *and* mutates children via a path that doesn't go through the child-save helpers, the hint goes stale. The SW guard then becomes more lenient (lets the sync proceed even when live count is below an older hint), which is the safer direction — the dangerous direction (false-positive regression block) is unaffected.
+Negligible. Pure refactor of a comparison operator into a shared helper; the only behavioral change is for the exact-equality boundary case, which is now uniformly "treat as synced" everywhere. No data-path change.
 
 ### Verification
 
 - `npx tsc --noEmit`.
-- Manual: type rapidly in an inspection form for 10 s, confirm Performance tab shows ~0 extra `getAllFromIndex` calls per parent save (vs. 5 before).
-- Manual: add/remove a system row, sync, confirm `child_count_hint` on the parent matches the new total in the IDB inspector.
-- Manual: trigger the SW regression guard by manually clearing one child store before sync; confirm SW still defers the cycle (guard still works).
+- `npx vitest run src/lib/local-data-guards.test.ts` (existing + 3 new boundary cases pass).
+- Grep `SYNC_DRIFT_TOLERANCE_MS` confirms no remaining inline comparisons outside `exceedsDriftTolerance`.
 
