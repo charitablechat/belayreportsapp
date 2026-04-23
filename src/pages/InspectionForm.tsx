@@ -1659,13 +1659,17 @@ export default function InspectionForm() {
       // Clear any previous save errors
       setSaveError(null);
 
+      // H10: Pre-edit snapshot: capture server state before admin overwrites it.
+      // Fires regardless of online state — capturePreEditSnapshot internally
+      // routes to a local queue (admin_edit_snapshot_queue) when offline so the
+      // audit trail is never lost.
+      if (currentUser?.id && inspection?.inspector_id && currentUser.id !== inspection.inspector_id) {
+        const { capturePreEditSnapshot } = await import('@/lib/admin-edit-snapshot');
+        capturePreEditSnapshot('inspection', id!, inspection.inspector_id, currentUser.id);
+      }
+
       // If online, sync to Supabase with retry logic
       if (isOnline) {
-        // Pre-edit snapshot: capture server state before admin overwrites it
-        if (currentUser?.id && inspection?.inspector_id && currentUser.id !== inspection.inspector_id) {
-          const { capturePreEditSnapshot } = await import('@/lib/admin-edit-snapshot');
-          capturePreEditSnapshot('inspection', id!, inspection.inspector_id, currentUser.id);
-        }
         const syncWithRetry = async (retries = 2): Promise<void> => {
           try {
             // Sanitize inspection data - remove joined/computed fields and handle nulls
