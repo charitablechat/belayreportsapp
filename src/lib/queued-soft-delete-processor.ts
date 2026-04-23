@@ -6,6 +6,9 @@ import {
   removeQueuedAssessmentOperation,
   getQueuedTrainingOperations,
   removeQueuedTrainingOperation,
+  getOfflineInspection,
+  getOfflineTraining,
+  getOfflineDailyAssessment,
 } from '@/lib/offline-storage';
 
 export interface SoftDeleteProcessorResult {
