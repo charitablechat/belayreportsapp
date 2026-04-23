@@ -116,10 +116,20 @@ describe('shouldPreserveLocalRecord', () => {
     })).toBe(false);
   });
 
-  it('returns false when updated_at is older than synced_at', () => {
+  it('returns true when updated_at is much older than synced_at (large negative drift = clock anomaly worth preserving)', () => {
+    // Post-S31: |drift| > tolerance triggers preservation regardless of sign.
     expect(shouldPreserveLocalRecord({
       synced_at: '2025-01-02T00:00:00Z',
       updated_at: '2025-01-01T00:00:00Z'
+    })).toBe(true);
+  });
+
+  it('returns false when synced_at is only slightly ahead of updated_at (within tolerance)', () => {
+    const updated = new Date('2025-01-01T12:00:00.000Z');
+    const synced = new Date(updated.getTime() + 3_000); // synced 3s ahead — server-anchored timestamp
+    expect(shouldPreserveLocalRecord({
+      synced_at: synced.toISOString(),
+      updated_at: updated.toISOString()
     })).toBe(false);
   });
 
