@@ -4,7 +4,7 @@ import { syncAllInspectionsAtomic, syncAllTrainingsAtomic, syncAllDailyAssessmen
 import { syncPhotos } from '@/lib/sync-manager';
 import { saveInspectionOffline, saveTrainingOffline, saveDailyAssessmentOffline } from '@/lib/offline-storage';
 import { shouldPreserveLocalRecord } from '@/lib/local-data-guards';
-import { getUnsyncedInspections, getUnsyncedTrainings, getUnsyncedDailyAssessments, getUnsyncedCounts, getCircuitBreakerStatus, resetCircuitBreaker, pruneOldSyncedPhotoBlobs, getQueuedOperations, removeQueuedOperation, getQueuedTrainingOperations, removeQueuedTrainingOperation, getQueuedAssessmentOperations, removeQueuedAssessmentOperation, clearAllQueuedOperations, clearAllQueuedTrainingOperations, clearAllQueuedAssessmentOperations, withIDBTimeout } from '@/lib/offline-storage';
+import { getUnsyncedInspections, getUnsyncedTrainings, getUnsyncedDailyAssessments, getUnsyncedCounts, getCircuitBreakerStatus, resetCircuitBreaker, pruneOldSyncedPhotoBlobs, getQueuedOperations, removeQueuedOperation, getQueuedTrainingOperations, removeQueuedTrainingOperation, getQueuedAssessmentOperations, removeQueuedAssessmentOperation, withIDBTimeout } from '@/lib/offline-storage';
 import { getUserWithCache, getCachedUserFromStorage, ensureValidSession, type CachedUser } from '@/lib/cached-auth';
 import { hasPendingOfflineAuth, verifyAndReconcileOfflineAuth } from '@/lib/offline-auth';
 import { useQueryClient } from '@tanstack/react-query';
@@ -294,13 +294,18 @@ export const useAutoSync = () => {
               console.warn('[AutoSync] Queued soft-delete processing failed (non-blocking):', e);
             }
             
-            // Bulk clear all remaining queued operations (avoids IDB key mismatch issues)
-            console.log(`[AutoSync] Bulk clearing stale queued operations (${inspOps.length} insp, ${trainOps.length} train, ${assessOps.length} assess)`);
-            await Promise.all([
-              clearAllQueuedOperations(),
-              clearAllQueuedTrainingOperations(),
-              clearAllQueuedAssessmentOperations(),
-            ]);
+            // S4: Conservative state-aware prune (replaces destructive bulk-clear).
+            // Only drops entries whose work is already represented in IDB state.
+            try {
+              const { pruneCompletedQueuedOperations } = await import('@/lib/queued-soft-delete-processor');
+              const pruned = await pruneCompletedQueuedOperations();
+              const total = pruned.inspections + pruned.trainings + pruned.assessments;
+              if (total > 0) {
+                console.log(`[AutoSync] Pruned ${total} completed queued operations`, pruned);
+              }
+            } catch (e) {
+              console.warn('[AutoSync] Non-blocking: queue prune failed:', e);
+            }
           }
         } catch (e) {
           console.warn('[AutoSync] Stale queue check failed (non-blocking):', e);
@@ -396,17 +401,18 @@ export const useAutoSync = () => {
              manageStoragePressure().catch(() => {});
            }).catch(() => {});
            
-           // Always clean stale queued operations after sync completes
-           // Uses bulk clear to avoid IDB autoIncrement key mismatch issues
+           // S4: Conservative state-aware prune after sync completes.
+           // Replaces previous destructive bulk-clear that wiped non-soft-delete entries.
            (async () => {
              try {
-               await Promise.all([
-                 clearAllQueuedOperations(),
-                 clearAllQueuedTrainingOperations(),
-                 clearAllQueuedAssessmentOperations(),
-               ]);
+               const { pruneCompletedQueuedOperations } = await import('@/lib/queued-soft-delete-processor');
+               const pruned = await pruneCompletedQueuedOperations();
+               const total = pruned.inspections + pruned.trainings + pruned.assessments;
+               if (total > 0) {
+                 console.log(`[AutoSync] Post-sync pruned ${total} completed queued operations`, pruned);
+               }
              } catch (e) {
-               console.warn('[AutoSync] Non-blocking: bulk queue cleanup failed:', e);
+               console.warn('[AutoSync] Non-blocking: post-sync queue prune failed:', e);
              }
            })();
           

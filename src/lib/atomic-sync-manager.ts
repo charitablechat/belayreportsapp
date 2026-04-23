@@ -660,24 +660,28 @@ export async function syncInspectionAtomic(inspectionId: string, preValidatedUse
       p_table_name: 'inspections',
       p_record_id: inspectionId,
     });
-    
-    // STRICT: If align_synced_at returns null/error, the server has no record — fail the sync
-    if (alignError) {
-      throw new Error(`Sync verification failed: align_synced_at RPC error: ${alignError.message}`);
-    }
-    
+
+    // S3: align_synced_at is ADVISORY. The transaction's final step already wrote
+    // synced_at on the server (executeTransaction enforces row-count > 0). If the
+    // RPC fails (network blip, lock, transient error), fall back to the timestamp
+    // we just committed so local state advances and the record stops re-queueing.
+    let serverTimestamp: string;
     const alignedData = aligned as any;
-    if (!alignedData || alignedData.error) {
-      throw new Error(`Sync verification failed: server record not found (align_synced_at returned ${JSON.stringify(aligned)})`);
+    if (alignError || !alignedData || alignedData.error) {
+      console.warn(
+        '[Atomic Sync] align_synced_at non-fatal failure — using transaction timestamp',
+        { table: 'inspections', id: inspectionId, alignError: alignError?.message, aligned }
+      );
+      serverTimestamp = (steps[steps.length - 1].data as any).synced_at;
+    } else {
+      serverTimestamp = alignedData.updated_at;
+      console.log(
+        '%c[SYNC_TERMINAL] align_synced_at CONFIRMED %c%s',
+        'color: #4ade80; font-family: monospace; font-weight: bold',
+        'color: #86efac; font-family: monospace',
+        `| table=inspections | id=${inspectionId.substring(0,8)}... | ts=${serverTimestamp}`
+      );
     }
-    
-    const serverTimestamp = alignedData.updated_at;
-    console.log(
-      '%c[SYNC_TERMINAL] align_synced_at CONFIRMED %c%s',
-      'color: #4ade80; font-family: monospace; font-weight: bold',
-      'color: #86efac; font-family: monospace',
-      `| table=inspections | id=${inspectionId.substring(0,8)}... | ts=${serverTimestamp}`
-    );
     
     await saveInspectionOffline({
       ...inspection,
@@ -1463,24 +1467,25 @@ export async function syncTrainingAtomic(trainingId: string, preValidatedUser?: 
       p_table_name: 'trainings',
       p_record_id: trainingId,
     });
-    
-    // STRICT: If align_synced_at returns null/error, the server has no record — fail the sync
-    if (alignError) {
-      throw new Error(`Sync verification failed: align_synced_at RPC error: ${alignError.message}`);
-    }
-    
+
+    // S3: align_synced_at is ADVISORY. Transaction final step already wrote synced_at.
+    let serverTimestamp: string;
     const alignedData = aligned as any;
-    if (!alignedData || alignedData.error) {
-      throw new Error(`Sync verification failed: server record not found (align_synced_at returned ${JSON.stringify(aligned)})`);
+    if (alignError || !alignedData || alignedData.error) {
+      console.warn(
+        '[Atomic Sync] align_synced_at non-fatal failure — using transaction timestamp',
+        { table: 'trainings', id: trainingId, alignError: alignError?.message, aligned }
+      );
+      serverTimestamp = (steps[steps.length - 1].data as any).synced_at;
+    } else {
+      serverTimestamp = alignedData.updated_at;
+      console.log(
+        '%c[SYNC_TERMINAL] align_synced_at CONFIRMED %c%s',
+        'color: #4ade80; font-family: monospace; font-weight: bold',
+        'color: #86efac; font-family: monospace',
+        `| table=trainings | id=${trainingId.substring(0,8)}... | ts=${serverTimestamp}`
+      );
     }
-    
-    const serverTimestamp = alignedData.updated_at;
-    console.log(
-      '%c[SYNC_TERMINAL] align_synced_at CONFIRMED %c%s',
-      'color: #4ade80; font-family: monospace; font-weight: bold',
-      'color: #86efac; font-family: monospace',
-      `| table=trainings | id=${trainingId.substring(0,8)}... | ts=${serverTimestamp}`
-    );
     
     await saveTrainingOffline({
       ...training,
@@ -2200,24 +2205,25 @@ export async function syncDailyAssessmentAtomic(assessmentId: string, preValidat
       p_table_name: 'daily_assessments',
       p_record_id: assessmentId,
     });
-    
-    // STRICT: If align_synced_at returns null/error, the server has no record — fail the sync
-    if (alignError) {
-      throw new Error(`Sync verification failed: align_synced_at RPC error: ${alignError.message}`);
-    }
-    
+
+    // S3: align_synced_at is ADVISORY. Transaction final step already wrote synced_at.
+    let serverTimestamp: string;
     const alignedData = aligned as any;
-    if (!alignedData || alignedData.error) {
-      throw new Error(`Sync verification failed: server record not found (align_synced_at returned ${JSON.stringify(aligned)})`);
+    if (alignError || !alignedData || alignedData.error) {
+      console.warn(
+        '[Atomic Sync] align_synced_at non-fatal failure — using transaction timestamp',
+        { table: 'daily_assessments', id: assessmentId, alignError: alignError?.message, aligned }
+      );
+      serverTimestamp = (steps[steps.length - 1].data as any).synced_at;
+    } else {
+      serverTimestamp = alignedData.updated_at;
+      console.log(
+        '%c[SYNC_TERMINAL] align_synced_at CONFIRMED %c%s',
+        'color: #4ade80; font-family: monospace; font-weight: bold',
+        'color: #86efac; font-family: monospace',
+        `| table=daily_assessments | id=${assessmentId.substring(0,8)}... | ts=${serverTimestamp}`
+      );
     }
-    
-    const serverTimestamp = alignedData.updated_at;
-    console.log(
-      '%c[SYNC_TERMINAL] align_synced_at CONFIRMED %c%s',
-      'color: #4ade80; font-family: monospace; font-weight: bold',
-      'color: #86efac; font-family: monospace',
-      `| table=daily_assessments | id=${assessmentId.substring(0,8)}... | ts=${serverTimestamp}`
-    );
     
     await saveDailyAssessmentOffline({
       ...assessment,
