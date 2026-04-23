@@ -38,8 +38,32 @@ export const SYNTHETIC_SESSION_KEY = 'offline_synthetic_session';
 const LEGACY_PENDING_FLAG = 'offline_auth_pending';
 const PENDING_OFFLINE_SIGNOUT_KEY = 'pending_offline_signout';
 
-/** Synthetic sessions expire 30 days after capture. */
+/** Synthetic sessions expire 30 days after capture (hard cap). */
 const SYNTHETIC_SESSION_TTL_MS = 30 * 24 * 60 * 60 * 1000;
+
+/**
+ * Phase 4b — bounded offline window. After this many days *without* an online
+ * reconciliation, the user is forced back to the online sign-in screen even
+ * if the synthetic session blob is still valid. 14 days by default.
+ */
+const OFFLINE_WINDOW_DAYS_DEFAULT = 14;
+const OFFLINE_WINDOW_WARNING_DAYS = 2; // soft warning at T-2 days
+
+function getOfflineWindowMs(): number {
+  // Allow admins/devs to tune via localStorage without a redeploy.
+  try {
+    const raw = localStorage.getItem('offline_window_days');
+    if (raw) {
+      const days = parseInt(raw, 10);
+      if (Number.isFinite(days) && days > 0 && days <= 90) {
+        return days * 24 * 60 * 60 * 1000;
+      }
+    }
+  } catch {
+    // ignore
+  }
+  return OFFLINE_WINDOW_DAYS_DEFAULT * 24 * 60 * 60 * 1000;
+}
 
 interface OfflineAuthDB {
   /** Lightweight email→userId mapping, kept for migration paths. */
