@@ -2219,6 +2219,8 @@ export async function syncDailyAssessmentAtomic(assessmentId: string, preValidat
     });
     
     // 5. Execute transaction
+    // S6: register self-write so the Realtime handler doesn't re-trigger sync from our own writes
+    registerSelfWrite(assessmentId);
     const result = await executeTransaction(steps);
     
     if (!result.success) {
