@@ -247,18 +247,22 @@ async function probeIndexedDB(): Promise<boolean> {
   if (circuitBreakerProbing) return false;
   circuitBreakerProbing = true;
   try {
-    const db = await Promise.race([
-      openDB('rope-works-inspections', undefined),
-      new Promise<null>((resolve) => setTimeout(() => resolve(null), 3000))
-    ]);
+    const { data: db } = await withIDBTimeout(
+      'probeIndexedDB:open',
+      'light',
+      () => openDB('rope-works-inspections', undefined),
+      null as any
+    );
     if (!db) return false;
     // Lightweight count query to verify the connection is live
-    const count = await Promise.race([
-      db.count('inspections'),
-      new Promise<null>((resolve) => setTimeout(() => resolve(null), 2000))
-    ]);
+    const { data: count, timedOut } = await withIDBTimeout(
+      'probeIndexedDB:count(inspections)',
+      'light',
+      () => db.count('inspections'),
+      null as number | null
+    );
     db.close();
-    return count !== null;
+    return !timedOut && count !== null;
   } catch {
     return false;
   } finally {
