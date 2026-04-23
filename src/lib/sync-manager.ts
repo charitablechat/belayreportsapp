@@ -107,6 +107,11 @@ export async function syncPhotos(): Promise<{ remaining: number; error?: string 
           if (import.meta.env.DEV) {
             console.warn('[Sync Manager] Skipping photo with temporary inspection ID:', photo.id);
           }
+          // S13: Count temp-parent skips toward retry ceiling so chronically
+          // stuck photos eventually surface in the dead-letter UI instead of
+          // being silently invisible. Age-based GC (evictStuckTempPhotos)
+          // handles the long-tail cleanup.
+          await incrementPhotoRetryCount(photo.id);
           return;
         }
 
