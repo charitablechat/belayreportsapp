@@ -562,7 +562,7 @@ export default function InspectionForm() {
         loadInspection();
         return;
       }
-      toast('Remote update available', {
+      toast.warning('Remote update available', {
         description: 'Another device updated this report. Reload from server (your unsaved edits will be lost) or keep your changes.',
         duration: 30000,
         action: {
