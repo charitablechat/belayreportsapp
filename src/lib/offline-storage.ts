@@ -56,6 +56,7 @@ interface InspectionDB extends DBSchema {
       retryCount?: number; // Failed upload retry counter
       lastError?: string | null; // S22: Human-readable last upload error
       lastErrorAt?: number | null; // S22: epoch ms when lastError was stamped
+      capturedByUserId?: string | null; // S23: User-id active when this photo was staged
     };
     indexes: { 'by-inspection': string; 'by-uploaded': number };
   };
@@ -1413,6 +1414,7 @@ export async function savePhotoOffline(photo: {
   storageBucket?: string;
   foreignKeyColumn?: string;
   caption?: string;
+  capturedByUserId?: string | null; // S23
 }): Promise<boolean> {
   return withIndexedDBErrorBoundary(
     async () => {
