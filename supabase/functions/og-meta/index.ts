@@ -34,7 +34,8 @@ serve(async (req: Request) => {
 
   const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
   const functionsBaseUrl = `${supabaseUrl}/functions/v1`;
-  const spaBaseUrl = "https://ropeworks.lovable.app";
+  // ── C3: SITE_URL runtime secret with fallback ──
+  const spaBaseUrl = Deno.env.get("SITE_URL") || "https://ropeworks.lovable.app";
 
   if (!type || !["inspection", "training", "daily_assessment"].includes(type) ||
       !id || !/^[a-f0-9]{8}$/i.test(id)) {
