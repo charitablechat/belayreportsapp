@@ -189,6 +189,48 @@ export const SyncDiagnosticsSheet = () => {
             </div>
           )}
 
+          {deadLetterDeletes.length > 0 && (
+            <div>
+              <h3 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-2">
+                Failed Deletions ({deadLetterDeletes.length})
+              </h3>
+              <div className="rounded-md border border-border divide-y divide-border">
+                {deadLetterDeletes.map((entry) => (
+                  <DeadLetterDeleteRow
+                    key={entry.id}
+                    entry={entry}
+                    busy={busyDeadLetterId === entry.id}
+                    onRetry={async () => {
+                      setBusyDeadLetterId(entry.id);
+                      try {
+                        const ok = await retryDeadLetterSoftDelete(entry);
+                        if (ok) {
+                          toast.success('Deletion requeued for retry');
+                          await refresh();
+                        } else {
+                          toast.error('Could not requeue deletion');
+                        }
+                      } finally {
+                        setBusyDeadLetterId(null);
+                      }
+                    }}
+                    onDiscard={async () => {
+                      if (!confirm('Discard this failed deletion? The record will remain on the server.')) return;
+                      setBusyDeadLetterId(entry.id);
+                      try {
+                        await removeDeadLetterSoftDelete(entry.id);
+                        toast.success('Discarded');
+                        await refresh();
+                      } finally {
+                        setBusyDeadLetterId(null);
+                      }
+                    }}
+                  />
+                ))}
+              </div>
+            </div>
+          )}
+
           <div className="flex flex-col gap-2 pt-2">
             <ForceSyncButton variant="default" />
             <Button
