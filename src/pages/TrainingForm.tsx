@@ -705,7 +705,7 @@ export default function TrainingForm() {
     }, 8000);
 
     try {
-      const updatedTraining = {
+      const baseUpdatedTraining = {
         ...training,
         updated_at: new Date().toISOString(),
         // DISABLED: active_duration_seconds: getElapsedSeconds(),
@@ -714,6 +714,21 @@ export default function TrainingForm() {
           ? { last_modified_by: currentUser.id } 
           : {}),
       };
+
+      // S9: Reconcile user-clear intent across all child collections + summary.
+      const summaryHasContent = !!(trainingSummary && (
+        trainingSummary.observations || trainingSummary.recommendations
+      ));
+      const totalChildCount =
+        deliveryApproaches.length + operatingSystems.length +
+        immediateAttention.length + verifiableItems.length +
+        systemsInPlace.length + (summaryHasContent ? 1 : 0);
+      const { reconcileClearIntent } = await import('@/lib/clear-intent');
+      const updatedTraining = reconcileClearIntent(
+        baseUpdatedTraining,
+        totalChildCount,
+        !!baseUpdatedTraining.synced_at,
+      );
 
       // Save offline (fire-and-forget for UI responsiveness)
       // Guard: Only write child data if it was successfully loaded OR has items
