@@ -947,6 +947,14 @@ export default function DailyAssessmentForm() {
           const errors = upsertResults.filter(r => r.error);
           if (errors.length > 0) {
             console.error('[Save] Upsert errors:', errors.map(e => e.error));
+            // C4: parallel upsert(s) failed — restore the rows reconcile already deleted.
+            if (assessmentReconciledDeletes.length > 0) {
+              try {
+                await restoreReconciledDeletions(assessmentReconciledDeletes, id!);
+              } catch (restoreErr) {
+                console.error('[C4] DailyAssessmentForm: restoreReconciledDeletions threw', restoreErr);
+              }
+            }
             throw new Error(`Failed to save ${errors.length} section(s)`);
           }
           if (import.meta.env.DEV) console.log('[Save] Child tables synced successfully');
