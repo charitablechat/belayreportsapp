@@ -3131,6 +3131,54 @@ export async function evictOldReportBackups(ageDays: number): Promise<number> {
 }
 
 /**
+ * Garbage-collect photos whose parent inspection has been stuck on a temp-* id
+ * for longer than `ageDays`. Covers two failure modes:
+ *   1. Parent was deleted from IDB before sync (orphan) — already filtered from
+ *      live queue, but the row still consumes storage.
+ *   2. Parent still exists but its sync keeps failing (validation/RLS) so its
+ *      id never gets rewritten to a real UUID. Without this GC the blob sits
+ *      in IDB forever, growing storage on every failed-sync device.
+ *
+ * Safety: only deletes rows whose `inspectionId` STILL starts with `temp-` at
+ * the moment of GC. If the parent later syncs successfully and `relinkPhotosToNewInspectionId`
+ * rewrites the id to a UUID, the photo is no longer eligible for this eviction.
+ *
+ * Default age = 30 days. Returns count of evicted photos.
+ */
+export async function evictStuckTempPhotos(ageDays: number = 30): Promise<number> {
+  let evictedCount = 0;
+  try {
+    const db = await getDB();
+    if (!db.objectStoreNames.contains('photos')) return 0;
+
+    const cutoff = Date.now() - ageDays * 24 * 60 * 60 * 1000;
+    const tx = db.transaction('photos', 'readwrite');
+    let cursor = await tx.store.openCursor();
+    while (cursor) {
+      const photo = cursor.value;
+      if (
+        photo.inspectionId?.startsWith('temp-') &&
+        photo.uploaded === false &&
+        typeof photo.timestamp === 'number' &&
+        photo.timestamp < cutoff
+      ) {
+        await cursor.delete();
+        evictedCount++;
+      }
+      cursor = await cursor.continue();
+    }
+    await tx.done;
+
+    if (evictedCount > 0 && import.meta.env.DEV) {
+      console.log(`[Eviction] Removed ${evictedCount} stuck temp-* photos older than ${ageDays}d`);
+    }
+  } catch (error) {
+    console.warn('[Eviction] evictStuckTempPhotos failed:', error);
+  }
+  return evictedCount;
+}
+
+/**
  * Evict photo metadata rows where blob is null (already uploaded) and synced older than ageDays.
  */
 export async function evictSyncedPhotoMetadata(ageDays: number): Promise<number> {
