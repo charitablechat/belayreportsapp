@@ -923,10 +923,11 @@ export async function syncAllInspectionsAtomic(preValidatedUser?: CachedUser, si
   let progressCounter = 0;
 
   await runWithConcurrency(batch, itemConcurrency, async (inspection, i) => {
+    if (signal?.aborted) return;
     let retryCount = 0;
     let synced = false;
 
-    while (retryCount < maxRetries && !synced) {
+    while (retryCount < maxRetries && !synced && !signal?.aborted) {
       // Emit progress for current item
       progressCounter++;
       syncProgressEmitter.emit({
@@ -941,7 +942,7 @@ export async function syncAllInspectionsAtomic(preValidatedUser?: CachedUser, si
         // Per-item timeout to prevent single item from blocking entire sync
         // Pass pre-validated user to skip redundant session validation per item
         const itemResult = await Promise.race([
-          syncInspectionAtomic(inspection.id, user as CachedUser),
+          syncInspectionAtomic(inspection.id, user as CachedUser, signal),
           new Promise<never>((_, reject) => setTimeout(() => reject(new Error('Item sync timeout')), ITEM_SYNC_TIMEOUT))
         ]);
         // Only count as success if item was actually synced (not skipped)
