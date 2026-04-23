@@ -385,6 +385,21 @@ function isLocalStorageAvailable(): boolean {
 // ============= END CIRCUIT BREAKER =============
 
 /**
+ * Timeout limits by operation weight — prevents false empties on slow devices
+ */
+export const IDB_TIMEOUTS = {
+  /** Single-key or small metadata reads */
+  light: 5_000,
+  /** Batch child-section reads (related data, training items, assessments) */
+  batch: 10_000,
+  /** Multi-store transactions or full-table scans */
+  heavy: 15_000,
+  /** Write operations (puts, deletes) */
+  write: 8_000,
+} as const;
+export type TimeoutTier = keyof typeof IDB_TIMEOUTS;
+
+/**
  * Helper to wrap a promise with a timeout
  */
 // Track timeout suppression to avoid console spam
