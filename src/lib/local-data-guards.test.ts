@@ -130,3 +130,39 @@ describe('shouldPreserveLocalRecord', () => {
     })).toBe(false);
   });
 });
+
+describe('drift tolerance boundary contract', () => {
+  const baseSynced = '2025-01-01T12:00:00.000Z';
+  const baseSyncedMs = new Date(baseSynced).getTime();
+
+  it('drift exactly equal to tolerance is treated as synced (isLocalDataNewer)', () => {
+    const updated = new Date(baseSyncedMs + SYNC_DRIFT_TOLERANCE_MS).toISOString();
+    expect(isLocalDataNewer(
+      { updated_at: updated, synced_at: baseSynced },
+      { updated_at: baseSynced }
+    )).toBe(false);
+  });
+
+  it('drift exactly equal to tolerance is treated as synced (shouldPreserveLocalRecord)', () => {
+    const updated = new Date(baseSyncedMs + SYNC_DRIFT_TOLERANCE_MS).toISOString();
+    expect(shouldPreserveLocalRecord({ synced_at: baseSynced, updated_at: updated })).toBe(false);
+  });
+
+  it('drift = tolerance + 1ms is treated as unsynced (both guards)', () => {
+    const updated = new Date(baseSyncedMs + SYNC_DRIFT_TOLERANCE_MS + 1).toISOString();
+    expect(isLocalDataNewer(
+      { updated_at: updated, synced_at: baseSynced },
+      { updated_at: baseSynced }
+    )).toBe(true);
+    expect(shouldPreserveLocalRecord({ synced_at: baseSynced, updated_at: updated })).toBe(true);
+  });
+
+  it('drift = tolerance - 1ms is treated as synced (both guards)', () => {
+    const updated = new Date(baseSyncedMs + SYNC_DRIFT_TOLERANCE_MS - 1).toISOString();
+    expect(isLocalDataNewer(
+      { updated_at: updated, synced_at: baseSynced },
+      { updated_at: baseSynced }
+    )).toBe(false);
+    expect(shouldPreserveLocalRecord({ synced_at: baseSynced, updated_at: updated })).toBe(false);
+  });
+});
