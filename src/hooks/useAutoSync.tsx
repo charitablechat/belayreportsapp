@@ -967,6 +967,10 @@ export const useAutoSync = () => {
       if (channelRef.current) {
         supabase.removeChannel(channelRef.current);
       }
+
+      // S12: clear any pending package refetches
+      refetchTimersRef.current.forEach((handle) => clearTimeout(handle));
+      refetchTimersRef.current.clear();
     };
   }, [performSync, handleOnline, handleVisibilityChange, handleRemoteChange, updateUnsyncedCounts, isIOSDevice, isMobileDevice, activeSyncInterval, idleSyncInterval, isMobileViewport]);
   
