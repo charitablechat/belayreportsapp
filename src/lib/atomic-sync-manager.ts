@@ -364,58 +364,232 @@ export async function syncInspectionAtomic(inspectionId: string, preValidatedUse
       };
     }
     
-    // S16: Field-level merge instead of row-level last-writer-wins.
-    // When remote has changes our last sync didn't see, fetch the full remote
-    // row and merge per-field by `field_timestamps`. The merged record then
-    // flows through the normal sync path (so child reconciliation still runs).
+    // Use recordStatus for conflict detection if available
     if (recordStatus?.record_exists && !recordStatus?.is_deleted) {
       const remoteUpdated = new Date(recordStatus.updated_at!).getTime();
       const localUpdated = new Date(inspection.updated_at).getTime();
       const timeDiff = Math.abs(remoteUpdated - localUpdated);
+      
+      // PREVENTIVE MEASURE: Skip conflict detection if local data was never synced
+      // or if the inspection has already been synced after the local update
       const localSyncedAt = inspection.synced_at ? new Date(inspection.synced_at).getTime() : 0;
       const isAlreadySynced = localSyncedAt >= localUpdated;
-      const remoteUpdatedAfterOurSync = localSyncedAt === 0 || remoteUpdated > localSyncedAt;
-
-      if (
-        timeDiff > CONFLICT_THRESHOLD_MS &&
-        remoteUpdated > localUpdated &&
-        !isAlreadySynced &&
-        remoteUpdatedAfterOurSync
-      ) {
-        const { data: remoteRow } = await supabase
-          .from('inspections')
-          .select('*')
-          .eq('id', inspectionId)
-          .maybeSingle();
-
-        if (remoteRow) {
-          const merged = mergeRecordFields<any>(
-            inspection as any,
-            remoteRow as any,
-            TRACKED_FIELDS.inspection,
-          );
-          // Mutate in place so the existing transaction steps below upsert merged values.
-          Object.assign(inspection, merged);
-
+      
+      // Only flag as conflict if:
+      // 1. Remote is significantly newer (>5 seconds)
+      // 2. Remote was updated AFTER our last sync (genuine concurrent edit)
+      // 3. Local changes haven't been synced yet
+      if (timeDiff > 5000 && remoteUpdated > localUpdated && !isAlreadySynced) {
+        // Additional check: verify remote was updated after our last known sync
+        const remoteUpdatedAfterOurSync = localSyncedAt === 0 || remoteUpdated > localSyncedAt;
+        
+        if (!remoteUpdatedAfterOurSync) {
+          // Remote change predates our last sync - not a real conflict, proceed with sync
           if (import.meta.env.DEV) {
-            console.log('[Atomic Sync] S16 field-merged inspection:', inspectionId);
+            console.log('[Atomic Sync] Skipping conflict - remote change predates our last sync');
           }
-
-          // Audit: log + auto-resolve so the conflicts panel reflects what happened.
-          const organizationId = inspection.organization_id;
-          if (organizationId) {
-            try {
-              await supabase.from('sync_conflicts').insert({
-                inspection_id: inspectionId,
-                organization_id: organizationId,
-                local_updated_at: inspection.updated_at,
-                remote_updated_at: recordStatus.updated_at!,
-                resolved: true,
-              });
-            } catch (auditErr) {
-              console.warn('[Atomic Sync] S16 conflict audit insert failed:', auditErr);
+        } else {
+          // Check if an unresolved conflict already exists for this inspection
+          const { data: existingConflict } = await supabase
+            .from('sync_conflicts')
+            .select('id')
+            .eq('inspection_id', inspectionId)
+            .eq('resolved', false)
+            .maybeSingle();
+          
+          if (!existingConflict) {
+            // Validate organization_id - must have a valid value
+            const organizationId = inspection.organization_id;
+            if (!organizationId) {
+              console.error('[Atomic Sync] Cannot record conflict - missing organization_id for inspection:', inspectionId);
+              throw new Error('Sync conflict detected but organization_id is missing');
+            }
+            
+            // No existing conflict - record a new one (will be auto-resolved silently)
+            const { error: conflictError } = await supabase.from('sync_conflicts').insert({
+              inspection_id: inspectionId,
+              organization_id: organizationId,
+              local_updated_at: inspection.updated_at,
+              remote_updated_at: recordStatus.updated_at!,
+              resolved: false,
+            });
+            
+            if (conflictError) {
+              console.error('[Atomic Sync] Failed to record conflict:', conflictError);
+            }
+            // No toast notifications - conflicts are resolved automatically via useConflicts hook
+          } else {
+            if (import.meta.env.DEV) {
+              console.log('[Atomic Sync] Conflict already exists for inspection:', inspectionId);
             }
           }
+          
+          // Return success - the useConflicts hook will handle auto-resolution
+          return { success: true, conflict: true };
+        }
+      }
+    }
+    // PRE-SYNC VERSION SNAPSHOT — capture immutable state before sync
+    appendVersion('inspection', inspectionId, inspection, {
+      systems, ziplines, equipment, standards, summary: summary ? [summary] : [],
+    }, 'pre_sync').catch(() => {});
+
+    // FIELD-COUNT REGRESSION GUARD — block sync if local data regressed significantly
+    const currentFieldCount = calculateFieldCount(inspection, {
+      systems, ziplines, equipment, standards, summary: summary ? [summary] : [],
+    });
+    const previousFieldCount = await getLatestFieldCount(inspectionId);
+    if (previousFieldCount !== null && previousFieldCount > 0) {
+      const dropPercent = ((previousFieldCount - currentFieldCount) / previousFieldCount) * 100;
+      if (dropPercent > 50) {
+        const skipCount = await incrementRegressionSkipCount(inspectionId);
+        if (skipCount <= MAX_REGRESSION_SKIPS) {
+          console.error('[SAFETY] Blocked inspection sync: field count regression >50%', {
+            inspectionId: inspectionId.substring(0, 8),
+            previousFieldCount,
+            currentFieldCount,
+            dropPercent: dropPercent.toFixed(1),
+            skipCount,
+            maxSkips: MAX_REGRESSION_SKIPS,
+          });
+          return { success: false, skipped: true, reason: 'field_count_regression' };
+        }
+        console.warn('[SAFETY] Allowing inspection sync after max regression skips reached', {
+          inspectionId: inspectionId.substring(0, 8),
+          skipCount,
+        });
+        await resetRegressionSkipCount(inspectionId);
+      } else {
+        // Field count is healthy — clear any previous skip counter
+        await resetRegressionSkipCount(inspectionId);
+      }
+    }
+
+    // M15: Hard guard — fail loud if any temp- ID slipped past the transforms above.
+    assertNoTempIds(inspection, 'inspections.upsert');
+    assertNoTempIdsInArray(systems, 'inspection_systems.upsert');
+    assertNoTempIdsInArray(ziplines, 'inspection_ziplines.upsert');
+    assertNoTempIdsInArray(equipment, 'inspection_equipment.upsert');
+    assertNoTempIdsInArray(standards, 'inspection_standards.upsert');
+    if (summary) assertNoTempIds(summary, 'inspection_summary.upsert');
+
+    // 4. Build transaction steps
+    const steps: TransactionStep[] = [];
+    
+    // Exclude joined 'inspector' object - only inspector_id column exists in DB
+    const { inspector, ...inspectionWithoutJoin } = inspection as any;
+    
+    // For rollback, capture both synced_at and updated_at for proper state restoration
+    const rollbackData = recordStatus?.record_exists 
+      ? { synced_at: recordStatus.synced_at, updated_at: recordStatus.updated_at } 
+      : null;
+    
+    // Step 1: Upsert inspection WITHOUT setting synced_at (defer to final step)
+    // This ensures synced_at is only set after ALL related data is committed
+    steps.push({
+      table: 'inspections',
+      operation: 'upsert',
+      data: {
+        ...inspectionWithoutJoin,
+        // DO NOT set synced_at here - it will be set in the final step
+      },
+      rollbackData,
+    });
+    
+    // ZERO DATA LOSS: Empty-array safeguard
+    // If the server has child data but local is completely empty, this is suspicious
+    // (likely IndexedDB corruption or failed read) -- skip sync to prevent data loss
+    let existingSystems: any[] = [];
+    let existingZiplines: any[] = [];
+    let existingEquipment: any[] = [];
+    let existingStandards: any[] = [];
+    let existingSummary: any[] = [];
+    
+    if (recordStatus?.record_exists && !recordStatus?.is_deleted) {
+      [
+        existingSystems,
+        existingZiplines,
+        existingEquipment,
+        existingStandards,
+        existingSummary
+      ] = await Promise.all([
+        fetchRollbackData('inspection_systems', { inspection_id: inspectionId }),
+        fetchRollbackData('inspection_ziplines', { inspection_id: inspectionId }),
+        fetchRollbackData('inspection_equipment', { inspection_id: inspectionId }),
+        fetchRollbackData('inspection_standards', { inspection_id: inspectionId }),
+        fetchRollbackData('inspection_summary', { inspection_id: inspectionId }),
+      ]);
+      
+      const serverHasChildData = existingSystems.length > 0 || existingZiplines.length > 0 || 
+        existingEquipment.length > 0 || existingStandards.length > 0 || existingSummary.length > 0;
+      const localIsCompletelyEmpty = systems.length === 0 && ziplines.length === 0 && 
+        equipment.length === 0 && standards.length === 0 && !summary;
+      
+      if (serverHasChildData && localIsCompletelyEmpty && !wasClearedAfterLastSync(inspection)) {
+        console.warn('[SAFETY] empty_local_guard: server has child data but local is empty', {
+          inspectionId,
+          serverCounts: {
+            systems: existingSystems.length,
+            ziplines: existingZiplines.length,
+            equipment: existingEquipment.length,
+            standards: existingStandards.length,
+            summary: existingSummary.length,
+          },
+        });
+        
+        // RECOVERY: If this record was previously synced, pull server data into local
+        // cache and re-align timestamps to stop the infinite retry loop
+        if (inspection.synced_at) {
+          console.log('[SAFETY] Recovering: pulling server child data into local cache and re-aligning timestamps');
+          try {
+            await Promise.all([
+              existingSystems.length > 0 ? saveRelatedDataOffline('systems', inspectionId, existingSystems) : Promise.resolve(),
+              existingZiplines.length > 0 ? saveRelatedDataOffline('ziplines', inspectionId, existingZiplines) : Promise.resolve(),
+              existingEquipment.length > 0 ? saveRelatedDataOffline('equipment', inspectionId, existingEquipment) : Promise.resolve(),
+              existingStandards.length > 0 ? saveRelatedDataOffline('standards', inspectionId, existingStandards) : Promise.resolve(),
+              existingSummary.length > 0 ? saveRelatedDataOffline('summary', inspectionId, existingSummary) : Promise.resolve(),
+            ]);
+            
+            // Re-align local timestamps so it stops appearing as unsynced
+            const alignedTimestamp = recordStatus.updated_at || new Date().toISOString();
+            await saveInspectionOffline({
+              ...inspection,
+              synced_at: alignedTimestamp,
+              updated_at: alignedTimestamp,
+            });
+            
+            console.log('[SAFETY] Recovery complete: local cache restored from server, timestamps aligned');
+          } catch (recoveryError) {
+            console.error('[SAFETY] Recovery failed:', recoveryError);
+          }
+        }
+        
+        return { success: false, skipped: true, reason: 'empty_local_guard' };
+      }
+    }
+    
+    // SUSPICIOUS EMPTY GUARD: If record has been edited but ALL child data is empty,
+    // this likely means IndexedDB reads failed silently. Skip sync to prevent marking as complete.
+    // This complements the empty_local_guard above (which only fires when server already has data).
+    {
+      const localIsCompletelyEmpty = systems.length === 0 && ziplines.length === 0 && 
+        equipment.length === 0 && standards.length === 0 && !summary;
+      const createdAt = new Date(inspection.created_at || inspection.updated_at).getTime();
+      const updatedAt = new Date(inspection.updated_at).getTime();
+      const ageMinutes = (Date.now() - createdAt) / 60000;
+      const wasEdited = (updatedAt - createdAt) > 60000; // edited if updated > 60s after creation
+
+      if (localIsCompletelyEmpty && wasEdited && ageMinutes > 5) {
+        if (recordStatus?.record_exists && !recordStatus?.is_deleted) {
+          // Guard 1 already ran and didn't block — server is also empty. Allow sync.
+          console.log('[SYNC] suspicious_empty_guard: both local and server are empty, allowing sync for genuinely blank inspection', {
+            inspectionId: inspectionId.substring(0, 8),
+          });
+        } else {
+          // Record doesn't exist on server yet — new blank form, allow sync
+          console.log('[SYNC] suspicious_empty_guard: new inspection with no server data, allowing sync', {
+            inspectionId: inspectionId.substring(0, 8),
+          });
         }
       }
     }
