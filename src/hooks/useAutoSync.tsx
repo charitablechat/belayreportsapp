@@ -448,6 +448,8 @@ export const useAutoSync = () => {
         const anySuccess = results.some(r => r?.success > 0);
         const totalSynced = results.reduce((sum, r) => sum + (r?.success || 0), 0);
         const totalRemaining = results.reduce((sum, r) => sum + (r?.remaining || 0), 0);
+        const totalFailed = results.reduce((sum, r) => sum + (r?.failed || 0), 0);
+        const cleanSuccess = anySuccess && totalFailed === 0;
         
         if (!allFetchesFailed) {
           // Refresh unsynced counts (non-blocking)
