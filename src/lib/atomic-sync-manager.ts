@@ -404,6 +404,11 @@ async function handleRemoteDeleted(
     console.error('[Atomic Sync] Failed to clean up orphaned local data:', err);
   }
   return { quarantined: false };
+}
+
+/**
+ * Sync inspection with all related data atomically
+ */
 export async function syncInspectionAtomic(inspectionId: string, preValidatedUser?: CachedUser, signal?: AbortSignal) {
   if (signal?.aborted) return { success: false, skipped: true, reason: 'aborted' as const };
   if (!navigator.onLine) {
