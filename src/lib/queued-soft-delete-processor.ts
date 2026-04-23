@@ -41,8 +41,9 @@ function isSoftDeleteOp(op: any): boolean {
  * Process all queued soft-delete operations from IndexedDB and apply them to the server.
  * Called at the start of each auto-sync cycle when online.
  */
-export async function processQueuedSoftDeletes(): Promise<SoftDeleteProcessorResult> {
+export async function processQueuedSoftDeletes(signal?: AbortSignal): Promise<SoftDeleteProcessorResult> {
   const result: SoftDeleteProcessorResult = { processed: 0, failed: 0, errors: [] };
+  if (signal?.aborted) return result;
 
   try {
     // 1. Process inspection operations queue
