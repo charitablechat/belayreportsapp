@@ -2098,7 +2098,7 @@ export async function syncDailyAssessmentAtomic(assessmentId: string, preValidat
     // Step 2: RECONCILE then UPSERT child data
     // Delete server rows that were removed locally, then upsert current local data
     if (recordStatus?.record_exists && !recordStatus?.is_deleted) {
-      await reconcileAllChildTables(
+      const reconcileResult = await reconcileAllChildTables(
         [
           { childTable: 'daily_assessment_beginning_of_day', parentIdColumn: 'assessment_id', localItems: beginning_of_day, prefetchedServerRows: existingBeginning, expectedNonEmpty: assessmentIdbReadFlags.beginning_of_day },
           { childTable: 'daily_assessment_end_of_day', parentIdColumn: 'assessment_id', localItems: end_of_day, prefetchedServerRows: existingEnd, expectedNonEmpty: assessmentIdbReadFlags.end_of_day },
@@ -2111,6 +2111,18 @@ export async function syncDailyAssessmentAtomic(assessmentId: string, preValidat
         'daily_assessment',
         user.id,
       );
+      if (reconcileResult.blocked) {
+        console.warn('[Atomic Sync] Daily assessment reconcile blocked — marking sync as failed so user can retry', {
+          assessmentId: assessmentId.substring(0, 8),
+          blockedTables: reconcileResult.blockedTables,
+        });
+        return {
+          success: false,
+          skipped: true,
+          reason: 'reconcile_blocked',
+          message: 'Some local deletions could not be confirmed against the server. Will retry on next sync.',
+        };
+      }
     }
 
     if (beginning_of_day.length > 0) {
