@@ -188,13 +188,20 @@ import {
 } from "./regression-skip-store";
 import { wasClearedAfterLastSync } from "./clear-intent";
 import { mergeRecordFields, TRACKED_FIELDS } from "./field-merge";
+import { SYNC_DRIFT_TOLERANCE_MS } from "./local-data-guards";
 
 /**
- * Conflict-detection threshold. Aligned with SYNC_DRIFT_TOLERANCE_MS (S14):
- * any remote/local gap below this is treated as ordinary network/clock jitter
- * rather than a real concurrent edit. Above it, S16's field-merge runs.
+ * H4: Field-merge gate. We no longer use a `timeDiff > 30s` window — that
+ * created a silent-overwrite blind spot where two devices editing within
+ * ~30s of each other would skip the merge entirely and let the local upsert
+ * clobber remote-only field edits. Instead, we trigger the merge whenever
+ * the remote `updated_at` is strictly newer than our last successful sync
+ * (with `SYNC_DRIFT_TOLERANCE_MS` absorbing benign server/client clock skew).
+ *
+ * `mergeRecordFields` is idempotent and safe to run on identical inputs, so
+ * over-triggering only costs an extra `select *` round-trip; under-triggering
+ * costs data.
  */
-const CONFLICT_THRESHOLD_MS = 30_000;
 
 /**
  * Adaptive batch size for sync cycles.
