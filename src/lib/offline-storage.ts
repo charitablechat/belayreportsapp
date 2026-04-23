@@ -2217,20 +2217,26 @@ async function recomputeTrainingChildCountHint(
 
     const allTypes: TrainingDataType[] = ['delivery_approaches', 'operating_systems', 'immediate_attention', 'verifiable_items', 'systems_in_place', 'summary'];
     const otherTypes = allTypes.filter(t => t !== justSavedType);
+    let anyReadFailed = false;
     const counts = await Promise.all(
       otherTypes.map(async (t) => {
         try {
           const idx = db.transaction(trainingStoreNameMap[t]).store.index('by-training');
           return (await idx.count(trainingId)) as number;
         } catch {
+          anyReadFailed = true;
           return 0;
         }
       })
     );
-    const newHint = counts.reduce((a, b) => a + b, 0) + justSavedCount;
     // H2: Always bump parent updated_at on child mutation (see Inspection note).
-    training.child_count_hint = newHint;
     training.updated_at = new Date().toISOString();
+    // M2: preserve existing hint when any sibling read failed.
+    if (!anyReadFailed) {
+      training.child_count_hint = counts.reduce((a, b) => a + b, 0) + justSavedCount;
+    } else if (import.meta.env.DEV) {
+      console.warn('[Offline Storage] training child_count_hint recompute skipped — sibling read failed', { trainingId, justSavedType });
+    }
     await db.put('trainings', training);
   } catch {
     // non-fatal
