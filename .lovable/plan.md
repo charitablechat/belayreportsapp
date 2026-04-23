@@ -1,31 +1,24 @@
 
 
-## L7 — Per-device sync batch size
+## L8 — Per-user admin cache on shared device
 
-Acknowledged as a minor tuning observation. Recommend a small, low-risk change: derive the batch size from `isMobile()` (same helper photo sync already uses) instead of a single global constant.
+Investigated. **The original concern (User B inheriting User A's admin role) is already resolved.** No code change needed.
 
-### Change
+### Why it's not exploitable today
 
-In `src/hooks/useAutoSync.tsx` (around the `MAX_BATCH_SIZE = 5` constant near lines 210-216):
+1. **Cache keys are namespaced per user-id.** `getAdminCacheKey(userId)` returns `cached-admin-status:<userId>` (`src/lib/cached-auth.ts:38-40`). There is no longer a global `cached-admin-status` key — the legacy one is wiped on every boot (`:77-82`).
 
-- Replace the module-level constant with a per-cycle value:
-  - Mobile: `5` (unchanged — current behavior preserved)
-  - Desktop: `15` (3× throughput on capable machines, well below Postgres/PostgREST comfort)
-- Source: `isMobile()` from `src/lib/mobile-detection.ts` (already imported elsewhere in the sync layer; matches the pattern `syncPhotos` uses for `photoConcurrency`).
-- Keep the name `MAX_BATCH_SIZE` as a `const` computed once per hook instantiation so behavior inside a session is stable and logs stay readable.
+2. **`useRequireAdmin` reads the namespaced key for the *currently identified* user only.** The offline fallback path does `localStorage.getItem(getAdminCacheKey(getOfflineUserId()))`. `getOfflineUserId()` (`:590-604`) reads the user-id from the active Supabase session in localStorage (`sb-<ref>-auth-token`) or the synthetic offline session — *both of which belong to whoever last signed in on this device*. User B cannot read User A's `cached-admin-status:<userA>` entry because B's `getOfflineUserId()` returns B's id, which keys into `cached-admin-status:<userB>` (absent → falls through to `navigate("/dashboard")`).
 
-### Why this and not more
-- Mirrors the existing mobile/desktop split already proven in `sync-manager.ts` (3 vs 5 photo concurrency). No new config surface, no new env var, no settings UI.
-- Bounded: 15 is conservative — each record is one PostgREST call; 15/cycle on desktop is still gentle.
-- Reversible: single constant, easy to tune later if telemetry shows issues.
+3. **Sign-in invalidates other users' cache entries.** The `SIGNED_IN`/`USER_UPDATED` listener (`:162-190`) sweeps every `cached-admin-status:*` and `cached-true-super-admin:*` key that doesn't end in `:<newUserId>`, and resets in-memory caches.
 
-### Out of scope
-- No user-facing setting.
-- No adaptive/network-quality-based sizing (would need real measurement; not worth it for a backlog drainer that already runs every few seconds).
-- No change to photo batch size (`MAX_PHOTO_BATCH_SIZE = 30` in `sync-manager.ts`) — already tuned.
+4. **Sign-out wipes ALL admin cache entries.** `invalidateUserCache()` calls `clearAllAdminCacheKeys()` (`:355-369`), which removes every namespaced entry on the device.
 
-### Files touched
-- `src/hooks/useAutoSync.tsx` — one constant becomes one `isMobile() ? 5 : 15` expression; add `isMobile` import if not already present.
+### Residual edge case (acknowledged, not a regression)
 
-No DB, no edge functions, no UI changes.
+If User A signs in **offline**, becomes admin-cached, then User B signs in **offline** *without User A having signed out first*, User A's `cached-admin-status:<userA>` entry survives because the offline sign-in path doesn't invoke the online `SIGNED_IN` listener that does the cross-user sweep. However, this is **harmless** — User B's `useRequireAdmin` only reads the key matching B's user-id. A's entry is dead data, evicted on next online sign-in.
+
+### Recommendation
+
+Close as resolved. Confirmed by reading `src/lib/cached-auth.ts` (lines 34-82, 162-190, 355-369, 414-419, 590-604) and `src/hooks/useRequireAdmin.tsx`. The earlier audit predates the C7 namespacing refactor.
 
