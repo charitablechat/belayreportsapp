@@ -2194,10 +2194,10 @@ async function recomputeTrainingChildCountHint(
       })
     );
     const newHint = counts.reduce((a, b) => a + b, 0) + justSavedCount;
-    if (training.child_count_hint !== newHint) {
-      training.child_count_hint = newHint;
-      await db.put('trainings', training);
-    }
+    // H2: Always bump parent updated_at on child mutation (see Inspection note).
+    training.child_count_hint = newHint;
+    training.updated_at = new Date().toISOString();
+    await db.put('trainings', training);
   } catch {
     // non-fatal
   }
