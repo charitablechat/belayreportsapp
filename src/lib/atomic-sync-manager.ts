@@ -1353,10 +1353,21 @@ export async function syncTrainingAtomic(trainingId: string, preValidatedUser?: 
       }
     }
     
-    // Fetch child records using the ORIGINAL ID (before temp-to-UUID swap)
-    // because they are stored in IndexedDB under the original training_id
-    const fetchId = trainingIdMapping ? trainingIdMapping.oldId : trainingId;
-    
+    // C8: If we swapped the training ID, rewrite IDB children oldId → newId
+    // BEFORE reading them. The post-upsert cleanup block also performs this
+    // rewrite, but on the *first* sync children still live under the temp id
+    // at this point, and on every *subsequent* sync they live under the new
+    // id. Reading at a single canonical id (trainingId, post-swap) requires
+    // the rewrite to happen here, idempotently. Without this, subsequent
+    // syncs read [] from oldId and ship empty children payloads, silently
+    // breaking edits and tripping reconcile guards.
+    if (trainingIdMapping) {
+      await rewriteTrainingChildrenIdb(trainingIdMapping.oldId, trainingIdMapping.newId);
+    }
+
+    // C8: Always read children at the canonical (post-migration) id.
+    const fetchId = trainingId;
+
     // S32: Serialized to avoid Safari IDB lock contention (see syncInspectionAtomic).
     const daRead = await getTrainingDataOfflineWithStatus('delivery_approaches', fetchId);
     const osRead = await getTrainingDataOfflineWithStatus('operating_systems', fetchId);
@@ -1378,19 +1389,13 @@ export async function syncTrainingAtomic(trainingId: string, preValidatedUser?: 
       systems_in_place: sipRead.readSucceeded,
       summary: summaryReadT.readSucceeded,
     };
-    
+
     let rawSummary = summaryArray[0] || null;
-    
-    // If we swapped the training ID, propagate new ID to all child records
-    if (trainingIdMapping) {
-      rawDeliveryApproaches.forEach(item => item.training_id = trainingIdMapping!.newId);
-      rawOperatingSystems.forEach(item => item.training_id = trainingIdMapping!.newId);
-      rawImmediateAttention.forEach(item => item.training_id = trainingIdMapping!.newId);
-      rawVerifiableItems.forEach(item => item.training_id = trainingIdMapping!.newId);
-      rawSystemsInPlace.forEach(item => item.training_id = trainingIdMapping!.newId);
-      if (rawSummary) {
-        rawSummary = { ...rawSummary, training_id: trainingIdMapping.newId };
-      }
+
+    // C8: Invariant — by this point fetchId must equal the canonical trainingId.
+    // If a future refactor reintroduces divergence, fail loudly in DEV.
+    if (import.meta.env.DEV && fetchId !== trainingId) {
+      console.error('[C8] fetchId/trainingId divergence detected', { fetchId, trainingId });
     }
     
     // Transform temp- IDs to valid UUIDs before validation
