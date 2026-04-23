@@ -112,6 +112,7 @@ export const useAutoSync = () => {
   const lastSyncAttemptRef = useRef<number>(0);
   const syncInProgressRef = useRef(false);
   const debounceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const onlineHandlerTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const periodicSyncIntervalRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const channelRef = useRef<ReturnType<typeof supabase.channel> | null>(null);
   const staleWarningShownRef = useRef(false);
