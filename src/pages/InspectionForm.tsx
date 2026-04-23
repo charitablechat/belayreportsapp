@@ -514,6 +514,12 @@ export default function InspectionForm() {
   // F4: Subscribe to Realtime changes for THIS inspection so a remote edit on
   // another device re-loads the form. Suppressed while the user has unsaved
   // local changes (avoid clobbering in-progress edits).
+  // H5: read `hasUnsavedChanges` and the latest `updated_at` via refs so the
+  // channel doesn't churn on every keystroke.
+  const lastLoadedUpdatedAtRef = useRef<string | null>(null);
+  useEffect(() => {
+    lastLoadedUpdatedAtRef.current = (inspection as any)?.updated_at ?? null;
+  }, [inspection]);
   useEffect(() => {
     if (!id || id.startsWith('temp-')) return;
     const channel = supabase
@@ -524,11 +530,11 @@ export default function InspectionForm() {
         (payload) => {
           const remoteUpdated = (payload.new as any)?.updated_at;
           if (!remoteUpdated) return;
-          const localUpdated = (inspection as any)?.updated_at;
+          const localUpdated = lastLoadedUpdatedAtRef.current;
           const remoteMs = new Date(remoteUpdated).getTime();
           const localMs = localUpdated ? new Date(localUpdated).getTime() : 0;
           if (remoteMs - localMs <= 5000) return; // already in sync (within tolerance)
-          if (hasUnsavedChanges) {
+          if (hasUnsavedRef.current) {
             if (import.meta.env.DEV) console.log('[InspectionForm] Skipping remote refresh — unsaved local changes');
             return;
           }
@@ -539,7 +545,7 @@ export default function InspectionForm() {
       .subscribe();
     return () => { supabase.removeChannel(channel); };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [id, inspection?.updated_at, hasUnsavedChanges]);
+  }, [id]);
 
   // Clear save error when background sync completes successfully
   useEffect(() => {

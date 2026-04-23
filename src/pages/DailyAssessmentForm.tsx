@@ -376,6 +376,12 @@ export default function DailyAssessmentForm() {
   }, [id]);
 
   // F4: Realtime refresh for THIS assessment. Suppressed while user has unsaved edits.
+  // H5: read `hasUnsavedChanges` and the latest `updated_at` via refs so the
+  // channel doesn't churn on every keystroke.
+  const lastLoadedUpdatedAtRef = useRef<string | null>(null);
+  useEffect(() => {
+    lastLoadedUpdatedAtRef.current = (assessment as any)?.updated_at ?? null;
+  }, [assessment]);
   useEffect(() => {
     if (!id || id.startsWith('temp-')) return;
     const channel = supabase
@@ -386,11 +392,11 @@ export default function DailyAssessmentForm() {
         (payload) => {
           const remoteUpdated = (payload.new as any)?.updated_at;
           if (!remoteUpdated) return;
-          const localUpdated = (assessment as any)?.updated_at;
+          const localUpdated = lastLoadedUpdatedAtRef.current;
           const remoteMs = new Date(remoteUpdated).getTime();
           const localMs = localUpdated ? new Date(localUpdated).getTime() : 0;
           if (remoteMs - localMs <= 5000) return;
-          if (hasUnsavedChanges) {
+          if (hasUnsavedRef.current) {
             if (import.meta.env.DEV) console.log('[DailyAssessmentForm] Skipping remote refresh — unsaved local changes');
             return;
           }
@@ -401,7 +407,7 @@ export default function DailyAssessmentForm() {
       .subscribe();
     return () => { supabase.removeChannel(channel); };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [id, assessment?.updated_at, hasUnsavedChanges]);
+  }, [id]);
 
   // Debounced auto-save on data changes (3-second debounce) - immediate persistence
   // Watches ALL data sections: Beginning/End of Day, Operating Systems, Equipment/Structure/Environment Checks
