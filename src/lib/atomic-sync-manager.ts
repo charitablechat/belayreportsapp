@@ -1535,14 +1535,23 @@ export async function syncTrainingAtomic(trainingId: string, preValidatedUser?: 
     });
 
     // S3: align_synced_at is ADVISORY. Transaction final step already wrote synced_at.
+    // S14: on RPC failure, fetch server-authoritative timestamps instead of using client clock.
     let serverTimestamp: string;
     const alignedData = aligned as any;
     if (alignError || !alignedData || alignedData.error) {
       console.warn(
-        '[Atomic Sync] align_synced_at non-fatal failure — using transaction timestamp',
+        '[Atomic Sync] align_synced_at non-fatal failure — fetching server timestamp',
         { table: 'trainings', id: trainingId, alignError: alignError?.message, aligned }
       );
-      serverTimestamp = (steps[steps.length - 1].data as any).synced_at;
+      const { data: serverRow } = await supabase
+        .from('trainings')
+        .select('updated_at, synced_at')
+        .eq('id', trainingId)
+        .maybeSingle();
+      serverTimestamp =
+        (serverRow as any)?.synced_at ||
+        (serverRow as any)?.updated_at ||
+        (steps[steps.length - 1].data as any).synced_at;
     } else {
       serverTimestamp = alignedData.updated_at;
       console.log(
