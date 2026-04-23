@@ -29,7 +29,9 @@ const INITIAL_SYNC_DELAY = 500; // 500ms initial sync delay (was 2s) — UI is p
 const BASE_SYNC_TIMEOUT = 30000; // Base 30 second timeout
 const PER_ITEM_TIMEOUT_BUDGET = 8000; // 8 seconds budget per unsynced item
 const MAX_SYNC_TIMEOUT = 300000; // 5 minute absolute maximum
-const MAX_BATCH_SIZE = 5; // Must match atomic-sync-manager.ts
+// Per-device batch size: mobile stays conservative; desktop drains backlogs faster.
+// Mirrors the mobile/desktop split used by syncPhotos in sync-manager.ts.
+const MAX_BATCH_SIZE = isMobile() ? 5 : 15;
 const ACCELERATED_SYNC_DELAY = 1000; // 1s between cycles when draining a queue (was 5s)
 const STALE_UPLOAD_THRESHOLD = 5 * 60 * 1000; // 5 minutes - warn if data hasn't synced
 const STALE_CHECK_INTERVAL = 60 * 1000; // Check every 60 seconds
