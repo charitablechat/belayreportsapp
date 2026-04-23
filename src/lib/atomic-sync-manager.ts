@@ -1780,6 +1780,21 @@ export async function syncTrainingAtomic(trainingId: string, preValidatedUser?: 
     const result = await executeTransaction(steps, { signal });
     
     if (!result.success) {
+      // C4: restore reconciled deletions when the upsert tx fails (rollback can't undo them).
+      if (trainingReconciledDeletes.length > 0) {
+        try {
+          const r = await restoreReconciledDeletions(trainingReconciledDeletes, trainingId);
+          if (r.failed > 0) {
+            console.error('[C4] Training sync: some reconciled rows could not be auto-restored', {
+              trainingId: trainingId.substring(0, 8),
+              restored: r.restored,
+              failed: r.failed,
+            });
+          }
+        } catch (restoreErr) {
+          console.error('[C4] Training sync: restoreReconciledDeletions threw', restoreErr);
+        }
+      }
       throw new Error(`Transaction failed after ${result.completedSteps}/${result.totalSteps} steps. Rollback: ${result.rollbackSuccess ? 'successful' : 'failed'}`);
     }
     
