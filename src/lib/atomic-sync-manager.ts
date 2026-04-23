@@ -71,14 +71,6 @@ import { mergeRecordFields, TRACKED_FIELDS } from "./field-merge";
  * rather than a real concurrent edit. Above it, S16's field-merge runs.
  */
 const CONFLICT_THRESHOLD_MS = 30_000;
-import { mergeRecordFields, TRACKED_FIELDS } from "./field-merge";
-
-/**
- * Conflict-detection threshold. Aligned with SYNC_DRIFT_TOLERANCE_MS (S14):
- * any remote/local gap below this is treated as ordinary network/clock jitter
- * rather than a real concurrent edit. Above it, S16's field-merge runs.
- */
-const CONFLICT_THRESHOLD_MS = 30_000;
 
 /**
  * Adaptive batch size for sync cycles.
