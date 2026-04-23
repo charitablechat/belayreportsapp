@@ -841,7 +841,7 @@ export async function getDB() {
     // Version 8: Add report_versions store for append-only versioning
     // DB_NAME and DB_VERSION shared with public/db-config.js for SW consistency
     const DB_NAME = 'rope-works-inspections';
-    const DB_VERSION = 11;
+    const DB_VERSION = 12;
 
     // Phase 5 — Schema Migration Safety. Lazy-load to avoid circular imports
     // and to keep the boot path resilient if this module ever fails to parse.
@@ -1030,6 +1030,15 @@ export async function getDB() {
               console.log('[Offline Storage] Created sync_regression_counters store (v11 upgrade)');
             }
           }
+          // === NEW in v12: dead_letter_soft_deletes store (S28) ===
+          // Holds soft-delete queue ops that exhausted MAX_SOFT_DELETE_ATTEMPTS.
+          // Operator-visible only — never auto-retried.
+          if (!db.objectStoreNames.contains('dead_letter_soft_deletes' as any)) {
+            (db as any).createObjectStore('dead_letter_soft_deletes', { keyPath: 'id' });
+            if (import.meta.env.DEV) {
+              console.log('[Offline Storage] Created dead_letter_soft_deletes store (v12 upgrade)');
+            }
+          }
         },
       });
     };
@@ -1084,6 +1093,7 @@ export async function getDB() {
             { storeName: 'report_versions', indexes: ['by-report', 'by-timestamp', 'by-report-version'] },
             { storeName: 'autocomplete_history', indexes: ['by-field-type', 'by-synced'] },
             { storeName: 'equipment_type_cache', indexes: ['by-category'] },
+            { storeName: 'dead_letter_soft_deletes' },
           ];
           const fp = await migrationSafety.validateSchemaFingerprint(db as any, expected);
           await migrationSafety.recordMigrationOutcome({
@@ -1400,7 +1410,92 @@ export async function incrementOperationRetry(id: number) {
   );
 }
 
-// Photo functions
+// ============================================================
+// S28 — Queued operation patch helpers + dead-letter store
+// ============================================================
+
+export interface DeadLetterSoftDelete {
+  id: string;
+  queueStore: 'operations' | 'assessment_operations' | 'training_operations';
+  table: 'inspections' | 'trainings' | 'daily_assessments';
+  recordId: string;
+  attempts: number;
+  firstFailedAt: string;
+  lastError: string;
+  deadLetteredAt: string;
+  originalOp: any;
+}
+
+async function patchOpInStore(
+  storeName: 'operations' | 'assessment_operations' | 'training_operations',
+  id: number | undefined | null,
+  patch: Record<string, any>
+) {
+  if (id === undefined || id === null) return;
+  return withIndexedDBErrorBoundary(
+    async () => {
+      const db = await getDB();
+      const op = await db.get(storeName as any, id);
+      if (!op) return;
+      const merged = { ...op, ...patch };
+      await db.put(storeName as any, merged);
+    },
+    undefined,
+    `patchOp:${storeName}`
+  );
+}
+
+export async function updateQueuedOperation(id: number | undefined | null, patch: Record<string, any>) {
+  return patchOpInStore('operations', id, patch);
+}
+
+export async function updateQueuedAssessmentOperation(id: number | undefined | null, patch: Record<string, any>) {
+  return patchOpInStore('assessment_operations', id, patch);
+}
+
+export async function updateQueuedTrainingOperation(id: number | undefined | null, patch: Record<string, any>) {
+  return patchOpInStore('training_operations', id, patch);
+}
+
+export async function addToDeadLetterSoftDeletes(entry: DeadLetterSoftDelete) {
+  return withIndexedDBErrorBoundary(
+    async () => {
+      const db = await getDB();
+      await (db as any).put('dead_letter_soft_deletes', entry);
+      if (import.meta.env.DEV) {
+        console.warn('[Offline Storage] Dead-lettered soft-delete:', entry.id, entry.lastError);
+      }
+    },
+    undefined,
+    'addToDeadLetterSoftDeletes'
+  );
+}
+
+export async function getDeadLetterSoftDeletes(): Promise<DeadLetterSoftDelete[]> {
+  return withIndexedDBErrorBoundary(
+    async () => {
+      const db = await getDB();
+      const all = await (db as any).getAll('dead_letter_soft_deletes');
+      return (all as DeadLetterSoftDelete[]).sort(
+        (a, b) => new Date(b.deadLetteredAt).getTime() - new Date(a.deadLetteredAt).getTime()
+      );
+    },
+    [],
+    'getDeadLetterSoftDeletes'
+  );
+}
+
+export async function removeDeadLetterSoftDelete(id: string) {
+  return withIndexedDBErrorBoundary(
+    async () => {
+      const db = await getDB();
+      await (db as any).delete('dead_letter_soft_deletes', id);
+    },
+    undefined,
+    'removeDeadLetterSoftDelete'
+  );
+}
+
 
 export async function savePhotoOffline(photo: {
   id: string;
