@@ -33,8 +33,8 @@ export function logError(err: unknown, ctx: LogContext = {}): void {
   // Forward to backend audit_logs (best-effort; never block caller)
   try {
     void import("@/integrations/supabase/client").then(({ supabase }) => {
-      void supabase
-        .rpc("create_audit_log", {
+      try {
+        const p: any = supabase.rpc("create_audit_log", {
           p_user_id: (ctx.userId as any) ?? null,
           p_action_type: "client.error",
           p_table_name: "client",
@@ -42,11 +42,13 @@ export function logError(err: unknown, ctx: LogContext = {}): void {
           p_old_values: null,
           p_new_values: null,
           p_metadata: payload as any,
-        } as any)
-        .then(() => {})
-        .catch(() => {
-          /* swallow — logging must never throw */
-        });
+        } as any);
+        if (p && typeof p.then === "function") {
+          p.then(() => {}, () => {});
+        }
+      } catch {
+        /* swallow — logging must never throw */
+      }
     });
   } catch {
     /* ignore */
