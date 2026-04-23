@@ -888,6 +888,24 @@ export async function syncInspectionAtomic(inspectionId: string, preValidatedUse
     const result = await executeTransaction(steps, { signal });
     
     if (!result.success) {
+      // C4: rollback can only undo the steps the transaction itself executed.
+      // The reconcile pass that ran *before* the transaction already hard-deleted
+      // server child rows, so re-insert their pre-images here. report_deleted_items
+      // still has the audit copy if this best-effort restore also fails.
+      if (inspectionReconciledDeletes.length > 0) {
+        try {
+          const r = await restoreReconciledDeletions(inspectionReconciledDeletes, inspectionId);
+          if (r.failed > 0) {
+            console.error('[C4] Inspection sync: some reconciled rows could not be auto-restored', {
+              inspectionId: inspectionId.substring(0, 8),
+              restored: r.restored,
+              failed: r.failed,
+            });
+          }
+        } catch (restoreErr) {
+          console.error('[C4] Inspection sync: restoreReconciledDeletions threw', restoreErr);
+        }
+      }
       throw new Error(`Transaction failed after ${result.completedSteps}/${result.totalSteps} steps. Rollback: ${result.rollbackSuccess ? 'successful' : 'failed'}`);
     }
     
