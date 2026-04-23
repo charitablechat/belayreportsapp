@@ -1,50 +1,118 @@
 
 
-## S41 — Surface sync failures to desktop users too
+## C1 — Stop the T0-snapshot from clobbering mid-sync edits across all three report types
 
 ### Finding
 
-`src/hooks/useAutoSync.tsx:598-603` (in `performSync`'s catch block — the user said `handleOnline` but the actual code is the sync catch path) only fires a notification when `isMobileDevice` is true:
+The audit is correct. In `src/lib/atomic-sync-manager.ts` the same destructive pattern exists three times — at the **post-sync** IDB save (not at the snippet line numbers in the report; those point to the *empty-guard* recovery path):
 
-```ts
-if (isMobileDevice) {
-  addSyncNotification(`Sync failed: ${error?.message || 'will retry automatically'}`);
-}
-// Desktop toast is not needed here since errors are usually transient and auto-retry handles them
-```
+| Report | Post-sync write | T0 snapshot variable |
+|---|---|---|
+| Inspection | line **832** (`saveInspectionOffline({ ...inspection, synced_at, updated_at, ... })`) | `inspection` (captured at function start, ~L317 area) |
+| Training | line **1702** (`saveTrainingOffline({ ...training, ... })`) | `training` |
+| Daily assessment | line **2504** (`saveDailyAssessmentOffline({ ...assessment, ... })`) | `assessment` |
 
-The "auto-retry handles them" comment is wishful — desktop users get *zero* visual signal when sync throws. If a record sticks (RLS regression, schema mismatch, regression-skip from S39), the user has no idea until they open SyncDiagnosticsSheet manually.
+The local variable holds T0 state. The 5–25 s server transaction runs. Any auto-save that landed in IDB during that window is overwritten by the spread of the stale T0 object, and `updated_at` is reset to `serverTimestamp` so the next `getUnsynced*` scan (drift tolerance 30 s in `local-data-guards.ts:25`, not 5 s — same idea) no longer flags it dirty. Edit lost, silently.
 
-`src/lib/toast-helpers.ts` already has `toastError(message)` that does exactly the right thing on both platforms: it always pushes to the notification center *and* shows a sonner toast. That's the symmetric primitive we want here.
+The same bug also exists at lines **2772 / 2800 / 2829** (a small finalize helper near the bottom of the file that does `saveXOffline({ ...x, synced_at: x.updated_at })`). Same fix applies.
 
 ### Fix
 
-Replace the mobile-gated block in `src/hooks/useAutoSync.tsx:598-603` with a single `toastError` call so both platforms see the failure.
+Add a small private helper, then call it from all three (six, including the finalize trio) post-sync write sites. No behavior change when no concurrent edit happened.
 
 ```ts
-// Surface sync failures on every platform. toastError pushes to the
-// notification center AND shows a sonner toast on desktop; on mobile
-// the toast is suppressed and the notification center entry stands in.
-const { toastError } = await import('@/lib/toast-helpers');
-toastError('Sync failed', error?.message || 'will retry automatically');
+// New helper near the top of atomic-sync-manager.ts
+type LiveGetter<T> = (id: string) => Promise<T | null | undefined>;
+type LiveSaver<T>  = (record: T) => Promise<unknown>;
+
+/**
+ * C1: Post-sync save that won't clobber an auto-save that landed in IDB
+ * during the server round-trip.
+ *
+ * - `t0Snapshot` is the parent record as captured at the start of sync.
+ * - `t0UpdatedAtMs` is `Date.parse(t0Snapshot.updated_at)` (cache it once).
+ * - If the live IDB record's updated_at is strictly newer than T0, we ONLY
+ *   stamp `synced_at` on the live record and leave parent fields + updated_at
+ *   intact. Otherwise we write the merged record as before.
+ *
+ * Treat any read/parse failure as "no concurrent edit" and fall through to
+ * the legacy write — never block sync completion on a guard-read failure.
+ */
+async function safePostSyncSave<T extends { id: string; updated_at?: string | null }>(
+  recordId: string,
+  t0Snapshot: T,
+  t0UpdatedAtMs: number,
+  serverTimestamp: string,
+  mergedFields: Partial<T>,            // e.g. { user_cleared_at: null, inspector: ... }
+  getLive: LiveGetter<T>,
+  save: LiveSaver<T>,
+): Promise<void> {
+  let live: T | null | undefined = null;
+  try { live = await getLive(recordId); } catch { live = null; }
+
+  const liveUpdatedMs = live?.updated_at ? Date.parse(live.updated_at) : NaN;
+  const concurrentEdit =
+    Number.isFinite(liveUpdatedMs) &&
+    Number.isFinite(t0UpdatedAtMs) &&
+    liveUpdatedMs > t0UpdatedAtMs;
+
+  if (concurrentEdit && live) {
+    // Preserve the live (newer) record; only stamp synced_at.
+    await save({ ...live, synced_at: serverTimestamp });
+    if (import.meta.env.DEV) {
+      syncLog.log('[C1] Concurrent edit detected — preserved live record, stamped synced_at only', {
+        id: recordId.substring(0, 8),
+        t0: new Date(t0UpdatedAtMs).toISOString(),
+        live: live.updated_at,
+      });
+    }
+    return;
+  }
+
+  // No concurrent edit — original behavior.
+  await save({
+    ...t0Snapshot,
+    ...mergedFields,
+    synced_at: serverTimestamp,
+    updated_at: serverTimestamp,
+  });
+}
 ```
 
-Dynamic import keeps the existing module-load shape (no new top-level import in a hot file) and matches the surrounding pattern (`import('@/lib/...').then(...)` blocks elsewhere in this file).
+Then patch six sites:
+
+1. **Inspection post-sync** (L832): replace the `saveInspectionOffline({ ...inspection, ... })` block with a `safePostSyncSave(...)` call. Compute `t0UpdatedAtMs = Date.parse(inspection.updated_at)` once near the function start (right after `inspection` is captured) and pass it through. Pass `mergedFields = { user_cleared_at: null, inspector: inspectorProfile || { first_name: null, last_name: null, avatar_url: null } }`.
+2. **Training post-sync** (L1702): same pattern with `saveTrainingOffline` and `getOfflineTraining`.
+3. **Daily-assessment post-sync** (L2504): same pattern with `saveDailyAssessmentOffline` and `getOfflineDailyAssessment`.
+4. **Inspection finalize** (L2772): replace `saveInspectionOffline({ ...inspection, synced_at: inspection.updated_at })` with the helper. T0 here is the same `inspection` arg passed into the finalize fn.
+5. **Training finalize** (L2800): same.
+6. **Daily-assessment finalize** (L2829): same.
+
+The two empty-guard recovery writes at L641 and L1515 / L2320 are **out of scope** — they intentionally restore from server data after a guard trip and are not the T0-overwrite path.
+
+### Why this is safe
+
+- When no concurrent edit happened, the helper writes exactly the same payload as today (same fields, same `synced_at = updated_at = serverTimestamp`).
+- When a concurrent edit happened, the live IDB record is preserved verbatim, and only `synced_at` is stamped to `serverTimestamp`. `updated_at` (newer than `synced_at`) makes `getUnsynced*` correctly re-flag it dirty for the next cycle — exactly the behavior we want.
+- Read failure → fall through to legacy behavior (no regression).
 
 ### Out of scope
 
-- Throttling repeated failure toasts. If sync flaps every 30s the user will see repeated toasts, but that's also true of the current mobile path — separate ticket if it bites.
-- Distinguishing transient vs. permanent failures (would need error classification we don't have).
-- Touching the success path or the regression-skip notification (S39 already handles that).
+- The empty-guard recovery saves at L641 / L1515 / L2320 (different intent — restore-from-server).
+- Child-row writes during the same window. They go through `reconcileAllChildTables` + `saveRelatedDataOffline` and aren't keyed on the parent's `updated_at`. Worth a follow-up audit but not C1.
+- Lowering or raising `SYNC_DRIFT_TOLERANCE_MS`.
 
 ### Risk
 
-Low. `toastError` is already used widely; it can't throw (sonner failures are swallowed). The dynamic import has a `.catch(() => {})` pattern available if we want belt-and-suspenders — propose wrapping the import in a try so even a chunk-load failure can't break the catch block.
+Low. The helper is a strict superset of current behavior; the only new branch fires when `live.updated_at > t0.updated_at`, which is exactly the case the audit identified as currently silently lost.
 
 ### Verification
 
 - `npx tsc --noEmit`.
-- DEV desktop: force `performSync` to throw (e.g., temporarily `throw new Error('test')` at the top of the try), confirm a red error toast appears AND the notification center bell shows the entry.
-- DEV mobile viewport: same scenario, confirm only the notification center entry appears (no toast overlay), matching prior mobile behavior.
-- Confirm the existing `addSyncNotification` import is no longer the only consumer in this catch block (it stays used elsewhere in the file).
+- DEV: in `InspectionForm`, set a breakpoint inside the sync transaction (or temporarily insert `await new Promise(r => setTimeout(r, 8000))` in `syncInspection` just before `saveInspectionOffline`). While the transaction is in flight, type into a field and let the auto-save fire. Confirm:
+  - Console shows `[C1] Concurrent edit detected — preserved live record, stamped synced_at only`.
+  - The typed text remains in the form (and in IDB) after sync completes.
+  - The next sync cycle picks the record back up and uploads the new edit (i.e. it's not stuck dirty forever).
+- DEV: repeat for trainings and daily assessments.
+- DEV: with no concurrent edit, confirm the existing happy path is unchanged (single `[SYNC_TERMINAL] align_synced_at CONFIRMED` line, no `[C1]` line, record is clean afterwards).
 
