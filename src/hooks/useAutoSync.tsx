@@ -813,6 +813,26 @@ export const useAutoSync = () => {
       if (record && record.id) {
         const persistToIDB = async () => {
           try {
+            // H3: if the form for this record is currently mounted and editing,
+            // skip the IDB overwrite. The form holds the truth in React state;
+            // an IDB swap here would be silently clobbered by the next debounced
+            // autosave and trigger downstream parent/child timestamp mismatches.
+            const tableName = payload.table as ActiveFormTable;
+            if (
+              (tableName === 'inspections' || tableName === 'trainings' || tableName === 'daily_assessments') &&
+              isActiveFormRecord(tableName, record.id) &&
+              !isRecentSelfWrite(record.id)
+            ) {
+              emitPendingRemoteUpdate({
+                table: tableName,
+                recordId: record.id,
+                remoteUpdatedAt: record.updated_at || new Date().toISOString(),
+              });
+              if (import.meta.env.DEV) {
+                console.log('[AutoSync] Skipping IDB overwrite — form mounted for', record.id);
+              }
+              return;
+            }
             if (shouldPreserveLocalRecord(record)) return; // don't overwrite richer local data
             // F3: Re-align synced_at to the payload's own updated_at so the next
             // unsynced-counts query doesn't immediately re-flag this record as dirty.
