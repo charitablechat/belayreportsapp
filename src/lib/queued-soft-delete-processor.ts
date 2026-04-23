@@ -175,3 +175,97 @@ export async function getPendingSoftDeleteCount(): Promise<number> {
   }
   return count;
 }
+
+/**
+ * S4: Conservative state-aware pruner. Replaces the destructive
+ * `clearAllQueued*Operations()` bulk-wipe in the auto-sync loop.
+ *
+ * Removes queue entries that are stale relative to current IDB state:
+ *   - orphans (target record no longer exists locally)
+ *   - soft-delete entries whose target is already deleted_at != null locally
+ *   - create/update entries whose target has synced_at >= updated_at
+ * Leaves anything that still represents real pending work.
+ */
+export async function pruneCompletedQueuedOperations(): Promise<{
+  inspections: number;
+  trainings: number;
+  assessments: number;
+}> {
+  const counts = { inspections: 0, trainings: 0, assessments: 0 };
+
+  const isSynced = (rec: any): boolean => {
+    if (!rec?.synced_at) return false;
+    if (!rec?.updated_at) return true;
+    return new Date(rec.synced_at).getTime() >= new Date(rec.updated_at).getTime();
+  };
+
+  const shouldDrop = (op: any, rec: any): boolean => {
+    if (!rec) return true; // orphan
+    if (op?.type === 'update' && op?.data?.deleted_at && rec?.deleted_at) return true;
+    if ((op?.type === 'create' || op?.type === 'update') && !op?.data?.deleted_at && isSynced(rec)) {
+      return true;
+    }
+    return false;
+  };
+
+  // Inspections
+  try {
+    const ops = await getQueuedOperations();
+    for (const op of ops) {
+      const id = (op as any).inspectionId || op.data?.id;
+      if (!id) {
+        try { await removeQueuedOperation(op.id!); counts.inspections++; } catch {}
+        continue;
+      }
+      const rec = await getOfflineInspection(id).catch(() => null);
+      if (shouldDrop(op, rec)) {
+        try { await removeQueuedOperation(op.id!); counts.inspections++; } catch {}
+      }
+    }
+  } catch (e) {
+    console.warn('[PruneQueue] inspections prune failed (non-blocking):', e);
+  }
+
+  // Trainings
+  try {
+    const ops = await getQueuedTrainingOperations();
+    for (const op of ops) {
+      const id = (op as any).trainingId || op.data?.id;
+      if (!id) {
+        try { await removeQueuedTrainingOperation(op.id!); counts.trainings++; } catch {}
+        continue;
+      }
+      const rec = await getOfflineTraining(id).catch(() => null);
+      if (shouldDrop(op, rec)) {
+        try { await removeQueuedTrainingOperation(op.id!); counts.trainings++; } catch {}
+      }
+    }
+  } catch (e) {
+    console.warn('[PruneQueue] trainings prune failed (non-blocking):', e);
+  }
+
+  // Assessments
+  try {
+    const ops = await getQueuedAssessmentOperations();
+    for (const op of ops) {
+      const id = (op as any).assessmentId || op.data?.id;
+      if (!id) {
+        try { await removeQueuedAssessmentOperation(op.id!); counts.assessments++; } catch {}
+        continue;
+      }
+      const rec = await getOfflineDailyAssessment(id).catch(() => null);
+      if (shouldDrop(op, rec)) {
+        try { await removeQueuedAssessmentOperation(op.id!); counts.assessments++; } catch {}
+      }
+    }
+  } catch (e) {
+    console.warn('[PruneQueue] assessments prune failed (non-blocking):', e);
+  }
+
+  const total = counts.inspections + counts.trainings + counts.assessments;
+  if (total > 0) {
+    console.log(`[PruneQueue] Pruned ${total} completed queue entries`, counts);
+  }
+
+  return counts;
+}
