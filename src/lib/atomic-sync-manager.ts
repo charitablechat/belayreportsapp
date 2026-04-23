@@ -308,6 +308,8 @@ export async function syncInspectionAtomic(inspectionId: string, preValidatedUse
     if (!inspection) {
       throw new Error("Inspection not found in local storage");
     }
+    // C1: capture T0 updated_at for concurrent-edit detection at post-sync save.
+    const inspectionT0UpdatedAtMs = inspection.updated_at ? Date.parse(inspection.updated_at) : NaN;
     
     // Detect and replace temp inspection IDs with real UUIDs before validation
     if (inspection.id.startsWith('temp-')) {
@@ -885,15 +887,20 @@ export async function syncInspectionAtomic(inspectionId: string, preValidatedUse
       );
     }
     
-    await saveInspectionOffline({
-      ...inspection,
-      synced_at: serverTimestamp,
-      updated_at: serverTimestamp,
-      // S9: marker has done its job — clear it so a future stale-IDB read
-      // isn't misinterpreted as fresh user-clear intent.
-      user_cleared_at: null,
-      inspector: inspectorProfile || { first_name: null, last_name: null, avatar_url: null },
-    });
+    // C1: guard against clobbering an auto-save that landed during the round-trip.
+    // mergedFields below mirrors the original spread (S9: clear user_cleared_at, attach inspector).
+    await safePostSyncSave(
+      inspectionId,
+      inspection,
+      inspectionT0UpdatedAtMs,
+      serverTimestamp,
+      {
+        user_cleared_at: null,
+        inspector: inspectorProfile || { first_name: null, last_name: null, avatar_url: null },
+      } as any,
+      getOfflineInspection,
+      saveInspectionOffline,
+    );
     
     // 7. If we swapped a temp ID, clean up old IndexedDB entries
     if (inspectionIdMapping) {
@@ -1209,6 +1216,8 @@ export async function syncTrainingAtomic(trainingId: string, preValidatedUser?: 
     if (!training) {
       throw new Error("Training not found in local storage");
     }
+    // C1: capture T0 updated_at for concurrent-edit detection at post-sync save.
+    const trainingT0UpdatedAtMs = training.updated_at ? Date.parse(training.updated_at) : NaN;
     
     // Detect and replace temp training IDs with real UUIDs before validation
     if (training.id.startsWith('temp-')) {
@@ -1755,14 +1764,19 @@ export async function syncTrainingAtomic(trainingId: string, preValidatedUser?: 
       );
     }
     
-    await saveTrainingOffline({
-      ...training,
-      synced_at: serverTimestamp,
-      updated_at: serverTimestamp,
-      // S9: clear marker post-sync.
-      user_cleared_at: null,
-      inspector: inspectorProfile || { first_name: null, last_name: null, avatar_url: null },
-    });
+    // C1: guard against clobbering an auto-save that landed during the round-trip.
+    await safePostSyncSave(
+      trainingId,
+      training,
+      trainingT0UpdatedAtMs,
+      serverTimestamp,
+      {
+        user_cleared_at: null,
+        inspector: inspectorProfile || { first_name: null, last_name: null, avatar_url: null },
+      } as any,
+      getOfflineTraining,
+      saveTrainingOffline,
+    );
     
     // 7. If we swapped a temp ID, clean up old IndexedDB entries
     if (trainingIdMapping) {
@@ -2020,6 +2034,8 @@ export async function syncDailyAssessmentAtomic(assessmentId: string, preValidat
     if (!assessment) {
       throw new Error("Daily assessment not found in local storage");
     }
+    // C1: capture T0 updated_at for concurrent-edit detection at post-sync save.
+    const assessmentT0UpdatedAtMs = assessment.updated_at ? Date.parse(assessment.updated_at) : NaN;
     
     // Detect and replace temp assessment IDs with real UUIDs before validation
     if (assessment.id.startsWith('temp-')) {
@@ -2557,14 +2573,19 @@ export async function syncDailyAssessmentAtomic(assessmentId: string, preValidat
       );
     }
     
-    await saveDailyAssessmentOffline({
-      ...assessment,
-      synced_at: serverTimestamp,
-      updated_at: serverTimestamp,
-      // S9: clear marker post-sync.
-      user_cleared_at: null,
-      inspector: inspectorProfile || { first_name: null, last_name: null, avatar_url: null },
-    });
+    // C1: guard against clobbering an auto-save that landed during the round-trip.
+    await safePostSyncSave(
+      assessmentId,
+      assessment,
+      assessmentT0UpdatedAtMs,
+      serverTimestamp,
+      {
+        user_cleared_at: null,
+        inspector: inspectorProfile || { first_name: null, last_name: null, avatar_url: null },
+      } as any,
+      getOfflineDailyAssessment,
+      saveDailyAssessmentOffline,
+    );
     
     // 7. If we swapped a temp ID, clean up old IndexedDB entries
     if (assessmentIdMapping) {
@@ -2825,7 +2846,18 @@ export async function refetchInspectionPackage(inspectionId: string): Promise<vo
     ]);
     if (error || !inspection) return;
     registerSelfWrite(inspectionId);
-    await saveInspectionOffline({ ...inspection, synced_at: inspection.updated_at });
+    // C1: refetched server payload — guard against a concurrent local edit
+    // landing during the refetch round-trip (T0 here is the freshly-fetched server row).
+    const refetchT0Ms = inspection.updated_at ? Date.parse(inspection.updated_at as string) : NaN;
+    await safePostSyncSave(
+      inspectionId,
+      inspection as any,
+      refetchT0Ms,
+      (inspection as any).updated_at,
+      {} as any,
+      getOfflineInspection,
+      saveInspectionOffline,
+    );
     await Promise.all([
       clearRelatedDataOffline('systems', inspectionId).then(() => systems.length > 0 ? saveRelatedDataOffline('systems', inspectionId, systems) : null),
       clearRelatedDataOffline('ziplines', inspectionId).then(() => ziplines.length > 0 ? saveRelatedDataOffline('ziplines', inspectionId, ziplines) : null),
