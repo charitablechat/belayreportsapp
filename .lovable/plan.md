@@ -1,111 +1,103 @@
 
 
-## S9 + S10: Honor intentional clears + persist regression-skip counter
+## S11 + S12: Surface IDB read failures + Realtime full-package refetch
 
-Two surgical fixes. S9 lets users actually empty a synced report. S10 stops the regression-skip guard from forgetting itself on reload.
+Two surgical fixes to close the remaining sync-visibility gaps.
 
 ---
 
-### S9 — Disambiguate "user cleared everything" from "IDB corruption"
+### S11 — Make IDB read failures distinguishable from "no unsynced items"
 
-**Root cause.** In `atomic-sync-manager.ts` (~476–519 inspections, ~1260–1294 trainings, equivalent for assessments), if a parent record was previously synced AND the local state has zero children/summary, the guard assumes IDB corruption and *restores* the server copy into IDB, returning `{ skipped: true, reason: 'empty_local_guard' }`. There's no signal distinguishing a user who deliberately deleted every row from a stale-IDB read.
+**Root cause.** `withIndexedDBErrorBoundary` in `offline-storage.ts` (~953–1001 and the assessment/training siblings) catches every error — including the internal 10 s timeout — and returns `[]`. Callers like `getUnsyncedInspections`, `getUnsyncedTrainings`, `getUnsyncedDailyAssessments` then return that `[]` straight to `syncAllInspectionsAtomic` / `useAutoSync.updateUnsyncedCounts`. The only failure path that surfaces is the **outer** 15 s wrapper in `atomic-sync-manager.ts` (~759–791), which special-cases `'IndexedDB timeout'` and returns `{ total: -1 }`. Anything the boundary swallows looks identical to "user is fully synced": the badge reads 0, no banner, no retry.
 
-**Fix.** Add an explicit user-intent marker on the parent record, written by the form whenever the user removes the last child row in any section. The guard then becomes: "skip only if local is empty AND no clear-intent marker AND server is non-empty."
+**Fix.** Make IDB read failures a first-class signal end-to-end.
 
-**Schema (migration).** Nullable timestamp columns — partial, no defaults, no index needed:
-```sql
-ALTER TABLE public.inspections       ADD COLUMN user_cleared_at timestamptz;
-ALTER TABLE public.trainings         ADD COLUMN user_cleared_at timestamptz;
-ALTER TABLE public.daily_assessments ADD COLUMN user_cleared_at timestamptz;
-```
+**1. `withIndexedDBErrorBoundary` — return a tagged failure, not `[]`.**
 
-A timestamp (rather than boolean) lets us future-proof: the guard can compare `user_cleared_at` against `synced_at` to detect "was cleared after last sync."
+Replace the silent `return fallback` path with a sentinel:
 
-**Producer changes** — wherever a delete reduces a child collection to zero, stamp the parent. Concretely:
-- `src/pages/InspectionForm.tsx` — in the handlers that remove the last system / zipline / equipment / standard, and the summary-clear handler, set `user_cleared_at: new Date().toISOString()` on the parent inspection and persist via `saveInspectionOffline`.
-- `src/pages/TrainingForm.tsx` — same pattern across delivery approaches / operating systems / immediate attention / verifiable items / systems-in-place / summary clears.
-- `src/pages/DailyAssessmentForm.tsx` — same across the six section collections.
-
-Centralize the stamping in a tiny helper to avoid scatter:
 ```ts
-// src/lib/clear-intent.ts
-export function markUserCleared<T extends { user_cleared_at?: string | null; updated_at?: string }>(
-  parent: T,
-): T {
-  const now = new Date().toISOString();
-  return { ...parent, user_cleared_at: now, updated_at: now };
+// src/lib/offline-storage.ts
+export const IDB_READ_FAILED = Symbol.for('rw.idb-read-failed');
+export type IdbReadFailure = { __idbReadFailed: typeof IDB_READ_FAILED; error: string };
+
+export function isIdbReadFailure(v: unknown): v is IdbReadFailure {
+  return !!v && typeof v === 'object' && (v as any).__idbReadFailed === IDB_READ_FAILED;
 }
-```
 
-Reset the marker on first non-empty save: when any section gains a row, the same helper sets `user_cleared_at: null`.
-
-**Sync changes** in `atomic-sync-manager.ts`. Replace the empty-local guard at all three sites (~479, ~1263, equivalent assessments) with:
-```ts
-const isLocallyEmpty = localChildCount === 0;
-const wasClearedByUser =
-  inspection.user_cleared_at &&
-  inspection.synced_at &&
-  new Date(inspection.user_cleared_at) >= new Date(inspection.synced_at);
-
-if (isLocallyEmpty && !wasClearedByUser && serverHasChildren) {
-  // Existing corruption-recovery path: pull server copy into IDB, return skipped.
-} else if (isLocallyEmpty && wasClearedByUser) {
-  if (import.meta.env.DEV) {
-    console.log('[Atomic Sync] Honoring intentional user-clear for', inspection.id);
+async function withIndexedDBErrorBoundary<T>(
+  op: () => Promise<T>,
+  context: string,
+): Promise<T | IdbReadFailure> {
+  try {
+    return await op();
+  } catch (err) {
+    console.error(`[IDB] ${context} failed:`, err);
+    return { __idbReadFailed: IDB_READ_FAILED, error: (err as Error)?.message || String(err) };
   }
-  // Fall through to normal sync — child reconcile will soft-delete server children.
 }
 ```
 
-After a successful sync, clear `user_cleared_at` on the local record so future stale-IDB reads aren't misinterpreted as fresh user intent (the marker has done its job).
+The previous `fallback` parameter goes away — callers must explicitly handle the failure case. This is the whole point: silent fallback was the bug.
+
+**2. Update read helpers to propagate the sentinel.**
+
+`getUnsyncedInspections`, `getUnsyncedTrainings`, `getUnsyncedDailyAssessments`, `getUnuploadedPhotos`, and any other reader currently using the boundary now have return type `T[] | IdbReadFailure`. Internal callers that wrap multiple reads (e.g. queue-status helpers) check `isIdbReadFailure` and short-circuit upward.
+
+**3. Caller updates.**
+
+- `atomic-sync-manager.ts` (`syncAllInspectionsAtomic` ~759–791 + training/assessment siblings): replace the string-match `'IndexedDB timeout'` check with `isIdbReadFailure(unsynced)`. Return `{ total: -1, errors: [{ id: 'idb_read_failure', error: result.error }] }`. The outer 15 s `Promise.race` timeout stays, but its fallback now also returns the same shape. One uniform failure signal upward.
+- `useAutoSync.updateUnsyncedCounts`: when any of the three reads is an `IdbReadFailure`, do NOT zero the badge. Keep the previous count, set a new `idbReadError` flag in the hook's state, and surface it via `PWAContextType.syncError` (already plumbed through the provider). The badge keeps showing the last-known count and the existing error UI lights up.
+- `useUnsyncedPhotos`: same pattern — preserve the last count, expose an error.
+
+**4. UI surface.** No new component. The error already routes through `PWAContextType.syncError`, which `SyncStatusIndicator.tsx` and `BackgroundSyncStatus.tsx` consume. We just need to make sure the message says something useful: `"Local data unreadable — refreshing may help"`.
 
 ---
 
-### S10 — Persist `regressionSkipCounter` across reloads
+### S12 — Realtime parent events trigger full-package refetch
 
-**Root cause.** `regressionSkipCounter` is a module-level `Map<string, number>` in `atomic-sync-manager.ts` (~71–72, consumed at ~395–425). Tab refresh, PWA wake-from-suspend, or service-worker restart wipes it, so a user whose report legitimately lost >50% of fields can ping-pong on the regression guard indefinitely if they happen to reload between cycles.
+**Root cause.** `handleRemoteChange` in `useAutoSync.tsx` (~573–611) only listens on the three parent tables (`inspections`, `trainings`, `daily_assessments`). Child tables (`inspection_systems`, `inspection_ziplines`, `inspection_equipment`, `inspection_standards`, `inspection_summary`, `inspection_photos`, the training and assessment children) emit no events to the client. Cross-device editing of a child row is invisible until the next manual refetch — and worse, when the parent's `updated_at` bumps for an unrelated reason, the local IDB parent gets refreshed but the children stay stale.
 
-**Fix.** Promote the counter to a tiny IDB store, accessed via small async helpers. Keep the in-memory Map as a hot cache so the existing call sites can stay synchronous-feeling.
+**Fix.** When a parent-row Realtime event survives `shouldPreserveLocalRecord`, schedule a full-package refetch of THAT record (parent + all its children) from the server, then write the package atomically to IDB. No new subscriptions — keeps the realtime channel narrow.
 
-**IDB store** in `src/lib/offline-storage.ts`:
-- Store name: `sync_regression_counters`
-- Key: record id (string)
-- Value: `{ id: string; count: number; lastIncrementAt: number }`
-- Bump `DB_CONFIG.version` (currently 10 → 11) and add the store creation in the `upgrade` handler. Existing migration-safety snapshot machinery (Phase 5) covers this automatically.
+**1. New helper `refetchInspectionPackage(id)` (and training/assessment equivalents) in `atomic-sync-manager.ts`.** Single round-trip that pulls parent + all child collections in parallel, then calls the existing `saveInspectionOffline` / child-store overwrites in one transaction. Wrap each in self-write registration so we don't trigger our own Realtime echo (the S6 `selfWriteIds` set handles this).
 
-**Helpers** (new file `src/lib/regression-skip-store.ts`):
+**2. Wire into `handleRemoteChange`.** After the existing `shouldPreserveLocalRecord` check passes:
+
 ```ts
-export async function getRegressionSkipCount(id: string): Promise<number>;
-export async function incrementRegressionSkipCount(id: string): Promise<number>;
-export async function resetRegressionSkipCount(id: string): Promise<void>;
+// useAutoSync.tsx, handleRemoteChange
+if (payload.eventType !== 'DELETE') {
+  // Existing parent-row preservation logic stays.
+  // NEW: schedule a debounced full-package refetch.
+  scheduleFullRefetch(payload.table, payload.new.id);
+}
 ```
-Each writes through to IDB *and* updates the in-memory Map.
 
-**Wire-up** in `atomic-sync-manager.ts`:
-- On module load, lazily hydrate the Map from IDB (one read at first guard hit per record id; cache miss → `getRegressionSkipCount` → fill Map).
-- Replace the three Map mutation sites (increment on skip, reset on success) with calls to the new helpers. The existing synchronous reads of the Map become awaited helper calls.
+`scheduleFullRefetch` is a per-id debouncer (300 ms) that coalesces rapid-fire parent updates from the same record into a single refetch. Implementation: `Map<id, timeoutId>` cleared on flush. Cancels itself on unmount.
 
-**Stale-entry pruning.** Add a 30-day TTL: in `getRegressionSkipCount`, drop entries older than `lastIncrementAt + 30d` and return 0. Keeps the store from accumulating dead record ids.
+**3. Concurrency guard.** If a sync cycle is in flight for the same record (`syncInProgressRef` + per-record locks already exist), defer the refetch until it completes — otherwise we'd race with our own write and possibly clobber an in-flight merge.
+
+**4. Failure handling.** Refetch errors are non-fatal: log, leave local state alone, let the next auto-sync cycle reconcile. Tied into S11 — if the refetch itself fails because IDB is unreadable, surface via the same `syncError` path.
+
+**Out of scope:** Subscribing to child tables directly. That path scales poorly (one subscription per child table per record visible to the user) and the server already has the authoritative state — a single round-trip refetch is simpler and uses the auth/RLS we already trust.
 
 ---
 
 ### Files
 
-- **New migration** — adds `user_cleared_at timestamptz` to `inspections`, `trainings`, `daily_assessments`.
-- `src/lib/atomic-sync-manager.ts` — three empty-local guards updated (~479, ~1263, assessments equivalent); regression-counter Map mutations replaced with awaited helper calls (~395–425 + symmetric sites in trainings/assessments); post-sync reset of `user_cleared_at`.
-- **New** `src/lib/clear-intent.ts` — `markUserCleared` helper.
-- **New** `src/lib/regression-skip-store.ts` — IDB-backed counter helpers.
-- `src/lib/offline-storage.ts` — bump `DB_CONFIG.version` to 11, add `sync_regression_counters` store in upgrade handler.
-- `public/db-config.js` — bump `version` to 11 to keep service worker in sync.
-- `src/pages/InspectionForm.tsx`, `src/pages/TrainingForm.tsx`, `src/pages/DailyAssessmentForm.tsx` — call `markUserCleared` from final-row removal handlers; clear marker when collections regain content.
+- `src/lib/offline-storage.ts` — replace `withIndexedDBErrorBoundary` body, export `isIdbReadFailure` + sentinel, update read-helper return types.
+- `src/lib/atomic-sync-manager.ts` — adopt `isIdbReadFailure` in three sync entry points (~759–791 + siblings); add `refetchInspectionPackage` + training/assessment equivalents.
+- `src/hooks/useAutoSync.tsx` — update `updateUnsyncedCounts` to preserve last-known count on IDB failure and set `syncError`; add `scheduleFullRefetch` + per-id debounce in `handleRemoteChange` (~573–611).
+- `src/hooks/useUnsyncedPhotos.tsx` — same preserve-last-count pattern for photo reads.
+- `src/components/pwa/PWAProvider.tsx` — no schema change needed; `syncError` is already in `PWAContextType`. Verify the path through.
 
 ### Out of scope
 
-- Backfilling `user_cleared_at` for legacy rows. NULL means "no signal" — guard falls back to today's behavior, which is the safe default.
-- Surfacing the regression-skip counter in admin diagnostics (separate UI work).
-- Replacing the field-count regression guard itself with field-merge semantics — Phase 7 territory.
+- Migrating every IDB consumer outside the sync surface to the new sentinel (logo cache, equipment-type cache, etc.) — those don't gate the unsynced badge so silent fallback there is acceptable for now. Tagged for a follow-up sweep.
+- Subscribing to child tables individually — see S12 reasoning.
+- Surfacing per-record refetch state in admin diagnostics.
 
 ### Risk
 
-Low. S9 is additive (new column, new producer paths) — guard short-circuit only triggers when the explicit marker is set, so no behavior change for any existing record. S10 is a storage-layer move with hot-cache fallback; first read after upgrade is one extra IDB hit per record, then identical to today's behavior. IDB version bump is covered by existing Phase 5 migration safety (pre-upgrade snapshot + fingerprint validation + rollback API).
+Low. S11's return-type change is contained to the read-helper surface; TypeScript will flag every consumer that needs an `isIdbReadFailure` guard, so the migration is mechanical and verified by compilation. Worst case: a missed call-site keeps today's behavior (silent `[]`) until we update it. S12 adds one debounced refetch per parent event; even on a chatty channel the 300 ms coalesce caps it at ~3 refetches/second/record, well below the existing sync floor. Self-write suppression (S6) prevents echo loops.
 
