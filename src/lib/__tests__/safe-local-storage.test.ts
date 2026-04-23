@@ -1,5 +1,10 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { safeSetItem, safeRemoveItem } from '../safe-local-storage';
+import { safeSetItem, safeRemoveItem, type SafeSetItemResult } from '../safe-local-storage';
+
+function asFailure(r: SafeSetItemResult): { ok: false; code: string; error: unknown } {
+  if (r.ok) throw new Error('expected failure result, got ok');
+  return r;
+}
 
 describe('safeSetItem', () => {
   let setItemSpy: any;
@@ -26,10 +31,7 @@ describe('safeSetItem', () => {
     });
 
     const result = safeSetItem('k', 'v', { scope: 'test' });
-    expect(result.ok).toBe(false);
-    if (!result.ok) {
-      expect(result.code).toBe('quota');
-    }
+    expect(asFailure(result).code).toBe('quota');
   });
 
   it('returns { ok: false, code: "quota" } on DOMException code 22', () => {
@@ -39,8 +41,7 @@ describe('safeSetItem', () => {
       throw err;
     });
     const result = safeSetItem('k', 'v');
-    expect(result.ok).toBe(false);
-    if (!result.ok) expect(result.code).toBe('quota');
+    expect(asFailure(result).code).toBe('quota');
   });
 
   it('returns { ok: false, code: "blocked" } on SecurityError', () => {
@@ -50,8 +51,7 @@ describe('safeSetItem', () => {
       throw err;
     });
     const result = safeSetItem('k', 'v');
-    expect(result.ok).toBe(false);
-    if (!result.ok) expect(result.code).toBe('blocked');
+    expect(asFailure(result).code).toBe('blocked');
   });
 
   it('returns { ok: false, code: "unknown" } on other errors', () => {
@@ -59,8 +59,7 @@ describe('safeSetItem', () => {
       throw new Error('something else');
     });
     const result = safeSetItem('k', 'v');
-    expect(result.ok).toBe(false);
-    if (!result.ok) expect(result.code).toBe('unknown');
+    expect(asFailure(result).code).toBe('unknown');
   });
 
   it('invokes onFail with the classified code', () => {
