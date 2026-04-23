@@ -381,6 +381,7 @@ export async function syncPhotos(signal?: AbortSignal): Promise<{ remaining: num
         }
         await setPhotoLastError(photo.id, cls.message);
         await incrementPhotoRetryCount(photo.id);
+        changedCount++;
       }
     });
 
