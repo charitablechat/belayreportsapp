@@ -1255,7 +1255,7 @@ export async function getUnsyncedInspections(userId?: string) {
           const isUnsynced = isUpdatedAheadOfSync(new Date(record.updated_at).getTime(), new Date(record.synced_at).getTime());
           if (isUnsynced && import.meta.env.DEV) {
             console.log('[Offline Storage] Inspection flagged unsynced:', {
-              id: String(record.id).substring(0, 12),
+              id: String(record.id).substring(0, 8),
               localUpdated: record.updated_at,
               localSynced: record.synced_at,
               drift_ms: drift,
@@ -2797,7 +2797,7 @@ export async function getUnsyncedCounts(userId?: string): Promise<{
           const isUnsynced = isUpdatedAheadOfSync(new Date(i.updated_at).getTime(), new Date(i.synced_at).getTime());
           if (isUnsynced && import.meta.env.DEV) {
             console.log(`[Offline Storage] ${storeName} flagged unsynced:`, {
-              id: String(i.id).substring(0, 12),
+              id: String(i.id).substring(0, 8),
               localUpdated: i.updated_at,
               localSynced: i.synced_at,
               drift_ms: drift,
