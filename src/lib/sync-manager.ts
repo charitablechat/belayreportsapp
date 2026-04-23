@@ -5,8 +5,11 @@ import {
   markPhotoAsUploaded,
   incrementPhotoRetryCount,
   setPhotoLastError,
+  updatePhotoPath,
+  recordPhotoUploadFailure,
   MAX_PHOTO_RETRIES,
 } from "./offline-storage";
+import { addSyncNotification } from "./notification-center";
 
 /**
  * S22: Classify a photo upload / DB error into a sync-policy bucket.
