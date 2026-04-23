@@ -672,6 +672,38 @@ export const useAutoSync = () => {
   }, [performSync]);
   
   /**
+   * S12: Debounced full-package refetch (parent + all child collections).
+   * Coalesces multiple Realtime events for the same record into one round-trip.
+   */
+  const scheduleFullRefetch = useCallback((table: string, recordId: string) => {
+    const key = `${table}:${recordId}`;
+    const existing = refetchTimersRef.current.get(key);
+    if (existing) clearTimeout(existing);
+    const handle = setTimeout(() => {
+      refetchTimersRef.current.delete(key);
+      const run = async () => {
+        try {
+          if (table === 'inspections') {
+            await refetchInspectionPackage(recordId);
+          } else if (table === 'trainings') {
+            await refetchTrainingPackage(recordId);
+          } else if (table === 'daily_assessments') {
+            await refetchAssessmentPackage(recordId);
+          }
+          // Notify dashboards / forms that local IDB has fresh data
+          window.dispatchEvent(new CustomEvent('dashboard-stale'));
+        } catch (e) {
+          if (import.meta.env.DEV) {
+            console.warn('[AutoSync] Full-package refetch failed:', e);
+          }
+        }
+      };
+      run();
+    }, REFETCH_DEBOUNCE_MS);
+    refetchTimersRef.current.set(key, handle);
+  }, []);
+
+  /**
    * Handle Realtime database changes from other devices
    */
   const handleRemoteChange = useCallback((payload: any) => {
