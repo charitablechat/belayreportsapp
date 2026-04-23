@@ -231,6 +231,9 @@ export async function createOfflineSession(email: string, _password: string): Pr
   const userId = entry.userId || (await generateDeterministicUserId(normalizedEmail));
   const capturedAt = Date.now();
 
+  const offlineWindowMs = getOfflineWindowMs();
+  const offlineExpiresAt = capturedAt + offlineWindowMs;
+
   const syntheticSession = {
     access_token: OFFLINE_PLACEHOLDER_TOKEN,
     refresh_token: 'offline_placeholder',
@@ -248,6 +251,8 @@ export async function createOfflineSession(email: string, _password: string): Pr
     // Internal marker so read paths can distinguish synthetic from real sessions.
     __synthetic: true as const,
     __capturedAt: capturedAt,
+    /** Phase 4b — bounded offline window (ms epoch). */
+    __offlineExpiresAt: offlineExpiresAt,
   };
 
   // Write to DEDICATED slot — not Supabase's real session key.
@@ -259,6 +264,7 @@ export async function createOfflineSession(email: string, _password: string): Pr
     console.log('[OfflineAuth] Synthetic session created (refresh-token mode)', {
       email: normalizedEmail,
       userId,
+      offlineExpiresAt: new Date(offlineExpiresAt).toISOString(),
     });
   }
 }
