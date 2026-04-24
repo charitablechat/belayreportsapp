@@ -871,13 +871,14 @@ async function restoreEmptyLocalFromServer(entry: EmptyLocalConflictEntry): Prom
   await Promise.all(
     fetched.map(({ section, rows }) => {
       if (rows.length === 0) return Promise.resolve();
+      const safeRows = rows as unknown as Record<string, unknown>[];
       if (entry.reportType === 'inspection') {
-        return saveRelatedDataOffline(section as any, entry.id, rows as Record<string, unknown>[]);
+        return saveRelatedDataOffline(section as any, entry.id, safeRows);
       }
       if (entry.reportType === 'training') {
-        return saveTrainingDataOffline(section as any, entry.id, rows as Record<string, unknown>[]);
+        return saveTrainingDataOffline(section as any, entry.id, safeRows);
       }
-      return saveAssessmentDataOffline(section as any, entry.id, rows as Record<string, unknown>[]);
+      return saveAssessmentDataOffline(section as any, entry.id, safeRows);
     }),
   );
 
