@@ -3140,7 +3140,22 @@ export async function syncAllDailyAssessmentsAtomic(preValidatedUser?: CachedUse
   if (partialCount > 0) {
     console.warn('[Atomic Sync] Reconcile pending for assessment records (will retry next cycle):', partialRecords);
   }
-  
+
+  // N-A: return the result shape so useAutoSync's aggregation
+  // (anySuccess, totalSynced, totalFailed) sees assessment counts.
+  // Pre-existing gap: this function previously returned `undefined`, which
+  // caused the caller's `r?.success || 0` reducer to treat every assessment
+  // result as zero — silently suppressing the success toast and losing the
+  // new partial tracking added in this PR.
+  return {
+    total: totalUnsynced,
+    success: successCount,
+    failed: failCount,
+    partial: partialCount,
+    partialRecords,
+    remaining,
+    errors,
+  };
 }
 
 // ============================================================================
