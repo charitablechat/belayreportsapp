@@ -2,20 +2,52 @@
  * Shared utility functions for report data access and emptiness checks.
  */
 
+/** Opaque structural row type shared across child tables. */
+type Row = Record<string, unknown>;
+
+/** Partial report shape used across all three report types. Each function below
+ * reads a narrow subset of fields; structural typing lets callers pass whichever
+ * shape they already have in hand without `any`. */
+type ReportLike = Record<string, unknown> & {
+  trainer?: { first_name?: string | null; last_name?: string | null } | null;
+  inspector?: { first_name?: string | null; last_name?: string | null } | null;
+  training?: { start_date?: string | null } | null;
+};
+
+/** Helper: does an unknown value look like a non-empty trimmed string? */
+function hasTrimmed(v: unknown): boolean {
+  return typeof v === 'string' && v.trim() !== '';
+}
+
+/** Helper: typed row-field read returning unknown (narrowed at call site). */
+function field(row: Row | undefined | null, key: string): unknown {
+  return row ? row[key] : undefined;
+}
+
 /**
  * Get the primary date for a report based on its type.
  * Unified fallback chain used by both filters and list views.
  */
-export function getReportDate(report: any, type: string): string {
-  if (type === 'inspection') return report.inspection_date;
-  if (type === 'daily') return report.assessment_date;
-  return report.training?.start_date || report.start_date || report.created_at || '';
+export function getReportDate(report: ReportLike, type: string): string {
+  if (type === 'inspection') {
+    const d = report.inspection_date;
+    return typeof d === 'string' ? d : '';
+  }
+  if (type === 'daily') {
+    const d = report.assessment_date;
+    return typeof d === 'string' ? d : '';
+  }
+  const trainingStart = report.training?.start_date;
+  if (typeof trainingStart === 'string' && trainingStart) return trainingStart;
+  if (typeof report.start_date === 'string' && report.start_date) return report.start_date;
+  if (typeof report.created_at === 'string' && report.created_at) return report.created_at;
+  return '';
 }
 
 /**
  * Get the assignee/inspector/trainer display name for a report.
  */
-export function getAssigneeName(report: any, type: string): string {
+export function getAssigneeName(report: ReportLike, type: string): string {
   if (type === 'training') {
     const t = report.trainer;
     return t ? `${t.first_name || ''} ${t.last_name || ''}`.trim() || 'Unknown' : 'Unknown';
@@ -33,49 +65,52 @@ export function getAssigneeName(report: any, type: string): string {
  * Check if an inspection has any meaningful user-entered data
  */
 export function isInspectionEmpty(
-  inspection: any,
-  systems: any[] = [],
-  ziplines: any[] = [],
-  equipment: any[] = [],
-  standards: any[] = [],
-  summary: any = null
+  inspection: Row | null | undefined,
+  systems: Row[] = [],
+  ziplines: Row[] = [],
+  equipment: Row[] = [],
+  standards: Row[] = [],
+  summary: Row | null = null,
 ): boolean {
   if (!inspection) return true;
 
   // Check if any systems have meaningful data
-  const hasSystemData = systems.some(s => 
-    s.name?.trim() || s.comments?.trim() || s.result !== 'pass'
+  const hasSystemData = systems.some(s =>
+    hasTrimmed(s.name) || hasTrimmed(s.comments) || s.result !== 'pass'
   );
 
   // Check if any ziplines have meaningful data
   const hasZiplineData = ziplines.some(z =>
-    z.zipline_name?.trim() || z.comments?.trim() || 
-    z.cable_type?.trim() || z.braking_system?.trim() || z.ead_system?.trim() ||
+    hasTrimmed(z.zipline_name) || hasTrimmed(z.comments) ||
+    hasTrimmed(z.cable_type) || hasTrimmed(z.braking_system) || hasTrimmed(z.ead_system) ||
     z.result !== 'pass'
   );
 
   // Check if any equipment has meaningful data
   const hasEquipmentData = equipment.some(e =>
-    e.equipment_type?.trim() || e.comments?.trim() || e.result !== 'pass'
+    hasTrimmed(e.equipment_type) || hasTrimmed(e.comments) || e.result !== 'pass'
   );
 
   // Check if any standards have been marked as having documentation
-  const hasStandardData = standards.some(s => s.has_documentation === true || s.comments?.trim());
+  const hasStandardData = standards.some(s =>
+    s.has_documentation === true || hasTrimmed(s.comments)
+  );
 
   // Check if summary has meaningful data
-  const hasSummaryData = summary && (
-    summary.repairs_performed?.trim() ||
-    summary.critical_actions?.trim() ||
-    summary.future_considerations?.trim() ||
-    summary.next_inspection_date
+  const hasSummaryData = !!summary && (
+    hasTrimmed(field(summary, 'repairs_performed')) ||
+    hasTrimmed(field(summary, 'critical_actions')) ||
+    hasTrimmed(field(summary, 'future_considerations')) ||
+    !!field(summary, 'next_inspection_date')
   );
 
   // Check if header has any meaningful data beyond defaults
-  const hasHeaderData = inspection.onsite_contact?.trim() ||
-    inspection.course_history?.trim() ||
-    inspection.acct_number?.trim();
+  const hasHeaderData =
+    hasTrimmed(inspection.onsite_contact) ||
+    hasTrimmed(inspection.course_history) ||
+    hasTrimmed(inspection.acct_number);
 
-  return !hasSystemData && !hasZiplineData && !hasEquipmentData && 
+  return !hasSystemData && !hasZiplineData && !hasEquipmentData &&
          !hasStandardData && !hasSummaryData && !hasHeaderData;
 }
 
@@ -83,13 +118,13 @@ export function isInspectionEmpty(
  * Check if a training report has any meaningful user-entered data
  */
 export function isTrainingEmpty(
-  training: any,
-  deliveryApproaches: any[] = [],
-  operatingSystems: any[] = [],
-  immediateAttention: any[] = [],
-  verifiableItems: any[] = [],
-  systemsInPlace: any[] = [],
-  summary: any = null
+  training: Row | null | undefined,
+  deliveryApproaches: Row[] = [],
+  operatingSystems: Row[] = [],
+  immediateAttention: Row[] = [],
+  verifiableItems: Row[] = [],
+  systemsInPlace: Row[] = [],
+  summary: Row | null = null,
 ): boolean {
   if (!training) return true;
 
@@ -101,16 +136,16 @@ export function isTrainingEmpty(
   const hasSystemsInPlace = systemsInPlace.length > 0;
 
   // Check if summary has meaningful data
-  const hasSummaryData = summary && (
-    summary.observations?.trim() ||
-    summary.recommendations?.trim()
+  const hasSummaryData = !!summary && (
+    hasTrimmed(field(summary, 'observations')) ||
+    hasTrimmed(field(summary, 'recommendations'))
   );
 
   // Check if header has meaningful data beyond defaults
-  const hasHeaderData = training.trainee_names?.trim();
+  const hasHeaderData = hasTrimmed(training.trainee_names);
 
-  return !hasDeliveryApproaches && !hasOperatingSystems && 
-         !hasImmediateAttention && !hasVerifiableItems && 
+  return !hasDeliveryApproaches && !hasOperatingSystems &&
+         !hasImmediateAttention && !hasVerifiableItems &&
          !hasSystemsInPlace && !hasSummaryData && !hasHeaderData;
 }
 
@@ -118,45 +153,45 @@ export function isTrainingEmpty(
  * Check if a daily assessment has any meaningful user-entered data
  */
 export function isDailyAssessmentEmpty(
-  assessment: any,
-  beginningOfDay: any[] = [],
-  endOfDay: any[] = [],
-  environmentChecks: any[] = [],
-  equipmentChecks: any[] = [],
-  structureChecks: any[] = [],
-  operatingSystems: any[] = []
+  assessment: Row | null | undefined,
+  beginningOfDay: Row[] = [],
+  endOfDay: Row[] = [],
+  environmentChecks: Row[] = [],
+  equipmentChecks: Row[] = [],
+  structureChecks: Row[] = [],
+  operatingSystems: Row[] = [],
 ): boolean {
   if (!assessment) return true;
 
   // Check if any beginning of day items are completed or have comments
-  const hasBeginningData = beginningOfDay.some(b => 
-    b.is_complete === true || b.comments?.trim()
+  const hasBeginningData = beginningOfDay.some(b =>
+    b.is_complete === true || hasTrimmed(b.comments)
   );
 
   // Check if any end of day items are completed or have comments
-  const hasEndOfDayData = endOfDay.some(e => 
-    e.is_complete === true || e.comments?.trim()
+  const hasEndOfDayData = endOfDay.some(e =>
+    e.is_complete === true || hasTrimmed(e.comments)
   );
 
   // Check if any environment checks are completed or have comments
-  const hasEnvironmentData = environmentChecks.some(e => 
-    e.is_checked === true || e.comments?.trim()
+  const hasEnvironmentData = environmentChecks.some(e =>
+    e.is_checked === true || hasTrimmed(e.comments)
   );
 
   // Check if any equipment checks are completed or have comments
-  const hasEquipmentData = equipmentChecks.some(e => 
-    e.is_checked === true || e.comments?.trim()
+  const hasEquipmentData = equipmentChecks.some(e =>
+    e.is_checked === true || hasTrimmed(e.comments)
   );
 
   // Check if any structure checks are completed or have comments
-  const hasStructureData = structureChecks.some(s => 
-    s.is_checked === true || s.comments?.trim()
+  const hasStructureData = structureChecks.some(s =>
+    s.is_checked === true || hasTrimmed(s.comments)
   );
 
   // Check if any operating systems are selected
   const hasOperatingSystemsData = operatingSystems.length > 0;
 
-  return !hasBeginningData && !hasEndOfDayData && !hasEnvironmentData && 
+  return !hasBeginningData && !hasEndOfDayData && !hasEnvironmentData &&
          !hasEquipmentData && !hasStructureData && !hasOperatingSystemsData;
 }
 

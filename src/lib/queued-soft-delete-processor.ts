@@ -30,19 +30,55 @@ export const MAX_SOFT_DELETE_ATTEMPTS = 5;
 type QueueStore = 'operations' | 'assessment_operations' | 'training_operations';
 type TableName = 'inspections' | 'trainings' | 'daily_assessments';
 
-function isSoftDeleteOp(op: any): boolean {
+/** Shape of the queued rows we interact with in this module. Real rows have more
+ * fields (e.g. report-type-specific FKs) but these are all we read/write. */
+interface QueuedOp {
+  id?: number;
+  type?: string;
+  data?: Record<string, unknown> & {
+    id?: string;
+    deleted_at?: string | null;
+    deleted_by?: string | null;
+    retention_until?: string | null;
+  };
+  attempts?: number;
+  firstFailedAt?: string;
+  lastError?: string | null;
+  lastAttemptAt?: string | null;
+  // Report-type-specific foreign-key columns
+  inspectionId?: string;
+  assessmentId?: string;
+  trainingId?: string;
+}
+
+/** Minimal shape of an offline report record used to determine sync status. */
+interface OfflineRecord {
+  synced_at?: string | null;
+  updated_at?: string | null;
+  deleted_at?: string | null;
+}
+
+function isSoftDeleteOp(op: QueuedOp): boolean {
   return op?.type === 'update' && op?.data?.deleted_at != null;
 }
 
+function errMessage(e: unknown): string {
+  if (e && typeof e === 'object' && 'message' in e) {
+    const m = (e as { message?: unknown }).message;
+    if (typeof m === 'string') return m;
+  }
+  return String(e);
+}
+
 interface HandleFailureArgs {
-  op: any;
+  op: QueuedOp;
   queueStore: QueueStore;
   table: TableName;
   recordId: string;
   errorMessage: string;
   result: SoftDeleteProcessorResult;
   remove: (id: number) => Promise<unknown>;
-  patch: (id: number | undefined | null, patch: Record<string, any>) => Promise<unknown>;
+  patch: (id: number | undefined | null, patch: Record<string, unknown>) => Promise<unknown>;
 }
 
 /**
@@ -78,7 +114,7 @@ async function handleSoftDeleteFailure(args: HandleFailureArgs): Promise<void> {
         `[QueuedSoftDelete] Dead-lettered after ${nextAttempts} attempts: ${table}/${recordId}`,
         errorMessage
       );
-    } catch (dlErr: any) {
+    } catch (dlErr: unknown) {
       // If dead-letter write fails, leave the op in queue with bumped attempts
       // so we don't silently lose the operation.
       console.error('[QueuedSoftDelete] Dead-letter write failed; leaving op in queue:', dlErr);
@@ -156,10 +192,10 @@ export async function processQueuedSoftDeletes(signal?: AbortSignal): Promise<So
           result.processed++;
           console.log(`[QueuedSoftDelete] Applied soft-delete: ${table}/${recordId}`);
         }
-      } catch (e: any) {
+      } catch (e: unknown) {
         await handleSoftDeleteFailure({
           op, queueStore: 'operations', table, recordId,
-          errorMessage: e?.message || String(e), result,
+          errorMessage: errMessage(e), result,
           remove: removeQueuedOperation,
           patch: updateQueuedOperation,
         });
@@ -171,7 +207,7 @@ export async function processQueuedSoftDeletes(signal?: AbortSignal): Promise<So
     for (const op of assessOps) {
       if (signal?.aborted) return result;
       if (!isSoftDeleteOp(op)) continue;
-      const recordId = (op as any).assessmentId || op.data?.id;
+      const recordId = op.assessmentId || op.data?.id;
       if (!recordId) continue;
 
       try {
@@ -196,10 +232,10 @@ export async function processQueuedSoftDeletes(signal?: AbortSignal): Promise<So
           result.processed++;
           console.log(`[QueuedSoftDelete] Applied assessment soft-delete: ${recordId}`);
         }
-      } catch (e: any) {
+      } catch (e: unknown) {
         await handleSoftDeleteFailure({
           op, queueStore: 'assessment_operations', table: 'daily_assessments', recordId,
-          errorMessage: e?.message || String(e), result,
+          errorMessage: errMessage(e), result,
           remove: removeQueuedAssessmentOperation,
           patch: updateQueuedAssessmentOperation,
         });
@@ -211,7 +247,7 @@ export async function processQueuedSoftDeletes(signal?: AbortSignal): Promise<So
     for (const op of trainOps) {
       if (signal?.aborted) return result;
       if (!isSoftDeleteOp(op)) continue;
-      const recordId = (op as any).trainingId || op.data?.id;
+      const recordId = op.trainingId || op.data?.id;
       if (!recordId) continue;
 
       try {
@@ -236,18 +272,18 @@ export async function processQueuedSoftDeletes(signal?: AbortSignal): Promise<So
           result.processed++;
           console.log(`[QueuedSoftDelete] Applied training soft-delete: ${recordId}`);
         }
-      } catch (e: any) {
+      } catch (e: unknown) {
         await handleSoftDeleteFailure({
           op, queueStore: 'training_operations', table: 'trainings', recordId,
-          errorMessage: e?.message || String(e), result,
+          errorMessage: errMessage(e), result,
           remove: removeQueuedTrainingOperation,
           patch: updateQueuedTrainingOperation,
         });
       }
     }
-  } catch (e: any) {
+  } catch (e: unknown) {
     console.error('[QueuedSoftDelete] Processor error:', e);
-    result.errors.push(`Processor error: ${e.message}`);
+    result.errors.push(`Processor error: ${errMessage(e)}`);
   }
 
   if (result.processed > 0 || result.failed > 0 || result.deadLettered > 0) {
@@ -289,13 +325,13 @@ export async function pruneCompletedQueuedOperations(): Promise<{
 }> {
   const counts = { inspections: 0, trainings: 0, assessments: 0 };
 
-  const isSynced = (rec: any): boolean => {
+  const isSynced = (rec: OfflineRecord | null): boolean => {
     if (!rec?.synced_at) return false;
     if (!rec?.updated_at) return true;
     return new Date(rec.synced_at).getTime() >= new Date(rec.updated_at).getTime();
   };
 
-  const shouldDrop = (op: any, rec: any): boolean => {
+  const shouldDrop = (op: QueuedOp, rec: OfflineRecord | null): boolean => {
     if (!rec) return true;
     if (op?.type === 'update' && op?.data?.deleted_at && rec?.deleted_at) return true;
     if ((op?.type === 'create' || op?.type === 'update') && !op?.data?.deleted_at && isSynced(rec)) {
@@ -307,14 +343,14 @@ export async function pruneCompletedQueuedOperations(): Promise<{
   try {
     const ops = await getQueuedOperations();
     for (const op of ops) {
-      const id = (op as any).inspectionId || op.data?.id;
+      const id = op.inspectionId || op.data?.id;
       if (!id) {
-        try { await removeQueuedOperation(op.id!); counts.inspections++; } catch {}
+        try { await removeQueuedOperation(op.id!); counts.inspections++; } catch { /* ignore */ }
         continue;
       }
-      const rec = await getOfflineInspection(id).catch(() => null);
+      const rec = (await getOfflineInspection(id).catch(() => null)) as OfflineRecord | null;
       if (shouldDrop(op, rec)) {
-        try { await removeQueuedOperation(op.id!); counts.inspections++; } catch {}
+        try { await removeQueuedOperation(op.id!); counts.inspections++; } catch { /* ignore */ }
       }
     }
   } catch (e) {
@@ -324,14 +360,14 @@ export async function pruneCompletedQueuedOperations(): Promise<{
   try {
     const ops = await getQueuedTrainingOperations();
     for (const op of ops) {
-      const id = (op as any).trainingId || op.data?.id;
+      const id = op.trainingId || op.data?.id;
       if (!id) {
-        try { await removeQueuedTrainingOperation(op.id!); counts.trainings++; } catch {}
+        try { await removeQueuedTrainingOperation(op.id!); counts.trainings++; } catch { /* ignore */ }
         continue;
       }
-      const rec = await getOfflineTraining(id).catch(() => null);
+      const rec = (await getOfflineTraining(id).catch(() => null)) as OfflineRecord | null;
       if (shouldDrop(op, rec)) {
-        try { await removeQueuedTrainingOperation(op.id!); counts.trainings++; } catch {}
+        try { await removeQueuedTrainingOperation(op.id!); counts.trainings++; } catch { /* ignore */ }
       }
     }
   } catch (e) {
@@ -341,14 +377,14 @@ export async function pruneCompletedQueuedOperations(): Promise<{
   try {
     const ops = await getQueuedAssessmentOperations();
     for (const op of ops) {
-      const id = (op as any).assessmentId || op.data?.id;
+      const id = op.assessmentId || op.data?.id;
       if (!id) {
-        try { await removeQueuedAssessmentOperation(op.id!); counts.assessments++; } catch {}
+        try { await removeQueuedAssessmentOperation(op.id!); counts.assessments++; } catch { /* ignore */ }
         continue;
       }
-      const rec = await getOfflineDailyAssessment(id).catch(() => null);
+      const rec = (await getOfflineDailyAssessment(id).catch(() => null)) as OfflineRecord | null;
       if (shouldDrop(op, rec)) {
-        try { await removeQueuedAssessmentOperation(op.id!); counts.assessments++; } catch {}
+        try { await removeQueuedAssessmentOperation(op.id!); counts.assessments++; } catch { /* ignore */ }
       }
     }
   } catch (e) {
@@ -370,15 +406,18 @@ export async function pruneCompletedQueuedOperations(): Promise<{
 export async function retryDeadLetterSoftDelete(entry: DeadLetterSoftDelete): Promise<boolean> {
   try {
     const { getDB } = await import('@/lib/offline-storage');
-    const db: any = await getDB();
-    const restored = {
-      ...entry.originalOp,
+    const db = await getDB();
+    const restored: Record<string, unknown> = {
+      ...(entry.originalOp as Record<string, unknown>),
       attempts: 0,
       lastError: null,
       lastAttemptAt: null,
     };
     delete restored.id; // let autoIncrement assign a fresh key
-    await db.add(entry.queueStore, restored);
+    // Queue store names are dynamic; cast via `unknown` to satisfy the
+    // generated IDB schema types without introducing `any`.
+    await (db as unknown as { add: (store: string, value: unknown) => Promise<unknown> })
+      .add(entry.queueStore, restored);
     const { removeDeadLetterSoftDelete } = await import('@/lib/offline-storage');
     await removeDeadLetterSoftDelete(entry.id);
     return true;
