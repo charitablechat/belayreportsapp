@@ -1,89 +1,87 @@
 
 
-## Fix — Coerce `uploaded` to `0 | 1` everywhere (fix `by-uploaded` index)
+## Fix C2 — Stop silent zeroing in `getUnsyncedCounts`
 
 ### Problem
 
-The `photos` store has an index `by-uploaded` keyed on the `uploaded` field. IndexedDB **cannot index boolean values** — `true`/`false` are silently dropped from the index. Today `getUnuploadedPhotos()` queries `index.getAll(IDBKeyRange.only(0))` while writers store `uploaded: false`. This means the index returns nothing, and the only reason photo sync works at all is incidental fallbacks elsewhere. Same hazard at the SW (`p.uploaded` truthy check works, but any IDB index path is broken).
+`getUnsyncedCounts` (`src/lib/offline-storage.ts:3281-3320`) wraps its work in `withIndexedDBErrorBoundary` with `{ inspections: [], trainings: [], assessments: [] }` as the silent fallback. On any IDB hiccup it returns "everything is synced", which:
+
+1. Zeroes the unsynced badge (user thinks they're up to date).
+2. Trips the "nothing to sync" early-exit in `useAutoSync.tsx:270-282`, so real pending edits never upload.
+
+This is the exact failure mode commit `36b13d5e` hardened the three individual `getUnsynced*` reads against — but the batched variant on the hot polling path was missed.
+
+### Approach — Option B (delete the batched read)
+
+Option A patches the symptom; Option B removes the duplicated code path entirely. The three single-table reads already use `withIndexedDBReadBoundary` and return `IdbReadFailure` correctly (Phase S11). Calling them in parallel is `3× getAll()` either way — no perf cost — and there's only one hardened code path to maintain.
 
 ### Plan
 
-#### 1. Type change — `src/lib/offline-storage.ts` line 48
+#### 1. Delete `getUnsyncedCounts` — `src/lib/offline-storage.ts:3281-3320`
+
+Remove the batched function. Keep `getUnsyncedInspections`, `getUnsyncedTrainings`, `getUnsyncedAssessments` (already status-aware via `withIndexedDBReadBoundary`).
+
+#### 2. Rewrite `useAutoSync` consumer — `src/hooks/useAutoSync.tsx:273-282`
+
+Replace the single `getUnsyncedCounts(...)` call with three parallel reads via `Promise.all`, each wrapped in its own `withIDBTimeout`. Aggregate `readSucceeded` flags: if **any** read failed, treat the cycle as "status unknown" and **preserve last-known counts** rather than zeroing — same pattern already in use at lines 663-699 for the individual reads.
+
+Pseudocode:
 
 ```ts
-uploaded: 0 | 1;
+const [insp, train, assess] = await Promise.all([
+  withIDBTimeout('refreshUnsyncedInspections', 'heavy',
+    () => getUnsyncedInspectionsWithStatus(freshUser.id),
+    { items: [], readSucceeded: false }),
+  withIDBTimeout('refreshUnsyncedTrainings', 'heavy',
+    () => getUnsyncedTrainingsWithStatus(freshUser.id),
+    { items: [], readSucceeded: false }),
+  withIDBTimeout('refreshUnsyncedAssessments', 'heavy',
+    () => getUnsyncedAssessmentsWithStatus(freshUser.id),
+    { items: [], readSucceeded: false }),
+]);
+
+const allRead = insp.data.readSucceeded && train.data.readSucceeded && assess.data.readSucceeded;
+const anyTimedOut = insp.timedOut || train.timedOut || assess.timedOut;
+
+if (!allRead || anyTimedOut) {
+  // Preserve last-known counts; do NOT take the "nothing to sync" early-exit.
+  console.warn('[useAutoSync] Unsynced count read failed/timed out — preserving last-known state, skipping cycle');
+  return; // or: keep previous freshCounts, do not call setUnsyncedCount(0)
+}
+
+const freshCounts = {
+  inspections: insp.data.items,
+  trainings: train.data.items,
+  assessments: assess.data.items,
+};
+// existing "nothing to sync" branch is now safe — only entered when all three reads succeeded
 ```
 
-Also tighten the `savePhotoOffline` arg type (line 1908) to `uploaded?: 0 | 1 | boolean` so existing callers (`PhotoCapture.tsx`, `ItemPhotoUpload.tsx`, `local-backup-ledger.ts`) still compile during the cutover; coerce inside.
+The exact integration (whether to `return` early vs. retain previous `freshCounts`) follows the existing pattern at lines 663-699 — the goal is "never let a failed read look like an empty queue."
 
-#### 2. Coerce at every IDB write site
+#### 3. Audit other call sites of `getUnsyncedCounts`
 
-- **`savePhotoOffline`** (line 1931): `uploaded: photo.uploaded ? 1 : 0`
-- **`markPhotoAsUploaded`** (line 2217): `photo.uploaded = 1`
-- **`pruneOldSyncedPhotoBlobs`** etc. — no writes to the field, only reads.
-- **`public/sw-sync.js`** (line 579): `photo.uploaded = 1` (and the filter at 513 stays truthy-safe: `p => !p.uploaded` works for both `0` and `false`).
-- **`src/lib/photo-cache.ts`** line 40: `uploaded: 1`.
-- **`src/lib/photo-receipts.ts`** is `localStorage`-backed (separate store, not IDB-indexed) — keep `boolean`. No change.
+Grep the codebase for `getUnsyncedCounts(` — if any other caller exists (e.g. badge refresh in `usePWA`, dashboard counts), migrate them to the same parallel pattern or to whichever individual read they need. Most likely `useAutoSync` is the only consumer, but worth confirming before deletion.
 
-#### 3. Update internal comparisons in `src/lib/offline-storage.ts`
+#### 4. Verify the status-aware variants exist
 
-The four flagged sites (now at 2458, 2488, 3858, 3890, 4007, 4046) — switch boolean comparisons to numeric:
-- `!p.uploaded` → keep (works for `0`)
-- `p.uploaded === false` → `p.uploaded === 0` (lines 3858, 3890 comment, 4007)
-- `photo.uploaded === true` → `photo.uploaded === 1` (line 4046)
-- `photo.uploaded = true` → `photo.uploaded = 1` (line 2217)
+The plan assumes `getUnsynced{Inspections,Trainings,Assessments}WithStatus` already exist (per Phase S11 / Priority 2 contract `{ items, readSucceeded }`). If only the non-`WithStatus` versions exist, this fix needs them added first — a small wrapper around the existing `withIndexedDBReadBoundary` calls. Will confirm during implementation and add if missing.
 
-#### 4. External read sites — keep truthy-style, no breaking change
+### Why this closes the gap
 
-`PhotoGallery.tsx`, `InspectionForm.tsx`, `TrainingForm.tsx`, `DailyAssessmentForm.tsx`, `offline-auth.ts` all use `!p.uploaded` / `p.uploaded` truthy checks. These work correctly for both `0`/`1` and `false`/`true` — leave untouched. The `PhotoGallery` interface at line 63 (`uploaded: boolean`) is a UI-layer DTO; leave it as `boolean` since it's never indexed and the truthy coercion is safe. Add a small `Boolean(p.uploaded)` at the mapping sites (PhotoGallery 215, 262, 294; forms 272/354/273) to normalize for the UI type.
-
-#### 5. IDB schema upgrade — bump to v16
-
-In `public/db-config.js`: `version: 16`. In `src/lib/offline-storage.ts` `DB_VERSION = 16`. The build-time parity check (Fix 3.C) enforces both bump together.
-
-Add an `if (oldVersion < 16)` branch inside the existing `upgrade(db, oldVersion, newVersion, transaction)` callback in `getDB()`. The branch:
-1. Opens a cursor over `photos` via `transaction.objectStore('photos')`.
-2. For each record where `typeof v.uploaded === 'boolean'`, rewrites to `0 | 1` and `cursor.update(v)`.
-3. Wrapped in the existing migration-snapshot safety (Phase 5) so a failed pass is recoverable.
-
-Index recreation isn't required — the index definition (`'uploaded'`) is unchanged; rewriting the values causes IDB to re-key them automatically on `update()`.
-
-#### 6. Regression test — `src/lib/__tests__/photo-uploaded-index.test.ts`
-
-New test using `fake-indexeddb` (already a transitive dep via the existing `offline-storage-save-boundary.test.ts` setup — verify in test/setup.ts; if absent, add `fake-indexeddb/auto` import to the new file). Two cases:
-
-```ts
-it('by-uploaded index returns unuploaded photos saved with boolean false', async () => {
-  await savePhotoOffline({ id: '1', inspectionId: 'x', section: 's', blob, fileName: 'a.jpg', uploaded: false });
-  const out = await getUnuploadedPhotos();
-  expect(out).toHaveLength(1);
-});
-
-it('by-uploaded index excludes photos after markPhotoAsUploaded', async () => {
-  await savePhotoOffline({ id: '2', inspectionId: 'x', section: 's', blob, fileName: 'b.jpg', uploaded: false });
-  await markPhotoAsUploaded('2', 'path/b.jpg');
-  const out = await getUnuploadedPhotos();
-  expect(out.find(p => p.id === '2')).toBeUndefined();
-});
-```
-
-#### 7. Memory note
-
-Append a one-liner to `mem://index.md` Core: "IDB cannot index booleans — `photos.uploaded` is `0 | 1`, never boolean."
+- The "silent zero" code path is **deleted**, not patched — no future regression possible via this function.
+- Every read now reports its status; the consumer cannot mistake "read failed" for "queue empty".
+- Matches the established Priority 2 / S11 pattern already in use elsewhere in `useAutoSync`.
 
 ### Out of scope
 
-- Rewriting external truthy reads (`!p.uploaded`) — they're correct for both shapes; churn-only.
-- Migrating `photo-receipts.ts` (localStorage, not indexed).
-- SW does not query the index — only filters in-memory — but the `photo.uploaded = 1` write keeps cross-context consistency.
+- Refactoring the rest of `useAutoSync`'s flow control. Only the count-refresh block changes.
+- Touching `getUnsyncedPhotos` or other unsynced-X readers — different shape, different consumers, not on the hot polling path.
+- Adding new tests beyond what S11 already covers; the existing `Priority 3` test in `sync-hardening.test.ts` already enforces the "timed-out count read = abort" contract and will continue to pass.
 
 ### Files touched
 
-1. `src/lib/offline-storage.ts` — type, two write sites, ~5 comparison updates, v16 upgrade branch, `DB_VERSION = 16`.
-2. `public/db-config.js` — `version: 16`.
-3. `public/sw-sync.js` — `photo.uploaded = 1` at line 579.
-4. `src/lib/photo-cache.ts` — `uploaded: 1` at line 40.
-5. `src/components/PhotoGallery.tsx`, `src/pages/{Inspection,Training,DailyAssessment}Form.tsx` — wrap mapped `uploaded` in `Boolean(...)` (~5 sites) for the boolean UI DTO.
-6. `src/lib/__tests__/photo-uploaded-index.test.ts` — new regression test.
-7. `mem://index.md` — Core one-liner.
+1. **`src/lib/offline-storage.ts`** — delete `getUnsyncedCounts` (lines 3281-3320). Confirm `getUnsynced{Inspections,Trainings,Assessments}WithStatus` exist; add thin wrappers if not.
+2. **`src/hooks/useAutoSync.tsx`** — replace the single `getUnsyncedCounts` call (~lines 270-282) with three parallel `withIDBTimeout` reads + aggregated `readSucceeded` / `timedOut` gating that preserves last-known counts on any failure.
+3. **Any other caller surfaced by the grep audit** — migrate to parallel individual reads.
 
