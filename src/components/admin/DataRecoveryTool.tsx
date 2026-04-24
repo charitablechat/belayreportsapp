@@ -13,6 +13,7 @@ import { toast } from "sonner";
 import { format, formatDistanceToNow } from "date-fns";
 import { supabase } from "@/integrations/supabase/client";
 import { listAllSnapshots, getReportSnapshot, deleteReportSnapshot, getBackupStorageInfo, importReportBackup, sanitizeFilename, type ReportType } from "@/lib/local-backup-ledger";
+import { withRestoreLock } from "@/lib/restore-lock";
 import { formatReportFilename } from "@/lib/report-naming";
 import {
   getOfflineTrainings,
