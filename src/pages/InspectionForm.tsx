@@ -21,6 +21,7 @@ import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { ArrowLeft, Save, CheckCircle, Loader2, WifiOff, CloudOff, LogOut, User, FileText, Settings, Package, ClipboardList, FileCheck, RefreshCw, AlertTriangle, HardDrive } from "lucide-react";
 import { AutoSaveIndicator } from "@/components/AutoSaveIndicator";
+import { SaveFailureBanner } from "@/components/SaveFailureBanner";
 import { useActiveTimer } from "@/hooks/useActiveTimer";
 import { ActiveTimerDisplay } from "@/components/ActiveTimerDisplay";
 import ropeWorksLogo from "@/assets/rope-works-logo.png";
