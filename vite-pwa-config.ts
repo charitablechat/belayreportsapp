@@ -24,7 +24,7 @@ export const pwaConfig = VitePWA({
   devOptions: {
     enabled: false,
   },
-  includeAssets: ['favicon.ico', 'sw-push.js', 'sw-sync.js'],
+  includeAssets: ['favicon.ico', 'db-config.js', 'sw-push.js', 'sw-sync.js'],
   manifest: {
     name: 'Rope Works Inspection',
     short_name: 'RW Inspect',
@@ -49,7 +49,7 @@ export const pwaConfig = VitePWA({
     globIgnores: ['**/version.json'],
     navigateFallback: '/',
     navigateFallbackDenylist: [/^\/api/, /offline\.html$/, /^\/version\.json$/],
-    importScripts: ['/sw-push.js', '/sw-sync.js'],
+    importScripts: ['/db-config.js', '/sw-push.js', '/sw-sync.js'],
     runtimeCaching: [
       {
         // version.json: never cache — always go to network
