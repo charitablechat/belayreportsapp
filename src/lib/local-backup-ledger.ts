@@ -12,6 +12,9 @@
 import { isMobile } from './mobile-detection';
 import { uploadSnapshotToCloud } from './cloud-backup';
 import { safeSetItem } from './safe-local-storage';
+import { withRestoreLock } from './restore-lock';
+import { verifyRestoreIntegrity } from './restore-integrity';
+import { toUploadedFlag } from './offline-storage';
 
 const BACKUP_PREFIX = 'rw_backup_';
 const SCHEMA_VERSION = 1;
@@ -586,86 +589,102 @@ export async function importReportBackup(input: string | File): Promise<{
     throw new Error('Missing or invalid snapshot data (expected parent + children).');
   }
 
-  // 1. Write to localStorage
-  saveReportSnapshot(
-    reportType,
-    reportId,
-    snapshot.parent,
-    snapshot.children,
-    snapshot.synced ?? false,
-    snapshot.photoMetadata
-  );
-
-  // 2. Write to IndexedDB
-  const {
-    saveInspectionOffline, saveRelatedDataOffline,
-    saveTrainingOffline, saveTrainingDataOffline,
-    saveDailyAssessmentOffline, saveAssessmentDataOffline,
-    savePhotoOffline,
-  } = await import('@/lib/offline-storage');
-
-  if (reportType === 'inspection') {
-    await saveInspectionOffline(snapshot.parent);
-    for (const [key, data] of Object.entries(snapshot.children)) {
-      if (Array.isArray(data)) {
-        await saveRelatedDataOffline(key as any, reportId, data);
-      }
-    }
-  } else if (reportType === 'training') {
-    await saveTrainingOffline(snapshot.parent);
-    for (const [key, data] of Object.entries(snapshot.children)) {
-      if (Array.isArray(data)) {
-        await saveTrainingDataOffline(key as any, reportId, data);
-      }
-    }
-  } else if (reportType === 'daily_assessment') {
-    await saveDailyAssessmentOffline(snapshot.parent);
-    for (const [key, data] of Object.entries(snapshot.children)) {
-      if (Array.isArray(data)) {
-        await saveAssessmentDataOffline(key as any, reportId, data);
-      }
-    }
-  }
-
-  // 3. Import photos from ZIP if present
+  // H2: All post-validation work must run under the restore lock so that
+  // useAutoSync.performSync cannot race the restore and overwrite the freshly
+  // landed parent/children. Matches the admin/cloud restore handlers.
   let photoCount = 0;
-  if (zipPhotoEntries.length > 0) {
-    for (const entry of zipPhotoEntries) {
-      const photoId = entry.name.replace(/\.[^.]+$/, ''); // strip extension to get ID
-      const ext = entry.name.split('.').pop() || 'jpg';
-      try {
-        await savePhotoOffline({
-          id: photoId,
-          inspectionId: reportId,
-          section: 'imported',
-          blob: entry.blob,
-          fileName: entry.name,
-          uploaded: false,
-          tableName: reportType === 'training' ? 'training_photos' :
-                     reportType === 'daily_assessment' ? 'daily_assessment_photos' :
-                     'inspection_photos',
-          storageBucket: reportType === 'training' ? 'training-photos' :
-                         reportType === 'daily_assessment' ? 'daily-assessment-photos' :
-                         'inspection-photos',
-          foreignKeyColumn: reportType === 'training' ? 'training_id' :
-                            reportType === 'daily_assessment' ? 'assessment_id' :
-                            'inspection_id',
-        });
-        photoCount++;
-      } catch (err) {
-        console.warn('[Backup Ledger] Failed to import photo:', entry.name, err);
+  await withRestoreLock(async () => {
+    // 1. Write to localStorage
+    saveReportSnapshot(
+      reportType!,
+      reportId!,
+      snapshot!.parent,
+      snapshot!.children,
+      snapshot!.synced ?? false,
+      snapshot!.photoMetadata
+    );
+
+    // 2. Write to IndexedDB
+    const {
+      saveInspectionOffline, saveRelatedDataOffline,
+      saveTrainingOffline, saveTrainingDataOffline,
+      saveDailyAssessmentOffline, saveAssessmentDataOffline,
+      savePhotoOffline,
+    } = await import('@/lib/offline-storage');
+
+    const writeParent = async () => {
+      if (reportType === 'inspection') await saveInspectionOffline(snapshot!.parent);
+      else if (reportType === 'training') await saveTrainingOffline(snapshot!.parent);
+      else if (reportType === 'daily_assessment') await saveDailyAssessmentOffline(snapshot!.parent);
+    };
+
+    if (reportType === 'inspection') {
+      await saveInspectionOffline(snapshot!.parent);
+      for (const [key, data] of Object.entries(snapshot!.children)) {
+        if (Array.isArray(data)) {
+          await saveRelatedDataOffline(key as any, reportId!, data);
+        }
+      }
+    } else if (reportType === 'training') {
+      await saveTrainingOffline(snapshot!.parent);
+      for (const [key, data] of Object.entries(snapshot!.children)) {
+        if (Array.isArray(data)) {
+          await saveTrainingDataOffline(key as any, reportId!, data);
+        }
+      }
+    } else if (reportType === 'daily_assessment') {
+      await saveDailyAssessmentOffline(snapshot!.parent);
+      for (const [key, data] of Object.entries(snapshot!.children)) {
+        if (Array.isArray(data)) {
+          await saveAssessmentDataOffline(key as any, reportId!, data);
+        }
       }
     }
-  }
 
-  // 4. Fire-and-forget cloud upload
-  const { uploadSnapshotToCloud } = await import('@/lib/cloud-backup');
-  uploadSnapshotToCloud(reportType, reportId, snapshot);
+    // H2: Verify the restored parent matches the snapshot. Re-apply once on drift.
+    await verifyRestoreIntegrity(reportType!, reportId!, snapshot!.parent, writeParent);
 
-  // 5. Notify any open form that data was imported so it can reload from IndexedDB
-  window.dispatchEvent(new CustomEvent('report-data-imported', {
-    detail: { reportType, reportId }
-  }));
+    // 3. Import photos from ZIP if present
+    if (zipPhotoEntries.length > 0) {
+      for (const entry of zipPhotoEntries) {
+        const photoId = entry.name.replace(/\.[^.]+$/, ''); // strip extension to get ID
+        try {
+          await savePhotoOffline({
+            id: photoId,
+            inspectionId: reportId!,
+            section: 'imported',
+            blob: entry.blob,
+            fileName: entry.name,
+            // C1: photos.uploaded must be 0|1, never boolean — see
+            // mem://constraints/photos-uploaded-index. Spec-strict browsers
+            // (Safari) silently exclude boolean-keyed rows from `by-uploaded`.
+            uploaded: toUploadedFlag(false),
+            tableName: reportType === 'training' ? 'training_photos' :
+                       reportType === 'daily_assessment' ? 'daily_assessment_photos' :
+                       'inspection_photos',
+            storageBucket: reportType === 'training' ? 'training-photos' :
+                           reportType === 'daily_assessment' ? 'daily-assessment-photos' :
+                           'inspection-photos',
+            foreignKeyColumn: reportType === 'training' ? 'training_id' :
+                              reportType === 'daily_assessment' ? 'assessment_id' :
+                              'inspection_id',
+          });
+          photoCount++;
+        } catch (err) {
+          console.warn('[Backup Ledger] Failed to import photo:', entry.name, err);
+        }
+      }
+    }
+
+    // 4. Fire-and-forget cloud upload
+    const { uploadSnapshotToCloud } = await import('@/lib/cloud-backup');
+    uploadSnapshotToCloud(reportType!, reportId!, snapshot!);
+
+    // 5. Notify any open form that data was imported so it can reload from IndexedDB
+    window.dispatchEvent(new CustomEvent('report-data-imported', {
+      detail: { reportType, reportId }
+    }));
+  });
 
   return { reportType, reportId, photoCount: photoCount > 0 ? photoCount : undefined };
 }
