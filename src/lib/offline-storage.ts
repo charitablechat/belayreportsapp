@@ -1452,6 +1452,31 @@ export async function getDB() {
               console.log('[Offline Storage] Created photo_upload_failures store (v15 upgrade)');
             }
           }
+          // === NEW in v16: coerce photos.uploaded boolean → 0|1 ===
+          // IndexedDB silently drops boolean values from indexes, so the
+          // by-uploaded index returned no results. Rewrite legacy rows so
+          // the index actually keys them. Safe to re-run (idempotent).
+          if (oldVersion < 16 && db.objectStoreNames.contains('photos')) {
+            try {
+              const photoStore = transaction.objectStore('photos');
+              const cursorReq = photoStore.openCursor();
+              cursorReq.onsuccess = (ev: any) => {
+                const cursor = ev.target.result;
+                if (!cursor) return;
+                const v = cursor.value;
+                if (typeof v.uploaded === 'boolean') {
+                  v.uploaded = v.uploaded ? 1 : 0;
+                  cursor.update(v);
+                }
+                cursor.continue();
+              };
+              if (import.meta.env.DEV) {
+                console.log('[Offline Storage] Rewriting photos.uploaded boolean → 0|1 (v16 upgrade)');
+              }
+            } catch (err) {
+              console.warn('[Offline Storage] v16 photos.uploaded coercion failed:', err);
+            }
+          }
         },
       });
     };
