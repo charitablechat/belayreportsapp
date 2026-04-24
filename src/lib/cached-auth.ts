@@ -11,7 +11,7 @@ import { safeSetItem } from "@/lib/safe-local-storage";
 export interface CachedUser {
   id: string;
   email?: string;
-  [key: string]: any;
+  [key: string]: unknown;
 }
 
 // Session-level cache for user data to avoid redundant API calls
@@ -138,8 +138,12 @@ export async function signOutWithAbort(): Promise<void> {
  * Detects Navigator LockManager timeout errors from Supabase auth-js.
  * These occur when too many concurrent auth requests compete for the session lock.
  */
-function isLockManagerError(error: any): boolean {
-  const msg = error?.message || error?.toString?.() || '';
+function isLockManagerError(error: unknown): boolean {
+  const e = error as { message?: unknown; toString?: () => string } | null | undefined;
+  const msg =
+    (typeof e?.message === 'string' ? e.message : '') ||
+    (typeof e?.toString === 'function' ? e.toString() : '') ||
+    '';
   return msg.includes('LockManager') || (msg.includes('lock') && msg.includes('timed out'));
 }
 
@@ -300,7 +304,7 @@ export async function getUserWithCache(): Promise<CachedUser | null> {
       }
       
       return result.user;
-    } catch (error: any) {
+    } catch (error: unknown) {
       // LockManager timeout: fall back to localStorage session user
       if (isLockManagerError(error)) {
         console.warn('[CachedAuth] LockManager timeout in getUser — falling back to localStorage');
@@ -686,7 +690,7 @@ export async function ensureValidSession(): Promise<CachedUser | null> {
       const result = await supabase.auth.getSession();
       session = result.data.session;
       sessionError = result.error;
-    } catch (lockError: any) {
+    } catch (lockError: unknown) {
       // LockManager timeout: bypass the lock and read session from localStorage
       if (isLockManagerError(lockError)) {
         console.warn('[CachedAuth] LockManager timeout in getSession — falling back to localStorage');

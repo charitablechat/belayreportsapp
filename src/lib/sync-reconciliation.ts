@@ -3,6 +3,14 @@ import { assertSafeToDeleteChildRows } from "./child-row-deletion-tripwire";
 import { syncLog } from "./sync-logger";
 
 /**
+ * Server-side child-table rows fetched from Supabase. We only rely on the
+ * `id` field here; everything else is preserved opaquely so it can be
+ * re-inserted via `restoreReconciledDeletions` or logged into the audit
+ * table without casting.
+ */
+type ServerRow = Record<string, unknown> & { id?: string };
+
+/**
  * Reconcile child table rows: delete server rows not present locally,
  * then log the deletions for audit/recovery.
  *
@@ -20,7 +28,7 @@ interface ReconcileOptions {
   localItems: Array<{ id?: string }>;
   reportType: 'inspection' | 'training' | 'daily_assessment';
   userId: string;
-  prefetchedServerRows?: any[]; // Pre-fetched server rows from Guard 1 to avoid duplicate fetch
+  prefetchedServerRows?: ServerRow[]; // Pre-fetched server rows from Guard 1 to avoid duplicate fetch
   /**
    * V5 guard: caller signals it had a successful (non-fallback) IndexedDB read
    * for `localItems`. When false and localItems is empty, we never prune.
@@ -30,7 +38,7 @@ interface ReconcileOptions {
 
 export interface ReconcileResult {
   deletedCount: number;
-  deletedRows: any[];
+  deletedRows: ServerRow[];
   /** True when a safety guard or the final tripwire refused to perform the planned delete. */
   blocked: boolean;
   /** Short machine-readable reason when `blocked === true`. */
@@ -52,11 +60,17 @@ export async function reconcileChildTable({
   expectedNonEmpty,
 }: ReconcileOptions): Promise<ReconcileResult> {
   // 1. Use pre-fetched rows if available, otherwise fetch from server
-  let serverRows: any[];
+  let serverRows: ServerRow[];
   if (prefetchedServerRows !== undefined) {
     serverRows = prefetchedServerRows;
   } else {
-    const { data, error: fetchError } = await (supabase as any)
+    const { data, error: fetchError } = await (supabase as unknown as {
+      from: (t: string) => {
+        select: (c: string) => {
+          eq: (col: string, val: string) => Promise<{ data: ServerRow[] | null; error: unknown }>;
+        };
+      };
+    })
       .from(childTable)
       .select('*')
       .eq(parentIdColumn, parentId);
@@ -103,7 +117,9 @@ export async function reconcileChildTable({
   //  The final tripwire below + per-read expectedNonEmpty flag now provide safety.)
 
   // 3. Find server rows not in local state (these were deleted by user)
-  const rowsToDelete = serverRows.filter((row: any) => !localIdSet.has(row.id));
+  const rowsToDelete = serverRows.filter(
+    (row): row is ServerRow & { id: string } => typeof row.id === 'string' && !localIdSet.has(row.id),
+  );
 
   if (rowsToDelete.length === 0) {
     return { deletedCount: 0, deletedRows: [], blocked: false };
@@ -112,7 +128,7 @@ export async function reconcileChildTable({
   syncLog.log(`[Reconcile] ${childTable}: ${rowsToDelete.length} rows to delete for ${parentId.substring(0, 8)}...`);
 
   // 4. Delete the rows from server
-  const idsToDelete = rowsToDelete.map((r: any) => r.id);
+  const idsToDelete = rowsToDelete.map((r) => r.id);
 
   // FINAL TRIPWIRE: re-fetch live count, refuse if >70% would be wiped
   const tripwire = await assertSafeToDeleteChildRows({
@@ -126,7 +142,13 @@ export async function reconcileChildTable({
     return { deletedCount: 0, deletedRows: [], blocked: true, blockReason: 'tripwire_refused' };
   }
 
-  const { error: deleteError } = await (supabase as any)
+  const { error: deleteError } = await (supabase as unknown as {
+    from: (t: string) => {
+      delete: () => {
+        in: (col: string, vals: string[]) => Promise<{ error: unknown }>;
+      };
+    };
+  })
     .from(childTable)
     .delete()
     .in('id', idsToDelete);
@@ -138,7 +160,7 @@ export async function reconcileChildTable({
 
   // 5. Log deletions to audit table (fire-and-forget, don't block sync)
   try {
-    const auditRows = rowsToDelete.map((row: any) => ({
+    const auditRows = rowsToDelete.map((row) => ({
       report_type: reportType,
       report_id: parentId,
       child_table: childTable,
@@ -150,7 +172,9 @@ export async function reconcileChildTable({
     // Insert in batches of 50 to avoid payload limits
     for (let i = 0; i < auditRows.length; i += 50) {
       const batch = auditRows.slice(i, i + 50);
-      await supabase.from('report_deleted_items' as any).insert(batch);
+      await (supabase.from('report_deleted_items' as never) as unknown as {
+        insert: (rows: unknown[]) => Promise<unknown>;
+      }).insert(batch);
     }
   } catch (auditError) {
     // Non-fatal: audit logging failure shouldn't block sync
@@ -162,7 +186,7 @@ export async function reconcileChildTable({
 
 export interface ReconciledTableDelete {
   table: string;
-  rows: any[];
+  rows: ServerRow[];
 }
 
 export interface ReconcileAllResult {
@@ -195,7 +219,11 @@ export async function restoreReconciledDeletions(
       // Re-insert in batches of 50 (matches the existing audit batch size).
       for (let i = 0; i < rows.length; i += 50) {
         const batch = rows.slice(i, i + 50);
-        const { error } = await (supabase as any).from(table).insert(batch);
+        const { error } = await (supabase as unknown as {
+          from: (t: string) => {
+            insert: (rows: ServerRow[]) => Promise<{ error: unknown }>;
+          };
+        }).from(table).insert(batch);
         if (error) throw error;
       }
       restored += rows.length;
@@ -220,7 +248,7 @@ export async function reconcileAllChildTables(
     childTable: string;
     parentIdColumn: string;
     localItems: Array<{ id?: string }>;
-    prefetchedServerRows?: any[];
+    prefetchedServerRows?: ServerRow[];
     expectedNonEmpty?: boolean;
   }>,
   parentId: string,
