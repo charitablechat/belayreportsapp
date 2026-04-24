@@ -106,7 +106,7 @@ describe('N-G — putPhotoRecord funnels every write through toUploadedFlag', ()
   it('does not mutate the caller-supplied object', async () => {
     const db: any = await openFreshDb();
     const input = { id: 'p7', uploaded: false as unknown };
-    await putPhotoRecord(db, input);
+    await putPhotoRecord(db, input as any);
     // input should still hold the original boolean — coercion must happen
     // only on the value written into IDB.
     expect(input.uploaded).toBe(false);
