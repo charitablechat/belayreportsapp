@@ -13,7 +13,10 @@
  *
  * Also exports a jittered exponential backoff helper used by atomic-sync-manager.
  */
-import { safeSetItem } from "@/lib/safe-local-storage";
+// sessionStorage writes are intentionally direct — quarantine is a small,
+// ephemeral, in-tab cache. The localStorage-only safeSetItem helper does not
+// apply here, and the eslint rule that bans raw localStorage.setItem only
+// targets `localStorage`, not `sessionStorage`.
 
 const STORAGE_KEY = "sync-quarantine-v1";
 const FAILURE_THRESHOLD = 3; // cycles of consecutive failure
