@@ -212,7 +212,7 @@ export default function PhotoGallery({
               photoUrl: objectUrl,
               rawStoragePath: p.photoUrl || '', // preserve raw storage path for dedup
               blob: p.blob,
-              uploaded: p.uploaded,
+              uploaded: Boolean(p.uploaded),
               caption: null,
               display_order: p.display_order ?? index,
               staleUpload: isStale,

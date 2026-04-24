@@ -269,7 +269,7 @@ export default function DailyAssessmentForm() {
               caption: p.caption,
               photo_section: p.section,
               display_order: p.display_order,
-              uploaded: p.uploaded,
+              uploaded: Boolean(p.uploaded),
             }));
             saveReportSnapshot('daily_assessment', id, assessment, {
               beginning_of_day: beginningOfDay,
