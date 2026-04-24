@@ -155,7 +155,8 @@ export async function processQueuedSoftDeletes(signal?: AbortSignal): Promise<So
   try {
     // 1. Inspections
     const inspOps = await getQueuedOperations();
-    for (const op of inspOps) {
+    for (const rawOp of inspOps) {
+      const op = rawOp as QueuedOp;
       if (signal?.aborted) return result;
       if (!isSoftDeleteOp(op)) continue;
       const table: TableName = 'inspections';
