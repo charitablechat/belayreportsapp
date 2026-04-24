@@ -55,4 +55,28 @@ export default tseslint.config(
     ],
     rules: { "no-restricted-syntax": "off" },
   },
+  // H4 — Forbid creating ad-hoc Supabase clients outside the canonical
+  // src/integrations/supabase/client.ts. Every outbound call must go through
+  // the singleton so the synthetic-session-guard pre-flight (assertRealSessionForSync
+  // in src/lib/atomic-sync-manager.ts) stays in the request path. New clients
+  // bypass that guard and risk leaking the offline placeholder token.
+  // See mem://constraints/sync-session-jwt-guard.
+  {
+    files: ["src/**/*.{ts,tsx}"],
+    ignores: [
+      "src/integrations/supabase/client.ts",
+      "src/lib/__tests__/**/*.{ts,tsx}",
+    ],
+    rules: {
+      "no-restricted-syntax": [
+        "error",
+        {
+          selector:
+            "CallExpression[callee.name='createClient']",
+          message:
+            "Do not construct a new Supabase client. Import the singleton from '@/integrations/supabase/client' so the synthetic-session-guard pre-flight (assertRealSessionForSync) stays in the request path. See mem://constraints/sync-session-jwt-guard.",
+        },
+      ],
+    },
+  },
 );
