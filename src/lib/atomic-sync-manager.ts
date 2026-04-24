@@ -647,9 +647,7 @@ export async function syncInspectionAtomic(inspectionId: string, preValidatedUse
       throw new Error(`Validation failed: ${JSON.stringify(validation.errors)}`);
     }
     
-    if (import.meta.env.DEV) {
-      syncLog.log('[Atomic Sync] Validation passed for:', inspectionId);
-    }
+    syncLog.log('[Atomic Sync] Validation passed for:', inspectionId);
     
     // RC-5: Skip remote status check for new records (no synced_at = never been on server)
     // This eliminates ~6 network requests per new record (status check + 5 rollback fetches)
@@ -711,9 +709,7 @@ export async function syncInspectionAtomic(inspectionId: string, preValidatedUse
           // Mutate in place so the existing transaction steps below upsert merged values.
           Object.assign(inspection, merged);
 
-          if (import.meta.env.DEV) {
-            syncLog.log('[Atomic Sync] S16 field-merged inspection:', inspectionId);
-          }
+          syncLog.log('[Atomic Sync] S16 field-merged inspection:', inspectionId);
 
           // Audit: log resolved conflict so the conflicts panel reflects the merge.
           const organizationId = await resolveOrgIdForAudit(inspection);
@@ -1133,9 +1129,7 @@ export async function syncInspectionAtomic(inspectionId: string, preValidatedUse
       console.warn('[Atomic Sync] Non-blocking: failed to clean operations queue:', cleanupErr);
     }
     
-    if (import.meta.env.DEV) {
-      syncLog.log('[Atomic Sync] Successfully synced inspection:', inspectionId);
-    }
+    syncLog.log('[Atomic Sync] Successfully synced inspection:', inspectionId);
 
     // H3: parent + children committed. If deferred reconcile was blocked or
     // failed, surface as partial-success so caller knows to retry next cycle.
@@ -1157,9 +1151,7 @@ export async function syncAllInspectionsAtomic(preValidatedUser?: CachedUser, si
   const ITEM_SYNC_TIMEOUT = 25000; // 25 seconds per item max (increased for mobile networks)
   
   if (!navigator.onLine) {
-    if (import.meta.env.DEV) {
-      syncLog.log('[Atomic Sync] Offline - skipping sync');
-    }
+    syncLog.log('[Atomic Sync] Offline - skipping sync');
     return;
   }
 
@@ -1230,9 +1222,7 @@ export async function syncAllInspectionsAtomic(preValidatedUser?: CachedUser, si
   
   // Early return for empty batch (consistent with trainings/assessments)
   if (unsynced.length === 0) {
-    if (import.meta.env.DEV) {
-      syncLog.log('[Atomic Sync] No inspections to sync');
-    }
+    syncLog.log('[Atomic Sync] No inspections to sync');
     return { total: 0, success: 0, failed: 0, errors: [] };
   }
   
@@ -1322,9 +1312,7 @@ export async function syncAllInspectionsAtomic(preValidatedUser?: CachedUser, si
         // Only count as success if item was actually synced (not skipped)
         if (itemResult && typeof itemResult === 'object' && (itemResult as any).skipped) {
           // Skipped items don't count as success or failure
-          if (import.meta.env.DEV) {
-            syncLog.log(`[Atomic Sync] Skipped ${i + 1}/${unsynced.length}:`, inspection.id, (itemResult as any).reason);
-          }
+          syncLog.log(`[Atomic Sync] Skipped ${i + 1}/${unsynced.length}:`, inspection.id, (itemResult as any).reason);
           synced = true; // Don't retry skipped items
         } else {
           successCount++;
@@ -1333,9 +1321,7 @@ export async function syncAllInspectionsAtomic(preValidatedUser?: CachedUser, si
           recordSyncSuccess(inspection.id);
         }
 
-        if (import.meta.env.DEV) {
-          syncLog.log(`[Atomic Sync] Synced ${i + 1}/${batch.length} (${remaining} remaining):`, inspection.id);
-        }
+        syncLog.log(`[Atomic Sync] Synced ${i + 1}/${batch.length} (${remaining} remaining):`, inspection.id);
       } catch (error: any) {
         retryCount++;
 
@@ -1343,9 +1329,7 @@ export async function syncAllInspectionsAtomic(preValidatedUser?: CachedUser, si
           // H5: jittered exponential backoff (1s, 4s, 12s ±20%) prevents
           // synchronized retry storms from concurrent items on flaky networks.
           const delay = jitteredBackoffMs(retryCount);
-          if (import.meta.env.DEV) {
-            syncLog.log(`[Atomic Sync] Retry ${retryCount}/${maxRetries} for ${inspection.id} after ${delay}ms`);
-          }
+          syncLog.log(`[Atomic Sync] Retry ${retryCount}/${maxRetries} for ${inspection.id} after ${delay}ms`);
           await new Promise(resolve => setTimeout(resolve, delay));
         } else {
           failCount++;
@@ -1684,9 +1668,7 @@ export async function syncTrainingAtomic(trainingId: string, preValidatedUser?: 
             TRACKED_FIELDS.training,
           );
           Object.assign(training, merged);
-          if (import.meta.env.DEV) {
-            syncLog.log('[Atomic Sync] S16 field-merged training:', trainingId);
-          }
+          syncLog.log('[Atomic Sync] S16 field-merged training:', trainingId);
         }
       }
     }
@@ -2107,9 +2089,7 @@ export async function syncAllTrainingsAtomic(preValidatedUser?: CachedUser, sign
   const ITEM_SYNC_TIMEOUT = 25000; // 25 seconds per item max (increased for mobile networks)
   
   if (!navigator.onLine) {
-    if (import.meta.env.DEV) {
-      syncLog.log('[Atomic Sync] Offline - skipping training sync');
-    }
+    syncLog.log('[Atomic Sync] Offline - skipping training sync');
     return { total: 0, success: 0, failed: 0, errors: [] };
   }
 
@@ -2175,9 +2155,7 @@ export async function syncAllTrainingsAtomic(preValidatedUser?: CachedUser, sign
   }
   
   if (unsynced.length === 0) {
-    if (import.meta.env.DEV) {
-      syncLog.log('[Atomic Sync] No trainings to sync');
-    }
+    syncLog.log('[Atomic Sync] No trainings to sync');
     return { total: 0, success: 0, failed: 0, errors: [] };
   }
   
@@ -2257,17 +2235,13 @@ export async function syncAllTrainingsAtomic(preValidatedUser?: CachedUser, sign
           recordSyncSuccess(training.id); // H5
         }
 
-        if (import.meta.env.DEV) {
-          syncLog.log(`[Atomic Sync] Synced training ${i + 1}/${batch.length} (${remaining} remaining):`, training.id);
-        }
+        syncLog.log(`[Atomic Sync] Synced training ${i + 1}/${batch.length} (${remaining} remaining):`, training.id);
       } catch (error: any) {
         retryCount++;
 
         if (retryCount < maxRetries && !signal?.aborted) {
           const delay = jitteredBackoffMs(retryCount); // H5
-          if (import.meta.env.DEV) {
-            syncLog.log(`[Atomic Sync] Retry ${retryCount}/${maxRetries} for training ${training.id} after ${delay}ms`);
-          }
+          syncLog.log(`[Atomic Sync] Retry ${retryCount}/${maxRetries} for training ${training.id} after ${delay}ms`);
           await new Promise(resolve => setTimeout(resolve, delay));
         } else {
           failCount++;
@@ -2506,9 +2480,7 @@ export async function syncDailyAssessmentAtomic(assessmentId: string, preValidat
             TRACKED_FIELDS.daily_assessment,
           );
           Object.assign(assessment, merged);
-          if (import.meta.env.DEV) {
-            syncLog.log('[Atomic Sync] S16 field-merged assessment:', assessmentId);
-          }
+          syncLog.log('[Atomic Sync] S16 field-merged assessment:', assessmentId);
         }
       }
     }
@@ -2925,9 +2897,7 @@ export async function syncAllDailyAssessmentsAtomic(preValidatedUser?: CachedUse
   const ITEM_SYNC_TIMEOUT = 25000; // 25 seconds per item max (increased for mobile networks)
   
   if (!navigator.onLine) {
-    if (import.meta.env.DEV) {
-      syncLog.log('[Atomic Sync] Offline - skipping daily assessment sync');
-    }
+    syncLog.log('[Atomic Sync] Offline - skipping daily assessment sync');
     return { total: 0, success: 0, failed: 0, errors: [] };
   }
 
@@ -2992,9 +2962,7 @@ export async function syncAllDailyAssessmentsAtomic(preValidatedUser?: CachedUse
   }
   
   if (unsynced.length === 0) {
-    if (import.meta.env.DEV) {
-      syncLog.log('[Atomic Sync] No daily assessments to sync');
-    }
+    syncLog.log('[Atomic Sync] No daily assessments to sync');
     return { total: 0, success: 0, failed: 0, errors: [] };
   }
   
@@ -3074,17 +3042,13 @@ export async function syncAllDailyAssessmentsAtomic(preValidatedUser?: CachedUse
           recordSyncSuccess(assessment.id); // H5
         }
 
-        if (import.meta.env.DEV) {
-          syncLog.log(`[Atomic Sync] Synced daily assessment ${i + 1}/${batch.length} (${remaining} remaining):`, assessment.id);
-        }
+        syncLog.log(`[Atomic Sync] Synced daily assessment ${i + 1}/${batch.length} (${remaining} remaining):`, assessment.id);
       } catch (error: any) {
         retryCount++;
 
         if (retryCount < maxRetries && !signal?.aborted) {
           const delay = jitteredBackoffMs(retryCount); // H5
-          if (import.meta.env.DEV) {
-            syncLog.log(`[Atomic Sync] Retry ${retryCount}/${maxRetries} for assessment ${assessment.id} after ${delay}ms`);
-          }
+          syncLog.log(`[Atomic Sync] Retry ${retryCount}/${maxRetries} for assessment ${assessment.id} after ${delay}ms`);
           await new Promise(resolve => setTimeout(resolve, delay));
         } else {
           failCount++;
