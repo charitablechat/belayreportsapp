@@ -141,6 +141,9 @@ async function safePostSyncSave<T extends { id: string; updated_at?: string | nu
     liveUpdatedMs > t0UpdatedAtMs;
 
   if (concurrentEdit && live) {
+    // C3: preserve `live.dirty` — a concurrent edit ran saveX Offline which
+    // stamped dirty=true; we MUST NOT clear it or the next-cycle unsynced
+    // filter will skip the new edit. Spread `live` last so its dirty flag wins.
     await save({ ...live, synced_at: serverTimestamp } as T);
     if (import.meta.env.DEV) {
       syncLog.log('[C1] Concurrent edit detected — preserved live record, stamped synced_at only', {
@@ -163,11 +166,17 @@ async function safePostSyncSave<T extends { id: string; updated_at?: string | nu
       ? t0UpdatedIso!
       : serverTimestamp;
 
+  // C3 (dirty-flag): no concurrent edit was detected, so this commit really
+  // does represent every unshipped change. Clear `dirty` so the next-cycle
+  // unsynced filter doesn't re-pick this record. If the device clock ran
+  // ahead and we kept the local updated_at, we leave dirty cleared anyway —
+  // the drift-tolerance check is the secondary safety net for that edge.
   await save({
     ...t0Snapshot,
     ...mergedFields,
     synced_at: serverTimestamp,
     updated_at: mergedUpdatedAt,
+    dirty: false,
   } as T);
 
   if (import.meta.env.DEV && mergedUpdatedAt !== serverTimestamp) {

@@ -1175,7 +1175,7 @@ export async function getDB() {
     // Version 8: Add report_versions store for append-only versioning
     // DB_NAME and DB_VERSION shared with public/db-config.js for SW consistency
     const DB_NAME = 'rope-works-inspections';
-    const DB_VERSION = 16;
+    const DB_VERSION = 17;
 
     // Phase 5 — Schema Migration Safety. Lazy-load to avoid circular imports
     // and to keep the boot path resilient if this module ever fails to parse.
@@ -1479,6 +1479,53 @@ export async function getDB() {
               console.warn('[Offline Storage] v16 photos.uploaded coercion failed:', err);
             }
           }
+
+          // === NEW in v17: backfill `dirty` flag on inspections / trainings / daily_assessments ===
+          // C3: a per-record `dirty` boolean is the authoritative "user has
+          // unshipped edits" signal. Drift-vs-tolerance becomes a secondary
+          // belt-and-braces check. For legacy rows we conservatively backfill:
+          //   - any row without `synced_at` ⇒ dirty (never uploaded)
+          //   - any row with updated_at meaningfully ahead of synced_at ⇒ dirty
+          //   - everything else ⇒ not dirty
+          // Idempotent — re-running just re-confirms the same flag.
+          if (oldVersion < 17) {
+            const SYNC_DRIFT_TOLERANCE_MS = 30_000; // mirror src/lib/local-data-guards.ts
+            const backfillDirty = (storeName: 'inspections' | 'trainings' | 'daily_assessments') => {
+              if (!db.objectStoreNames.contains(storeName)) return;
+              try {
+                const store = (transaction as any).objectStore(storeName) as IDBObjectStore;
+                const cursorReq = store.openCursor();
+                cursorReq.onsuccess = (ev: any) => {
+                  const cursor: IDBCursorWithValue | null = ev.target.result;
+                  if (!cursor) return;
+                  const v = cursor.value;
+                  if (typeof v.dirty !== 'boolean') {
+                    let dirty = false;
+                    if (!v.synced_at) {
+                      dirty = true;
+                    } else if (v.updated_at) {
+                      const u = new Date(v.updated_at).getTime();
+                      const s = new Date(v.synced_at).getTime();
+                      if (Number.isFinite(u) && Number.isFinite(s) && u - s > SYNC_DRIFT_TOLERANCE_MS) {
+                        dirty = true;
+                      }
+                    }
+                    v.dirty = dirty;
+                    cursor.update(v);
+                  }
+                  cursor.continue();
+                };
+                if (import.meta.env.DEV) {
+                  console.log(`[Offline Storage] Backfilling dirty flag on ${storeName} (v17 upgrade)`);
+                }
+              } catch (err) {
+                console.warn(`[Offline Storage] v17 dirty backfill failed for ${storeName}:`, err);
+              }
+            };
+            backfillDirty('inspections');
+            backfillDirty('trainings');
+            backfillDirty('daily_assessments');
+          }
         },
       });
     };
@@ -1598,6 +1645,10 @@ export async function saveInspectionOffline(
       if (opts?.childCountHint != null && opts.childCountHint >= 0) {
         inspection.child_count_hint = opts.childCountHint;
       }
+      // C3: stamp the dirty flag at every user-facing save. Authoritative
+      // "has unshipped edits" signal; only cleared by safePostSyncSave after
+      // a successful round-trip with no concurrent edit.
+      inspection.dirty = true;
       await db.put('inspections', inspection);
       if (import.meta.env.DEV) {
         console.log('[Offline Storage] Saved inspection:', inspection.id);
@@ -1684,12 +1735,15 @@ export async function getUnsyncedInspections(userId?: string) {
       // C9: Exclude quarantined records (remote was soft-deleted) from unsynced
       // candidates so we don't keep re-attempting to upload them.
       let unsynced = all.filter(record => !(record as any)._remote_deleted_at).filter(record => {
+        // C3: dirty flag is the authoritative "has unshipped edits" signal.
+        // Drift-tolerance check is the belt-and-braces secondary path.
+        if ((record as any).dirty === true) return true;
         if (!record.synced_at) return true; // never synced
         if (record.updated_at) {
           const drift = new Date(record.updated_at).getTime() - new Date(record.synced_at).getTime();
           const isUnsynced = isUpdatedAheadOfSync(new Date(record.updated_at).getTime(), new Date(record.synced_at).getTime());
           if (isUnsynced && import.meta.env.DEV) {
-            console.log('[Offline Storage] Inspection flagged unsynced:', {
+            console.log('[Offline Storage] Inspection flagged unsynced (drift):', {
               id: String(record.id).substring(0, 8),
               localUpdated: record.updated_at,
               localSynced: record.synced_at,
@@ -2889,6 +2943,8 @@ export async function saveDailyAssessmentOffline(
       if (opts?.childCountHint != null && opts.childCountHint >= 0) {
         assessment.child_count_hint = opts.childCountHint;
       }
+      // C3: stamp the dirty flag at every user-facing save.
+      assessment.dirty = true;
       await db.put('daily_assessments', assessment);
       if (import.meta.env.DEV) {
         console.log('[Offline Storage] Saved daily assessment:', assessment.id);
@@ -2967,6 +3023,8 @@ export async function getUnsyncedDailyAssessments(userId?: string) {
       const all = await db.getAll('daily_assessments');
       // C9: Exclude quarantined records.
       let unsynced = all.filter(record => !(record as any)._remote_deleted_at).filter(record => {
+        // C3: dirty flag = authoritative "has unshipped edits"; drift = secondary.
+        if ((record as any).dirty === true) return true;
         if (!record.synced_at) return true;
         if (record.updated_at) {
           return isUpdatedAheadOfSync(new Date(record.updated_at).getTime(), new Date(record.synced_at).getTime());
@@ -3232,6 +3290,8 @@ export async function saveTrainingOffline(
       if (opts?.childCountHint != null && opts.childCountHint >= 0) {
         training.child_count_hint = opts.childCountHint;
       }
+      // C3: stamp the dirty flag at every user-facing save.
+      training.dirty = true;
       await db.put('trainings', training);
       if (import.meta.env.DEV) {
         console.log('[Offline Storage] Saved training:', training.id);
@@ -3310,6 +3370,8 @@ export async function getUnsyncedTrainings(userId?: string) {
       const all = await db.getAll('trainings');
       // C9: Exclude quarantined records.
       let unsynced = all.filter(record => !(record as any)._remote_deleted_at).filter(record => {
+        // C3: dirty flag = authoritative "has unshipped edits"; drift = secondary.
+        if ((record as any).dirty === true) return true;
         if (!record.synced_at) return true;
         if (record.updated_at) {
           return isUpdatedAheadOfSync(new Date(record.updated_at).getTime(), new Date(record.synced_at).getTime());
