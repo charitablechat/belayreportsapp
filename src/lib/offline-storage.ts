@@ -3,8 +3,19 @@ import { checkStorageQuota, requestPersistentStorage, isMobile } from './mobile-
 import { isUpdatedAheadOfSync } from './local-data-guards';
 import { safeSetItem } from './safe-local-storage';
 
-/** Opaque DB row — fields vary across tables and are read/written structurally. */
-export type DbRow = Record<string, unknown> & { id?: string };
+/** Opaque DB row — fields vary across tables and are read/written structurally.
+ *  Common string-typed columns are declared so callers don't have to cast `unknown`. */
+export type DbRow = Record<string, unknown> & {
+  id?: string;
+  updated_at?: string;
+  synced_at?: string;
+  created_at?: string;
+  organization?: string;
+  organization_id?: string;
+  inspection_id?: string;
+  user_id?: string;
+  status?: string;
+};
 
 interface InspectionDB extends DBSchema {
   inspections: {
