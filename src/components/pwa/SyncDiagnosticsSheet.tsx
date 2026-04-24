@@ -88,6 +88,8 @@ export const SyncDiagnosticsSheet = () => {
   const [busyConflictId, setBusyConflictId] = useState<string | null>(null);
   const [photoFailures, setPhotoFailures] = useState<PhotoUploadFailureEntry[]>([]);
   const [busyPhotoFailureId, setBusyPhotoFailureId] = useState<string | null>(null);
+  const [emergencyFailures, setEmergencyFailures] = useState<EmergencyFallbackFailure[]>([]);
+  const [copyingDiag, setCopyingDiag] = useState(false);
   const [diag, setDiag] = useState<DiagnosticsState>({
     swRegistered: false,
     swController: false,
