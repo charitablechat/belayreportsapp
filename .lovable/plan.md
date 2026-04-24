@@ -1,63 +1,71 @@
 
 
-## Audit follow-ups — status check
+## Comprehensive debugging pass — status check
 
-Walking through each flagged item against current code.
+Walking each item in your TL;DR against the current `main` and the memories logged from prior fixes.
 
-### Restoration flow
+### C1 — boolean-keyed `by-uploaded` index
+**Already shipped.** Verified earlier this session:
+- `savePhotoOffline` and `markPhotoAsUploaded` funnel every write through `toUploadedFlag()` → `0 | 1`.
+- v16 schema migration rewrites legacy boolean rows; v18 re-runs the coercion using the wrapped `IDBPObjectStore` for slow devices. `DB_VERSION = 18`, `public/db-config.js` matches.
+- Schema typed as `'by-uploaded': number`.
+- Two contract tests against `fake-indexeddb`: `photos-by-uploaded-contract.test.ts` (5 cases incl. v15→v16 migration) and `photo-uploaded-index.test.ts`.
+- Memory: `mem://constraints/photos-uploaded-index`.
 
-**H2 — restore/sync race.** Resolved. `withRestoreLock` wraps all three restore paths (`DataRecoveryTool` snapshot restore, cloud restore, ZIP import via `local-backup-ledger.importReportBackup`). `useAutoSync.performSync` short-circuits while held and resumes via `onRestoreLockChange`. Memory: `mem://architecture/restore-lock`. Test: `import-backup-zip-restore.test.ts` ("restore lock is held during the IDB write phase").
+The audit's `debug-c1-boolean-index.mjs` reproduction would have been red against the *pre-fix* code; against current `main` the regression tests already cover the exact scenarios. **Closed.**
 
-**Photos imported as `uploaded: false` (C1 in restore path).** Resolved. ZIP import path in `local-backup-ledger.ts` now coerces through `toUploadedFlag` → `0|1`. Locked by `import-backup-zip-restore.test.ts` ("imported photos persist uploaded as a number"). Same coercion applies on the cloud-restore path because both funnel through `savePhotoOffline`.
+### #3 — Service-worker DB version mismatch
+**Already shipped.** Current state:
+- `vite-pwa-config.ts` line 35: `importScripts: ['/db-config.js', '/sw-push.js', '/sw-sync.js']` — `db-config.js` is now wired in.
+- `vite-db-version-check.ts` (build-time plugin in `vite.config.ts`) fails the build if `public/db-config.js` and `src/lib/offline-storage.ts` declare different versions. Both currently `v18`.
+- Memory: `mem://architecture/pwa-update-system`.
 
-**No post-restore integrity check.** Resolved. `src/lib/restore-integrity.ts::verifyRestoreIntegrity` re-reads the parent after every restore (DataRecoveryTool, cloud, ZIP) and re-applies if `organization`, `location`, `site`, `status`, or `updated_at` regressed. Test: `import-backup-zip-restore.test.ts` ("drift between snapshot and live IDB row triggers a re-apply").
+The audit cited `DB_VERSION = 15` and `importScripts: ['/sw-push.js', '/sw-sync.js']` — that's stale main. Current main has both fixed plus a build-time tripwire. The only minor remaining hardening would be removing the silent `|| 9` fallback in `public/sw-sync.js`, but with the build-time parity check that fallback is now dead code. **Closed.**
 
-### Reconciliation — still open
+### C4 — T0-snapshot overwrite
+**Confirmed fixed.** Audit and codebase agree — `safePostSyncSave` covers all six call sites. **Closed.**
 
-**`empty_local_guard` pulling server children back without confirmation.** Still open. `reconcileChildTable` GUARD A / GUARD B refuse to *delete* on suspicious-empty, but they don't address the inverse pull-back path. Need to confirm whether that pull-back still happens in `atomic-sync-manager` after the reconcile-blocked branch.
+### C2 — `getUnsyncedCounts` silent boundary
+**Already shipped.** The batched `getUnsyncedCounts` was deleted earlier. `useAutoSync.updateUnsyncedCounts` now calls `getUnsyncedInspections`, `getUnsyncedTrainings`, `getUnsyncedDailyAssessments` in parallel via `Promise.all`, each returning `IdbReadFailure` through `withIndexedDBReadBoundary`. Memory: `mem://architecture/unsynced-counts-coalescer`.
 
-**H3 — `reconcileAllChildTables` runs outside the parent transaction.** Still open. Current `restoreReconciledDeletions` (C4) is a best-effort *post-hoc* compensator, not a transactional fix. Reconcile delete + parent upsert are still two separate round-trips.
+The audit's `debug-c2-silent-boundary.mjs` exercises a function that no longer exists in main. **Closed.**
 
-**50% / delta-of-3 size guards.** Confirmed removed in `sync-reconciliation.ts` (explicit comment lines 84-86). Replaced by GUARD A/B + the final `assertSafeToDeleteChildRows` tripwire. This item is closed; the audit note is stale.
+### C5 — `isUnsafeToTransmit` unused
+**Open. Real.** This is the one item I want to confirm with a read before planning the fix. If still 0 callers, the fix is the Supabase-client `fetch` wrapper from your audit (Option 1) — small, contained, defense-in-depth. Option 2 (storage-adapter filter) risks breaking the trust-then-verify offline auth path (`mem://auth/offline-sign-in-system`) which intentionally relies on `supabase.auth.getSession()` returning the placeholder session for the OFFLINE_AUTHENTICATED state machine to function. **Recommend Option 1 only.**
 
-### Cross-device sync — still open
-
-**Realtime persists server parents without child-level guard.** Still open per audit. Need to re-read the realtime handler to confirm.
-
-**Temp-ID → existing-UUID adoption overwrites concurrent writes.** Still open per audit. Field-merge (`mem://features/silent-conflict-resolution-v7`) covers field-level convergence on subsequent syncs but does not address the adoption-moment overwrite.
-
-### Security
-
-**`storage-rls-probe` once-per-UTC-day.** Confirmed present. M3 caveat noted (single-bucket sample).
-
-**`synthetic-session-guard.isUnsafeToTransmit` unused (C5/H4).** Per audit. `mem://constraints/sync-session-jwt-guard` documents `assertRealSessionForSync` is wired, but the `isUnsafeToTransmit` helper specifically still needs a caller. Need to confirm.
-
-**Three edge functions with `verify_jwt = false` (super-admin bypass).** Out of scope today per the user. Will report grep result without remediating.
+### N1 — vitest exits 1 on green suite
+**Open. Real and worth fixing.** Audit's preferred fix (defer `localStorage` access in `src/integrations/supabase/client.ts`) is blocked by the file's "DO NOT EDIT — auto-generated" rule (enforced in our system prompt). So the only viable fix is the audit's option 1: refactor so `safe-local-storage.test.ts`'s subject doesn't transitively import the supabase client. Practically that means asserting `safeLocalStorage` lives in a leaf module with no `@/integrations/supabase` import chain — needs a quick dep-graph read to confirm what's pulling it in.
 
 ### Plan — what to actually do
 
-1. **Confirm three open items** with read-only grep/inspection before touching anything:
-   - `atomic-sync-manager.ts` post-`reconcile.blocked` branch — does it pull server children back into IDB?
-   - Realtime parent-write handler — child-level guard present?
-   - `synthetic-session-guard.isUnsafeToTransmit` — any callers?
-   - `supabase/config.toml` — current `verify_jwt = false` count.
+1. **Read-only confirmation pass (one batch, no writes):**
+   - `grep -rn 'isUnsafeToTransmit' src/` to confirm 0 callers.
+   - `code--view src/lib/safe-local-storage.ts` + the test file to find the import chain that's pulling in the supabase client at module load.
+   - Spot-check `vite-pwa-config.ts` and `public/sw-sync.js` to confirm `#3` fallback line.
 
-2. **Report findings** in a follow-up plan. For each genuinely-open item, propose either:
-   - A targeted fix (e.g. add `isUnsafeToTransmit` call sites at the two known transmission boundaries), or
-   - A "won't-fix, here's why" with a memory entry so it stops resurfacing in audits.
+2. **C5 fix — wire `isUnsafeToTransmit` into a Supabase fetch wrapper.** Since `src/integrations/supabase/client.ts` is off-limits, create a `src/lib/supabase-fetch-guard.ts` that exports a wrapped `fetch` and a small init helper. **Then ask the user** whether to:
+   - (a) Document the wrapper and have the user paste one line into `client.ts`, or
+   - (b) Wrap at every transmit boundary we control (`atomic-sync-manager.ts` already has `assertRealSessionForSync`; we'd add `assertHeaderSafe` to the small set of `supabase.functions.invoke` and direct `fetch` call sites).
+   
+   Option (b) is the only path that doesn't require touching the auto-generated client. Recommend (b).
 
-3. **Do not** attempt H3 (transactional reconcile + parent upsert) in this round — it's a multi-day refactor of `atomic-sync-manager` and needs its own scoping pass. Flag it as known debt; `restoreReconciledDeletions` (C4) remains the mitigation.
+3. **N1 fix — break the import chain.** Refactor `safe-local-storage.ts` and its tests so the test file imports only leaf modules. No supabase imports in the dep graph of the test subject. Add a vitest config `onConsoleLog` rule that fails the run if `localStorage is not defined` shows up post-teardown, so this regresses loudly next time.
 
-4. **Do not** touch the three `verify_jwt = false` edge functions — explicitly out of scope.
+4. **Memory updates after each fix:**
+   - C5: add `mem://security/supabase-transmit-guard` documenting which boundaries call `assertHeaderSafe` and why `client.ts` can't host the wrapper.
+   - N1: add note to `mem://architecture/sync-boundary-test-coverage` about the dep-graph isolation rule for `safe-local-storage` tests.
+
+5. **No-op / closed items.** I'll add a one-line note to the existing memories for C1, C2, #3, C4 referencing this audit so the next pass doesn't re-flag them. Stale audit notes are the main driver of churn here.
+
+### Out of scope this round
+- H1, H3, H5, H6 partial coverage, M-eslint count growth — all real, all pre-existing, all flagged as accepted-debt or scoped for separate passes.
+- The three `verify_jwt = false` edge functions — explicitly deferred per prior turn (`mem://security/system-orchestration-auth-bypass` documents the design intent).
 
 ### Verdict
 
-- **Restoration flow (H2, C1-restore, integrity check):** all three shipped, tests in place. Closed.
-- **Reconciliation 50%/delta-of-3 guards:** closed — removed and replaced by tripwire.
-- **Reconciliation `empty_local_guard` pull-back, H3 transactional reconcile:** open. H3 explicitly deferred.
-- **Cross-device realtime + temp-ID adoption:** open, needs confirmation read before planning a fix.
-- **`isUnsafeToTransmit` unused:** open, small fix once call sites confirmed.
-- **Edge function `verify_jwt = false`:** out of scope, will report count only.
+- **Closed (already shipped, audit ran against stale main):** C1, C2, #3, C4.
+- **Open, fix this round:** C5 (wire `isUnsafeToTransmit` at transmit boundaries we control, recommend Option (b) since `client.ts` is auto-generated), N1 (break the supabase import chain in `safe-local-storage` test deps).
+- **Out of scope this round:** H1, H3, H5, H6, M-eslint, edge-function `verify_jwt=false`.
 
-Approve and I'll switch to default mode, run the four confirmation reads, then come back with a tight per-item fix plan (or a no-op + memory entry where appropriate).
+Approve and I'll switch to default mode, run the three confirmation reads, then ship C5 and N1.
 
