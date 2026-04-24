@@ -1161,7 +1161,14 @@ export async function syncAllInspectionsAtomic(preValidatedUser?: CachedUser, si
     }
     return;
   }
-  
+
+  // C5: Refuse to start a batch when the active session token is the offline
+  // placeholder or otherwise invalid. Prevents transmitting the placeholder
+  // token over the wire and dead-lettering healthy records on 401s.
+  if (!(await assertRealSessionForSync('inspections'))) {
+    return { total: 0, success: 0, failed: 0, errors: [] };
+  }
+
   // Use pre-validated user if provided (avoids redundant LockManager calls)
   let user: CachedUser | null = preValidatedUser || null;
   if (!user) {
