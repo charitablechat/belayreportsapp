@@ -403,7 +403,7 @@ export const useAutoSync = () => {
         }
         clearTimeout(safetyTimeoutHandle);
         // Always refresh counts so badge reflects reality (fixes stale badge after circuit breaker)
-        updateUnsyncedCounts().catch(() => {});
+        updateUnsyncedCounts({ force: true }).catch(() => {});
         // S34: No work happened — skip the photo-count broadcast. The 5-min
         // safety tick in useUnsyncedPhotos handles any out-of-band drift.
         setState(prev => ({ ...prev, isSyncing: false, lastSyncTime: new Date() }));
@@ -490,7 +490,7 @@ export const useAutoSync = () => {
         
         if (!allFetchesFailed) {
           // Refresh unsynced counts (non-blocking)
-          updateUnsyncedCounts().catch(() => {});
+          updateUnsyncedCounts({ force: true }).catch(() => {});
 
           // S34: Tally photo changes from this cycle. The photo result is the
           // 4th entry returned by the parallel pipeline above.
@@ -673,7 +673,7 @@ export const useAutoSync = () => {
       inFlightSyncRef.current = null;
       resolveInFlight();
       // Always refresh unsynced counts so the badge is accurate after every sync attempt
-      updateUnsyncedCounts().catch(() => {});
+      updateUnsyncedCounts({ force: true }).catch(() => {});
       // S34: Only broadcast if real photo state changed during this cycle.
       // The post-sync block above also dispatches on the success path; this
       // finally-block fallback covers error/timeout paths where some photo
@@ -1079,7 +1079,7 @@ export const useAutoSync = () => {
       if (navigator.onLine) {
         performSync(true);
       }
-      updateUnsyncedCounts();
+      updateUnsyncedCounts({ force: true });
     }, INITIAL_SYNC_DELAY);
     
     // Event listeners
