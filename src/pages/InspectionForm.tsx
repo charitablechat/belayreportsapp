@@ -1654,7 +1654,7 @@ export default function InspectionForm() {
         // localStorage snapshot above is still the user's safety net.
         const { isIdbSaveError } = await import('@/lib/offline-storage');
         if (isIdbSaveError(offlineError)) {
-          setSaveError('Local save failed — your changes are NOT stored. Tap to retry.');
+          setSaveError({ message: 'Local save failed — your changes are NOT stored. Tap to retry.', code: (offlineError as any)?.code });
           throw offlineError;
         }
         if (!silent) {
@@ -1663,7 +1663,7 @@ export default function InspectionForm() {
             duration: 4000,
           });
         }
-        setSaveError('Local save failed — please retry');
+        setSaveError({ message: 'Local save failed — please retry' });
       }
 
       // DEV: warn if filtering excludes items from server sync
@@ -2012,7 +2012,7 @@ export default function InspectionForm() {
       }
     } catch (error: any) {
       console.error('[InspectionForm] Save error:', error);
-      setSaveError(error.message || 'Failed to save');
+      setSaveError({ message: error.message || 'Failed to save', code: error?.code });
       throw error;
     } finally {
       anySaveInProgressRef.current = false;
@@ -2059,7 +2059,7 @@ export default function InspectionForm() {
       // Sync is now handled automatically by useAutoSync hook
     } catch (error: any) {
       console.error("Immediate save failed:", error);
-      setSaveError(error.message || 'Immediate save failed');
+      setSaveError({ message: error.message || 'Immediate save failed', code: error?.code });
     } finally {
       clearTimeout(safetyTimeout);
       setAutoSaving(false);
@@ -2098,7 +2098,7 @@ export default function InspectionForm() {
       // Sync is now handled automatically by useAutoSync hook
     } catch (error: any) {
       console.error("Auto-save failed:", error);
-      setSaveError(error.message || 'Auto-save failed');
+      setSaveError({ message: error.message || 'Auto-save failed', code: error?.code });
     } finally {
       clearTimeout(safetyTimeout);
       setAutoSaving(false);
@@ -2141,7 +2141,7 @@ export default function InspectionForm() {
     } catch (error: any) {
       console.error("Save error:", error);
       const errorMsg = error.message || "Failed to save progress";
-      setSaveError(errorMsg);
+      setSaveError({ message: errorMsg, code: error?.code });
     } finally {
       clearTimeout(safetyTimeout);
       console.log('[InspectionForm] Completed, setting saving to false');
