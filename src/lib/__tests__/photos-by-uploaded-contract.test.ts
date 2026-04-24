@@ -199,6 +199,9 @@ describe('C1 — photos.by-uploaded index contract', () => {
     const mod = await import('../offline-storage');
     // Any read via the module path will open the DB at the current schema.
     const all = (await mod.getOfflinePhotos('legacy-insp')) as any[];
+    // DEBUG: dump values for inspection
+    // eslint-disable-next-line no-console
+    console.log('[TEST DEBUG] migrated rows:', all.map(r => ({ id: r.id, uploaded: r.uploaded, type: typeof r.uploaded })));
     expect(all.length).toBe(2);
     for (const row of all) {
       expect(typeof row.uploaded).toBe('number');
