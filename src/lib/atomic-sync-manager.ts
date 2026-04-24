@@ -2051,7 +2051,10 @@ export async function syncTrainingAtomic(trainingId: string, preValidatedUser?: 
       console.warn('[Atomic Sync] Non-blocking: failed to clean training_operations queue:', cleanupErr);
     }
     
-    return { success: true };
+    // H3: parent + children committed. Surface deferred-reconcile status.
+    return trainingReconcileBlocked
+      ? { success: true, partial: true, reason: 'reconcile_pending', message: 'Some local deletions could not be confirmed; will retry on next sync.' }
+      : { success: true };
     
   } catch (error: any) {
     console.error('[Atomic Sync] Failed to sync training:', trainingId, error);
