@@ -488,7 +488,8 @@ export const useAutoSync = () => {
           const photoResult = await syncPhotos(signal).catch(e => { console.error('[AutoSync] Photos sync failed:', e); return null; });
           return [inspResult, trainResult, assessResult, photoResult];
         },
-        dynamicTimeout
+        dynamicTimeout,
+        activeSyncAbortRef.current?.signal
       );
       
       // Clear safety timeout since we completed normally
