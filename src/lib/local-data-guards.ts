@@ -31,9 +31,17 @@ export const SYNC_DRIFT_TOLERANCE_MS = 30_000;
  * (the `getUnsynced{Inspections,Trainings,DailyAssessments}` readers in
  * `offline-storage.ts`) and prevents future call sites from picking the
  * opposite operator (`<=` vs `>`) and silently disagreeing.
+ *
+ * P4: `toleranceMs` is an optional override so unit/integration tests can
+ * pin it to `0` (or any value) without `vi.mock`-ing the entire module.
+ * Production callers omit it and inherit `SYNC_DRIFT_TOLERANCE_MS`.
  */
-export function exceedsDriftTolerance(aMs: number, bMs: number): boolean {
-  return Math.abs(aMs - bMs) > SYNC_DRIFT_TOLERANCE_MS;
+export function exceedsDriftTolerance(
+  aMs: number,
+  bMs: number,
+  toleranceMs: number = SYNC_DRIFT_TOLERANCE_MS,
+): boolean {
+  return Math.abs(aMs - bMs) > toleranceMs;
 }
 
 /**
@@ -42,9 +50,16 @@ export function exceedsDriftTolerance(aMs: number, bMs: number): boolean {
  * queries where a local copy that's *older* than its synced timestamp is not
  * a sync target — that's just clock skew or a server-anchored timestamp from
  * Part B of S14.
+ *
+ * P4: `toleranceMs` override mirrors `exceedsDriftTolerance` — pass `0` from
+ * tests to get strict ordering semantics, omit in production.
  */
-export function isUpdatedAheadOfSync(updatedMs: number, syncedMs: number): boolean {
-  return updatedMs - syncedMs > SYNC_DRIFT_TOLERANCE_MS;
+export function isUpdatedAheadOfSync(
+  updatedMs: number,
+  syncedMs: number,
+  toleranceMs: number = SYNC_DRIFT_TOLERANCE_MS,
+): boolean {
+  return updatedMs - syncedMs > toleranceMs;
 }
 
 /**
