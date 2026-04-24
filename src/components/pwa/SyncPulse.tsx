@@ -11,6 +11,7 @@ import {
 } from '@/components/ui/sheet';
 import { getDeadLetterPhotos, resetPhotoRetryCounts } from '@/lib/offline-storage';
 import { useUnsyncedPhotos } from '@/hooks/useUnsyncedPhotos';
+import { getQuarantineSnapshot, clearAllQuarantines } from '@/lib/sync-quarantine';
 
 type Phase = 'idle' | 'syncing' | 'synced' | 'unsynced' | 'error';
 
@@ -40,6 +41,18 @@ export const SyncPulse = ({ className }: { className?: string }) => {
   const [previousSyncingState, setPreviousSyncingState] = useState(false);
   const [open, setOpen] = useState(false);
   const [retrying, setRetrying] = useState(false);
+  const [quarantinedCount, setQuarantinedCount] = useState(0);
+
+  // S41 (Fix E + option i): surface session-quarantined records the sync pipeline has
+  // given up on this session. Refresh when sheet opens or sync state changes.
+  useEffect(() => {
+    const snap = getQuarantineSnapshot();
+    const now = Date.now();
+    const active = Object.values(snap).filter(
+      (e) => e.quarantinedUntil !== null && now < (e.quarantinedUntil as number),
+    ).length;
+    setQuarantinedCount(active);
+  }, [open, isSyncing, lastSyncTime]);
 
   const totalUnsynced = unsyncedCount + unsyncedPhotoCount;
 
@@ -193,6 +206,39 @@ export const SyncPulse = ({ className }: { className?: string }) => {
                 </div>
                 <p className="text-green-700 text-[10px] italic">
                   ▸ Tap diagnostics for details
+                </p>
+              </div>
+            )}
+
+            {/* S41 (Fix E + option i): session-quarantined records the sync gave up on this session */}
+            {quarantinedCount > 0 && (
+              <div className="space-y-1.5 border-t border-green-900/40 pt-2">
+                <div className="flex items-center justify-between">
+                  <span className="text-amber-400 text-[10px] uppercase tracking-wider">
+                    ▸ Quarantined ({quarantinedCount})
+                  </span>
+                  <button
+                    type="button"
+                    disabled={retrying}
+                    onClick={async () => {
+                      try {
+                        setRetrying(true);
+                        clearAllQuarantines();
+                        setQuarantinedCount(0);
+                        await forceSync();
+                      } catch (e) {
+                        console.warn('[SyncPulse] Quarantine retry failed:', e);
+                      } finally {
+                        setRetrying(false);
+                      }
+                    }}
+                    className="text-[10px] uppercase tracking-wider px-2 py-0.5 rounded border border-amber-700/60 text-amber-300 hover:bg-amber-900/30 disabled:opacity-50"
+                  >
+                    {retrying ? 'RETRYING…' : 'RETRY NOW'}
+                  </button>
+                </div>
+                <p className="text-green-700 text-[10px] italic">
+                  Sync paused after repeated failures. Auto-retries tomorrow, or tap Retry Now.
                 </p>
               </div>
             )}
