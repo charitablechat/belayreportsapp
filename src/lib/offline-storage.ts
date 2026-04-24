@@ -790,9 +790,12 @@ function makeIdbReadFailure(context: string, error: unknown): IdbReadFailure {
  * Mirrors the same circuit-breaker / timeout / health-check semantics as the
  * silent boundary so sync paths don't regress on resilience.
  */
+export type IdbReadTier = 'light' | 'batch' | 'write' | 'photo';
+
 async function withIndexedDBReadBoundary<T>(
   operation: () => Promise<T>,
   operationName: string,
+  options?: { tier?: IdbReadTier },
 ): Promise<T | IdbReadFailure> {
   if (isCircuitBreakerOpen()) {
     if (import.meta.env.DEV) {
@@ -801,21 +804,37 @@ async function withIndexedDBReadBoundary<T>(
     return makeIdbReadFailure(operationName, 'circuit_breaker_open');
   }
 
-  const opLowerForTier = operationName.toLowerCase();
+  // M2: Tier is now an EXPLICIT parameter. The previous substring-match
+  // classifier (`opLowerForTier.includes('photo' | 'training' | …)`) was
+  // fragile — a future op named "TrainingPhotoMeta" would silently pick the
+  // photo path. Callers must pass `{ tier }`; we fall back to substring
+  // inference only for legacy callers that haven't been migrated, and DEV
+  // warns so they get fixed.
   let OPERATION_TIMEOUT: number;
-  if (opLowerForTier.includes('photo')) {
-    OPERATION_TIMEOUT = IDB_TIMEOUTS.write;
-  } else if (
-    opLowerForTier.includes('batch') ||
-    opLowerForTier.includes('related') ||
-    opLowerForTier.includes('training') ||
-    opLowerForTier.includes('assessment') ||
-    opLowerForTier.includes('getall') ||
-    opLowerForTier.includes('unsynced')
-  ) {
-    OPERATION_TIMEOUT = IDB_TIMEOUTS.batch;
+  if (options?.tier) {
+    OPERATION_TIMEOUT =
+      options.tier === 'batch' ? IDB_TIMEOUTS.batch :
+      options.tier === 'write' || options.tier === 'photo' ? IDB_TIMEOUTS.write :
+      IDB_TIMEOUTS.light;
   } else {
-    OPERATION_TIMEOUT = IDB_TIMEOUTS.light;
+    if (import.meta.env.DEV) {
+      console.warn(`[Offline Storage] withIndexedDBReadBoundary("${operationName}") called without explicit tier — falling back to substring inference. Pass { tier } to fix.`);
+    }
+    const opLowerForTier = operationName.toLowerCase();
+    if (opLowerForTier.includes('photo')) {
+      OPERATION_TIMEOUT = IDB_TIMEOUTS.write;
+    } else if (
+      opLowerForTier.includes('batch') ||
+      opLowerForTier.includes('related') ||
+      opLowerForTier.includes('training') ||
+      opLowerForTier.includes('assessment') ||
+      opLowerForTier.includes('getall') ||
+      opLowerForTier.includes('unsynced')
+    ) {
+      OPERATION_TIMEOUT = IDB_TIMEOUTS.batch;
+    } else {
+      OPERATION_TIMEOUT = IDB_TIMEOUTS.light;
+    }
   }
   const TIMEOUT_SENTINEL = Symbol('timeout');
 
