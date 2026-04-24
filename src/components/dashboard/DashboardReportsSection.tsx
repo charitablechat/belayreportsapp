@@ -259,7 +259,11 @@ export function DashboardReportsSection({
   const statsData = useMemo(() => {
     const fullData = activeReportTab === 'inspections' ? (allInspections ?? inspections)
       : activeReportTab === 'training' ? (allTrainings ?? trainings)
-      : activeReportTab === 'invoiced' ? currentReports
+      // Fix 3: invoiced tab pulls from the full invoiced source, not the
+      // already-filtered/sliced currentReports. Otherwise the TOTAL card
+      // can disagree with the "Invoiced (N)" tab label, especially while
+      // invoicedReports is still loading asynchronously.
+      : activeReportTab === 'invoiced' ? invoicedReports.map(r => r.report)
       : (allDailyAssessments ?? dailyAssessments);
     const total = fullData.length;
     const drafts = fullData.filter(r => r.status === 'draft').length;
@@ -274,7 +278,7 @@ export function DashboardReportsSection({
       return age > 3; // matches tierOf: >3 days = warning, >5 = critical
     }).length;
     return { total, drafts, overdue, completed };
-  }, [activeReportTab, allInspections, allTrainings, allDailyAssessments, inspections, trainings, dailyAssessments, currentReports]);
+  }, [activeReportTab, allInspections, allTrainings, allDailyAssessments, inspections, trainings, dailyAssessments, invoicedReports]);
 
   // Handle stats bar filter clicks
   const handleStatsFilter = (filter: 'all' | 'drafts' | 'overdue' | 'completed') => {
