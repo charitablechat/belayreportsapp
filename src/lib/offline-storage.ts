@@ -1926,7 +1926,7 @@ export async function readChildrenStrict(
     );
   }
   const idx = db.transaction(storeName as never).store.index(indexName as never);
-  const rows = (await idx.getAll(parentId)) as unknown[];
+  const rows = (await idx.getAll(parentId as never)) as unknown[];
   return rows;
 }
 
@@ -2276,7 +2276,7 @@ export async function putPhotoRecord(
   await db.put('photos', {
     ...photo,
     uploaded: toUploadedFlag(photo?.uploaded),
-  });
+  } as never);
 }
 
 export async function savePhotoOffline(photo: {
@@ -4317,8 +4317,8 @@ export async function evictSyncedReports(ageDays: number): Promise<number> {
           if (!db.objectStoreNames.contains(childStore as OSName)) continue;
           const store = deleteTx.objectStore(childStore as OSName);
           const indexName = `by-${childIndexPrefix}`;
-          if (store.indexNames.contains(indexName)) {
-            const childKeys = await store.index(indexName).getAllKeys(id);
+          if (store.indexNames.contains(indexName as never)) {
+            const childKeys = await store.index(indexName as never).getAllKeys(id as never);
             for (const key of childKeys) {
               await store.delete(key);
             }
@@ -4698,7 +4698,7 @@ export async function restoreQuarantinedAsNew(
         try {
           const storeName = store.name as OSName;
           const idx = db.transaction(storeName).store.index(store.index as never);
-          const children = await idx.getAll(id);
+          const children = await idx.getAll(id as never);
           if (!children || children.length === 0) continue;
           const tx = db.transaction(storeName, 'readwrite');
           for (const child of children as Record<string, unknown>[]) {
@@ -4727,7 +4727,7 @@ export async function restoreQuarantinedAsNew(
         for (const store of childStores[table]) {
           const storeName = store.name as OSName;
           const idx = db.transaction(storeName).store.index(store.index as never);
-          const children = await idx.getAll(id);
+          const children = await idx.getAll(id as never);
           if (!children || children.length === 0) continue;
           const tx = db.transaction(storeName, 'readwrite');
           for (const child of children as { id: string }[]) {
