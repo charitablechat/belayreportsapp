@@ -591,6 +591,8 @@ async function syncPhotos() {
 async function syncTrainingsAtomic() {
   console.log('[SW Atomic Sync] Starting atomic training sync...');
   
+  if (!dbConfigGuard('training sync')) return;
+  
   const authHeaders = getAuthHeaders();
   if (!authHeaders) {
     console.warn('[SW Atomic Sync] No valid auth token — skipping training sync');
