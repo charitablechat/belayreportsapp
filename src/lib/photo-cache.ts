@@ -1,4 +1,4 @@
-import { getDB } from './offline-storage';
+import { getDB, putPhotoRecord } from './offline-storage';
 
 // Cache duration: 24 hours
 const CACHE_DURATION = 24 * 60 * 60 * 1000;
@@ -30,7 +30,8 @@ export async function cachePhotoFromRemote(
 ): Promise<void> {
   const db = await getDB();
   
-  await db.put('photos', {
+  // N-G: centralised photo write so toUploadedFlag is always applied.
+  await putPhotoRecord(db, {
     id: photoId,
     inspectionId,
     section,
@@ -60,7 +61,8 @@ export async function validateCachedPhoto(photoId: string): Promise<boolean> {
     const photo = await db.get('photos', photoId);
     if (photo) {
       photo.lastValidated = Date.now();
-      await db.put('photos', photo);
+      // N-G: centralised photo write.
+      await putPhotoRecord(db, photo);
     }
     return true;
   }
