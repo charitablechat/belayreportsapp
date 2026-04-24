@@ -48,6 +48,7 @@ async function resolveOrgIdForAudit(inspection: {
   }
 }
 import { getUserWithCache, ensureValidSession, type CachedUser } from "@/lib/cached-auth";
+import { isUnsafeToTransmit, looksLikeJwt } from "@/lib/synthetic-session-guard";
 import { 
   getUnsyncedInspections,
   saveInspectionOffline,
