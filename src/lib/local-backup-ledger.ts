@@ -35,8 +35,8 @@ export interface ReportSnapshot {
   ts: number;
   synced: boolean;
   device: 'mobile' | 'desktop';
-  parent: Record<string, any>;
-  children: Record<string, any[]>;
+  parent: Record<string, unknown>;
+  children: Record<string, unknown[]>;
   photoMetadata?: PhotoMetadataEntry[];
 }
 
@@ -123,8 +123,8 @@ function evictIfNeeded(requiredBytes: number): void {
 export function saveReportSnapshot(
   reportType: ReportType,
   reportId: string,
-  parentData: Record<string, any>,
-  childData: Record<string, any[]>,
+  parentData: Record<string, unknown>,
+  childData: Record<string, unknown[]>,
   isSynced: boolean = false,
   photoMetadata?: PhotoMetadataEntry[]
 ): void {
@@ -482,7 +482,7 @@ export async function downloadReportBackup(
 /**
  * Infer reportType from a parent record's fields.
  */
-function inferReportType(parent: Record<string, any>): ReportType | null {
+function inferReportType(parent: Record<string, unknown>): ReportType | null {
   if ('inspection_date' in parent || ('location' in parent && 'acct_number' in parent)) {
     return 'inspection';
   }
@@ -518,7 +518,7 @@ export async function importReportBackup(input: string | File): Promise<{
       // Collect photo entries
       const photosFolder = zip.folder('photos');
       if (photosFolder) {
-        const photoFiles: { name: string; file: any }[] = [];
+        const photoFiles: { name: string; file: { async: (type: 'blob') => Promise<Blob> } }[] = [];
         photosFolder.forEach((relativePath, file) => {
           if (!file.dir) {
             photoFiles.push({ name: relativePath, file });
@@ -536,7 +536,7 @@ export async function importReportBackup(input: string | File): Promise<{
     jsonString = input;
   }
 
-  let parsed: any;
+  let parsed: unknown;
   try {
     parsed = JSON.parse(jsonString);
   } catch {
@@ -673,7 +673,7 @@ export async function importReportBackup(input: string | File): Promise<{
         reportId!,
         snapshot!.parent,
         reapplyAll,
-        { expectedChildren: snapshot!.children as Record<string, any[]> },
+        { expectedChildren: snapshot!.children as Record<string, Array<{ id?: string | null }>> },
       );
     } catch (verifyErr) {
       console.warn('[Backup Ledger] Post-import verification failed — data was restored but drift check could not complete:', verifyErr);

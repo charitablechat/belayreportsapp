@@ -326,9 +326,10 @@ export async function writeCredentialAtomic<T>(
     // Phase 4a — encrypt at rest. If crypto is unavailable this passes
     // through and we store plaintext (legacy behaviour).
     payload = await encryptForStorage(json);
-  } catch (err: any) {
+  } catch (err: unknown) {
     await appendTx({ op, phase: 'FAILED', ts: Date.now(), detail: 'serialize-failed' });
-    return { ok: false, attempts: 0, partial: false, error: err?.message || 'serialize-failed' };
+    const msg = err instanceof Error ? err.message : 'serialize-failed';
+    return { ok: false, attempts: 0, partial: false, error: msg };
   }
 
   const sha256 = await sha256Hex(payload);
@@ -381,7 +382,7 @@ export async function writeCredentialAtomic<T>(
         }
         await deleteSlotRow(tmpId);
         return true;
-      } catch (err: any) {
+      } catch (err: unknown) {
         // Phase 3 — Quota-exception handling: detect QuotaExceededError
         // specifically and try one round of aggressive eviction before retry.
         let isQuota = false;
@@ -406,11 +407,12 @@ export async function writeCredentialAtomic<T>(
           await new Promise((r) => setTimeout(r, delay));
           continue;
         }
+        const errMsg = err instanceof Error ? err.message : 'unknown';
         await appendTx({
           op,
           phase: 'FAILED',
           ts: Date.now(),
-          detail: `${slot}:${err?.message || 'unknown'}`,
+          detail: `${slot}:${errMsg}`,
         });
         return false;
       }
@@ -665,13 +667,14 @@ export async function validateAuthStateOnBoot(): Promise<BootValidationResult> {
     }
 
     return { ok: true, recovered, notes };
-  } catch (err: any) {
+  } catch (err: unknown) {
     // Don't block boot — even if the resilience DB is broken, the legacy
     // offline-auth path still works.
+    const msg = err instanceof Error ? err.message : 'unknown';
     return {
       ok: false,
       recovered: false,
-      notes: [`boot-validation-failed:${err?.message || 'unknown'}`],
+      notes: [`boot-validation-failed:${msg}`],
     };
   }
 }

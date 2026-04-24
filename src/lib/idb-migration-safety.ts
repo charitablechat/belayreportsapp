@@ -87,7 +87,7 @@ interface SnapshotRow {
   snapshotId: string;
   storeName: string;
   rowIndex: number;
-  data: any;
+  data: unknown;
 }
 
 export interface MigrationAuditRow {
@@ -295,16 +295,16 @@ export async function createPreMigrationSnapshot(
     });
 
     return { ok: true, snapshotId };
-  } catch (err: any) {
+  } catch (err: unknown) {
     await appendAudit({
       ts: Date.now(),
       dbName,
       fromVersion,
       toVersion,
       status: 'snapshot-failed',
-      error: err?.message || String(err),
+      error: err instanceof Error ? err.message : String(err),
     });
-    return { ok: false, error: err?.message || 'snapshot-failed' };
+    return { ok: false, error: err instanceof Error ? err.message : 'snapshot-failed' };
   } finally {
     try { liveDb?.close(); } catch { /* ignore */ }
   }
@@ -389,7 +389,7 @@ export async function restoreFromPreMigrationSnapshot(
     )) as SnapshotRow[];
 
     const presentStores = new Set(Array.from(liveDb.objectStoreNames));
-    const byStore = new Map<string, any[]>();
+    const byStore = new Map<string, unknown[]>();
     for (const r of allRows) {
       if (!byStore.has(r.storeName)) byStore.set(r.storeName, []);
       byStore.get(r.storeName)!.push(r.data);
@@ -425,8 +425,9 @@ export async function restoreFromPreMigrationSnapshot(
     });
 
     return { ok: true, restored, skipped };
-  } catch (err: any) {
-    return { ok: false, restored: 0, skipped: 0, error: err?.message || 'restore-failed' };
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : 'restore-failed';
+    return { ok: false, restored: 0, skipped: 0, error: msg };
   }
 }
 

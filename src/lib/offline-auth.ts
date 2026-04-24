@@ -74,7 +74,7 @@ interface OfflineAuthDB {
   /** Legacy XOR-password store — wiped on boot, never re-populated. */
   pending_credentials: {
     key: string;
-    value: any;
+    value: unknown;
   };
   /** New refresh-token-based offline auth entries, keyed by lowercase email. */
   offline_auth: {
@@ -454,14 +454,15 @@ async function migrateUserData(oldUserId: string, newUserId: string): Promise<vo
         const allRecords = await readTx.objectStore(name).getAll();
         await readTx.done;
 
-        const toMigrate = allRecords.filter((r: any) => r[idField] === oldUserId);
+        const records = allRecords as Array<Record<string, unknown>>;
+        const toMigrate = records.filter((r) => r[idField] === oldUserId);
         if (toMigrate.length === 0) continue;
 
         // Write phase: open tx, fire all puts synchronously (no await between
         // requests, otherwise the tx auto-closes), then await tx.done.
         const writeTx = db.transaction(name, 'readwrite');
         const writeStore = writeTx.objectStore(name);
-        const puts = toMigrate.map((record: any) => {
+        const puts = toMigrate.map((record) => {
           record[idField] = newUserId;
           return writeStore.put(record);
         });
@@ -502,11 +503,16 @@ async function migratePendingPhotoPaths(oldUserId: string, newUserId: string): P
     const { getDB } = await import('./offline-storage');
     const db = await getDB();
 
+    type PhotoRow = {
+      uploaded?: 0 | 1 | boolean;
+      photoUrl?: unknown;
+    } & Record<string, unknown>;
+
     // Read phase — readonly tx, free to await.
-    let allPhotos: any[] = [];
+    let allPhotos: PhotoRow[] = [];
     try {
       const readTx = db.transaction('photos', 'readonly');
-      allPhotos = await readTx.objectStore('photos').getAll();
+      allPhotos = (await readTx.objectStore('photos').getAll()) as PhotoRow[];
       await readTx.done;
     } catch (readErr) {
       console.warn('[OfflineAuth] Failed to read photos store for path migration:', readErr);
@@ -514,12 +520,14 @@ async function migratePendingPhotoPaths(oldUserId: string, newUserId: string): P
     }
 
     const prefix = `${oldUserId}/`;
-    const toRewrite = allPhotos.filter((p: any) => {
-      // Only touch pending uploads. `uploaded` is the canonical flag
-      // (indexed as `by-uploaded` in offline-storage).
-      if (p?.uploaded) return false;
-      return typeof p?.photoUrl === 'string' && p.photoUrl.startsWith(prefix);
-    });
+    const toRewrite = allPhotos.filter(
+      (p): p is PhotoRow & { photoUrl: string } => {
+        // Only touch pending uploads. `uploaded` is the canonical flag
+        // (indexed as `by-uploaded` in offline-storage).
+        if (p?.uploaded) return false;
+        return typeof p?.photoUrl === 'string' && p.photoUrl.startsWith(prefix);
+      },
+    );
 
     if (toRewrite.length === 0) {
       if (import.meta.env.DEV) {
@@ -532,7 +540,7 @@ async function migratePendingPhotoPaths(oldUserId: string, newUserId: string): P
     try {
       const writeTx = db.transaction('photos', 'readwrite');
       const writeStore = writeTx.objectStore('photos');
-      const puts = toRewrite.map((photo: any) => {
+      const puts = toRewrite.map((photo) => {
         try {
           const rewritten = {
             ...photo,

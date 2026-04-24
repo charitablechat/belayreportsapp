@@ -20,8 +20,17 @@ import { syncLog } from "./sync-logger";
  */
 export type PhotoErrorClass = 'transient' | 'permanent' | 'success-equivalent';
 
+interface ErrorLike {
+  status?: number | string;
+  statusCode?: number | string;
+  httpStatus?: number | string;
+  code?: string;
+  name?: string;
+  message?: string;
+}
+
 export function classifyPhotoError(err: unknown): { kind: PhotoErrorClass; message: string } {
-  const e: any = err || {};
+  const e: ErrorLike = (err && typeof err === 'object' ? err : {}) as ErrorLike;
   // Numeric-ish status / statusCode from Supabase StorageError / PostgrestError
   const statusRaw = e.status ?? e.statusCode ?? e.httpStatus ?? null;
   const status = typeof statusRaw === 'string' ? parseInt(statusRaw, 10) : statusRaw;
@@ -81,8 +90,24 @@ const MAX_PHOTO_BATCH_SIZE = 30;
  * uses this to decide whether to emit a sync-center notification once per
  * cycle).
  */
+/**
+ * Minimal photo shape needed for the dead-letter flow. Mirrors a subset of
+ * the `photos` object-store record in `offline-storage.ts` without coupling
+ * this module to the full DB schema.
+ */
+interface PhotoForFailure {
+  id: string;
+  inspectionId?: string;
+  section?: string;
+  fileName?: string;
+  photoUrl?: string;
+  timestamp?: number;
+  retryCount?: number;
+  capturedByUserId?: string | null;
+}
+
 async function handlePermanentPhotoFailure(
-  photo: any,
+  photo: PhotoForFailure,
   message: string
 ): Promise<{ retryCount: number; crossedThreshold: boolean }> {
   await setPhotoLastError(photo.id, message);
@@ -176,7 +201,7 @@ export async function syncPhotos(signal?: AbortSignal): Promise<{ remaining: num
         // S23: Bind photo to its capturing user. Resolve current user once.
         const currentUser = await getUserWithCache();
         const currentUserId = currentUser?.id || null;
-        const capturedBy = (photo as any).capturedByUserId as string | null | undefined;
+        const capturedBy = (photo as { capturedByUserId?: string | null }).capturedByUserId ?? undefined;
 
         // Cross-user guard: if the photo was captured by a different user than
         // is currently signed in, do NOT rewrite the path under the new user.
@@ -335,11 +360,11 @@ export async function syncPhotos(signal?: AbortSignal): Promise<{ remaining: num
           return;
         }
 
-        let user = await getUserWithCache();
+        let user: { id: string } | null = await getUserWithCache();
         if (!user) {
           const { getOfflineUserId } = await import('./cached-auth');
           const offlineId = getOfflineUserId();
-          if (offlineId) user = { id: offlineId } as any;
+          if (offlineId) user = { id: offlineId };
         }
         if (!user) throw new Error("Not authenticated");
 
@@ -397,7 +422,7 @@ export async function syncPhotos(signal?: AbortSignal): Promise<{ remaining: num
         // a duplicate-object 409 as success and proceeds to the DB insert path,
         // which is correct on retry of an already-uploaded photo.
         const { error: uploadError } = await supabase.storage
-          .from(bucket as any)
+          .from(bucket)
           .upload(fileName, photo.blob, {
             contentType: photo.blob.type || 'image/jpeg',
             upsert: false,
@@ -430,8 +455,17 @@ export async function syncPhotos(signal?: AbortSignal): Promise<{ remaining: num
         }
 
         // Deduplication guard: check if a DB row already exists for this photo_url
-        const { data: existing } = await (supabase
-          .from(table as any) as any)
+        const { data: existing } = await (supabase.from(
+          table as never,
+        ) as unknown as {
+          select: (c: string) => {
+            eq: (col: string, val: string) => {
+              eq: (col: string, val: string) => {
+                maybeSingle: () => Promise<{ data: { id: string } | null }>;
+              };
+            };
+          };
+        })
           .select('id')
           .eq('photo_url', fileName)
           .eq(fkColumn, photo.inspectionId)
@@ -439,8 +473,11 @@ export async function syncPhotos(signal?: AbortSignal): Promise<{ remaining: num
 
         if (!existing) {
           // Save to database with file path (signed URLs generated on read)
-          const { error: dbError } = await (supabase
-            .from(table as any) as any)
+          const { error: dbError } = await (supabase.from(
+            table as never,
+          ) as unknown as {
+            insert: (row: Record<string, unknown>) => Promise<{ error: unknown }>;
+          })
             .insert({
               [fkColumn]: photo.inspectionId,
               photo_url: fileName,

@@ -43,7 +43,7 @@ export interface DeferredReconcileSpec {
   childTable: string;
   parentIdColumn: string;
   localItems: Array<{ id?: string }>;
-  prefetchedServerRows?: any[];
+  prefetchedServerRows?: Array<{ id?: string }>;
   expectedNonEmpty?: boolean;
 }
 

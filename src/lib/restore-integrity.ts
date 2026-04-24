@@ -57,18 +57,22 @@ export interface VerifyRestoreIntegrityOptions {
   expectedChildren?: Record<string, Array<{ id?: string | null }> | undefined>;
 }
 
+type RestoreParentRecord = Record<string, unknown> & {
+  updated_at?: string | number | null;
+};
+
 export async function verifyRestoreIntegrity(
   reportType: ReportType,
   reportId: string,
-  expectedParent: any,
+  expectedParent: RestoreParentRecord,
   reapply: () => Promise<void>,
   options: VerifyRestoreIntegrityOptions = {},
 ): Promise<void> {
   const { readParentStrict, readChildrenStrict } = await import('@/lib/offline-storage');
 
-  let live: any = null;
+  let live: RestoreParentRecord | null = null;
   try {
-    live = await readParentStrict(reportType, reportId);
+    live = (await readParentStrict(reportType, reportId)) as RestoreParentRecord | null;
   } catch (err) {
     // N-C: parent read threw — surface to the caller. A silent "all good"
     // hides the exact class of failure this verifier exists to catch.
@@ -90,8 +94,8 @@ export async function verifyRestoreIntegrity(
     if (expectedParent[field] === undefined) continue;
     // updated_at: only flag if the live record is OLDER than the snapshot
     if (field === 'updated_at') {
-      const expectedMs = new Date(expectedParent.updated_at).getTime();
-      const liveMs = live.updated_at ? new Date(live.updated_at).getTime() : 0;
+      const expectedMs = new Date(expectedParent.updated_at as string | number).getTime();
+      const liveMs = live.updated_at ? new Date(live.updated_at as string | number).getTime() : 0;
       if (liveMs < expectedMs) drift.push(field);
       continue;
     }

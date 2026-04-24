@@ -19,7 +19,7 @@ export function validateInspectionData(
   ziplines: Array<{ zipline_name?: string; result?: string }>,
   equipment: Array<{ equipment_type?: string; equipment_category?: string; result?: string }>,
   standards: Array<{ standard_name?: string; has_documentation?: boolean }>,
-  _summary: any
+  _summary: unknown
 ): ValidationResult {
   const errors: string[] = [];
 
@@ -64,7 +64,7 @@ export function validateInspectionData(
  * Mirrors the guard at the top of upsertRelatedData() in sw-sync.js.
  * Returns true if the data should be skipped (null or empty array).
  */
-export function shouldSkipUpsert(data: any[] | null | undefined): boolean {
+export function shouldSkipUpsert(data: unknown[] | null | undefined): boolean {
   return !data || data.length === 0;
 }
 

@@ -77,6 +77,6 @@ export function clearPendingSyncs(): void {
 /**
  * Kept for back-compat; SW sync messaging is disabled so this listener never fires.
  */
-export function onSyncComplete(_callback: (data: any) => void): () => void {
+export function onSyncComplete(_callback: (data: unknown) => void): () => void {
   return () => { /* noop */ };
 }
