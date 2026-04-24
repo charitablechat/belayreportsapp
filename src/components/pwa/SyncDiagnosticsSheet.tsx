@@ -139,7 +139,16 @@ export const SyncDiagnosticsSheet = () => {
   };
 
   useEffect(() => {
-    if (open) void refresh();
+    if (!open) return;
+    void refresh();
+    const interval = setInterval(() => {
+      try {
+        setEmergencyFailures(getEmergencyFallbackFailures());
+      } catch {
+        /* ignore */
+      }
+    }, 5000);
+    return () => clearInterval(interval);
   }, [open]);
 
   // S39: best-effort resolve organization/title labels for held-back records.
