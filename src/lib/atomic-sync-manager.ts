@@ -582,16 +582,10 @@ export async function syncInspectionAtomic(inspectionId: string, preValidatedUse
     
     // If we swapped the inspection ID, propagate new ID to all child records
     if (inspectionIdMapping) {
-      const updateChildInspectionId = (items: any[]) =>
-        items.map(item => ({
-          ...item,
-          inspection_id: inspectionIdMapping!.newId,
-        }));
-      
-      rawSystems.forEach(item => item.inspection_id = inspectionIdMapping!.newId);
-      rawZiplines.forEach(item => item.inspection_id = inspectionIdMapping!.newId);
-      rawEquipment.forEach(item => item.inspection_id = inspectionIdMapping!.newId);
-      rawStandards.forEach(item => item.inspection_id = inspectionIdMapping!.newId);
+      rewriteChildForeignKeys(rawSystems, inspectionIdMapping.oldId, inspectionIdMapping.newId, 'inspection_id');
+      rewriteChildForeignKeys(rawZiplines, inspectionIdMapping.oldId, inspectionIdMapping.newId, 'inspection_id');
+      rewriteChildForeignKeys(rawEquipment, inspectionIdMapping.oldId, inspectionIdMapping.newId, 'inspection_id');
+      rewriteChildForeignKeys(rawStandards, inspectionIdMapping.oldId, inspectionIdMapping.newId, 'inspection_id');
       if (rawSummary) {
         rawSummary = { ...rawSummary, inspection_id: inspectionIdMapping.newId };
       }
