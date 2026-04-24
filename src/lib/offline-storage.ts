@@ -1832,6 +1832,57 @@ export async function getOfflineInspection(id: string) {
   );
 }
 
+/**
+ * N-C strict readers used by verifyRestoreIntegrity. Unlike the regular
+ * getOffline* / get*DataOffline helpers, these intentionally bypass
+ * `withIndexedDBErrorBoundary` so that IDB failures during a post-restore
+ * read propagate as exceptions. The restore-integrity module converts those
+ * into `RestoreVerificationError`, which the DataRecoveryTool / backup-ledger
+ * callers surface as a user-visible error toast.
+ *
+ * A silent "null on read" here would be indistinguishable from "record
+ * legitimately missing" and defeat the entire purpose of the verifier.
+ */
+export async function readParentStrict(
+  reportType: 'inspection' | 'training' | 'daily_assessment',
+  id: string,
+): Promise<unknown> {
+  const db = await getDB();
+  const storeName =
+    reportType === 'inspection' ? 'inspections'
+      : reportType === 'training' ? 'trainings'
+        : 'daily_assessments';
+  return await db.get(storeName as 'inspections' | 'trainings' | 'daily_assessments', id);
+}
+
+export async function readChildrenStrict(
+  reportType: 'inspection' | 'training' | 'daily_assessment',
+  childStoreKey: string,
+  parentId: string,
+): Promise<unknown[]> {
+  const db = await getDB();
+  let storeName: string | undefined;
+  let indexName: 'by-inspection' | 'by-training' | 'by-assessment';
+  if (reportType === 'inspection') {
+    storeName = storeNameMap[childStoreKey as RelatedDataType];
+    indexName = 'by-inspection';
+  } else if (reportType === 'training') {
+    storeName = trainingStoreNameMap[childStoreKey as TrainingDataType];
+    indexName = 'by-training';
+  } else {
+    storeName = assessmentStoreNameMap[childStoreKey as AssessmentDataType];
+    indexName = 'by-assessment';
+  }
+  if (!storeName) {
+    throw new Error(
+      `[readChildrenStrict] Unknown child store key: ${reportType}/${childStoreKey}`,
+    );
+  }
+  const idx = db.transaction(storeName as never).store.index(indexName as never);
+  const rows = (await idx.getAll(parentId)) as unknown[];
+  return rows;
+}
+
 export async function deleteOfflineInspection(id: string) {
   return withIndexedDBErrorBoundary(
     async () => {

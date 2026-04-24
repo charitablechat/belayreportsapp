@@ -7,6 +7,12 @@
  * concurrent sync that stripped a child row between lock release and verify
  * would slip past, and an IDB throw during verify would be reported as
  * success. These tests lock the new behaviour.
+ *
+ * N-C (hardening): the verifier now calls the `readParentStrict` /
+ * `readChildrenStrict` helpers (which bypass withIndexedDBErrorBoundary),
+ * not the wrapped `getOfflineInspection` / `getRelatedDataOffline` helpers,
+ * so real IDB throws actually propagate. These tests mock the strict helpers
+ * accordingly.
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
@@ -19,9 +25,22 @@ const makeParent = () => ({
   updated_at: '2025-01-01T00:00:00.000Z',
 });
 
-async function loadModule(offlineMock: Record<string, unknown>) {
+interface OfflineMocks {
+  readParentStrict: (reportType: string, id: string) => Promise<unknown>;
+  readChildrenStrict?: (reportType: string, childStoreKey: string, parentId: string) => Promise<unknown[]>;
+}
+
+async function loadModule(offlineMock: OfflineMocks) {
   vi.resetModules();
-  vi.doMock('@/lib/offline-storage', () => offlineMock);
+  // Vitest's dynamic-import mock requires all accessed exports to exist on
+  // the mock object, even if a particular test doesn't exercise that path.
+  // Provide a default no-op readChildrenStrict so tests that never pass
+  // `expectedChildren` still load cleanly.
+  const filled = {
+    readChildrenStrict: async () => [],
+    ...offlineMock,
+  };
+  vi.doMock('@/lib/offline-storage', () => filled);
   return await import('../restore-integrity');
 }
 
@@ -34,9 +53,7 @@ describe('N-B — verifyRestoreIntegrity child drift detection', () => {
   it('no children passed: still runs parent-only check (legacy behaviour preserved)', async () => {
     const reapply = vi.fn();
     const mod = await loadModule({
-      getOfflineInspection: async () => makeParent(),
-      getOfflineTraining: async () => null,
-      getOfflineDailyAssessment: async () => null,
+      readParentStrict: async () => makeParent(),
     });
     await mod.verifyRestoreIntegrity('inspection', 'rep-1', makeParent(), reapply);
     expect(reapply).not.toHaveBeenCalled();
@@ -48,12 +65,8 @@ describe('N-B — verifyRestoreIntegrity child drift detection', () => {
       systems: [{ id: 'sys-1' }, { id: 'sys-2' }, { id: 'sys-3' }],
     };
     const mod = await loadModule({
-      getOfflineInspection: async () => makeParent(),
-      getOfflineTraining: async () => null,
-      getOfflineDailyAssessment: async () => null,
-      getRelatedDataOffline: async () => [{ id: 'sys-1' }, { id: 'sys-2' }],
-      getTrainingDataOffline: async () => [],
-      getAssessmentDataOffline: async () => [],
+      readParentStrict: async () => makeParent(),
+      readChildrenStrict: async () => [{ id: 'sys-1' }, { id: 'sys-2' }],
     });
     await mod.verifyRestoreIntegrity('inspection', 'rep-1', makeParent(), reapply, { expectedChildren });
     expect(reapply).toHaveBeenCalledTimes(1);
@@ -65,12 +78,8 @@ describe('N-B — verifyRestoreIntegrity child drift detection', () => {
       systems: [{ id: 'sys-1' }, { id: 'sys-2' }],
     };
     const mod = await loadModule({
-      getOfflineInspection: async () => makeParent(),
-      getOfflineTraining: async () => null,
-      getOfflineDailyAssessment: async () => null,
-      getRelatedDataOffline: async () => [{ id: 'sys-1' }, { id: 'sys-3' }],
-      getTrainingDataOffline: async () => [],
-      getAssessmentDataOffline: async () => [],
+      readParentStrict: async () => makeParent(),
+      readChildrenStrict: async () => [{ id: 'sys-1' }, { id: 'sys-3' }],
     });
     await mod.verifyRestoreIntegrity('inspection', 'rep-1', makeParent(), reapply, { expectedChildren });
     expect(reapply).toHaveBeenCalledTimes(1);
@@ -83,56 +92,50 @@ describe('N-B — verifyRestoreIntegrity child drift detection', () => {
       ziplines: [{ id: 'zl-1' }],
     };
     const mod = await loadModule({
-      getOfflineInspection: async () => makeParent(),
-      getOfflineTraining: async () => null,
-      getOfflineDailyAssessment: async () => null,
-      getRelatedDataOffline: async (type: string) => {
-        if (type === 'systems') return [{ id: 'sys-2' }, { id: 'sys-1' }]; // order irrelevant
-        if (type === 'ziplines') return [{ id: 'zl-1' }];
+      readParentStrict: async () => makeParent(),
+      readChildrenStrict: async (_rt: string, storeKey: string) => {
+        if (storeKey === 'systems') return [{ id: 'sys-2' }, { id: 'sys-1' }]; // order irrelevant
+        if (storeKey === 'ziplines') return [{ id: 'zl-1' }];
         return [];
       },
-      getTrainingDataOffline: async () => [],
-      getAssessmentDataOffline: async () => [],
     });
     await mod.verifyRestoreIntegrity('inspection', 'rep-1', makeParent(), reapply, { expectedChildren });
     expect(reapply).not.toHaveBeenCalled();
   });
 
-  it('training: routes through getTrainingDataOffline', async () => {
+  it('training: routes through readChildrenStrict with reportType=training', async () => {
     const reapply = vi.fn();
-    const calls: string[] = [];
+    const calls: Array<[string, string]> = [];
     const expectedChildren = {
       delivery_approaches: [{ id: 'da-1' }],
     };
     const mod = await loadModule({
-      getOfflineInspection: async () => null,
-      getOfflineTraining: async () => makeParent(),
-      getOfflineDailyAssessment: async () => null,
-      getRelatedDataOffline: async () => { calls.push('related'); return []; },
-      getTrainingDataOffline: async () => { calls.push('training'); return [{ id: 'da-1' }]; },
-      getAssessmentDataOffline: async () => { calls.push('assessment'); return []; },
+      readParentStrict: async () => makeParent(),
+      readChildrenStrict: async (rt: string, key: string) => {
+        calls.push([rt, key]);
+        return [{ id: 'da-1' }];
+      },
     });
     await mod.verifyRestoreIntegrity('training', 'rep-1', makeParent(), reapply, { expectedChildren });
-    expect(calls).toEqual(['training']);
+    expect(calls).toEqual([['training', 'delivery_approaches']]);
     expect(reapply).not.toHaveBeenCalled();
   });
 
-  it('daily_assessment: routes through getAssessmentDataOffline', async () => {
+  it('daily_assessment: routes through readChildrenStrict with reportType=daily_assessment', async () => {
     const reapply = vi.fn();
-    const calls: string[] = [];
+    const calls: Array<[string, string]> = [];
     const expectedChildren = {
       observations: [{ id: 'o-1' }],
     };
     const mod = await loadModule({
-      getOfflineInspection: async () => null,
-      getOfflineTraining: async () => null,
-      getOfflineDailyAssessment: async () => makeParent(),
-      getRelatedDataOffline: async () => { calls.push('related'); return []; },
-      getTrainingDataOffline: async () => { calls.push('training'); return []; },
-      getAssessmentDataOffline: async () => { calls.push('assessment'); return [{ id: 'o-1' }]; },
+      readParentStrict: async () => makeParent(),
+      readChildrenStrict: async (rt: string, key: string) => {
+        calls.push([rt, key]);
+        return [{ id: 'o-1' }];
+      },
     });
     await mod.verifyRestoreIntegrity('daily_assessment', 'rep-1', makeParent(), reapply, { expectedChildren });
-    expect(calls).toEqual(['assessment']);
+    expect(calls).toEqual([['daily_assessment', 'observations']]);
     expect(reapply).not.toHaveBeenCalled();
   });
 });
@@ -146,11 +149,9 @@ describe('N-C — verifyRestoreIntegrity throws on read failure', () => {
   it('parent read throws: surfaces RestoreVerificationError', async () => {
     const reapply = vi.fn();
     const mod = await loadModule({
-      getOfflineInspection: async () => {
+      readParentStrict: async () => {
         throw new Error('idb corrupt');
       },
-      getOfflineTraining: async () => null,
-      getOfflineDailyAssessment: async () => null,
     });
     await expect(
       mod.verifyRestoreIntegrity('inspection', 'rep-1', makeParent(), reapply),
@@ -161,14 +162,10 @@ describe('N-C — verifyRestoreIntegrity throws on read failure', () => {
   it('child read throws: surfaces RestoreVerificationError', async () => {
     const reapply = vi.fn();
     const mod = await loadModule({
-      getOfflineInspection: async () => makeParent(),
-      getOfflineTraining: async () => null,
-      getOfflineDailyAssessment: async () => null,
-      getRelatedDataOffline: async () => {
+      readParentStrict: async () => makeParent(),
+      readChildrenStrict: async () => {
         throw new Error('child store unavailable');
       },
-      getTrainingDataOffline: async () => [],
-      getAssessmentDataOffline: async () => [],
     });
     await expect(
       mod.verifyRestoreIntegrity(
@@ -185,11 +182,9 @@ describe('N-C — verifyRestoreIntegrity throws on read failure', () => {
     const root = new Error('some specific idb error');
     const reapply = vi.fn();
     const mod = await loadModule({
-      getOfflineInspection: async () => {
+      readParentStrict: async () => {
         throw root;
       },
-      getOfflineTraining: async () => null,
-      getOfflineDailyAssessment: async () => null,
     });
     try {
       await mod.verifyRestoreIntegrity('inspection', 'rep-1', makeParent(), reapply);
@@ -203,9 +198,7 @@ describe('N-C — verifyRestoreIntegrity throws on read failure', () => {
   it('live record missing: does NOT throw — reapplies as before', async () => {
     const reapply = vi.fn();
     const mod = await loadModule({
-      getOfflineInspection: async () => null,
-      getOfflineTraining: async () => null,
-      getOfflineDailyAssessment: async () => null,
+      readParentStrict: async () => null,
     });
     await expect(
       mod.verifyRestoreIntegrity('inspection', 'rep-1', makeParent(), reapply),

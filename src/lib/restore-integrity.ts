@@ -19,6 +19,17 @@
  * user — a silent success hides the very regressions this module exists to
  * detect.
  *
+ * N-C (hardening, per Devin Review on PR #2):
+ * The usual `getOfflineInspection` / `getRelatedDataOffline` helpers wrap
+ * every IDB call in `withIndexedDBErrorBoundary`, which swallows errors and
+ * returns fallback values (`null` / `[]`). That makes the N-C throw path
+ * unreachable under real IDB failures — the verifier would just see a
+ * "missing" parent or "empty" children and silently reapply, giving the
+ * user a false success toast. We therefore call the purpose-built
+ * `readParentStrict` / `readChildrenStrict` helpers exported from
+ * `offline-storage`, which bypass the error boundary and let IDB throws
+ * propagate into `RestoreVerificationError`.
+ *
  * Extracted from DataRecoveryTool.tsx so the ZIP-import restore path
  * (local-backup-ledger.importBackupZip) can share the exact same guarantee.
  */
@@ -53,17 +64,11 @@ export async function verifyRestoreIntegrity(
   reapply: () => Promise<void>,
   options: VerifyRestoreIntegrityOptions = {},
 ): Promise<void> {
-  const offline = await import('@/lib/offline-storage');
-  const { getOfflineInspection, getOfflineTraining, getOfflineDailyAssessment } = offline;
+  const { readParentStrict, readChildrenStrict } = await import('@/lib/offline-storage');
 
   let live: any = null;
   try {
-    live =
-      reportType === 'inspection'
-        ? await getOfflineInspection(reportId)
-        : reportType === 'training'
-          ? await getOfflineTraining(reportId)
-          : await getOfflineDailyAssessment(reportId);
+    live = await readParentStrict(reportType, reportId);
   } catch (err) {
     // N-C: parent read threw — surface to the caller. A silent "all good"
     // hides the exact class of failure this verifier exists to catch.
@@ -98,12 +103,12 @@ export async function verifyRestoreIntegrity(
     try {
       for (const [storeKey, expectedArr] of Object.entries(options.expectedChildren)) {
         if (!expectedArr) continue;
-        const liveArr = await readLiveChildren(reportType, storeKey, reportId, offline);
+        const liveArr = (await readChildrenStrict(reportType, storeKey, reportId)) as Array<{ id?: string | null }>;
         const expectedIds = new Set(
           expectedArr.map((r) => r?.id).filter((id): id is string => typeof id === 'string' && id.length > 0),
         );
         const liveIds = new Set(
-          liveArr.map((r: any) => r?.id).filter((id: unknown): id is string => typeof id === 'string' && id.length > 0),
+          liveArr.map((r) => r?.id).filter((id): id is string => typeof id === 'string' && id.length > 0),
         );
         if (liveArr.length !== expectedArr.length) {
           drift.push(`children:${storeKey}:count(${liveArr.length}!=${expectedArr.length})`);
@@ -130,19 +135,4 @@ export async function verifyRestoreIntegrity(
     console.warn('[Restore Integrity] Field drift detected — re-applying', { reportType, reportId, drift });
     await reapply();
   }
-}
-
-async function readLiveChildren(
-  reportType: ReportType,
-  storeKey: string,
-  reportId: string,
-  offline: typeof import('@/lib/offline-storage'),
-): Promise<any[]> {
-  if (reportType === 'inspection') {
-    return offline.getRelatedDataOffline(storeKey as any, reportId);
-  }
-  if (reportType === 'training') {
-    return offline.getTrainingDataOffline(storeKey as any, reportId);
-  }
-  return offline.getAssessmentDataOffline(storeKey as any, reportId);
 }
