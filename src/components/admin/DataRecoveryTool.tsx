@@ -263,25 +263,26 @@ export function LocalSnapshotsPanel({ allowDelete = true }: SnapshotsPanelProps)
         const offline = await import('@/lib/offline-storage');
         const { saveInspectionOffline, saveRelatedDataOffline, saveTrainingOffline, saveTrainingDataOffline, saveDailyAssessmentOffline, saveAssessmentDataOffline } = offline;
 
+        const parentArg = snapshot.parent as Record<string, unknown> & { id: string };
         if (reportType === 'inspection') {
-          await saveInspectionOffline(snapshot.parent);
+          await saveInspectionOffline(parentArg);
           for (const [key, data] of Object.entries(snapshot.children)) {
             if (Array.isArray(data) && data.length > 0) {
-              await saveRelatedDataOffline(key as any, reportId, data);
+              await saveRelatedDataOffline(key as any, reportId, data as Record<string, unknown>[]);
             }
           }
         } else if (reportType === 'training') {
-          await saveTrainingOffline(snapshot.parent);
+          await saveTrainingOffline(parentArg);
           for (const [key, data] of Object.entries(snapshot.children)) {
             if (Array.isArray(data) && data.length > 0) {
-              await saveTrainingDataOffline(key as any, reportId, data);
+              await saveTrainingDataOffline(key as any, reportId, data as Record<string, unknown>[]);
             }
           }
         } else if (reportType === 'daily_assessment') {
-          await saveDailyAssessmentOffline(snapshot.parent);
+          await saveDailyAssessmentOffline(parentArg);
           for (const [key, data] of Object.entries(snapshot.children)) {
             if (Array.isArray(data) && data.length > 0) {
-              await saveAssessmentDataOffline(key as any, reportId, data);
+              await saveAssessmentDataOffline(key as any, reportId, data as Record<string, unknown>[]);
             }
           }
         }
