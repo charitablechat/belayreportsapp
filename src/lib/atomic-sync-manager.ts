@@ -2236,6 +2236,7 @@ export async function syncAllTrainingsAtomic(preValidatedUser?: CachedUser, sign
         } else {
           successCount++;
           synced = true;
+          recordSyncSuccess(training.id); // H5
         }
 
         if (import.meta.env.DEV) {
@@ -2244,8 +2245,8 @@ export async function syncAllTrainingsAtomic(preValidatedUser?: CachedUser, sign
       } catch (error: any) {
         retryCount++;
 
-        if (retryCount < maxRetries) {
-          const delay = Math.min(500 * retryCount, 2000);
+        if (retryCount < maxRetries && !signal?.aborted) {
+          const delay = jitteredBackoffMs(retryCount); // H5
           if (import.meta.env.DEV) {
             syncLog.log(`[Atomic Sync] Retry ${retryCount}/${maxRetries} for training ${training.id} after ${delay}ms`);
           }
@@ -2253,6 +2254,7 @@ export async function syncAllTrainingsAtomic(preValidatedUser?: CachedUser, sign
         } else {
           failCount++;
           errors.push({ id: training.id, error: error.message });
+          recordSyncFailure(training.id, error.message ?? 'unknown'); // H5
           console.error('[Atomic Sync] Failed to sync training after retries:', training.id, error);
         }
       }
