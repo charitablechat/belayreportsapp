@@ -464,7 +464,7 @@ async function migrateUserData(oldUserId: string, newUserId: string): Promise<vo
         const writeStore = writeTx.objectStore(name);
         const puts = toMigrate.map((record) => {
           record[idField] = newUserId;
-          return writeStore.put(record);
+          return writeStore.put(record as never);
         });
         await Promise.all(puts);
         await writeTx.done;
