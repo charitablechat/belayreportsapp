@@ -2268,7 +2268,7 @@ export function toUploadedFlag(v: unknown): 0 | 1 {
  */
 export async function putPhotoRecord(
   db: IDBPDatabase<InspectionDB>,
-  photo: Record<string, unknown> & { id: string; inspectionId: string; uploaded?: unknown },
+  photo: Record<string, unknown> & { id: string; inspectionId?: string; uploaded?: unknown },
 ): Promise<void> {
   await db.put('photos', {
     ...photo,
