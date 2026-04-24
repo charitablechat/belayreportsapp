@@ -2494,6 +2494,12 @@ export async function resetPhotoRetryCounts(onlyIds?: string[]): Promise<number>
         const matches = idSet ? idSet.has(photo.id) : true;
         if (matches && (photo.retryCount || 0) > 0) {
           photo.retryCount = 0;
+          // N-G: must coerce `uploaded` on every photo write — this path
+          // iterates ALL photos and a legacy boolean-keyed row (pre-v18 or
+          // a row whose migration failed) would otherwise round-trip
+          // through here with the boolean intact, keeping the by-uploaded
+          // index broken on Safari.
+          photo.uploaded = toUploadedFlag(photo.uploaded);
           await cursor.update(photo);
           reset++;
         }
@@ -2534,6 +2540,12 @@ export async function pruneOldSyncedPhotoBlobs(): Promise<number> {
         const referenceTime = photo.uploadedAt ?? photo.cachedAt;
         if (photo.blob != null && referenceTime && referenceTime < cutoff) {
           photo.blob = null;
+          // N-G defence-in-depth: coerce `uploaded` on every cursor.update.
+          // Even though this cursor is opened on `by-uploaded` only(1) —
+          // so the visible rows are already numeric-indexed — round-tripping
+          // without coercion leaves a latent regression if a future index
+          // rebuild ever admits a boolean row.
+          photo.uploaded = toUploadedFlag(photo.uploaded);
           await cursor.update(photo);
           pruned++;
         }
@@ -2810,6 +2822,10 @@ export async function backfillCapturedByUserIdForPendingPhotos(): Promise<number
           p.photoUrl.startsWith('pending/')
         ) {
           p.capturedByUserId = onlyUserId;
+          // N-G: this cursor is opened on the full store (not by-uploaded)
+          // so legacy boolean-keyed rows are visible here. Coerce on write
+          // to keep the by-uploaded index queryable on Safari.
+          p.uploaded = toUploadedFlag(p.uploaded);
           await cursor.update(p);
           updated++;
         }
