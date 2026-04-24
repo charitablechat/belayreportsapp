@@ -939,7 +939,18 @@ export const useAutoSync = () => {
    * Handle visibility change - sync when app becomes visible
    */
   const handleVisibilityChange = useCallback(() => {
-    if (!document.hidden && navigator.onLine) {
+    if (document.hidden) {
+      // H5: tab is backgrounded — abort the in-flight sync so stuck I/O
+      // (timeouts, Promise.race wrappers) doesn't keep the tab busy.
+      if (activeSyncAbortRef.current && !activeSyncAbortRef.current.signal.aborted) {
+        if (import.meta.env.DEV) {
+          console.log('[AutoSync] Tab hidden — aborting in-flight sync');
+        }
+        activeSyncAbortRef.current.abort();
+      }
+      return;
+    }
+    if (navigator.onLine) {
       if (import.meta.env.DEV) {
         console.log('[AutoSync] App became visible - syncing');
       }
