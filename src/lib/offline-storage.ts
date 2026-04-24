@@ -990,11 +990,13 @@ async function withIndexedDBSaveBoundary(
   operation: () => Promise<void>,
   operationName: string,
   parentDataForFallback?: any,
+  options?: { store?: BreakerStoreKey },
 ): Promise<SaveResult> {
+  const store: BreakerStoreKey = options?.store ?? 'global';
   // Circuit breaker open — try emergency localStorage write
-  if (isCircuitBreakerOpen()) {
+  if (isCircuitBreakerOpen(store)) {
     if (import.meta.env.DEV) {
-      console.log(`[Offline Storage] Circuit breaker open, attempting localStorage fallback for ${operationName}`);
+      console.log(`[Offline Storage] Circuit breaker (${store}) open, attempting localStorage fallback for ${operationName}`);
     }
     const fallbackSucceeded = parentDataForFallback
       ? emergencyLocalStorageFallback(operationName, parentDataForFallback)
@@ -1019,7 +1021,7 @@ async function withIndexedDBSaveBoundary(
             });
           }
         }).catch(() => {});
-        const resetTime = getCircuitBreakerResetTime();
+        const resetTime = getCircuitBreakerResetTime(store);
         setTimeout(() => sessionStorage.removeItem(cbWarningKey), resetTime + 1000);
       }
     } catch { /* ignore */ }
@@ -1069,7 +1071,7 @@ async function withIndexedDBSaveBoundary(
     if (result === TIMEOUT_SENTINEL) {
       console.warn(`[Offline Storage] Save timeout for ${operationName}, resetting DB connection`);
       dbConnectionVerified = false;
-      recordIndexedDBFailure();
+      recordIndexedDBFailure(store);
       if (dbPromise) {
         dbPromise.then(db => db.close()).catch(() => {});
         dbPromise = null;
@@ -1077,12 +1079,12 @@ async function withIndexedDBSaveBoundary(
       throw new IdbSaveError('timeout', operationName);
     }
 
-    recordIndexedDBSuccess();
+    recordIndexedDBSuccess(store);
     return { savedToBackup: false };
   } catch (error: any) {
     if (isIdbSaveError(error)) {
       // Already-tagged failures (idb_unhealthy / timeout) — re-throw as-is
-      if (error.code === 'idb_unhealthy') recordIndexedDBFailure();
+      if (error.code === 'idb_unhealthy') recordIndexedDBFailure(store);
       throw error;
     }
 
@@ -1091,7 +1093,7 @@ async function withIndexedDBSaveBoundary(
 
     const isQuotaError = error?.name === 'QuotaExceededError' || error?.message?.includes('QuotaExceeded');
     if (!isQuotaError) {
-      recordIndexedDBFailure();
+      recordIndexedDBFailure(store);
     }
 
     if (isQuotaError && typeof window !== 'undefined') {
