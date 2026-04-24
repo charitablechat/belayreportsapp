@@ -39,7 +39,7 @@ describe('N-G — putPhotoRecord funnels every write through toUploadedFlag', ()
 
   it('boolean true → stored as number 1', async () => {
     const db: any = await openFreshDb();
-    await putPhotoRecord(db, { id: 'p1', uploaded: true });
+    await putPhotoRecord(db, { id: 'p1', uploaded: true } as any);
     const r = await db.get('photos', 'p1');
     expect(r.uploaded).toBe(1);
     expect(typeof r.uploaded).toBe('number');
@@ -47,7 +47,7 @@ describe('N-G — putPhotoRecord funnels every write through toUploadedFlag', ()
 
   it('boolean false → stored as number 0', async () => {
     const db: any = await openFreshDb();
-    await putPhotoRecord(db, { id: 'p2', uploaded: false });
+    await putPhotoRecord(db, { id: 'p2', uploaded: false } as any);
     const r = await db.get('photos', 'p2');
     expect(r.uploaded).toBe(0);
     expect(typeof r.uploaded).toBe('number');
@@ -55,28 +55,28 @@ describe('N-G — putPhotoRecord funnels every write through toUploadedFlag', ()
 
   it('undefined → stored as 0 (not undefined)', async () => {
     const db: any = await openFreshDb();
-    await putPhotoRecord(db, { id: 'p3' });
+    await putPhotoRecord(db, { id: 'p3' } as any);
     const r = await db.get('photos', 'p3');
     expect(r.uploaded).toBe(0);
   });
 
   it('null → stored as 0', async () => {
     const db: any = await openFreshDb();
-    await putPhotoRecord(db, { id: 'p4', uploaded: null });
+    await putPhotoRecord(db, { id: 'p4', uploaded: null } as any);
     const r = await db.get('photos', 'p4');
     expect(r.uploaded).toBe(0);
   });
 
   it('numeric 1 → stored as 1', async () => {
     const db: any = await openFreshDb();
-    await putPhotoRecord(db, { id: 'p5', uploaded: 1 });
+    await putPhotoRecord(db, { id: 'p5', uploaded: 1 } as any);
     const r = await db.get('photos', 'p5');
     expect(r.uploaded).toBe(1);
   });
 
   it('numeric 0 → stored as 0', async () => {
     const db: any = await openFreshDb();
-    await putPhotoRecord(db, { id: 'p6', uploaded: 0 });
+    await putPhotoRecord(db, { id: 'p6', uploaded: 0 } as any);
     const r = await db.get('photos', 'p6');
     expect(r.uploaded).toBe(0);
   });
@@ -84,10 +84,10 @@ describe('N-G — putPhotoRecord funnels every write through toUploadedFlag', ()
   it('by-uploaded index remains queryable (the actual C1 regression test)', async () => {
     const db: any = await openFreshDb();
     // Mixed-shape inputs that previously broke the index.
-    await putPhotoRecord(db, { id: 'a', uploaded: false });   // 0
-    await putPhotoRecord(db, { id: 'b', uploaded: undefined }); // 0
-    await putPhotoRecord(db, { id: 'c', uploaded: true });    // 1
-    await putPhotoRecord(db, { id: 'd', uploaded: 1 });       // 1
+    await putPhotoRecord(db, { id: 'a', uploaded: false } as any);   // 0
+    await putPhotoRecord(db, { id: 'b', uploaded: undefined } as any); // 0
+    await putPhotoRecord(db, { id: 'c', uploaded: true } as any);    // 1
+    await putPhotoRecord(db, { id: 'd', uploaded: 1 } as any);       // 1
 
     const unuploaded = await db.getAllFromIndex(
       'photos',
