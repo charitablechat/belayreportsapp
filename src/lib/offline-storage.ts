@@ -45,7 +45,8 @@ interface InspectionDB extends DBSchema {
       blob: Blob | null; // Nullified after successful upload to free storage
       fileName: string;
       timestamp: number;
-      uploaded: boolean;
+      // IDB cannot index booleans — must be 0 | 1 for the by-uploaded index.
+      uploaded: 0 | 1;
       photoUrl?: string;
       cachedAt?: number; // Timestamp when photo was cached from remote
       uploadedAt?: number; // M6: Timestamp when photo's upload to server was confirmed
@@ -1174,7 +1175,7 @@ export async function getDB() {
     // Version 8: Add report_versions store for append-only versioning
     // DB_NAME and DB_VERSION shared with public/db-config.js for SW consistency
     const DB_NAME = 'rope-works-inspections';
-    const DB_VERSION = 15;
+    const DB_VERSION = 16;
 
     // Phase 5 — Schema Migration Safety. Lazy-load to avoid circular imports
     // and to keep the boot path resilient if this module ever fails to parse.
@@ -1905,7 +1906,7 @@ export async function savePhotoOffline(photo: {
   section: string;
   blob: Blob;
   fileName: string;
-  uploaded?: boolean;
+  uploaded?: 0 | 1 | boolean;
   photoUrl?: string;
   tableName?: string;
   storageBucket?: string;
@@ -1928,7 +1929,8 @@ export async function savePhotoOffline(photo: {
         await db.put('photos', {
           ...photo,
           timestamp: Date.now(),
-          uploaded: photo.uploaded || false,
+          // Coerce boolean → 0|1 so the by-uploaded index actually keys the row.
+          uploaded: photo.uploaded ? 1 : 0,
         });
         
         if (import.meta.env.DEV) {
@@ -2214,7 +2216,7 @@ export async function markPhotoAsUploaded(id: string, photoUrl: string) {
       const photo = await db.get('photos', id);
       if (photo) {
         const now = Date.now();
-        photo.uploaded = true;
+        photo.uploaded = 1;
         photo.photoUrl = photoUrl;
         photo.lastValidated = now;
         // M6: Stamp upload-confirmation time so prune can age-out blobs
@@ -3855,7 +3857,7 @@ export async function evictSyncedReports(ageDays: number): Promise<number> {
           const allPhotos = await photoTx.store.getAll();
           await photoTx.done;
           for (const p of allPhotos) {
-            if (p && p.uploaded === false && p.inspectionId) {
+            if (p && p.uploaded === 0 && p.inspectionId) {
               unsyncedReportIds.add(p.inspectionId);
             }
           }
@@ -3887,7 +3889,7 @@ export async function evictSyncedReports(ageDays: number): Promise<number> {
           continue;
         }
 
-        // V8: Skip if there are any unsynced (uploaded === false) photos for this report.
+        // V8: Skip if there are any unsynced (uploaded === 0) photos for this report.
         if (unsyncedReportIds.has(id)) {
           if (import.meta.env.DEV) {
             console.log(`[Eviction] Skip ${id.substring(0, 8)} -- has unsynced photos`);
@@ -4004,7 +4006,7 @@ export async function evictStuckTempPhotos(ageDays: number = 30): Promise<number
       const photo = cursor.value;
       if (
         photo.inspectionId?.startsWith('temp-') &&
-        photo.uploaded === false &&
+        photo.uploaded === 0 &&
         typeof photo.timestamp === 'number' &&
         photo.timestamp < cutoff
       ) {
@@ -4043,7 +4045,7 @@ export async function evictSyncedPhotoMetadata(ageDays: number): Promise<number>
       // Only evict if: blob already nullified, uploaded, and old enough
       if (
         photo.blob === null &&
-        photo.uploaded === true &&
+        photo.uploaded === 1 &&
         photo.timestamp < cutoff &&
         photo.inspectionId !== currentReportId
       ) {

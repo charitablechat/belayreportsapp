@@ -37,7 +37,7 @@ export async function cachePhotoFromRemote(
     blob,
     fileName: photoUrl.split('/').pop() || 'photo.jpg',
     timestamp: Date.now(),
-    uploaded: true,
+    uploaded: 1,
     photoUrl,
     cachedAt: Date.now(),
     lastValidated: Date.now(),

@@ -270,7 +270,7 @@ export default function TrainingForm() {
               caption: p.caption,
               photo_section: p.section,
               display_order: p.display_order,
-              uploaded: p.uploaded,
+              uploaded: Boolean(p.uploaded),
             }));
             saveReportSnapshot('training', id, training, {
               delivery_approaches: deliveryApproaches,

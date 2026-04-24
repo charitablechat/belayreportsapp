@@ -576,7 +576,8 @@ async function syncPhotos() {
         });
         
         if (metadataResponse.ok) {
-          photo.uploaded = true;
+          // IDB cannot index booleans — keep numeric 1 to stay consistent with main thread.
+          photo.uploaded = 1;
           photo.photoUrl = fileName;
           await updateInStore(db, 'photos', photo);
           uploadedCount++;

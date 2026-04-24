@@ -351,7 +351,7 @@ export default function InspectionForm() {
             caption: p.caption,
             photo_section: p.section,
             display_order: p.display_order,
-            uploaded: p.uploaded,
+            uploaded: Boolean(p.uploaded),
           }));
           saveReportSnapshot('inspection', id, inspection, {
             systems, ziplines, equipment, standards, summary: [summary],
