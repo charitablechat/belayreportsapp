@@ -1175,7 +1175,7 @@ export async function getDB() {
     // Version 8: Add report_versions store for append-only versioning
     // DB_NAME and DB_VERSION shared with public/db-config.js for SW consistency
     const DB_NAME = 'rope-works-inspections';
-    const DB_VERSION = 16;
+    const DB_VERSION = 17;
 
     // Phase 5 — Schema Migration Safety. Lazy-load to avoid circular imports
     // and to keep the boot path resilient if this module ever fails to parse.
@@ -1478,6 +1478,53 @@ export async function getDB() {
             } catch (err) {
               console.warn('[Offline Storage] v16 photos.uploaded coercion failed:', err);
             }
+          }
+
+          // === NEW in v17: backfill `dirty` flag on inspections / trainings / daily_assessments ===
+          // C3: a per-record `dirty` boolean is the authoritative "user has
+          // unshipped edits" signal. Drift-vs-tolerance becomes a secondary
+          // belt-and-braces check. For legacy rows we conservatively backfill:
+          //   - any row without `synced_at` ⇒ dirty (never uploaded)
+          //   - any row with updated_at meaningfully ahead of synced_at ⇒ dirty
+          //   - everything else ⇒ not dirty
+          // Idempotent — re-running just re-confirms the same flag.
+          if (oldVersion < 17) {
+            const SYNC_DRIFT_TOLERANCE_MS = 30_000; // mirror src/lib/local-data-guards.ts
+            const backfillDirty = (storeName: 'inspections' | 'trainings' | 'daily_assessments') => {
+              if (!db.objectStoreNames.contains(storeName)) return;
+              try {
+                const store = (transaction as any).objectStore(storeName) as IDBObjectStore;
+                const cursorReq = store.openCursor();
+                cursorReq.onsuccess = (ev: any) => {
+                  const cursor: IDBCursorWithValue | null = ev.target.result;
+                  if (!cursor) return;
+                  const v = cursor.value;
+                  if (typeof v.dirty !== 'boolean') {
+                    let dirty = false;
+                    if (!v.synced_at) {
+                      dirty = true;
+                    } else if (v.updated_at) {
+                      const u = new Date(v.updated_at).getTime();
+                      const s = new Date(v.synced_at).getTime();
+                      if (Number.isFinite(u) && Number.isFinite(s) && u - s > SYNC_DRIFT_TOLERANCE_MS) {
+                        dirty = true;
+                      }
+                    }
+                    v.dirty = dirty;
+                    cursor.update(v);
+                  }
+                  cursor.continue();
+                };
+                if (import.meta.env.DEV) {
+                  console.log(`[Offline Storage] Backfilling dirty flag on ${storeName} (v17 upgrade)`);
+                }
+              } catch (err) {
+                console.warn(`[Offline Storage] v17 dirty backfill failed for ${storeName}:`, err);
+              }
+            };
+            backfillDirty('inspections');
+            backfillDirty('trainings');
+            backfillDirty('daily_assessments');
           }
         },
       });
