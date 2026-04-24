@@ -1,26 +1,50 @@
-## Context
+## Fix all 5 issues with Dashboard running-total cards
 
-The auto-populate logic for Next Inspection Date = Inspection Date + 1 year **already exists** in `src/pages/InspectionForm.tsx` (lines 206–253) and is wired into `SummarySection.tsx` via the `onNextDateUserEdit` callback. Both fields remain user-editable, and a manual override flag (`userTouchedNextDateRef`) prevents stomping the user's choice.
+Implement the five fixes identified in the root-cause analysis. All are scoped to two files: `src/pages/Dashboard.tsx` and `src/components/dashboard/DashboardReportsSection.tsx`. No schema or RLS changes — `inspections`, `trainings`, and `daily_assessments` are already in the `supabase_realtime` publication (verified).
 
-However, the screenshots reveal a real-world gap: an existing report shows **Inspection Date = April 24, 2026** and **Next Inspection Date = March 24, 2026** (before the inspection date — clearly stale data saved before this feature existed). The current initial-load check pins that legacy value as a "manual override," so it never auto-corrects.
+### Fix 1 — Validate after every refresh, not only on `definitive: true`
 
-## What to change
+In `Dashboard.tsx` `refreshReports` (around lines 362-393), change the per-dataset validation from "only flip true on definitive" to "always flip true once the load function returns." This kills the "skeleton forever" symptom when network times out and IDB is empty.
 
-One small refinement to the initial-load detection in `InspectionForm.tsx`:
+```ts
+setInspectionsValidated(true);
+setTrainingsValidated(true);
+setDailyValidated(true);
+```
 
-- If a saved `next_inspection_date` is **earlier than or equal to** the current `inspection_date`, treat it as stale (not a deliberate override) and let the auto-track effect overwrite it with `inspection_date + 1y`.
-- Keep treating any `next_inspection_date` that is *after* `inspection_date` but doesn't equal `+1y` as a deliberate user override (e.g., 6-month or 2-year cycles).
+Wrap in a `try/catch` so even a thrown error still flips the flags true (we'd rather show stale cached numbers than infinite skeletons).
 
-That's the only behavioral change. Everything else — the +1y computation, the manual-edit flag, the SummarySection wiring, the timezone-safe date math via `parseLocalDate` / manual YYYY-MM-DD parsing — is already correct and stays as-is.
+### Fix 2 — Don't reset validation flags on focus / online / sync refreshes
 
-## Files touched
+The reset already only happens in the initial-mount `useEffect` (lines 397-399), so this is mostly already correct. Add a one-line guard: change those resets to only run if cached arrays are empty, so users coming back to the tab don't briefly see skeletons before data re-validates.
 
-- `src/pages/InspectionForm.tsx` — adjust the initial-load `useEffect` (~lines 226–236) to compare dates and only pin the manual-override flag when the saved next-date is genuinely after the inspection date and differs from +1y.
+### Fix 3 — Invoiced-tab stats memo uses the right source
 
-## Verification
+In `DashboardReportsSection.tsx` `statsData` `useMemo` (lines 259-277), the invoiced branch reads `currentReports` (already filtered/sliced). Change it to read the full `invoicedReports.map(r => r.report)` source and add `invoicedReports` to the dependency array so the stats recompute when invoiced data loads asynchronously.
 
-- New inspection: pick Inspection Date → Next Inspection Date auto-fills to +1 year. ✓ (already works)
-- Edit Next Inspection Date manually → changing Inspection Date no longer overwrites it. ✓ (already works)
-- Clear Next Inspection Date → auto-tracking resumes. ✓ (already works)
-- Open a legacy report where next-date is before inspection-date → it now self-corrects to +1y on load. ← new behavior
-- Open a report where user intentionally set next-date to 6 months out → preserved. ✓
+### Fix 4 — Realtime health check
+
+In `Dashboard.tsx` (around line 624), change `.subscribe()` to `.subscribe((status) => { ... })` so we log subscription state. If status is `CHANNEL_ERROR` or `TIMED_OUT`, set a small "realtime degraded" flag and trigger a one-shot `refreshReports(true)` as a fallback. No new UI surface — just a console warning and an automatic refetch.
+
+### Fix 5 — Realtime merges also flip validation true
+
+In the `mergeRow` postgres_changes handlers (lines 580-624), call `setInspectionsValidated(true)` / `setTrainingsValidated(true)` / `setDailyValidated(true)` inside each table's handler. This guarantees that any incoming row also un-skeletonizes the stats bar — belt-and-suspenders against fix 1's path being skipped.
+
+### Files touched
+
+| File | Changes |
+|---|---|
+| `src/pages/Dashboard.tsx` | Fixes 1, 2, 4, 5 — validation logic in `refreshReports`, mount-only reset guard, realtime subscribe callback + flag flips inside mergeRow handlers |
+| `src/components/dashboard/DashboardReportsSection.tsx` | Fix 3 — `statsData` `useMemo` invoiced-branch source + deps |
+
+### Verification
+
+- Open dashboard offline with empty IDB: cards show real `0` instead of pulsing skeleton forever.
+- Network timeout on a flaky connection: cards show whatever cache held, then update silently when network recovers.
+- Switch to Invoiced tab: TOTAL card matches the `Invoiced (N)` tab label.
+- Edit a report on a second device: realtime payload updates the count on the first device within ~1s, and if it was somehow skeletonized, it un-skeletonizes.
+- Realtime drop: console logs `CHANNEL_ERROR`/`TIMED_OUT`, dashboard auto-refetches.
+
+### Risk
+
+Low. All changes are additive (more permissive validation, extra useMemo dep, extra subscribe callback). No data writes. No type changes. Pre-existing TypeScript errors in `atomic-sync-manager.ts` / `local-backup-ledger.ts` / `cached-auth.ts` are unrelated and untouched.

@@ -366,10 +366,15 @@ export default function Dashboard() {
         loadDailyAssessments(userId, superAdminStatus, sessionValid),
       ]);
 
-      // Mark per-dataset validation based on whether each got a definitive result
-      if (results[0].definitive) setInspectionsValidated(true);
-      if (results[1].definitive) setTrainingsValidated(true);
-      if (results[2].definitive) setDailyValidated(true);
+      // Fix 1: Always flip per-dataset validation true once the load function
+      // returns. Previously this only happened on `definitive: true`, which
+      // left the StatsBar pulsing forever when network timed out AND IDB was
+      // empty. We'd rather show real numbers from cache (or a real 0) than
+      // skeletons indefinitely.
+      setInspectionsValidated(true);
+      setTrainingsValidated(true);
+      setDailyValidated(true);
+      void results; // (kept for future telemetry if needed)
 
       // Track network failures for stale-data banner
       const anyNetworkSuccess = results.some(r => r.networkSuccess);
@@ -382,6 +387,13 @@ export default function Dashboard() {
         networkFailCountRef.current = 0;
         setShowStaleDataBanner(false);
       }
+    } catch (err) {
+      // Even on outright failure, flip validation true so the StatsBar shows
+      // cached numbers rather than skeletons forever.
+      console.warn('[Dashboard] refreshReports threw — showing cached counts:', err);
+      setInspectionsValidated(true);
+      setTrainingsValidated(true);
+      setDailyValidated(true);
     } finally {
       refreshInFlightRef.current = false;
       // If a refresh was queued while we were busy, trigger it now
@@ -394,9 +406,12 @@ export default function Dashboard() {
 
   useEffect(() => {
     setLoading(true);
-    setInspectionsValidated(false);
-    setTrainingsValidated(false);
-    setDailyValidated(false);
+    // Fix 2: only show skeletons if we truly have nothing cached. If cache
+    // hydrated non-empty arrays, treat them as "validated" immediately so
+    // the StatsBar shows numbers right away while the network refresh runs.
+    setInspectionsValidated(inspections.length > 0);
+    setTrainingsValidated(trainings.length > 0);
+    setDailyValidated(dailyAssessments.length > 0);
 
     const LOAD_TIMEOUT = 20000;
     let loadCompleted = false;
@@ -580,6 +595,8 @@ export default function Dashboard() {
     const dashboardChannel = supabase
       .channel('dashboard-realtime')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'inspections' }, (payload: any) => {
+        // Fix 5: any incoming row guarantees we have data — un-skeletonize.
+        setInspectionsValidated(true);
         if (payload.eventType === 'DELETE') {
           const id = payload.old?.id;
           if (id) setInspections((prev) => removeRow(prev, id));
@@ -594,6 +611,7 @@ export default function Dashboard() {
         setInspections((prev) => mergeRow(prev, row));
       })
       .on('postgres_changes', { event: '*', schema: 'public', table: 'trainings' }, (payload: any) => {
+        setTrainingsValidated(true);
         if (payload.eventType === 'DELETE') {
           const id = payload.old?.id;
           if (id) setTrainings((prev) => removeRow(prev, id));
@@ -608,6 +626,7 @@ export default function Dashboard() {
         setTrainings((prev) => mergeRow(prev, row));
       })
       .on('postgres_changes', { event: '*', schema: 'public', table: 'daily_assessments' }, (payload: any) => {
+        setDailyValidated(true);
         if (payload.eventType === 'DELETE') {
           const id = payload.old?.id;
           if (id) setDailyAssessments((prev) => removeRow(prev, id));
@@ -621,7 +640,16 @@ export default function Dashboard() {
         }
         setDailyAssessments((prev) => mergeRow(prev, row));
       })
-      .subscribe();
+      // Fix 4: realtime health check. If the channel errors or times out we
+      // log it and trigger a one-shot refetch so the dashboard counts don't
+      // silently drift from server reality.
+      .subscribe((status) => {
+        if (import.meta.env.DEV) console.log('[Dashboard] realtime status:', status);
+        if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT' || status === 'CLOSED') {
+          console.warn('[Dashboard] realtime channel degraded:', status, '— scheduling fallback refetch');
+          setTimeout(() => refreshReports(true), 1500);
+        }
+      });
 
     return () => {
       window.removeEventListener('online', handleOnline);
