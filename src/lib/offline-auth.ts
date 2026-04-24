@@ -497,10 +497,10 @@ async function migrateUserData(oldUserId: string, newUserId: string): Promise<vo
  * uploaded photos are left alone (their storage object lives under the old
  * prefix and signed URLs work regardless).
  */
-async function migratePendingPhotoPaths(oldUserId: string, newUserId: string): Promise<void> {
+export async function migratePendingPhotoPaths(oldUserId: string, newUserId: string): Promise<void> {
   if (!oldUserId || !newUserId || oldUserId === newUserId) return;
   try {
-    const { getDB } = await import('./offline-storage');
+    const { getDB, toUploadedFlag } = await import('./offline-storage');
     const db = await getDB();
 
     type PhotoRow = {
@@ -542,9 +542,15 @@ async function migratePendingPhotoPaths(oldUserId: string, newUserId: string): P
       const writeStore = writeTx.objectStore('photos');
       const puts = toRewrite.map((photo) => {
         try {
+          // N-G invariant: every photo write site MUST coerce `uploaded`
+          // through toUploadedFlag so Safari/spec-strict IDB keeps the row
+          // in the `by-uploaded` index. A legacy boolean `uploaded: false`
+          // would otherwise round-trip back into IDB here and the next
+          // `getUnuploadedPhotos()` would silently miss this row.
           const rewritten = {
             ...photo,
             photoUrl: `${newUserId}/${photo.photoUrl.slice(prefix.length)}`,
+            uploaded: toUploadedFlag(photo.uploaded),
           };
           return writeStore.put(rewritten);
         } catch (rowErr) {
