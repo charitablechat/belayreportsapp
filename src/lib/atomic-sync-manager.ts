@@ -2727,22 +2727,22 @@ export async function syncDailyAssessmentAtomic(assessmentId: string, preValidat
     const result = await executeTransaction(steps, { signal });
     
     if (!result.success) {
-      // C4: restore reconciled deletions when the upsert tx fails (rollback can't undo them).
-      if (assessmentReconciledDeletes.length > 0) {
-        try {
-          const r = await restoreReconciledDeletions(assessmentReconciledDeletes, assessmentId);
-          if (r.failed > 0) {
-            console.error('[C4] Daily assessment sync: some reconciled rows could not be auto-restored', {
-              assessmentId: assessmentId.substring(0, 8),
-              restored: r.restored,
-              failed: r.failed,
-            });
-          }
-        } catch (restoreErr) {
-          console.error('[C4] Daily assessment sync: restoreReconciledDeletions threw', restoreErr);
-        }
-      }
+      // H3: nothing to compensate — reconcile is now deferred until AFTER the
+      // transaction commits, so a failed upsert leaves the server untouched.
       throw new Error(`Transaction failed after ${result.completedSteps}/${result.totalSteps} steps. Rollback: ${result.rollbackSuccess ? 'successful' : 'failed'}`);
+    }
+
+    // H3: parent + children are committed; run deferred reconcile now.
+    let assessmentReconcileBlocked = false;
+    if (assessmentReconcileSpec) {
+      const { runDeferredReconcile } = await import('./deferred-reconcile');
+      const outcome = await runDeferredReconcile(
+        assessmentReconcileSpec,
+        assessmentId,
+        'daily_assessment',
+        user.id,
+      );
+      assessmentReconcileBlocked = outcome.result?.blocked === true || !outcome.ran;
     }
     
     // S4: Skip post-transaction verify SELECT — `executeTransaction` row-count guard +
