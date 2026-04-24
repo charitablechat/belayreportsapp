@@ -109,7 +109,7 @@ export async function reconcileChildTable({
     return { deletedCount: 0, deletedRows: [], blocked: false };
   }
 
-  console.log(`[Reconcile] ${childTable}: ${rowsToDelete.length} rows to delete for ${parentId.substring(0, 8)}...`);
+  syncLog.log(`[Reconcile] ${childTable}: ${rowsToDelete.length} rows to delete for ${parentId.substring(0, 8)}...`);
 
   // 4. Delete the rows from server
   const idsToDelete = rowsToDelete.map((r: any) => r.id);
@@ -271,7 +271,7 @@ export async function reconcileAllChildTables(
     .map(r => ({ table: r.table, rows: r.result.deletedRows }));
 
   if (totalDeleted > 0) {
-    console.log(`[Reconcile] Total ${totalDeleted} orphaned rows deleted for ${reportType} ${parentId.substring(0, 8)}...`);
+    syncLog.log(`[Reconcile] Total ${totalDeleted} orphaned rows deleted for ${reportType} ${parentId.substring(0, 8)}...`);
   }
   if (blockedTables.length > 0) {
     console.warn(`[Reconcile] ${blockedTables.length} table(s) blocked for ${reportType} ${parentId.substring(0, 8)}:`, blockedTables);
