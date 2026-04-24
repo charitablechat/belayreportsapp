@@ -3,8 +3,19 @@ import { checkStorageQuota, requestPersistentStorage, isMobile } from './mobile-
 import { isUpdatedAheadOfSync } from './local-data-guards';
 import { safeSetItem } from './safe-local-storage';
 
-/** Opaque DB row — fields vary across tables and are read/written structurally. */
-export type DbRow = Record<string, unknown> & { id?: string };
+/** Opaque DB row — fields vary across tables and are read/written structurally.
+ *  Common string-typed columns are declared so callers don't have to cast `unknown`. */
+export type DbRow = Record<string, unknown> & {
+  id?: string;
+  updated_at?: string;
+  synced_at?: string;
+  created_at?: string;
+  organization?: string;
+  organization_id?: string;
+  inspection_id?: string;
+  user_id?: string;
+  status?: string;
+};
 
 interface InspectionDB extends DBSchema {
   inspections: {
@@ -1801,7 +1812,7 @@ export async function getDB() {
  * emergency fallback instead of IDB.
  */
 export async function saveInspectionOffline(
-  inspection: Record<string, unknown> & { id: string; child_count_hint?: number; dirty?: boolean },
+  inspection: Record<string, unknown> & { id?: string; child_count_hint?: number; dirty?: boolean },
   opts?: { childCountHint?: number }
 ): Promise<SaveResult> {
   return withIndexedDBSaveBoundary(
@@ -3259,7 +3270,7 @@ export async function clearRelatedDataOffline(
  * Throws `IdbSaveError` on hard failure (Gap 2.1) — callers MUST handle rejection.
  */
 export async function saveDailyAssessmentOffline(
-  assessment: Record<string, unknown> & { id: string; child_count_hint?: number; dirty?: boolean },
+  assessment: Record<string, unknown> & { id?: string; child_count_hint?: number; dirty?: boolean },
   opts?: { childCountHint?: number }
 ): Promise<SaveResult> {
   return withIndexedDBSaveBoundary(
@@ -3615,7 +3626,7 @@ export async function clearAssessmentDataOffline(
  * Throws `IdbSaveError` on hard failure (Gap 2.1) — callers MUST handle rejection.
  */
 export async function saveTrainingOffline(
-  training: Record<string, unknown> & { id: string; child_count_hint?: number; dirty?: boolean },
+  training: Record<string, unknown> & { id?: string; child_count_hint?: number; dirty?: boolean },
   opts?: { childCountHint?: number }
 ): Promise<SaveResult> {
   return withIndexedDBSaveBoundary(
