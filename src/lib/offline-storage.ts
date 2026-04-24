@@ -1886,7 +1886,7 @@ export async function getUnsyncedInspections(userId?: string) {
       return unsynced;
     },
     'getUnsyncedInspections',
-    { tier: 'batch' }
+    { tier: 'batch', store: 'inspections' }
   );
 }
 
@@ -2282,7 +2282,7 @@ export async function getUnuploadedPhotos(userId?: string) {
       return eligible.filter(p => !orphanIds.has(p.id));
     },
     'getUnuploadedPhotos',
-    { tier: 'photo' }
+    { tier: 'photo', store: 'photos' }
   );
 }
 
@@ -2990,7 +2990,7 @@ export async function getRelatedDataOfflineWithStatus(
   inspectionId: string
 ): Promise<{ items: any[]; readSucceeded: boolean }> {
   // If the circuit breaker is already open, the read is guaranteed to be a fallback.
-  if (isCircuitBreakerOpen()) {
+  if (isCircuitBreakerOpen('inspections')) {
     return { items: [], readSucceeded: false };
   }
   const { data, timedOut } = await withIDBTimeout(
@@ -3101,7 +3101,8 @@ export async function getOfflineDailyAssessment(id: string) {
       return await db.get('daily_assessments', id);
     },
     null,
-    'getOfflineDailyAssessment'
+    'getOfflineDailyAssessment',
+    { store: 'daily_assessments', criticalRead: true }
   );
 }
 
@@ -3168,7 +3169,7 @@ export async function getUnsyncedDailyAssessments(userId?: string) {
       return unsynced;
     },
     'getUnsyncedDailyAssessments',
-    { tier: 'batch' }
+    { tier: 'batch', store: 'daily_assessments' }
   );
 }
 
@@ -3341,7 +3342,7 @@ export async function getAssessmentDataOfflineWithStatus(
   type: AssessmentDataType,
   assessmentId: string
 ): Promise<{ items: any[]; readSucceeded: boolean }> {
-  if (isCircuitBreakerOpen()) {
+  if (isCircuitBreakerOpen('daily_assessments')) {
     return { items: [], readSucceeded: false };
   }
   const { data, timedOut } = await withIDBTimeout(
@@ -3452,7 +3453,8 @@ export async function getOfflineTraining(id: string) {
       return await db.get('trainings', id);
     },
     null,
-    'getOfflineTraining'
+    'getOfflineTraining',
+    { store: 'trainings', criticalRead: true }
   );
 }
 
@@ -3519,7 +3521,7 @@ export async function getUnsyncedTrainings(userId?: string) {
       return unsynced;
     },
     'getUnsyncedTrainings',
-    { tier: 'batch' }
+    { tier: 'batch', store: 'trainings' }
   );
 }
 
@@ -3704,7 +3706,7 @@ export async function getTrainingDataOfflineWithStatus(
   type: TrainingDataType,
   trainingId: string
 ): Promise<{ items: any[]; readSucceeded: boolean }> {
-  if (isCircuitBreakerOpen()) {
+  if (isCircuitBreakerOpen('trainings')) {
     return { items: [], readSucceeded: false };
   }
   const { data, timedOut } = await withIDBTimeout(
