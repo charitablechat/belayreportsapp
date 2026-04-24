@@ -1760,7 +1760,7 @@ export async function getDB() {
             { storeName: 'dead_letter_soft_deletes' },
           ];
           const fp = await migrationSafety.validateSchemaFingerprint(
-            db as unknown as IDBPDatabase<InspectionDB>,
+            db as unknown as IDBPDatabase,
             expected,
           );
           await migrationSafety.recordMigrationOutcome({
