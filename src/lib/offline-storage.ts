@@ -2130,8 +2130,8 @@ export async function savePhotoOffline(photo: {
         await db.put('photos', {
           ...photo,
           timestamp: Date.now(),
-          // Coerce boolean → 0|1 so the by-uploaded index actually keys the row.
-          uploaded: photo.uploaded ? 1 : 0,
+          // C1: Funnel through toUploadedFlag so the by-uploaded index keys the row.
+          uploaded: toUploadedFlag(photo.uploaded),
         });
         
         if (import.meta.env.DEV) {
@@ -2418,7 +2418,7 @@ export async function markPhotoAsUploaded(id: string, photoUrl: string) {
       const photo = await db.get('photos', id);
       if (photo) {
         const now = Date.now();
-        photo.uploaded = 1;
+        photo.uploaded = toUploadedFlag(true);
         photo.photoUrl = photoUrl;
         photo.lastValidated = now;
         // M6: Stamp upload-confirmation time so prune can age-out blobs
