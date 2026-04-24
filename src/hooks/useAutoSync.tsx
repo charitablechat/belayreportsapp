@@ -446,6 +446,10 @@ export const useAutoSync = () => {
       // silently re-queued forever.
       const yieldToUI = () => new Promise<void>(r => setTimeout(r, 0));
 
+      // H5: install fresh abort controller for this run; visibility-hidden
+      // handler aborts it so the tab stops holding stuck I/O.
+      activeSyncAbortRef.current?.abort();
+      activeSyncAbortRef.current = new AbortController();
       const syncResult = await withSyncTimeout(
         async (signal) => {
           // Process any queued offline soft-deletes before main sync
