@@ -1858,6 +1858,26 @@ export async function deleteOfflineInspection(id: string) {
   );
 }
 
+// S40 (Fix B): Per-session dedup of drift-flagged log lines. Without this,
+// a record with stable drift (e.g. another user's stuck record visible via
+// orphaned-temp recovery) re-logs on every sync cycle — flooding console and
+// hiding real signals. Keyed by `${id}:${drift_bucket_seconds}` so we still
+// re-log when drift meaningfully changes.
+const driftLogSeen = new Set<string>();
+function shouldLogDrift(id: string, driftMs: number): boolean {
+  // Bucket to 60s — anything finer is noise; anything coarser hides genuine
+  // drift growth.
+  const key = `${id}:${Math.floor(driftMs / 60_000)}`;
+  if (driftLogSeen.has(key)) return false;
+  driftLogSeen.add(key);
+  // Bound the set so a long session doesn't leak — 1k entries is plenty.
+  if (driftLogSeen.size > 1000) {
+    const first = driftLogSeen.values().next().value;
+    if (first) driftLogSeen.delete(first);
+  }
+  return true;
+}
+
 export async function getUnsyncedInspections(userId?: string) {
   return withIndexedDBReadBoundary(
     async () => {
@@ -1868,7 +1888,19 @@ export async function getUnsyncedInspections(userId?: string) {
       const all = await db.getAll('inspections');
       // C9 (P2): Exclude quarantined records (remote was soft-deleted) from unsynced
       // candidates so we don't keep re-attempting to upload them.
-      let unsynced = all.filter(isNotQuarantined).filter(record => {
+      // S40 (Fix A): Filter by ownership BEFORE the drift check. Records owned
+      // by other users (visible on shared devices via cached cross-user reads)
+      // are not this user's sync responsibility — evaluating drift on them is
+      // pure noise that drove the "295 IDB timeouts/cycle" hot loop. Keep
+      // temp-ID orphans regardless of owner so cross-user recovery still works.
+      const candidates = all.filter(isNotQuarantined).filter(record => {
+        if (!userId) return true;
+        if (record.inspector_id === userId) return true;
+        if (record.id?.startsWith('temp-')) return true; // orphan recovery
+        return false;
+      });
+
+      const unsynced = candidates.filter(record => {
         // C3: dirty flag is the authoritative "has unshipped edits" signal.
         // Drift-tolerance check is the belt-and-braces secondary path.
         if ((record as any).dirty === true) return true;
@@ -1882,29 +1914,26 @@ export async function getUnsyncedInspections(userId?: string) {
           const syncedMs = new Date(record.synced_at).getTime();
           const isUnsynced = isUpdatedAheadOfSync(updatedMs, syncedMs);
           if (isUnsynced && import.meta.env.DEV) {
-            console.log('[Offline Storage] Inspection flagged unsynced (drift):', {
-              id: String(record.id).substring(0, 8),
-              localUpdated: record.updated_at,
-              localSynced: record.synced_at,
-              drift_ms: updatedMs - syncedMs,
-            });
+            const driftMs = updatedMs - syncedMs;
+            if (shouldLogDrift(record.id, driftMs)) {
+              console.log('[Offline Storage] Inspection flagged unsynced (drift):', {
+                id: String(record.id).substring(0, 8),
+                localUpdated: record.updated_at,
+                localSynced: record.synced_at,
+                drift_ms: driftMs,
+              });
+            }
           }
           return isUnsynced;
         }
         return false;
       });
-      
-      if (userId) {
-        const owned = unsynced.filter(i => i.inspector_id === userId);
-        const orphaned = unsynced.filter(
-          i => i.inspector_id !== userId && i.id.startsWith('temp-')
-        );
-        if (orphaned.length > 0) {
-          console.warn('[Offline Storage] Found orphaned temp-ID inspections:', 
-            orphaned.map(i => ({ id: i.id.substring(0, 20) }))
-          );
-        }
-        unsynced = [...owned, ...orphaned];
+
+      const orphanCount = userId
+        ? unsynced.filter(i => i.inspector_id !== userId && i.id?.startsWith('temp-')).length
+        : 0;
+      if (orphanCount > 0) {
+        console.warn('[Offline Storage] Found orphaned temp-ID inspections:', { count: orphanCount });
       }
       
       console.log('[Offline Storage] Unsynced inspections:', {
@@ -3172,8 +3201,15 @@ export async function getUnsyncedDailyAssessments(userId?: string) {
       const db = await getDB();
       
       const all = await db.getAll('daily_assessments');
-      // C9 (P2): Exclude quarantined records.
-      let unsynced = all.filter(isNotQuarantined).filter(record => {
+      // S40 (Fix A): Ownership filter before drift check (see getUnsyncedInspections).
+      const candidates = all.filter(isNotQuarantined).filter(record => {
+        if (!userId) return true;
+        if (record.inspector_id === userId) return true;
+        if (record.id?.startsWith('temp-')) return true;
+        return false;
+      });
+
+      const unsynced = candidates.filter(record => {
         // C3: dirty flag = authoritative "has unshipped edits"; drift = secondary.
         if ((record as any).dirty === true) return true;
         if (!record.synced_at) return true;
@@ -3185,18 +3221,12 @@ export async function getUnsyncedDailyAssessments(userId?: string) {
         }
         return false;
       });
-      
-      if (userId) {
-        const owned = unsynced.filter(a => a.inspector_id === userId);
-        const orphaned = unsynced.filter(
-          a => a.inspector_id !== userId && a.id.startsWith('temp-')
-        );
-        if (orphaned.length > 0) {
-          console.warn('[Offline Storage] Found orphaned temp-ID daily assessments:', 
-            orphaned.map(a => ({ id: a.id.substring(0, 20) }))
-          );
-        }
-        unsynced = [...owned, ...orphaned];
+
+      const orphanCount = userId
+        ? unsynced.filter(a => a.inspector_id !== userId && a.id?.startsWith('temp-')).length
+        : 0;
+      if (orphanCount > 0) {
+        console.warn('[Offline Storage] Found orphaned temp-ID daily assessments:', { count: orphanCount });
       }
       
       console.log('[Offline Storage] Unsynced daily assessments:', {
@@ -3524,8 +3554,15 @@ export async function getUnsyncedTrainings(userId?: string) {
       const db = await getDB();
       
       const all = await db.getAll('trainings');
-      // C9 (P2): Exclude quarantined records.
-      let unsynced = all.filter(isNotQuarantined).filter(record => {
+      // S40 (Fix A): Ownership filter before drift check (see getUnsyncedInspections).
+      const candidates = all.filter(isNotQuarantined).filter(record => {
+        if (!userId) return true;
+        if (record.inspector_id === userId) return true;
+        if (record.id?.startsWith('temp-')) return true;
+        return false;
+      });
+
+      const unsynced = candidates.filter(record => {
         // C3: dirty flag = authoritative "has unshipped edits"; drift = secondary.
         if ((record as any).dirty === true) return true;
         if (!record.synced_at) return true;
@@ -3537,18 +3574,12 @@ export async function getUnsyncedTrainings(userId?: string) {
         }
         return false;
       });
-      
-      if (userId) {
-        const owned = unsynced.filter(t => t.inspector_id === userId);
-        const orphaned = unsynced.filter(
-          t => t.inspector_id !== userId && t.id.startsWith('temp-')
-        );
-        if (orphaned.length > 0) {
-          console.warn('[Offline Storage] Found orphaned temp-ID trainings:', 
-            orphaned.map(t => ({ id: t.id.substring(0, 20) }))
-          );
-        }
-        unsynced = [...owned, ...orphaned];
+
+      const orphanCount = userId
+        ? unsynced.filter(t => t.inspector_id !== userId && t.id?.startsWith('temp-')).length
+        : 0;
+      if (orphanCount > 0) {
+        console.warn('[Offline Storage] Found orphaned temp-ID trainings:', { count: orphanCount });
       }
       
       console.log('[Offline Storage] Unsynced trainings:', {

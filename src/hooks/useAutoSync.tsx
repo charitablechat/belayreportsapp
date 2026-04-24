@@ -753,10 +753,17 @@ export const useAutoSync = () => {
       const anyFailed = isIdbReadFailure(insp) || isIdbReadFailure(train) || isIdbReadFailure(assess);
       if (anyFailed) {
         const failure = [insp, train, assess].find(isIdbReadFailure) as { error: string } | undefined;
-        console.warn('[AutoSync] IDB read failure during count refresh — preserving last-known count');
+        // S40 (Fix C): The counts read failing is independent of the sync
+        // pipeline succeeding. Word the message so the user understands the
+        // sync itself is fine — this is a stats-refresh hiccup. Avoid surfacing
+        // raw error tokens (idb_read_timeout, circuit_breaker_open) — they
+        // read as catastrophic and aren't actionable. The Sync Terminal still
+        // lights amber via the syncError truthy check, which is correct: the
+        // numbers shown may be stale until the next successful read.
+        console.warn('[AutoSync] IDB counts read failed — preserving last-known counts', failure?.error);
         setState(prev => ({
           ...prev,
-          syncError: `Local data unreadable — refreshing may help${failure?.error ? ` (${failure.error})` : ''}`,
+          syncError: 'Stats refresh delayed — pending counts may be out of date',
         }));
         return;
       }
