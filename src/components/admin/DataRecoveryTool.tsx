@@ -1134,20 +1134,25 @@ function AdminEditHistoryPanel() {
 
   const handleRestore = async (snapshotId: string) => {
     setRestoring(snapshotId);
-    try {
-      const { restoreAdminEditSnapshot } = await import('@/lib/admin-edit-snapshot');
-      const ok = await restoreAdminEditSnapshot(snapshotId);
-      if (ok) {
-        toast.success("Original data restored to database");
-      } else {
-        toast.error("Failed to restore original data");
+    // H2: Hold restore lock during server-side admin restore so concurrent
+    // auto-sync cycles don't push stale local edits over the original data
+    // we're about to write back to the server.
+    await withRestoreLock(async () => {
+      try {
+        const { restoreAdminEditSnapshot } = await import('@/lib/admin-edit-snapshot');
+        const ok = await restoreAdminEditSnapshot(snapshotId);
+        if (ok) {
+          toast.success("Original data restored to database");
+        } else {
+          toast.error("Failed to restore original data");
+        }
+      } catch (error) {
+        console.error('[Admin Edit History] Restore failed:', error);
+        toast.error("Restore failed");
+      } finally {
+        setRestoring(null);
       }
-    } catch (error) {
-      console.error('[Admin Edit History] Restore failed:', error);
-      toast.error("Restore failed");
-    } finally {
-      setRestoring(null);
-    }
+    });
   };
 
   const handleExport = async (snapshotId: string, reportType: string) => {
