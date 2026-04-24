@@ -1,5 +1,6 @@
 import { supabase } from "@/integrations/supabase/client";
 import { assertSafeToDeleteChildRows } from "./child-row-deletion-tripwire";
+import { syncLog } from "./sync-logger";
 
 /**
  * Reconcile child table rows: delete server rows not present locally,
