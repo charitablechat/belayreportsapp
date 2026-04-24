@@ -1691,7 +1691,7 @@ export async function getDB() {
                 const v = cursor.value as { uploaded?: unknown };
                 if (typeof v.uploaded === 'boolean') {
                   v.uploaded = v.uploaded ? 1 : 0;
-                  await cursor.update(v);
+                  await cursor.update(v as never);
                   rewritten++;
                 }
                 cursor = await cursor.continue();
@@ -3162,7 +3162,7 @@ export async function saveRelatedDataOffline(
         const dataWithInspectionId = {
           ...item,
           inspection_id: inspectionId,
-          id: ensureValidUUID(item.id),
+          id: ensureValidUUID(item.id as string | undefined),
         };
         return store.put(dataWithInspectionId);
       });
@@ -3526,7 +3526,7 @@ export async function saveAssessmentDataOffline(
           ...item,
           assessment_id: assessmentId,
           // Use crypto.randomUUID() for proper UUID generation instead of composite IDs
-          id: ensureValidUUID(item.id),
+          id: ensureValidUUID(item.id as string | undefined),
         };
         return store.put(dataWithAssessmentId);
       });
@@ -3894,7 +3894,7 @@ export async function saveTrainingDataOffline(
           training_id: trainingId,
           // Use crypto.randomUUID() for proper UUID generation instead of composite IDs
           // This fixes the "Invalid uuid" validation error during sync
-          id: ensureValidUUID(item.id),
+          id: ensureValidUUID(item.id as string | undefined),
         };
         return store.put(dataWithTrainingId);
       });
