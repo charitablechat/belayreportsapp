@@ -35,7 +35,8 @@ export interface ReportSnapshot {
   ts: number;
   synced: boolean;
   device: 'mobile' | 'desktop';
-  parent: Record<string, unknown>;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  parent: Record<string, any>;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   children: Record<string, any[]>;
   photoMetadata?: PhotoMetadataEntry[];

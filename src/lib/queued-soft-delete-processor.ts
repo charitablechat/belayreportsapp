@@ -35,11 +35,12 @@ type TableName = 'inspections' | 'trainings' | 'daily_assessments';
 interface QueuedOp {
   id?: number;
   type?: string;
-  data?: Record<string, unknown> & {
+  data?: {
     id?: string;
     deleted_at?: string | null;
     deleted_by?: string | null;
     retention_until?: string | null;
+    [key: string]: unknown;
   };
   attempts?: number;
   firstFailedAt?: string;
@@ -104,7 +105,7 @@ async function handleSoftDeleteFailure(args: HandleFailureArgs): Promise<void> {
       firstFailedAt: op.firstFailedAt ?? nowIso,
       lastError: errorMessage,
       deadLetteredAt: nowIso,
-      originalOp: op,
+      originalOp: op as unknown as Record<string, unknown>,
     };
     try {
       await addToDeadLetterSoftDeletes(entry);
@@ -154,7 +155,8 @@ export async function processQueuedSoftDeletes(signal?: AbortSignal): Promise<So
   try {
     // 1. Inspections
     const inspOps = await getQueuedOperations();
-    for (const op of inspOps) {
+    for (const rawOp of inspOps) {
+      const op = rawOp as QueuedOp;
       if (signal?.aborted) return result;
       if (!isSoftDeleteOp(op)) continue;
       const table: TableName = 'inspections';
@@ -204,7 +206,8 @@ export async function processQueuedSoftDeletes(signal?: AbortSignal): Promise<So
 
     // 2. Daily assessments
     const assessOps = await getQueuedAssessmentOperations();
-    for (const op of assessOps) {
+    for (const rawOp of assessOps) {
+      const op = rawOp as QueuedOp;
       if (signal?.aborted) return result;
       if (!isSoftDeleteOp(op)) continue;
       const recordId = op.assessmentId || op.data?.id;
@@ -244,7 +247,8 @@ export async function processQueuedSoftDeletes(signal?: AbortSignal): Promise<So
 
     // 3. Trainings
     const trainOps = await getQueuedTrainingOperations();
-    for (const op of trainOps) {
+    for (const rawOp of trainOps) {
+      const op = rawOp as QueuedOp;
       if (signal?.aborted) return result;
       if (!isSoftDeleteOp(op)) continue;
       const recordId = op.trainingId || op.data?.id;
@@ -342,7 +346,8 @@ export async function pruneCompletedQueuedOperations(): Promise<{
 
   try {
     const ops = await getQueuedOperations();
-    for (const op of ops) {
+    for (const rawOp of ops) {
+      const op = rawOp as QueuedOp;
       const id = op.inspectionId || op.data?.id;
       if (!id) {
         try { await removeQueuedOperation(op.id!); counts.inspections++; } catch { /* ignore */ }
@@ -359,7 +364,8 @@ export async function pruneCompletedQueuedOperations(): Promise<{
 
   try {
     const ops = await getQueuedTrainingOperations();
-    for (const op of ops) {
+    for (const rawOp of ops) {
+      const op = rawOp as QueuedOp;
       const id = op.trainingId || op.data?.id;
       if (!id) {
         try { await removeQueuedTrainingOperation(op.id!); counts.trainings++; } catch { /* ignore */ }
@@ -376,7 +382,8 @@ export async function pruneCompletedQueuedOperations(): Promise<{
 
   try {
     const ops = await getQueuedAssessmentOperations();
-    for (const op of ops) {
+    for (const rawOp of ops) {
+      const op = rawOp as QueuedOp;
       const id = op.assessmentId || op.data?.id;
       if (!id) {
         try { await removeQueuedAssessmentOperation(op.id!); counts.assessments++; } catch { /* ignore */ }

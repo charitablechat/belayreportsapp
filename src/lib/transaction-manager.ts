@@ -21,8 +21,13 @@ type AbortableBuilder<T> = PgResult<T> & {
 /** Common builder returned by `from(table).<operation>(...)` before we
  * terminate the chain. We only model the methods we actually call. */
 interface WriteChain {
-  match: (filter: Filter) => AbortableBuilder<Row[]>;
-  eq: (column: string, value: unknown) => AbortableBuilder<Row[]>;
+  match: (filter: Filter) => AbortableBuilder<Row[]> & {
+    select: (columns: string) => AbortableBuilder<Row[]>;
+    single: () => AbortableBuilder<Row>;
+  };
+  eq: (column: string, value: unknown) => AbortableBuilder<Row[]> & {
+    select: (columns: string) => AbortableBuilder<Row[]>;
+  };
   in: (column: string, values: unknown[]) => AbortableBuilder<Row[]>;
   select: (columns: string) => AbortableBuilder<Row[]> & {
     match: (filter: Filter) => AbortableBuilder<Row[]> & {

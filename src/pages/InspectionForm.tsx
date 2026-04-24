@@ -1164,7 +1164,7 @@ export default function InspectionForm() {
       }
       if (offlineSummary.length > 0) {
         childDataLoadedRef.current.summary = true;
-        setSummary(offlineSummary[0]);
+        setSummary(offlineSummary[0] as typeof summary);
       } else {
         // Initialize summary with required fields if it doesn't exist
         setSummary({
@@ -1404,13 +1404,13 @@ export default function InspectionForm() {
 
           const { data: summaryData } = summaryResult;
           if (summaryData) {
-            setSummary(summaryData);
+            setSummary(summaryData as typeof summary);
             saveRelatedDataOffline('summary', id!, [summaryData]).catch(e =>
               console.warn('[InspectionForm] Non-critical: failed to cache summary', e)
             );
           } else if (offlineSummary.length > 0) {
             console.warn('[InspectionForm] Server returned empty summary but local has data -- preserving local');
-            setSummary(offlineSummary[0]);
+            setSummary(offlineSummary[0] as typeof summary);
           }
 
           if (import.meta.env.DEV) {
@@ -1480,7 +1480,7 @@ export default function InspectionForm() {
         setZiplines(offZiplines); childDataLoadedRef.current.ziplines = true;
         setEquipment(offEquipment); childDataLoadedRef.current.equipment = true;
         setStandards(mergeStandards(offStandards)); childDataLoadedRef.current.standards = true;
-        if (offSummary.length > 0) { setSummary(offSummary[0]); }
+        if (offSummary.length > 0) { setSummary(offSummary[0] as typeof summary); }
         childDataLoadedRef.current.summary = true;
 
         // Refresh photo galleries to pick up any imported photo metadata

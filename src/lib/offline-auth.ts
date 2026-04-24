@@ -552,7 +552,7 @@ export async function migratePendingPhotoPaths(oldUserId: string, newUserId: str
             photoUrl: `${newUserId}/${photo.photoUrl.slice(prefix.length)}`,
             uploaded: toUploadedFlag(photo.uploaded),
           };
-          return writeStore.put(rewritten);
+          return writeStore.put(rewritten as never);
         } catch (rowErr) {
           console.warn('[OfflineAuth] Skipped photo during path migration:', photo?.id, rowErr);
           return Promise.resolve();
