@@ -21,6 +21,7 @@ import ropeWorksLogo from "@/assets/rope-works-logo.png";
 
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { AutoSaveIndicator } from "@/components/AutoSaveIndicator";
+import { SaveFailureBanner } from "@/components/SaveFailureBanner";
 import { useActiveTimer } from "@/hooks/useActiveTimer";
 import { ActiveTimerDisplay } from "@/components/ActiveTimerDisplay";
 import { Input } from "@/components/ui/input";
