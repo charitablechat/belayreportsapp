@@ -712,6 +712,16 @@ export const useAutoSync = () => {
       if (photoChangeCount > 0) {
         try { window.dispatchEvent(new Event('sync-photos-updated')); } catch {}
       }
+      // M3: Tick the cycle counter so the storage RLS probe re-runs every Nth
+      // completed cycle. Catches mid-day policy regressions without waiting
+      // for the UTC rollover. Internally rate-limited and force-bypasses the
+      // daily flag.
+      try {
+        const { maybeRunCycleProbe } = await import('@/lib/storage-rls-probe');
+        maybeRunCycleProbe();
+      } catch {
+        /* probe import failure must never break sync */
+      }
     }
   }, [queryClient, isMobileDevice, isIOSDevice]);
   
