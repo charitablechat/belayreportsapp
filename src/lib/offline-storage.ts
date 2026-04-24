@@ -4506,3 +4506,119 @@ export async function restoreQuarantinedAsNew(
     'restoreQuarantinedAsNew',
   );
 }
+
+// ─── M6: Periodic GC for unresolved quarantined records ─────────────────────
+// Quarantined rows (`_remote_deleted_at` set) stay in IDB forever waiting
+// for the user to resolve via RemoteDeletedConflictDialog. If the user
+// never sees / never resolves the dialog (uninstalled UI, multi-device,
+// dismissed), they accumulate as IDB garbage and the dashboard filters
+// keep paying the scan cost. After 30d we hard-delete them — far past any
+// realistic resolution window.
+
+const QUARANTINE_TTL_MS = 30 * 24 * 60 * 60 * 1000; // 30 days
+const GC_CYCLE_INTERVAL = 20; // run every Nth sync cycle
+const GC_MIN_INTERVAL_MS = 60_000; // hard rate-limit: at most once per minute
+let gcCycleCounter = 0;
+let lastGcRunAt = 0;
+
+export interface QuarantineGcResult {
+  inspections: number;
+  trainings: number;
+  daily_assessments: number;
+  total: number;
+}
+
+/**
+ * Hard-delete any quarantined record whose `_remote_deleted_at` is older
+ * than the TTL. Removes the parent + all child rows via the existing
+ * delete*Offline helpers so storage stays consistent.
+ *
+ * Safe to call on any cadence — the GC_MIN_INTERVAL_MS guard prevents
+ * stampedes if the caller invokes it eagerly.
+ *
+ * @param ttlMs Override the default 30-day TTL (test hook).
+ * @returns Counts of records removed per table, plus total.
+ */
+export async function gcQuarantinedRecords(ttlMs: number = QUARANTINE_TTL_MS): Promise<QuarantineGcResult> {
+  const result: QuarantineGcResult = {
+    inspections: 0,
+    trainings: 0,
+    daily_assessments: 0,
+    total: 0,
+  };
+
+  try {
+    const all = await getQuarantinedRecords();
+    const cutoff = Date.now() - ttlMs;
+
+    for (const q of all) {
+      const ts = Date.parse(q.remoteDeletedAt);
+      if (!Number.isFinite(ts)) continue;
+      if (ts > cutoff) continue; // still inside the resolution window
+
+      try {
+        switch (q.table) {
+          case 'inspections':
+            await deleteOfflineInspection(q.id);
+            result.inspections++;
+            break;
+          case 'trainings':
+            await deleteOfflineTraining(q.id);
+            result.trainings++;
+            break;
+          case 'daily_assessments':
+            await deleteOfflineDailyAssessment(q.id);
+            result.daily_assessments++;
+            break;
+        }
+      } catch (err) {
+        if (import.meta.env.DEV) {
+          console.warn('[M6] gcQuarantinedRecords: delete failed', {
+            table: q.table,
+            id: q.id.substring(0, 8),
+            err,
+          });
+        }
+      }
+    }
+
+    result.total = result.inspections + result.trainings + result.daily_assessments;
+    if (import.meta.env.DEV && result.total > 0) {
+      console.log('[M6] Quarantine GC removed expired records:', result);
+    }
+  } catch (err) {
+    if (import.meta.env.DEV) {
+      console.warn('[M6] gcQuarantinedRecords: scan failed', err);
+    }
+  }
+
+  return result;
+}
+
+/**
+ * Cycle-throttled wrapper for `gcQuarantinedRecords`. Designed to be called
+ * from the sync loop's finally-block — runs at most every Nth cycle AND no
+ * more than once per minute.
+ *
+ * Mirrors the M3 cycle-probe pattern (see `maybeRunCycleProbe`).
+ */
+export function maybeRunQuarantineGc(): void {
+  gcCycleCounter += 1;
+  if (gcCycleCounter < GC_CYCLE_INTERVAL) return;
+  const now = Date.now();
+  if (now - lastGcRunAt < GC_MIN_INTERVAL_MS) {
+    // Still rate-limited; reset counter so we try again next cycle.
+    gcCycleCounter = 0;
+    return;
+  }
+  gcCycleCounter = 0;
+  lastGcRunAt = now;
+  // Fire and forget — never block the sync loop.
+  void gcQuarantinedRecords();
+}
+
+/** Test hook — reset counter + last-run so tests can drive maybeRunQuarantineGc. */
+export function __resetQuarantineGcStateForTests(): void {
+  gcCycleCounter = 0;
+  lastGcRunAt = 0;
+}

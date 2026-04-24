@@ -722,6 +722,14 @@ export const useAutoSync = () => {
       } catch {
         /* probe import failure must never break sync */
       }
+      // M6: Periodic GC for unresolved quarantined records (>30d).
+      // Cycle-throttled + rate-limited inside the helper. Fire-and-forget.
+      try {
+        const { maybeRunQuarantineGc } = await import('@/lib/offline-storage');
+        maybeRunQuarantineGc();
+      } catch {
+        /* gc import failure must never break sync */
+      }
     }
   }, [queryClient, isMobileDevice, isIOSDevice]);
   
