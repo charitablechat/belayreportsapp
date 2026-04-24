@@ -730,6 +730,8 @@ async function syncTrainingsAtomic() {
 async function syncDailyAssessmentsAtomic() {
   console.log('[SW Atomic Sync] Starting atomic daily assessment sync...');
   
+  if (!dbConfigGuard('daily assessment sync')) return;
+  
   const authHeaders = getAuthHeaders();
   if (!authHeaders) {
     console.warn('[SW Atomic Sync] No valid auth token — skipping assessment sync');
