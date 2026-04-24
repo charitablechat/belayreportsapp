@@ -8,6 +8,20 @@
  * Never throws. Returns a discriminated result so callers can branch on
  * success/failure without try/catch.
  *
+ * CONVENTION: All `localStorage.setItem` calls under `src/lib/**` and
+ * `src/hooks/**` must go through `safeSetItem` (enforced by ESLint —
+ * `no-restricted-syntax` in `eslint.config.js`).
+ *
+ * Allow-listed exceptions (purpose-built quota handling that would conflict
+ * with the generic helper):
+ *   - src/lib/safe-local-storage.ts (this file)
+ *   - src/lib/auth-resilience.ts    (Phase 3 — pinned + ensureSpaceForAuth)
+ *   - src/lib/auth-crypto.ts        (Phase 4 — encryption keystore)
+ *   - src/lib/offline-auth.ts       (synthetic-session boundary)
+ *   - src/lib/offline-storage.ts    (probe + emergency fallback + migration rollback flag)
+ *   - src/lib/sync-logger.ts        (doc comment only)
+ *   - src/lib/__tests__/**          (test fixtures)
+ *
  * NOTE: do NOT use this for auth-credential writes — `auth-resilience.ts`
  * already handles those with pinning + ensureSpaceForAuth.
  * See `mem://auth/phase3-storage-pressure`.
