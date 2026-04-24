@@ -1,6 +1,7 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.78.0';
 
 import { corsHeaders } from "../_shared/cors.ts";
+import { getSiteUrl } from "../_shared/site-url.ts";
 interface CreateUserPayload {
   email: string;
   password: string;
@@ -184,13 +185,14 @@ Deno.serve(async (req) => {
           }
         }
 
-        // Send password reset email so the new user can set their own password
+        // Send password reset email so the new user can set their own password.
+        // The redirectTo URL is what the user lands on when they click the
+        // reset link, so it must point at a real SPA host — never at the
+        // raw Supabase project slug.
         try {
-          // ── C3: SITE_URL runtime secret with fallback ──
-          const redirectTo = Deno.env.get('SITE_URL')
-            || (Deno.env.get('SUPABASE_URL') ?? '').replace('.supabase.co', '.lovable.app');
+          const redirectTo = getSiteUrl();
           await supabaseAdmin.auth.resetPasswordForEmail(email, { redirectTo });
-          console.log(`Password reset email sent to: ${email}`);
+          console.log(`Password reset email sent to: ${email} (redirectTo=${redirectTo})`);
         } catch (emailError) {
           console.error('Failed to send password reset email:', emailError);
           // Don't fail the user creation if email fails

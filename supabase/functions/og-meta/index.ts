@@ -3,6 +3,7 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2?target=deno
 import { checkRateLimit, getClientIP, createRateLimitResponse } from "../_shared/rate-limiter.ts";
 
 import { corsHeaders } from "../_shared/cors.ts";
+import { getSiteUrl } from "../_shared/site-url.ts";
 type ReportType = "inspection" | "training" | "daily_assessment";
 
 const TYPE_LABELS: Record<ReportType, string> = {
@@ -30,8 +31,7 @@ serve(async (req: Request) => {
 
   const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
   const functionsBaseUrl = `${supabaseUrl}/functions/v1`;
-  // ── C3: SITE_URL runtime secret with fallback ──
-  const spaBaseUrl = Deno.env.get("SITE_URL") || "https://ropeworks.lovable.app";
+  const spaBaseUrl = getSiteUrl();
 
   if (!type || !["inspection", "training", "daily_assessment"].includes(type) ||
       !id || !/^[a-f0-9]{8}$/i.test(id)) {
