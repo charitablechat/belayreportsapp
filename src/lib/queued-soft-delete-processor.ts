@@ -49,7 +49,6 @@ interface QueuedOp {
   inspectionId?: string;
   assessmentId?: string;
   trainingId?: string;
-  [key: string]: unknown;
 }
 
 /** Minimal shape of an offline report record used to determine sync status. */
@@ -105,7 +104,7 @@ async function handleSoftDeleteFailure(args: HandleFailureArgs): Promise<void> {
       firstFailedAt: op.firstFailedAt ?? nowIso,
       lastError: errorMessage,
       deadLetteredAt: nowIso,
-      originalOp: op,
+      originalOp: op as unknown as Record<string, unknown>,
     };
     try {
       await addToDeadLetterSoftDeletes(entry);
