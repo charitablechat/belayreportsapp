@@ -16,6 +16,7 @@ import { clearPendingSyncs } from '@/lib/background-sync';
 import { toast } from '@/components/ui/sonner';
 import { markSnapshotSynced } from '@/lib/local-backup-ledger';
 import { isRestoreInProgress, onRestoreLockChange } from '@/lib/restore-lock';
+import { syncLog } from '@/lib/sync-logger';
 
 // Sync configuration with mobile optimization
 // Tuned for fast user-driven sync (S5/S6/S7) — duplicate prevention is handled by syncInProgressRef
