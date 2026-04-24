@@ -108,6 +108,7 @@ export default function TrainingForm() {
   const [refreshing, setRefreshing] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
+  const [saveError, setSaveError] = useState<import("@/components/SaveFailureBanner").SaveErrorState>(null);
   const [isGeneratingPDF, setIsGeneratingPDF] = useState(false);
   const [isGeneratingHTML, setIsGeneratingHTML] = useState(false);
   const [lastSaved, setLastSaved] = useState<Date | null>(null);
@@ -831,6 +832,10 @@ export default function TrainingForm() {
         // Gap 2.1: re-throw IdbSaveError so the outer save handler keeps the dirty flag set
         const { isIdbSaveError } = await import('@/lib/offline-storage');
         if (isIdbSaveError(offlineError)) {
+          setSaveError({
+            message: 'Local save failed — your changes are NOT stored. Tap to retry.',
+            code: (offlineError as any)?.code,
+          });
           toast.error("Save failed — your changes are NOT stored", {
             description: "Tap Save again to retry. Do not close this page.",
             duration: 8000,
