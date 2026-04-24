@@ -93,7 +93,7 @@ import {
   TransactionStep,
   fetchRollbackData
 } from "./transaction-manager";
-import { reconcileAllChildTables, restoreReconciledDeletions, type ReconciledTableDelete } from "./sync-reconciliation";
+import { reconcileAllChildTables } from "./sync-reconciliation";
 import { syncProgressEmitter } from "@/hooks/useSyncProgress";
 import { getMobileCapabilities } from "./mobile-detection";
 import { getCachedProfile } from "./profile-cache";
@@ -908,41 +908,21 @@ export async function syncInspectionAtomic(inspectionId: string, preValidatedUse
       }
     }
 
-    // Step 2: RECONCILE then UPSERT child data
-    // Delete server rows that were removed locally, then upsert current local data
-    let inspectionReconciledDeletes: ReconciledTableDelete[] = [];
+    // Step 2: UPSERT child data first; reconcile (DELETE) is DEFERRED until
+    // after the transaction commits (H3). The reconcile spec is captured here
+    // so we can use the same prefetched server snapshots and IDB read flags.
+    let inspectionReconcileSpec: import('./deferred-reconcile').DeferredReconcileSpec[] | null = null;
     if (recordStatus?.record_exists && !recordStatus?.is_deleted) {
       // S25: when prefetch was skipped, pass `undefined` (not `[]`) so
       // reconcileChildTable falls back to its own live fetch when needed.
       const pf = (arr: any[]) => (serverUnchangedSinceBaseline ? undefined : arr);
-      const reconcileResult = await reconcileAllChildTables(
-        [
-          { childTable: 'inspection_systems', parentIdColumn: 'inspection_id', localItems: systems, prefetchedServerRows: pf(existingSystems), expectedNonEmpty: idbReadFlags.systems },
-          { childTable: 'inspection_ziplines', parentIdColumn: 'inspection_id', localItems: ziplines, prefetchedServerRows: pf(existingZiplines), expectedNonEmpty: idbReadFlags.ziplines },
-          { childTable: 'inspection_equipment', parentIdColumn: 'inspection_id', localItems: equipment, prefetchedServerRows: pf(existingEquipment), expectedNonEmpty: idbReadFlags.equipment },
-          { childTable: 'inspection_standards', parentIdColumn: 'inspection_id', localItems: standards, prefetchedServerRows: pf(existingStandards), expectedNonEmpty: idbReadFlags.standards },
-          { childTable: 'inspection_summary', parentIdColumn: 'inspection_id', localItems: summary ? [summary] : [], prefetchedServerRows: pf(existingSummary), expectedNonEmpty: idbReadFlags.summary },
-        ],
-        inspectionId,
-        'inspection',
-        user.id,
-      );
-      // C4: capture per-table pre-images so we can restore them if the upsert tx fails.
-      inspectionReconciledDeletes = reconcileResult.deletedByTable;
-      // If any child table's reconcile was blocked by a safety guard, do NOT mark
-      // the parent as synced — the user still has unflushed deletions to retry.
-      if (reconcileResult.blocked) {
-        console.warn('[Atomic Sync] Inspection reconcile blocked — marking sync as failed so user can retry', {
-          inspectionId: inspectionId.substring(0, 8),
-          blockedTables: reconcileResult.blockedTables,
-        });
-        return {
-          success: false,
-          skipped: true,
-          reason: 'reconcile_blocked',
-          message: 'Some local deletions could not be confirmed against the server. Will retry on next sync.',
-        };
-      }
+      inspectionReconcileSpec = [
+        { childTable: 'inspection_systems', parentIdColumn: 'inspection_id', localItems: systems, prefetchedServerRows: pf(existingSystems), expectedNonEmpty: idbReadFlags.systems },
+        { childTable: 'inspection_ziplines', parentIdColumn: 'inspection_id', localItems: ziplines, prefetchedServerRows: pf(existingZiplines), expectedNonEmpty: idbReadFlags.ziplines },
+        { childTable: 'inspection_equipment', parentIdColumn: 'inspection_id', localItems: equipment, prefetchedServerRows: pf(existingEquipment), expectedNonEmpty: idbReadFlags.equipment },
+        { childTable: 'inspection_standards', parentIdColumn: 'inspection_id', localItems: standards, prefetchedServerRows: pf(existingStandards), expectedNonEmpty: idbReadFlags.standards },
+        { childTable: 'inspection_summary', parentIdColumn: 'inspection_id', localItems: summary ? [summary] : [], prefetchedServerRows: pf(existingSummary), expectedNonEmpty: idbReadFlags.summary },
+      ];
     }
 
     if (systems.length > 0) {
@@ -1011,25 +991,24 @@ export async function syncInspectionAtomic(inspectionId: string, preValidatedUse
     const result = await executeTransaction(steps, { signal });
     
     if (!result.success) {
-      // C4: rollback can only undo the steps the transaction itself executed.
-      // The reconcile pass that ran *before* the transaction already hard-deleted
-      // server child rows, so re-insert their pre-images here. report_deleted_items
-      // still has the audit copy if this best-effort restore also fails.
-      if (inspectionReconciledDeletes.length > 0) {
-        try {
-          const r = await restoreReconciledDeletions(inspectionReconciledDeletes, inspectionId);
-          if (r.failed > 0) {
-            console.error('[C4] Inspection sync: some reconciled rows could not be auto-restored', {
-              inspectionId: inspectionId.substring(0, 8),
-              restored: r.restored,
-              failed: r.failed,
-            });
-          }
-        } catch (restoreErr) {
-          console.error('[C4] Inspection sync: restoreReconciledDeletions threw', restoreErr);
-        }
-      }
+      // H3: nothing to compensate — reconcile is now deferred until AFTER the
+      // transaction commits, so a failed upsert leaves the server untouched.
       throw new Error(`Transaction failed after ${result.completedSteps}/${result.totalSteps} steps. Rollback: ${result.rollbackSuccess ? 'successful' : 'failed'}`);
+    }
+
+    // H3: Now that parent + children are safely on the server, run reconcile.
+    // If reconcile is blocked or fails, the user's deletions remain unflushed
+    // locally and the next sync cycle retries — no destructive server side-effect.
+    let inspectionReconcileBlocked = false;
+    if (inspectionReconcileSpec) {
+      const { runDeferredReconcile } = await import('./deferred-reconcile');
+      const outcome = await runDeferredReconcile(
+        inspectionReconcileSpec,
+        inspectionId,
+        'inspection',
+        user.id,
+      );
+      inspectionReconcileBlocked = outcome.result?.blocked === true || !outcome.ran;
     }
     
     // S4: Skip post-transaction verify SELECT — `executeTransaction` already throws on
@@ -1139,8 +1118,12 @@ export async function syncInspectionAtomic(inspectionId: string, preValidatedUse
     if (import.meta.env.DEV) {
       syncLog.log('[Atomic Sync] Successfully synced inspection:', inspectionId);
     }
-    
-    return { success: true };
+
+    // H3: parent + children committed. If deferred reconcile was blocked or
+    // failed, surface as partial-success so caller knows to retry next cycle.
+    return inspectionReconcileBlocked
+      ? { success: true, partial: true, reason: 'reconcile_pending', message: 'Some local deletions could not be confirmed; will retry on next sync.' }
+      : { success: true };
     
   } catch (error: any) {
     console.error('[Atomic Sync] Failed to sync inspection:', inspectionId, error);
@@ -1852,38 +1835,19 @@ export async function syncTrainingAtomic(trainingId: string, preValidatedUser?: 
       }
     }
 
-    // Step 2: RECONCILE then UPSERT child data
-    // Delete server rows that were removed locally, then upsert current local data
-    let trainingReconciledDeletes: ReconciledTableDelete[] = [];
+    // Step 2: UPSERT child data first; reconcile (DELETE) is DEFERRED until
+    // after the transaction commits (H3).
+    let trainingReconcileSpec: import('./deferred-reconcile').DeferredReconcileSpec[] | null = null;
     if (recordStatus?.record_exists && !recordStatus?.is_deleted) {
       const pf = (arr: any[]) => (serverUnchangedSinceBaseline ? undefined : arr);
-      const reconcileResult = await reconcileAllChildTables(
-        [
-          { childTable: 'training_delivery_approaches', parentIdColumn: 'training_id', localItems: delivery_approaches, prefetchedServerRows: pf(existingApproaches), expectedNonEmpty: trainingIdbReadFlags.delivery_approaches },
-          { childTable: 'training_operating_systems', parentIdColumn: 'training_id', localItems: operating_systems, prefetchedServerRows: pf(existingSystems), expectedNonEmpty: trainingIdbReadFlags.operating_systems },
-          { childTable: 'training_immediate_attention', parentIdColumn: 'training_id', localItems: immediate_attention, prefetchedServerRows: pf(existingAttention), expectedNonEmpty: trainingIdbReadFlags.immediate_attention },
-          { childTable: 'training_verifiable_items', parentIdColumn: 'training_id', localItems: verifiable_items, prefetchedServerRows: pf(existingVerifiable), expectedNonEmpty: trainingIdbReadFlags.verifiable_items },
-          { childTable: 'training_systems_in_place', parentIdColumn: 'training_id', localItems: systems_in_place, prefetchedServerRows: pf(existingSystemsInPlace), expectedNonEmpty: trainingIdbReadFlags.systems_in_place },
-          { childTable: 'training_summary', parentIdColumn: 'training_id', localItems: summary ? [summary] : [], prefetchedServerRows: pf(existingSummary), expectedNonEmpty: trainingIdbReadFlags.summary },
-        ],
-        trainingId,
-        'training',
-        user.id,
-      );
-      // C4: capture per-table pre-images for restore-on-failure.
-      trainingReconciledDeletes = reconcileResult.deletedByTable;
-      if (reconcileResult.blocked) {
-        console.warn('[Atomic Sync] Training reconcile blocked — marking sync as failed so user can retry', {
-          trainingId: trainingId.substring(0, 8),
-          blockedTables: reconcileResult.blockedTables,
-        });
-        return {
-          success: false,
-          skipped: true,
-          reason: 'reconcile_blocked',
-          message: 'Some local deletions could not be confirmed against the server. Will retry on next sync.',
-        };
-      }
+      trainingReconcileSpec = [
+        { childTable: 'training_delivery_approaches', parentIdColumn: 'training_id', localItems: delivery_approaches, prefetchedServerRows: pf(existingApproaches), expectedNonEmpty: trainingIdbReadFlags.delivery_approaches },
+        { childTable: 'training_operating_systems', parentIdColumn: 'training_id', localItems: operating_systems, prefetchedServerRows: pf(existingSystems), expectedNonEmpty: trainingIdbReadFlags.operating_systems },
+        { childTable: 'training_immediate_attention', parentIdColumn: 'training_id', localItems: immediate_attention, prefetchedServerRows: pf(existingAttention), expectedNonEmpty: trainingIdbReadFlags.immediate_attention },
+        { childTable: 'training_verifiable_items', parentIdColumn: 'training_id', localItems: verifiable_items, prefetchedServerRows: pf(existingVerifiable), expectedNonEmpty: trainingIdbReadFlags.verifiable_items },
+        { childTable: 'training_systems_in_place', parentIdColumn: 'training_id', localItems: systems_in_place, prefetchedServerRows: pf(existingSystemsInPlace), expectedNonEmpty: trainingIdbReadFlags.systems_in_place },
+        { childTable: 'training_summary', parentIdColumn: 'training_id', localItems: summary ? [summary] : [], prefetchedServerRows: pf(existingSummary), expectedNonEmpty: trainingIdbReadFlags.summary },
+      ];
     }
 
     if (delivery_approaches.length > 0) {
@@ -1961,22 +1925,22 @@ export async function syncTrainingAtomic(trainingId: string, preValidatedUser?: 
     const result = await executeTransaction(steps, { signal });
     
     if (!result.success) {
-      // C4: restore reconciled deletions when the upsert tx fails (rollback can't undo them).
-      if (trainingReconciledDeletes.length > 0) {
-        try {
-          const r = await restoreReconciledDeletions(trainingReconciledDeletes, trainingId);
-          if (r.failed > 0) {
-            console.error('[C4] Training sync: some reconciled rows could not be auto-restored', {
-              trainingId: trainingId.substring(0, 8),
-              restored: r.restored,
-              failed: r.failed,
-            });
-          }
-        } catch (restoreErr) {
-          console.error('[C4] Training sync: restoreReconciledDeletions threw', restoreErr);
-        }
-      }
+      // H3: nothing to compensate — reconcile is now deferred until AFTER the
+      // transaction commits, so a failed upsert leaves the server untouched.
       throw new Error(`Transaction failed after ${result.completedSteps}/${result.totalSteps} steps. Rollback: ${result.rollbackSuccess ? 'successful' : 'failed'}`);
+    }
+
+    // H3: parent + children are committed; run deferred reconcile now.
+    let trainingReconcileBlocked = false;
+    if (trainingReconcileSpec) {
+      const { runDeferredReconcile } = await import('./deferred-reconcile');
+      const outcome = await runDeferredReconcile(
+        trainingReconcileSpec,
+        trainingId,
+        'training',
+        user.id,
+      );
+      trainingReconcileBlocked = outcome.result?.blocked === true || !outcome.ran;
     }
     
     // S4: Skip post-transaction verify SELECT — `executeTransaction` row-count guard +
@@ -2087,7 +2051,10 @@ export async function syncTrainingAtomic(trainingId: string, preValidatedUser?: 
       console.warn('[Atomic Sync] Non-blocking: failed to clean training_operations queue:', cleanupErr);
     }
     
-    return { success: true };
+    // H3: parent + children committed. Surface deferred-reconcile status.
+    return trainingReconcileBlocked
+      ? { success: true, partial: true, reason: 'reconcile_pending', message: 'Some local deletions could not be confirmed; will retry on next sync.' }
+      : { success: true };
     
   } catch (error: any) {
     console.error('[Atomic Sync] Failed to sync training:', trainingId, error);
@@ -2679,38 +2646,19 @@ export async function syncDailyAssessmentAtomic(assessmentId: string, preValidat
       }
     }
 
-    // Step 2: RECONCILE then UPSERT child data
-    // Delete server rows that were removed locally, then upsert current local data
-    let assessmentReconciledDeletes: ReconciledTableDelete[] = [];
+    // Step 2: UPSERT child data first; reconcile (DELETE) is DEFERRED until
+    // after the transaction commits (H3).
+    let assessmentReconcileSpec: import('./deferred-reconcile').DeferredReconcileSpec[] | null = null;
     if (recordStatus?.record_exists && !recordStatus?.is_deleted) {
       const pf = (arr: any[]) => (serverUnchangedSinceBaseline ? undefined : arr);
-      const reconcileResult = await reconcileAllChildTables(
-        [
-          { childTable: 'daily_assessment_beginning_of_day', parentIdColumn: 'assessment_id', localItems: beginning_of_day, prefetchedServerRows: pf(existingBeginning), expectedNonEmpty: assessmentIdbReadFlags.beginning_of_day },
-          { childTable: 'daily_assessment_end_of_day', parentIdColumn: 'assessment_id', localItems: end_of_day, prefetchedServerRows: pf(existingEnd), expectedNonEmpty: assessmentIdbReadFlags.end_of_day },
-          { childTable: 'daily_assessment_operating_systems', parentIdColumn: 'assessment_id', localItems: operating_systems, prefetchedServerRows: pf(existingSystems), expectedNonEmpty: assessmentIdbReadFlags.operating_systems },
-          { childTable: 'daily_assessment_equipment_checks', parentIdColumn: 'assessment_id', localItems: equipment_checks, prefetchedServerRows: pf(existingEquipment), expectedNonEmpty: assessmentIdbReadFlags.equipment_checks },
-          { childTable: 'daily_assessment_structure_checks', parentIdColumn: 'assessment_id', localItems: structure_checks, prefetchedServerRows: pf(existingStructure), expectedNonEmpty: assessmentIdbReadFlags.structure_checks },
-          { childTable: 'daily_assessment_environment_checks', parentIdColumn: 'assessment_id', localItems: environment_checks, prefetchedServerRows: pf(existingEnvironment), expectedNonEmpty: assessmentIdbReadFlags.environment_checks },
-        ],
-        assessmentId,
-        'daily_assessment',
-        user.id,
-      );
-      // C4: capture per-table pre-images for restore-on-failure.
-      assessmentReconciledDeletes = reconcileResult.deletedByTable;
-      if (reconcileResult.blocked) {
-        console.warn('[Atomic Sync] Daily assessment reconcile blocked — marking sync as failed so user can retry', {
-          assessmentId: assessmentId.substring(0, 8),
-          blockedTables: reconcileResult.blockedTables,
-        });
-        return {
-          success: false,
-          skipped: true,
-          reason: 'reconcile_blocked',
-          message: 'Some local deletions could not be confirmed against the server. Will retry on next sync.',
-        };
-      }
+      assessmentReconcileSpec = [
+        { childTable: 'daily_assessment_beginning_of_day', parentIdColumn: 'assessment_id', localItems: beginning_of_day, prefetchedServerRows: pf(existingBeginning), expectedNonEmpty: assessmentIdbReadFlags.beginning_of_day },
+        { childTable: 'daily_assessment_end_of_day', parentIdColumn: 'assessment_id', localItems: end_of_day, prefetchedServerRows: pf(existingEnd), expectedNonEmpty: assessmentIdbReadFlags.end_of_day },
+        { childTable: 'daily_assessment_operating_systems', parentIdColumn: 'assessment_id', localItems: operating_systems, prefetchedServerRows: pf(existingSystems), expectedNonEmpty: assessmentIdbReadFlags.operating_systems },
+        { childTable: 'daily_assessment_equipment_checks', parentIdColumn: 'assessment_id', localItems: equipment_checks, prefetchedServerRows: pf(existingEquipment), expectedNonEmpty: assessmentIdbReadFlags.equipment_checks },
+        { childTable: 'daily_assessment_structure_checks', parentIdColumn: 'assessment_id', localItems: structure_checks, prefetchedServerRows: pf(existingStructure), expectedNonEmpty: assessmentIdbReadFlags.structure_checks },
+        { childTable: 'daily_assessment_environment_checks', parentIdColumn: 'assessment_id', localItems: environment_checks, prefetchedServerRows: pf(existingEnvironment), expectedNonEmpty: assessmentIdbReadFlags.environment_checks },
+      ];
     }
 
     if (beginning_of_day.length > 0) {
@@ -2782,22 +2730,22 @@ export async function syncDailyAssessmentAtomic(assessmentId: string, preValidat
     const result = await executeTransaction(steps, { signal });
     
     if (!result.success) {
-      // C4: restore reconciled deletions when the upsert tx fails (rollback can't undo them).
-      if (assessmentReconciledDeletes.length > 0) {
-        try {
-          const r = await restoreReconciledDeletions(assessmentReconciledDeletes, assessmentId);
-          if (r.failed > 0) {
-            console.error('[C4] Daily assessment sync: some reconciled rows could not be auto-restored', {
-              assessmentId: assessmentId.substring(0, 8),
-              restored: r.restored,
-              failed: r.failed,
-            });
-          }
-        } catch (restoreErr) {
-          console.error('[C4] Daily assessment sync: restoreReconciledDeletions threw', restoreErr);
-        }
-      }
+      // H3: nothing to compensate — reconcile is now deferred until AFTER the
+      // transaction commits, so a failed upsert leaves the server untouched.
       throw new Error(`Transaction failed after ${result.completedSteps}/${result.totalSteps} steps. Rollback: ${result.rollbackSuccess ? 'successful' : 'failed'}`);
+    }
+
+    // H3: parent + children are committed; run deferred reconcile now.
+    let assessmentReconcileBlocked = false;
+    if (assessmentReconcileSpec) {
+      const { runDeferredReconcile } = await import('./deferred-reconcile');
+      const outcome = await runDeferredReconcile(
+        assessmentReconcileSpec,
+        assessmentId,
+        'daily_assessment',
+        user.id,
+      );
+      assessmentReconcileBlocked = outcome.result?.blocked === true || !outcome.ran;
     }
     
     // S4: Skip post-transaction verify SELECT — `executeTransaction` row-count guard +
@@ -2907,7 +2855,10 @@ export async function syncDailyAssessmentAtomic(assessmentId: string, preValidat
       });
     }
     
-    return { success: true };
+    // H3: parent + children committed. Surface deferred-reconcile status.
+    return assessmentReconcileBlocked
+      ? { success: true, partial: true, reason: 'reconcile_pending', message: 'Some local deletions could not be confirmed; will retry on next sync.' }
+      : { success: true };
     
   } catch (error: any) {
     console.error('[Atomic Sync] Failed to sync daily assessment:', assessmentId, error);
