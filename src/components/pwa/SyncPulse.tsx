@@ -210,6 +210,39 @@ export const SyncPulse = ({ className }: { className?: string }) => {
               </div>
             )}
 
+            {/* S41 (Fix E + option i): session-quarantined records the sync gave up on this session */}
+            {quarantinedCount > 0 && (
+              <div className="space-y-1.5 border-t border-green-900/40 pt-2">
+                <div className="flex items-center justify-between">
+                  <span className="text-amber-400 text-[10px] uppercase tracking-wider">
+                    ▸ Quarantined ({quarantinedCount})
+                  </span>
+                  <button
+                    type="button"
+                    disabled={retrying}
+                    onClick={async () => {
+                      try {
+                        setRetrying(true);
+                        clearAllQuarantines();
+                        setQuarantinedCount(0);
+                        await forceSync();
+                      } catch (e) {
+                        console.warn('[SyncPulse] Quarantine retry failed:', e);
+                      } finally {
+                        setRetrying(false);
+                      }
+                    }}
+                    className="text-[10px] uppercase tracking-wider px-2 py-0.5 rounded border border-amber-700/60 text-amber-300 hover:bg-amber-900/30 disabled:opacity-50"
+                  >
+                    {retrying ? 'RETRYING…' : 'RETRY NOW'}
+                  </button>
+                </div>
+                <p className="text-green-700 text-[10px] italic">
+                  Sync paused after repeated failures. Auto-retries tomorrow, or tap Retry Now.
+                </p>
+              </div>
+            )}
+
             {/* Failed (dead-letter) photos — retry-exhausted or orphaned */}
             {deadLetterCount > 0 && (
               <div className="space-y-1.5 border-t border-green-900/40 pt-2">
