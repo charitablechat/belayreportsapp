@@ -1118,8 +1118,12 @@ export async function syncInspectionAtomic(inspectionId: string, preValidatedUse
     if (import.meta.env.DEV) {
       syncLog.log('[Atomic Sync] Successfully synced inspection:', inspectionId);
     }
-    
-    return { success: true };
+
+    // H3: parent + children committed. If deferred reconcile was blocked or
+    // failed, surface as partial-success so caller knows to retry next cycle.
+    return inspectionReconcileBlocked
+      ? { success: true, partial: true, reason: 'reconcile_pending', message: 'Some local deletions could not be confirmed; will retry on next sync.' }
+      : { success: true };
     
   } catch (error: any) {
     console.error('[Atomic Sync] Failed to sync inspection:', inspectionId, error);
