@@ -1,30 +1,82 @@
-## Plan — Option B: track inspection_date + 1 year, respect manual override
+## Cleanup pass: 168 pre-existing TypeScript errors
 
-### Behavior
-1. **Default tracking:** Whenever `inspection.inspection_date` changes (including on report-upload backfill), recompute `summary.next_inspection_date = inspection_date + 1 year`.
-2. **Manual override wins:** If the user picks a date in the Summary "Next inspection date" picker, set a session ref `userTouchedNextDateRef = true`. From that point on, inspection_date changes no longer overwrite the next-date.
-3. **Reset on clear:** If the user clears the next-date field, drop the flag so auto-tracking resumes.
-4. **Reload safety:** On initial load, if the saved `next_inspection_date` doesn't match `inspection_date + 1y`, treat it as a prior manual override and pin the flag — so we don't clobber it.
+### Scope
 
-### Files
+`tsc -p tsconfig.app.json --noEmit` currently reports **168 errors across 13 files**. None block dev-mode preview (Vite uses esbuild and ignores types), but they break the production typecheck and pollute IDE feedback. All errors trace back to **two root-cause type tweaks** made earlier in the codebase that were never propagated to the call sites.
 
-**`src/pages/InspectionForm.tsx`** (replace lines 206-222)
-- Add `userTouchedNextDateRef` and `initialNextDateCheckedRef` (session-only useRefs, not persisted).
-- Add `computeNextInspectionDate(dateStr)` helper using the existing timezone-agnostic YYYY-MM-DD pattern.
-- First effect: on first mount with a loaded summary, if existing `next_inspection_date` differs from computed +1y, pin `userTouchedNextDateRef = true`.
-- Second effect: when `inspection.inspection_date` changes and the ref is `false`, write `next_inspection_date = inspection_date + 1y`.
-- Add `handleNextDateUserEdit(cleared: boolean)` callback → sets ref to `!cleared`.
-- Pass `onNextDateUserEdit={handleNextDateUserEdit}` into `<SummarySection>` at line 3261.
+### Root causes
 
-**`src/components/inspection/SummarySection.tsx`**
-- Add optional prop `onNextDateUserEdit?: (cleared: boolean) => void`.
-- In the Calendar's `onSelect`, call `onNextDateUserEdit?.(date == null)` alongside the existing `updateField("next_inspection_date", ...)`.
+**Cause A — overly strict signatures on `offline-storage.ts` writers**
+Four functions require an exact-shape parent argument:
 
-### Persistence note
-The `userTouchedNextDate` flag is session-only — no schema changes. The reload-safety effect handles the "user reloads after manual edit" case by inferring intent from the stored value vs. the computed +1y.
+```ts
+inspection: Record<string, unknown> & { id: string; child_count_hint?: number; dirty?: boolean }
+training:   Record<string, unknown> & { id: string; … }
+assessment: Record<string, unknown> & { id: string; … }
+photo:      Record<string, unknown> & { id: string; inspectionId: string; uploaded?: unknown }
+```
+Plus child writers want `Record<string, unknown>[]` arrays, but every caller has either `DbRow` (where `id` is optional) or `unknown[]`. This produces ~120 of the 168 errors.
+
+**Cause B — `DbRow` has `id?: string` (optional)**
+Defined in `offline-storage.ts` as `Record<string, unknown> & { id?: string }`. Loops in `atomic-sync-manager.ts`, `Dashboard.tsx`, etc. read `row.id`, `row.synced_at`, `row.organization_id` — every property is `unknown`, breaking dozens of `string` parameters and date constructors.
+
+### Fix strategy (two surgical edits, no behavior change)
+
+**Edit 1 — relax the four writer signatures in `src/lib/offline-storage.ts`:**
+
+```ts
+// before:  Record<string, unknown> & { id: string; child_count_hint?: number; dirty?: boolean }
+// after:   Record<string, unknown> & { id?: string; child_count_hint?: number; dirty?: boolean }
+
+// child writers: Record<string, unknown>[]  →  Array<Record<string, unknown>>
+// (drop the index-signature requirement that rejects `unknown[]`)
+```
+Runtime is unchanged — these functions already validate `id` internally. Only the type contract loosens to match what callers actually have. This dissolves ~120 errors.
+
+**Edit 2 — narrow `DbRow` for known string fields in `src/lib/offline-storage.ts`:**
+
+```ts
+// before: export type DbRow = Record<string, unknown> & { id?: string };
+// after:  export type DbRow = Record<string, unknown> & {
+//           id?: string;
+//           updated_at?: string;
+//           synced_at?: string;
+//           organization?: string;
+//           organization_id?: string;
+//           inspection_id?: string;
+//         };
+```
+These six fields are read as strings throughout the sync pipeline. Adding them to the type matches reality (the IDB rows do hold strings) and dissolves the remaining `TS2769`/`TS2339`/`TS2559`/`TS2322` errors in `atomic-sync-manager.ts`, `Dashboard.tsx`, `local-backup-ledger.ts`, `queued-soft-delete-processor.ts`, etc.
+
+**Residual cast cleanup (≤8 sites)** in `InspectionForm.tsx`, `DailyAssessmentForm.tsx`, `TrainingForm.tsx`: a few `setSummary(parsedRow)` calls expect a fully-typed summary object but get a raw `DbRow`. Add a single `as` cast at each call site (consistent with existing patterns in those files).
+
+**Plus 7 errors in `cached-auth.ts`**: `User` from supabase-js lacks the index signature `CachedUser` requires. Fix by changing one type assertion at the bridge function (already a known glue point — ~3-line edit).
+
+### Files touched
+
+| File | Change |
+|---|---|
+| `src/lib/offline-storage.ts` | Relax 4 writer signatures + extend `DbRow` |
+| `src/lib/cached-auth.ts` | One cast at User→CachedUser bridge |
+| `src/pages/InspectionForm.tsx` | ~4 narrow casts on summary row reads |
+| `src/pages/TrainingForm.tsx` | ~2 narrow casts |
+| `src/pages/DailyAssessmentForm.tsx` | ~2 narrow casts |
+
+No changes to `atomic-sync-manager.ts`, `local-backup-ledger.ts`, `Dashboard.tsx`, `queued-soft-delete-processor.ts`, `transaction-manager.ts`, or other libs — they get fixed transitively by the type-definition edits.
+
+### Verification
+
+After edits, run `npx tsc -p tsconfig.app.json --noEmit` and confirm zero errors. No test changes — these are pure type adjustments, runtime untouched.
+
+### Risk
+
+Low. Loosening `id: string` to `id?: string` in writer signatures is a strict superset (more inputs accepted, same runtime). Adding optional string fields to `DbRow` only narrows downstream `unknown` to `string | undefined` — any code that relied on `unknown` still compiles. No public API or schema change.
 
 ### Out of scope
-- The pre-existing build errors (cached-auth, atomic-sync-manager, local-backup-ledger, DataRecoveryTool, etc.) — unrelated to this task. Worth a separate sweep.
+
+- Edge-function build errors (`generate-inspection-html`, `web-push@3.6.6`, `pdf-parse@1.1.1`) — separate Deno runtime, not part of this typecheck pass.
+- The tightened any-budget lint rule.
 
 ### Verdict
-Approve and I'll switch to default mode and ship the two-file change.
+
+Approve and I'll switch to default mode and ship the type-definition edits + ~10 call-site casts in one round.
