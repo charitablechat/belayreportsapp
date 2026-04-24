@@ -2190,7 +2190,8 @@ export async function getUnuploadedPhotos(userId?: string) {
       }
       return eligible.filter(p => !orphanIds.has(p.id));
     },
-    'getUnuploadedPhotos'
+    'getUnuploadedPhotos',
+    { tier: 'photo' }
   );
 }
 
