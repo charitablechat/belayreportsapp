@@ -4,7 +4,7 @@ import { syncAllInspectionsAtomic, syncAllTrainingsAtomic, syncAllDailyAssessmen
 import { syncPhotos } from '@/lib/sync-manager';
 import { saveInspectionOffline, saveTrainingOffline, saveDailyAssessmentOffline } from '@/lib/offline-storage';
 import { shouldPreserveLocalRecord } from '@/lib/local-data-guards';
-import { getUnsyncedInspections, getUnsyncedTrainings, getUnsyncedDailyAssessments, getUnsyncedCounts, getCircuitBreakerStatus, resetCircuitBreaker, pruneOldSyncedPhotoBlobs, getQueuedOperations, removeQueuedOperation, getQueuedTrainingOperations, removeQueuedTrainingOperation, getQueuedAssessmentOperations, removeQueuedAssessmentOperation, withIDBTimeout } from '@/lib/offline-storage';
+import { getUnsyncedInspections, getUnsyncedTrainings, getUnsyncedDailyAssessments, isIdbReadFailure, getCircuitBreakerStatus, resetCircuitBreaker, pruneOldSyncedPhotoBlobs, getQueuedOperations, removeQueuedOperation, getQueuedTrainingOperations, removeQueuedTrainingOperation, getQueuedAssessmentOperations, removeQueuedAssessmentOperation, withIDBTimeout } from '@/lib/offline-storage';
 import { getUserWithCache, getCachedUserFromStorage, ensureValidSession, type CachedUser } from '@/lib/cached-auth';
 import { hasPendingOfflineAuth, verifyAndReconcileOfflineAuth } from '@/lib/offline-auth';
 import { useQueryClient } from '@tanstack/react-query';
@@ -270,14 +270,43 @@ export const useAutoSync = () => {
       try {
         const freshUser = await getUserWithCache();
         if (freshUser) {
-          const { data: freshCounts, timedOut } = await withIDBTimeout(
-            'refreshUnsyncedCounts',
-            'heavy',
-            () => getUnsyncedCounts(freshUser.id),
-            { inspections: [], trainings: [], assessments: [] }
-          );
-          if (timedOut) {
-            console.warn('[AutoSync] Could not get reliable unsynced counts — retrying next cycle');
+          // C2: Three parallel status-aware reads instead of the deleted
+          // batched `getUnsyncedCounts`. Each read is wrapped in its own
+          // timeout boundary AND returns `IdbReadFailure` on circuit-breaker
+          // open / IDB error — so a failed read can never look like an
+          // empty queue and zero the badge.
+          const [inspRes, trainRes, assessRes] = await Promise.all([
+            withIDBTimeout(
+              'refreshUnsyncedInspections',
+              'heavy',
+              () => getUnsyncedInspections(freshUser.id),
+              [] as any[]
+            ),
+            withIDBTimeout(
+              'refreshUnsyncedTrainings',
+              'heavy',
+              () => getUnsyncedTrainings(freshUser.id),
+              [] as any[]
+            ),
+            withIDBTimeout(
+              'refreshUnsyncedDailyAssessments',
+              'heavy',
+              () => getUnsyncedDailyAssessments(freshUser.id),
+              [] as any[]
+            ),
+          ]);
+
+          const anyTimedOut = inspRes.timedOut || trainRes.timedOut || assessRes.timedOut;
+          const anyFailed =
+            isIdbReadFailure(inspRes.data) ||
+            isIdbReadFailure(trainRes.data) ||
+            isIdbReadFailure(assessRes.data);
+
+          if (anyTimedOut || anyFailed) {
+            console.warn(
+              '[AutoSync] Unsynced count read failed/timed out — preserving last-known counts, skipping this sync cycle',
+              { anyTimedOut, anyFailed }
+            );
             clearTimeout(safetyTimeoutHandle);
             syncInProgressRef.current = false;
             setSyncInProgress(false);
@@ -287,6 +316,12 @@ export const useAutoSync = () => {
             resolveInFlight();
             return;
           }
+
+          const freshCounts = {
+            inspections: inspRes.data as any[],
+            trainings: trainRes.data as any[],
+            assessments: assessRes.data as any[],
+          };
           liveUnsyncedCount =
             freshCounts.inspections.length +
             freshCounts.trainings.length +
