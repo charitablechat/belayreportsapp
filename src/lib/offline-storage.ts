@@ -247,21 +247,54 @@ let healthCheckCache: { isHealthy: boolean; timestamp: number } | null = null;
 const HEALTH_CHECK_TTL = 30000; // 30 seconds
 
 // ============= CIRCUIT BREAKER PATTERN =============
-// Prevents repeated IndexedDB failures from blocking the app
-let indexedDBFailureCount = 0;
+// M5: Breaker state is now PER-STORE instead of one global counter. Previously
+// a single timeout in `getAllPhotos` would trip the global breaker and block
+// all subsequent `getOfflineInspection` calls for the cooldown window — even
+// though the inspections store may have been perfectly healthy. Each logical
+// store (`inspections`, `trainings`, `daily_assessments`, `photos`, plus a
+// `'global'` bucket for legacy untagged callers) now owns its own failure
+// counter and trip timestamp. The async probe and the public status helpers
+// still aggregate across all stores so the existing UI keeps working.
 const CIRCUIT_BREAKER_THRESHOLD = 3;
 const BASE_CIRCUIT_BREAKER_RESET_TIME = 60000; // 1 minute base cooldown
 const MAX_CIRCUIT_BREAKER_RESET_TIME = 300000; // 5 minute max cooldown
-let circuitBreakerTrippedAt: number | null = null;
-let circuitBreakerResetCount = 0; // Tracks consecutive trips for exponential backoff
-let circuitBreakerProbing = false; // Prevents concurrent probe attempts
+
+export type BreakerStoreKey =
+  | 'inspections'
+  | 'trainings'
+  | 'daily_assessments'
+  | 'photos'
+  | 'global';
+
+interface BreakerState {
+  failureCount: number;
+  trippedAt: number | null;
+  resetCount: number; // Tracks consecutive trips for exponential backoff
+}
+
+function newBreakerState(): BreakerState {
+  return { failureCount: 0, trippedAt: null, resetCount: 0 };
+}
+
+const breakerStates = new Map<BreakerStoreKey, BreakerState>();
+let circuitBreakerProbing = false; // Prevents concurrent probe attempts (global)
+
+function getBreakerState(store: BreakerStoreKey): BreakerState {
+  let s = breakerStates.get(store);
+  if (!s) {
+    s = newBreakerState();
+    breakerStates.set(store, s);
+  }
+  return s;
+}
 
 /**
  * Calculate current circuit breaker reset time with exponential backoff
  */
-function getCircuitBreakerResetTime(): number {
+function getCircuitBreakerResetTime(store: BreakerStoreKey = 'global'): number {
+  const s = getBreakerState(store);
   return Math.min(
-    BASE_CIRCUIT_BREAKER_RESET_TIME * Math.pow(2, circuitBreakerResetCount),
+    BASE_CIRCUIT_BREAKER_RESET_TIME * Math.pow(2, s.resetCount),
     MAX_CIRCUIT_BREAKER_RESET_TIME
   );
 }
@@ -298,22 +331,23 @@ async function probeIndexedDB(): Promise<boolean> {
 }
 
 /**
- * Check if circuit breaker is open (IndexedDB disabled temporarily)
+ * Check if circuit breaker is open for a given store (defaults to 'global').
  */
-function isCircuitBreakerOpen(): boolean {
-  if (circuitBreakerTrippedAt) {
-    const resetTime = getCircuitBreakerResetTime();
-    if (Date.now() - circuitBreakerTrippedAt > resetTime) {
+function isCircuitBreakerOpen(store: BreakerStoreKey = 'global'): boolean {
+  const s = getBreakerState(store);
+  if (s.trippedAt) {
+    const resetTime = getCircuitBreakerResetTime(store);
+    if (Date.now() - s.trippedAt > resetTime) {
       // Cooldown expired — but don't reset yet. The probe will confirm health.
       // For synchronous callers, return false to allow a single operation attempt.
       // The probe runs asynchronously via scheduleCircuitBreakerProbe.
-      circuitBreakerTrippedAt = null;
-      indexedDBFailureCount = 0;
+      s.trippedAt = null;
+      s.failureCount = 0;
       if (import.meta.env.DEV) {
-        console.log(`[Offline Storage] Circuit breaker cooldown expired (${resetTime / 1000}s, attempt #${circuitBreakerResetCount + 1}) - probing...`);
+        console.log(`[Offline Storage] Circuit breaker (${store}) cooldown expired (${resetTime / 1000}s, attempt #${s.resetCount + 1}) - probing...`);
       }
       // Schedule async probe — if it fails, the next operation timeout will re-trip
-      scheduleCircuitBreakerProbe();
+      scheduleCircuitBreakerProbe(store);
       return false;
     }
     return true; // Circuit is still open
@@ -323,81 +357,106 @@ function isCircuitBreakerOpen(): boolean {
 
 /**
  * Schedule an async probe after circuit breaker cooldown expires.
- * If probe fails, re-trip with incremented backoff.
+ * If probe fails, re-trip with incremented backoff for the same store.
  */
-function scheduleCircuitBreakerProbe(): void {
+function scheduleCircuitBreakerProbe(store: BreakerStoreKey): void {
   probeIndexedDB().then((healthy) => {
+    const s = getBreakerState(store);
     if (healthy) {
-      // Connection recovered — reset backoff counter
-      circuitBreakerResetCount = 0;
+      // Connection recovered — reset backoff counter for this store
+      s.resetCount = 0;
       dbPromise = null; // Force fresh connection for real operations
       dbConnectionVerified = false;
       if (import.meta.env.DEV) {
-        console.log('[Offline Storage] Circuit breaker probe succeeded - fully re-enabled');
+        console.log(`[Offline Storage] Circuit breaker probe succeeded (${store}) - fully re-enabled`);
       }
     } else {
-      // Still broken — re-trip with higher backoff
-      circuitBreakerResetCount++;
-      recordIndexedDBFailure();
-      recordIndexedDBFailure();
-      recordIndexedDBFailure(); // Trip immediately
-      const nextResetTime = getCircuitBreakerResetTime();
-      console.warn(`[Offline Storage] Circuit breaker probe failed - re-tripping with ${nextResetTime / 1000}s backoff`);
+      // Still broken — re-trip with higher backoff for this store
+      s.resetCount++;
+      recordIndexedDBFailure(store);
+      recordIndexedDBFailure(store);
+      recordIndexedDBFailure(store); // Trip immediately
+      const nextResetTime = getCircuitBreakerResetTime(store);
+      console.warn(`[Offline Storage] Circuit breaker probe failed (${store}) - re-tripping with ${nextResetTime / 1000}s backoff`);
     }
   });
 }
 
 /**
- * Record an IndexedDB failure for circuit breaker
+ * Record an IndexedDB failure for the given store's circuit breaker.
  */
-function recordIndexedDBFailure(): void {
-  indexedDBFailureCount++;
-  if (indexedDBFailureCount >= CIRCUIT_BREAKER_THRESHOLD) {
-    circuitBreakerTrippedAt = Date.now();
-    const resetTime = getCircuitBreakerResetTime();
-    console.warn(`[Offline Storage] Circuit breaker tripped - IndexedDB disabled for ${resetTime / 1000}s after ${indexedDBFailureCount} failures (backoff #${circuitBreakerResetCount})`);
+function recordIndexedDBFailure(store: BreakerStoreKey = 'global'): void {
+  const s = getBreakerState(store);
+  s.failureCount++;
+  if (s.failureCount >= CIRCUIT_BREAKER_THRESHOLD) {
+    s.trippedAt = Date.now();
+    const resetTime = getCircuitBreakerResetTime(store);
+    console.warn(`[Offline Storage] Circuit breaker (${store}) tripped - disabled for ${resetTime / 1000}s after ${s.failureCount} failures (backoff #${s.resetCount})`);
   }
 }
 
 /**
- * Record an IndexedDB success - resets failure counter AND backoff
+ * Record an IndexedDB success - resets failure counter AND backoff for the store.
  */
-function recordIndexedDBSuccess(): void {
-  if (indexedDBFailureCount > 0) {
-    indexedDBFailureCount = 0;
-    circuitBreakerTrippedAt = null;
-    circuitBreakerResetCount = 0; // Full recovery — reset backoff
+function recordIndexedDBSuccess(store: BreakerStoreKey = 'global'): void {
+  const s = getBreakerState(store);
+  if (s.failureCount > 0) {
+    s.failureCount = 0;
+    s.trippedAt = null;
+    s.resetCount = 0; // Full recovery — reset backoff
   }
 }
 
 /**
- * Get circuit breaker status (for debugging/UI)
+ * Get circuit breaker status (for debugging/UI). Aggregates across all stores —
+ * `open` is true if ANY per-store breaker is currently open; `failureCount` is
+ * the maximum across stores; `resetIn` is the longest remaining cooldown.
+ * Per-store detail is exposed via the `byStore` map for diagnostics.
  */
-export function getCircuitBreakerStatus(): { open: boolean; failureCount: number; resetIn: number | null; backoffLevel: number; fallbackActive: boolean } {
-  const open = isCircuitBreakerOpen();
-  const resetTime = getCircuitBreakerResetTime();
+export function getCircuitBreakerStatus(): {
+  open: boolean;
+  failureCount: number;
+  resetIn: number | null;
+  backoffLevel: number;
+  fallbackActive: boolean;
+  byStore: Record<string, { open: boolean; failureCount: number; resetIn: number | null; backoffLevel: number }>;
+} {
+  const byStore: Record<string, { open: boolean; failureCount: number; resetIn: number | null; backoffLevel: number }> = {};
+  let anyOpen = false;
+  let maxFailures = 0;
+  let maxResetIn: number | null = null;
+  let maxBackoff = 0;
+
+  for (const [store, s] of breakerStates.entries()) {
+    const open = isCircuitBreakerOpen(store);
+    const resetTime = getCircuitBreakerResetTime(store);
+    const resetIn = s.trippedAt ? Math.max(0, resetTime - (Date.now() - s.trippedAt)) : null;
+    byStore[store] = { open, failureCount: s.failureCount, resetIn, backoffLevel: s.resetCount };
+    if (open) anyOpen = true;
+    if (s.failureCount > maxFailures) maxFailures = s.failureCount;
+    if (resetIn !== null && (maxResetIn === null || resetIn > maxResetIn)) maxResetIn = resetIn;
+    if (s.resetCount > maxBackoff) maxBackoff = s.resetCount;
+  }
+
   return {
-    open,
-    failureCount: indexedDBFailureCount,
-    resetIn: circuitBreakerTrippedAt 
-      ? Math.max(0, resetTime - (Date.now() - circuitBreakerTrippedAt))
-      : null,
-    backoffLevel: circuitBreakerResetCount,
-    fallbackActive: open && isLocalStorageAvailable(),
+    open: anyOpen,
+    failureCount: maxFailures,
+    resetIn: maxResetIn,
+    backoffLevel: maxBackoff,
+    fallbackActive: anyOpen && isLocalStorageAvailable(),
+    byStore,
   };
 }
 
 /**
  * Manually reset the circuit breaker so that user-initiated force sync
- * can proceed even after repeated failures.
+ * can proceed even after repeated failures. Resets ALL per-store breakers.
  */
 export function resetCircuitBreaker(): void {
-  indexedDBFailureCount = 0;
-  circuitBreakerTrippedAt = null;
-  circuitBreakerResetCount = 0;
+  breakerStates.clear();
   dbPromise = null; // Force fresh connection
   dbConnectionVerified = false;
-  console.log('[Offline Storage] Circuit breaker manually reset');
+  console.log('[Offline Storage] Circuit breaker manually reset (all stores)');
 }
 
 /**
