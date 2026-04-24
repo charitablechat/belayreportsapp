@@ -1315,13 +1315,17 @@ export default function Dashboard() {
         await deleteOfflineInspection(inspectionToDelete.id);
 
         if (navigator.onLine) {
-          // Soft delete from Supabase (UPDATE instead of DELETE)
-          const { error } = await supabase
-            .from("inspections")
-            .update(softDeleteData)
-            .eq("id", inspectionToDelete.id);
+          // Use SECURITY DEFINER RPC so soft-delete works for all owners
+          // regardless of post-update RLS visibility.
+          const { data, error } = await supabase.rpc('soft_delete_record', {
+            p_table_name: 'inspections',
+            p_record_id: inspectionToDelete.id,
+            p_deleted_by: userId,
+            p_retention_days: 60,
+          });
 
           if (error) throw error;
+          if (data === false) throw new Error('Inspection not found or already deleted.');
           
           triggerHaptic('success');
           toast.success("Inspection moved to trash. It will be permanently deleted in 60 days.");
@@ -1353,12 +1357,15 @@ export default function Dashboard() {
           await deleteOfflineDailyAssessment(reportToDelete.id);
 
           if (navigator.onLine) {
-            const { error } = await supabase
-              .from("daily_assessments")
-              .update(softDeleteData)
-              .eq("id", reportToDelete.id);
+            const { data, error } = await supabase.rpc('soft_delete_record', {
+              p_table_name: 'daily_assessments',
+              p_record_id: reportToDelete.id,
+              p_deleted_by: userId,
+              p_retention_days: 60,
+            });
 
             if (error) throw error;
+            if (data === false) throw new Error('Daily assessment not found or already deleted.');
             
             triggerHaptic('success');
             toast.success("Daily assessment moved to trash. It will be permanently deleted in 60 days.");
@@ -1384,12 +1391,15 @@ export default function Dashboard() {
           await deleteOfflineTraining(reportToDelete.id);
           
           if (navigator.onLine) {
-            const { error } = await supabase
-              .from("trainings")
-              .update(softDeleteData)
-              .eq("id", reportToDelete.id);
+            const { data, error } = await supabase.rpc('soft_delete_record', {
+              p_table_name: 'trainings',
+              p_record_id: reportToDelete.id,
+              p_deleted_by: userId,
+              p_retention_days: 60,
+            });
 
             if (error) throw error;
+            if (data === false) throw new Error('Training not found or already deleted.');
             
             triggerHaptic('success');
             toast.success("Training moved to trash. It will be permanently deleted in 60 days.");
