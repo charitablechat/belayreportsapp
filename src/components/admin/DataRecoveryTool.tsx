@@ -627,19 +627,19 @@ export function CloudSnapshotsPanel({ allowDelete = true }: CloudSnapshotsPanelP
         const reportId = full.report_id;
 
         if (reportType === 'inspection') {
-          await saveInspectionOffline(parent);
+          await saveInspectionOffline(parentArg);
           for (const [key, data] of Object.entries(children)) {
-            if (Array.isArray(data) && data.length > 0) await saveRelatedDataOffline(key as any, reportId, data);
+            if (Array.isArray(data) && data.length > 0) await saveRelatedDataOffline(key as any, reportId, data as Record<string, unknown>[]);
           }
         } else if (reportType === 'training') {
-          await saveTrainingOffline(parent);
+          await saveTrainingOffline(parentArg);
           for (const [key, data] of Object.entries(children)) {
-            if (Array.isArray(data) && data.length > 0) await saveTrainingDataOffline(key as any, reportId, data);
+            if (Array.isArray(data) && data.length > 0) await saveTrainingDataOffline(key as any, reportId, data as Record<string, unknown>[]);
           }
         } else if (reportType === 'daily_assessment') {
-          await saveDailyAssessmentOffline(parent);
+          await saveDailyAssessmentOffline(parentArg);
           for (const [key, data] of Object.entries(children)) {
-            if (Array.isArray(data) && data.length > 0) await saveAssessmentDataOffline(key as any, reportId, data);
+            if (Array.isArray(data) && data.length > 0) await saveAssessmentDataOffline(key as any, reportId, data as Record<string, unknown>[]);
           }
         }
 
@@ -648,22 +648,22 @@ export function CloudSnapshotsPanel({ allowDelete = true }: CloudSnapshotsPanelP
           await verifyRestoreIntegrity(
             reportType,
             reportId,
-            parent,
+            parentArg,
             async () => {
               if (reportType === 'inspection') {
-                await saveInspectionOffline(parent);
+                await saveInspectionOffline(parentArg);
                 for (const [key, data] of Object.entries(children)) {
-                  if (Array.isArray(data) && data.length > 0) await saveRelatedDataOffline(key as any, reportId, data);
+                  if (Array.isArray(data) && data.length > 0) await saveRelatedDataOffline(key as any, reportId, data as Record<string, unknown>[]);
                 }
               } else if (reportType === 'training') {
-                await saveTrainingOffline(parent);
+                await saveTrainingOffline(parentArg);
                 for (const [key, data] of Object.entries(children)) {
-                  if (Array.isArray(data) && data.length > 0) await saveTrainingDataOffline(key as any, reportId, data);
+                  if (Array.isArray(data) && data.length > 0) await saveTrainingDataOffline(key as any, reportId, data as Record<string, unknown>[]);
                 }
               } else if (reportType === 'daily_assessment') {
-                await saveDailyAssessmentOffline(parent);
+                await saveDailyAssessmentOffline(parentArg);
                 for (const [key, data] of Object.entries(children)) {
-                  if (Array.isArray(data) && data.length > 0) await saveAssessmentDataOffline(key as any, reportId, data);
+                  if (Array.isArray(data) && data.length > 0) await saveAssessmentDataOffline(key as any, reportId, data as Record<string, unknown>[]);
                 }
               }
             },
