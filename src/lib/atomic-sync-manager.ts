@@ -190,13 +190,11 @@ async function safePostSyncSave<T extends { id: string; updated_at?: string | nu
     // stamped dirty=true; we MUST NOT clear it or the next-cycle unsynced
     // filter will skip the new edit. Spread `live` last so its dirty flag wins.
     await save({ ...live, synced_at: serverTimestamp } as T);
-    if (import.meta.env.DEV) {
-      syncLog.log('[C1] Concurrent edit detected — preserved live record, stamped synced_at only', {
-        id: recordId.substring(0, 8),
-        t0: new Date(t0UpdatedAtMs).toISOString(),
-        live: live.updated_at,
-      });
-    }
+    syncLog.log('[C1] Concurrent edit detected — preserved live record, stamped synced_at only', {
+      id: recordId.substring(0, 8),
+      t0: new Date(t0UpdatedAtMs).toISOString(),
+      live: live.updated_at,
+    });
     return;
   }
 
@@ -224,7 +222,7 @@ async function safePostSyncSave<T extends { id: string; updated_at?: string | nu
     dirty: false,
   } as T);
 
-  if (import.meta.env.DEV && mergedUpdatedAt !== serverTimestamp) {
+  if (mergedUpdatedAt !== serverTimestamp) {
     syncLog.log('[C3] T0.updated_at > serverTimestamp — preserved local timestamp', {
       id: recordId.substring(0, 8),
       t0: t0UpdatedIso,
@@ -1122,7 +1120,7 @@ export async function syncInspectionAtomic(inspectionId: string, preValidatedUse
       for (const op of matchingOps) {
         await removeQueuedOperation(op.id!);
       }
-      if (matchingOps.length > 0 && import.meta.env.DEV) {
+      if (matchingOps.length > 0) {
         syncLog.log(`[Atomic Sync] Cleaned up ${matchingOps.length} orphaned operations entries for ${inspectionId}`);
       }
     } catch (cleanupErr) {
@@ -1254,16 +1252,14 @@ export async function syncAllInspectionsAtomic(preValidatedUser?: CachedUser, si
     );
   }
   
-  if (import.meta.env.DEV) {
-    syncLog.log('[Atomic Sync] Starting sync for unsynced inspections', {
-      total: totalUnsynced,
-      batchSize: batch.length,
-      remaining,
-      platform: capabilities.isIOS ? 'iOS' : capabilities.isAndroid ? 'Android' : 'Desktop',
-      browser: capabilities.browser,
-      isPWA: capabilities.isPWA,
-    });
-  }
+  syncLog.log('[Atomic Sync] Starting sync for unsynced inspections', {
+    total: totalUnsynced,
+    batchSize: batch.length,
+    remaining,
+    platform: capabilities.isIOS ? 'iOS' : capabilities.isAndroid ? 'Android' : 'Desktop',
+    browser: capabilities.browser,
+    isPWA: capabilities.isPWA,
+  });
   
   // Emit initial progress
   syncProgressEmitter.emit({
@@ -1575,7 +1571,7 @@ export async function syncTrainingAtomic(trainingId: string, preValidatedUser?: 
 
     // C8: Invariant — by this point fetchId must equal the canonical trainingId.
     // If a future refactor reintroduces divergence, fail loudly in DEV.
-    if (import.meta.env.DEV && fetchId !== trainingId) {
+    if (fetchId !== trainingId) {
       console.error('[C8] fetchId/trainingId divergence detected', { fetchId, trainingId });
     }
     
@@ -1605,20 +1601,18 @@ export async function syncTrainingAtomic(trainingId: string, preValidatedUser?: 
       throw new Error(`Validation failed: ${JSON.stringify(validation.errors)}`);
     }
     
-    if (import.meta.env.DEV) {
-      syncLog.log('[Atomic Sync] Training data gathered:', {
-        trainingId,
-        organization: training.organization,
-        relatedData: {
-          delivery_approaches: delivery_approaches.length,
-          operating_systems: operating_systems.length,
-          immediate_attention: immediate_attention.length,
-          verifiable_items: verifiable_items.length,
-          systems_in_place: systems_in_place.length,
-          hasSummary: !!summary,
-        }
-      });
-    }
+    syncLog.log('[Atomic Sync] Training data gathered:', {
+      trainingId,
+      organization: training.organization,
+      relatedData: {
+        delivery_approaches: delivery_approaches.length,
+        operating_systems: operating_systems.length,
+        immediate_attention: immediate_attention.length,
+        verifiable_items: verifiable_items.length,
+        systems_in_place: systems_in_place.length,
+        hasSummary: !!summary,
+      }
+    });
     
     // RC-5: Skip remote status check for new records (never synced = never on server)
     const isNewTraining = !training.synced_at;
@@ -2044,13 +2038,11 @@ export async function syncTrainingAtomic(trainingId: string, preValidatedUser?: 
       await relinkPhotosToNewInspectionId(trainingIdMapping.oldId, trainingIdMapping.newId);
     }
     
-    if (import.meta.env.DEV) {
-      syncLog.log('[Atomic Sync] Successfully synced training with related data:', {
-        trainingId,
-        stepsCompleted: result.completedSteps,
-        totalSteps: result.totalSteps,
-      });
-    }
+    syncLog.log('[Atomic Sync] Successfully synced training with related data:', {
+      trainingId,
+      stepsCompleted: result.completedSteps,
+      totalSteps: result.totalSteps,
+    });
     
     // Clean up any queued training_operations entries for this training
     // These are redundant now that the atomic sync has handled the data
@@ -2063,7 +2055,7 @@ export async function syncTrainingAtomic(trainingId: string, preValidatedUser?: 
       for (const op of matchingOps) {
         await removeQueuedTrainingOperation(op.id!);
       }
-      if (matchingOps.length > 0 && import.meta.env.DEV) {
+      if (matchingOps.length > 0) {
         syncLog.log(`[Atomic Sync] Cleaned up ${matchingOps.length} orphaned training_operations entries for ${trainingId}`);
       }
     } catch (cleanupErr) {
@@ -2177,14 +2169,12 @@ export async function syncAllTrainingsAtomic(preValidatedUser?: CachedUser, sign
   const batch = unsynced.slice(0, adaptiveSize);
   const remaining = totalUnsynced - batch.length;
 
-  if (import.meta.env.DEV) {
-    syncLog.log('[Atomic Sync] Starting sync for unsynced trainings', {
-      total: totalUnsynced,
-      batchSize: batch.length,
-      remaining,
-      platform: capabilities.isIOS ? 'iOS' : capabilities.isAndroid ? 'Android' : 'Desktop',
-    });
-  }
+  syncLog.log('[Atomic Sync] Starting sync for unsynced trainings', {
+    total: totalUnsynced,
+    batchSize: batch.length,
+    remaining,
+    platform: capabilities.isIOS ? 'iOS' : capabilities.isAndroid ? 'Android' : 'Desktop',
+  });
   
   // Emit initial progress
   syncProgressEmitter.emit({
@@ -2389,7 +2379,7 @@ export async function syncDailyAssessmentAtomic(assessmentId: string, preValidat
     };
 
     // C8: Invariant — by this point fetchId must equal the canonical assessmentId.
-    if (import.meta.env.DEV && fetchId !== assessmentId) {
+    if (fetchId !== assessmentId) {
       console.error('[C8] fetchId/assessmentId divergence detected', { fetchId, assessmentId });
     }
     
@@ -2417,20 +2407,18 @@ export async function syncDailyAssessmentAtomic(assessmentId: string, preValidat
       throw new Error(`Validation failed: ${JSON.stringify(validation.errors)}`);
     }
     
-    if (import.meta.env.DEV) {
-      syncLog.log('[Atomic Sync] Daily assessment data gathered:', {
-        assessmentId,
-        organization: assessment.organization,
-        relatedData: {
-          beginning_of_day: beginning_of_day.length,
-          end_of_day: end_of_day.length,
-          operating_systems: operating_systems.length,
-          equipment_checks: equipment_checks.length,
-          structure_checks: structure_checks.length,
-          environment_checks: environment_checks.length,
-        }
-      });
-    }
+    syncLog.log('[Atomic Sync] Daily assessment data gathered:', {
+      assessmentId,
+      organization: assessment.organization,
+      relatedData: {
+        beginning_of_day: beginning_of_day.length,
+        end_of_day: end_of_day.length,
+        operating_systems: operating_systems.length,
+        equipment_checks: equipment_checks.length,
+        structure_checks: structure_checks.length,
+        environment_checks: environment_checks.length,
+      }
+    });
     
     // RC-5: Skip remote status check for new records (never synced = never on server)
     const isNewAssessment = !assessment.synced_at;
@@ -2863,20 +2851,18 @@ export async function syncDailyAssessmentAtomic(assessmentId: string, preValidat
       for (const op of matchingOps) {
         await removeQueuedAssessmentOperation(op.id!);
       }
-      if (matchingOps.length > 0 && import.meta.env.DEV) {
+      if (matchingOps.length > 0) {
         syncLog.log(`[Atomic Sync] Cleaned up ${matchingOps.length} orphaned assessment_operations entries for ${assessmentId}`);
       }
     } catch (cleanupErr) {
       console.warn('[Atomic Sync] Non-blocking: failed to clean assessment_operations queue:', cleanupErr);
     }
     
-    if (import.meta.env.DEV) {
-      syncLog.log('[Atomic Sync] Successfully synced daily assessment with related data:', {
-        assessmentId,
-        stepsCompleted: result.completedSteps,
-        totalSteps: result.totalSteps,
-      });
-    }
+    syncLog.log('[Atomic Sync] Successfully synced daily assessment with related data:', {
+      assessmentId,
+      stepsCompleted: result.completedSteps,
+      totalSteps: result.totalSteps,
+    });
     
     // H3: parent + children committed. Surface deferred-reconcile status.
     return assessmentReconcileBlocked
@@ -2984,14 +2970,12 @@ export async function syncAllDailyAssessmentsAtomic(preValidatedUser?: CachedUse
   const batch = unsynced.slice(0, adaptiveSize);
   const remaining = totalUnsynced - batch.length;
 
-  if (import.meta.env.DEV) {
-    syncLog.log('[Atomic Sync] Starting sync for unsynced daily assessments', {
-      total: totalUnsynced,
-      batchSize: batch.length,
-      remaining,
-      platform: capabilities.isIOS ? 'iOS' : capabilities.isAndroid ? 'Android' : 'Desktop',
-    });
-  }
+  syncLog.log('[Atomic Sync] Starting sync for unsynced daily assessments', {
+    total: totalUnsynced,
+    batchSize: batch.length,
+    remaining,
+    platform: capabilities.isIOS ? 'iOS' : capabilities.isAndroid ? 'Android' : 'Desktop',
+  });
   
   // Emit initial progress
   syncProgressEmitter.emit({

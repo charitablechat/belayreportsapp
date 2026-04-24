@@ -774,7 +774,7 @@ export const useAutoSync = () => {
         syncError: null,
       }));
 
-      if (import.meta.env.DEV && total > 0) {
+      if (total > 0) {
         console.log('[AutoSync] Unsynced count:', total);
       }
     } catch (error) {
