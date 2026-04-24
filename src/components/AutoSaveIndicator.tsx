@@ -29,11 +29,12 @@ export function AutoSaveIndicator({
   lastSaved,
   isSaving = false,
   hasUnsavedChanges = false,
-  error = null,
+  error: rawError = null,
   className,
   showRelativeTime = true,
   onRetry,
 }: AutoSaveIndicatorProps) {
+  const error = normalizeError(rawError);
   const formatTimeMobile = (date: Date) => format(date, "h:mm a");
   const formatTimeDesktop = (date: Date) => format(date, "h:mm:ss a");
 
