@@ -245,6 +245,30 @@ import { mergeRecordFields, TRACKED_FIELDS } from "./field-merge";
 import { SYNC_DRIFT_TOLERANCE_MS } from "./local-data-guards";
 
 /**
+ * Pure helper: rewrite a foreign-key column on every child row when its
+ * parent's temp-id is swapped for a real UUID. Mutates in place (matches the
+ * historical inline behaviour) and returns the same array for chaining/testing.
+ *
+ * No-op when `oldId === newId`. Rows whose FK doesn't currently match `oldId`
+ * are left untouched (defence against accidentally re-pointing unrelated rows).
+ */
+export function rewriteChildForeignKeys<T extends Record<string, any>>(
+  children: T[],
+  oldId: string,
+  newId: string,
+  fkColumn: string,
+): T[] {
+  if (!children || children.length === 0) return children;
+  if (oldId === newId) return children;
+  for (const child of children) {
+    if (child[fkColumn] === oldId) {
+      (child as any)[fkColumn] = newId;
+    }
+  }
+  return children;
+}
+
+/**
  * H4: Field-merge gate. We no longer use a `timeDiff > 30s` window — that
  * created a silent-overwrite blind spot where two devices editing within
  * ~30s of each other would skip the merge entirely and let the local upsert
