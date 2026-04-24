@@ -16,6 +16,7 @@ import { clearPendingSyncs } from '@/lib/background-sync';
 import { toast } from '@/components/ui/sonner';
 import { markSnapshotSynced } from '@/lib/local-backup-ledger';
 import { isRestoreInProgress, onRestoreLockChange } from '@/lib/restore-lock';
+import { syncLog } from '@/lib/sync-logger';
 
 // Sync configuration with mobile optimization
 // Tuned for fast user-driven sync (S5/S6/S7) — duplicate prevention is handled by syncInProgressRef
@@ -162,9 +163,7 @@ export const useAutoSync = () => {
     if ((await import('@/lib/environment')).isLovablePreview()) return;
     // Skip if offline
     if (!navigator.onLine) {
-      if (import.meta.env.DEV) {
-        console.log('[AutoSync] Offline - skipping sync');
-      }
+              syncLog.log('[AutoSync] Offline - skipping sync');
       return;
     }
 
@@ -173,9 +172,7 @@ export const useAutoSync = () => {
     // rows can be clobbered by an in-flight T0 snapshot (see C4). The lock
     // is released by withRestoreLock(); a fresh sync is kicked off then.
     if (isRestoreInProgress()) {
-      if (import.meta.env.DEV) {
-        console.log('[AutoSync] Restore in progress - skipping sync cycle');
-      }
+              syncLog.log('[AutoSync] Restore in progress - skipping sync cycle');
       return;
     }
 
@@ -183,22 +180,18 @@ export const useAutoSync = () => {
     const cbStatus = getCircuitBreakerStatus();
     if (cbStatus.open) {
       if (silent) {
-        if (import.meta.env.DEV) {
-          console.log('[AutoSync] Circuit breaker open - skipping background sync cycle');
-        }
+                  syncLog.log('[AutoSync] Circuit breaker open - skipping background sync cycle');
         return;
       }
       // Force sync: reset the circuit breaker so user action always works
-      console.log('[AutoSync] Circuit breaker open but force sync requested - resetting circuit breaker');
+      syncLog.log('[AutoSync] Circuit breaker open but force sync requested - resetting circuit breaker');
       resetCircuitBreaker();
     }
     
     // Quick sync gate — no network call needed to reject unauthenticated state
     const cachedUser = getCachedUserFromStorage();
     if (!cachedUser) {
-      if (import.meta.env.DEV) {
-        console.log('[AutoSync] No cached user session - skipping sync');
-      }
+              syncLog.log('[AutoSync] No cached user session - skipping sync');
       return;
     }
     
@@ -224,9 +217,7 @@ export const useAutoSync = () => {
     // - User-initiated callers (silent=false): wait for it to finish, then run a
     //   fresh sync against post-sync state so the explicit tap is honored.
     if (syncInProgressRef.current && inFlightSyncRef.current) {
-      if (import.meta.env.DEV) {
-        console.log('[AutoSync] Sync already in progress - awaiting in-flight run');
-      }
+              syncLog.log('[AutoSync] Sync already in progress - awaiting in-flight run');
       try { await inFlightSyncRef.current; } catch {}
       if (!silent) {
         return performSync(false);
@@ -239,9 +230,7 @@ export const useAutoSync = () => {
     // guard above already prevents true duplicate calls.
     const now = Date.now();
     if (silent && now - lastSyncAttemptRef.current < MIN_SYNC_INTERVAL) {
-      if (import.meta.env.DEV) {
-        console.log('[AutoSync] Too soon since last sync - debouncing');
-      }
+              syncLog.log('[AutoSync] Too soon since last sync - debouncing');
       return;
     }
     
@@ -367,9 +356,7 @@ export const useAutoSync = () => {
         console.warn('[AutoSync] Pre-sync count refresh failed (non-blocking):', refreshErr);
       }
 
-      if (import.meta.env.DEV) {
-        console.log('[AutoSync] Starting sync...', { unsyncedCount: liveUnsyncedCount, timeout: dynamicTimeout });
-      }
+              syncLog.log('[AutoSync] Starting sync...', { unsyncedCount: liveUnsyncedCount, timeout: dynamicTimeout });
 
       // EARLY EXIT: When nothing to sync, only clean stale queues and skip heavy pipeline
       const hasUnsyncedItems = liveUnsyncedCount > 0;
@@ -390,7 +377,7 @@ export const useAutoSync = () => {
               const { processQueuedSoftDeletes } = await import('@/lib/queued-soft-delete-processor');
               const deleteResult = await processQueuedSoftDeletes();
               if (deleteResult.processed > 0) {
-                console.log(`[AutoSync] Processed ${deleteResult.processed} queued soft-deletes`);
+                syncLog.log(`[AutoSync] Processed ${deleteResult.processed} queued soft-deletes`);
               }
               if (deleteResult.deadLettered > 0) {
                 try {
@@ -411,7 +398,7 @@ export const useAutoSync = () => {
               const pruned = await pruneCompletedQueuedOperations();
               const total = pruned.inspections + pruned.trainings + pruned.assessments;
               if (total > 0) {
-                console.log(`[AutoSync] Pruned ${total} completed queued operations`, pruned);
+                syncLog.log(`[AutoSync] Pruned ${total} completed queued operations`, pruned);
               }
             } catch (e) {
               console.warn('[AutoSync] Non-blocking: queue prune failed:', e);
@@ -424,9 +411,7 @@ export const useAutoSync = () => {
       
       // If nothing to sync and no queued ops (or we just cleaned them), skip the heavy pipeline
       if (!hasUnsyncedItems && !hasQueuedOps) {
-        if (import.meta.env.DEV) {
-          console.log('[AutoSync] Nothing to sync - skipping pipeline');
-        }
+                  syncLog.log('[AutoSync] Nothing to sync - skipping pipeline');
         clearTimeout(safetyTimeoutHandle);
         // Always refresh counts so badge reflects reality (fixes stale badge after circuit breaker)
         updateUnsyncedCounts({ force: true }).catch(() => {});
@@ -457,7 +442,7 @@ export const useAutoSync = () => {
             const { processQueuedSoftDeletes } = await import('@/lib/queued-soft-delete-processor');
             const deleteResult = await processQueuedSoftDeletes(signal);
             if (deleteResult.processed > 0) {
-              console.log(`[AutoSync] Processed ${deleteResult.processed} queued soft-deletes`);
+              syncLog.log(`[AutoSync] Processed ${deleteResult.processed} queued soft-deletes`);
             }
             if (deleteResult.deadLettered > 0) {
               try {
@@ -497,9 +482,7 @@ export const useAutoSync = () => {
       
       if (syncResult.timedOut) {
         console.warn('[AutoSync] Sync timed out - resetting state');
-      } else if (import.meta.env.DEV) {
-        console.log('[AutoSync] Sync completed successfully');
-      }
+      } else         syncLog.log('[AutoSync] Sync completed successfully');
       
       // Update state - always reset isSyncing
       setState(prev => ({
@@ -556,7 +539,7 @@ export const useAutoSync = () => {
                const pruned = await pruneCompletedQueuedOperations();
                const total = pruned.inspections + pruned.trainings + pruned.assessments;
                if (total > 0) {
-                 console.log(`[AutoSync] Post-sync pruned ${total} completed queued operations`, pruned);
+                 syncLog.log(`[AutoSync] Post-sync pruned ${total} completed queued operations`, pruned);
                }
              } catch (e) {
                console.warn('[AutoSync] Non-blocking: post-sync queue prune failed:', e);
@@ -570,7 +553,7 @@ export const useAutoSync = () => {
           
           // Mobile: Log sync success to console for debugging without toast spam
           if (isMobileDevice) {
-            console.log('[AutoSync] Mobile sync complete:', {
+            syncLog.log('[AutoSync] Mobile sync complete:', {
               timestamp: new Date().toISOString(),
               itemsSynced: totalSynced,
               remaining: totalRemaining,
@@ -596,7 +579,7 @@ export const useAutoSync = () => {
             staleWarningShownRef.current = false;
 
             // BUILD_TIMESTAMP audit logging for production diagnostics
-            console.log('[AutoSync] Sync confirmed', {
+            syncLog.log('[AutoSync] Sync confirmed', {
               version: import.meta.env.APP_VERSION,
               build: import.meta.env.BUILD_TIMESTAMP,
               itemsSynced: totalSynced,
@@ -623,7 +606,7 @@ export const useAutoSync = () => {
               }
             } catch (e) {
               // Non-critical — backup ledger sync status is cosmetic
-              if (import.meta.env.DEV) console.warn('[AutoSync] Failed to update backup ledger sync status:', e);
+              syncLog.warn('[AutoSync] Failed to update backup ledger sync status:', e);
             }
           }
           // iOS: Clear pending sync flags after successful sync (fixes N3 - storage accumulation)
@@ -648,9 +631,7 @@ export const useAutoSync = () => {
             // a wall-clock delay on success — schedule the next cycle immediately
             // (still gated by syncInProgressRef + POST_SYNC_COOLDOWN downstream).
             const drainDelay = reportFailed > 0 ? ACCELERATED_SYNC_DELAY : 0;
-            if (import.meta.env.DEV) {
-              console.log(`[AutoSync] ${reportRemaining} report items remaining - scheduling accelerated sync in ${drainDelay}ms (failed: ${reportFailed})`);
-            }
+                          syncLog.log(`[AutoSync] ${reportRemaining} report items remaining - scheduling accelerated sync in ${drainDelay}ms (failed: ${reportFailed})`);
             // Reset the min sync interval guard so the accelerated sync can proceed
             lastSyncAttemptRef.current = Date.now() - MIN_SYNC_INTERVAL + drainDelay;
             setTimeout(() => {
@@ -663,9 +644,7 @@ export const useAutoSync = () => {
             // photo-only cycle so we don't wait for the next periodic tick.
             const photoRemaining = results[3]?.remaining || 0;
             if (photoRemaining > 0) {
-              if (import.meta.env.DEV) {
-                console.log(`[AutoSync] ${photoRemaining} photos remaining - scheduling photo-only drain`);
-              }
+                              syncLog.log(`[AutoSync] ${photoRemaining} photos remaining - scheduling photo-only drain`);
               lastSyncAttemptRef.current = Date.now() - MIN_SYNC_INTERVAL;
               setTimeout(() => {
                 if (navigator.onLine && !syncInProgressRef.current) {
@@ -796,8 +775,8 @@ export const useAutoSync = () => {
         syncError: null,
       }));
 
-      if (import.meta.env.DEV && total > 0) {
-        console.log('[AutoSync] Unsynced count:', total);
+      if (total > 0) {
+        syncLog.log('[AutoSync] Unsynced count:', total);
       }
     } catch (error) {
       console.error('[AutoSync] Error updating unsynced counts:', error);
@@ -860,15 +839,11 @@ export const useAutoSync = () => {
   const runOnlineReconcile = useCallback(async () => {
     if (!navigator.onLine) {
       // Went offline again before the debounce fired — wait for the next stable online.
-      if (import.meta.env.DEV) {
-        console.log('[AutoSync] Skipping online reconcile — navigator.onLine is false');
-      }
+              syncLog.log('[AutoSync] Skipping online reconcile — navigator.onLine is false');
       return;
     }
 
-    if (import.meta.env.DEV) {
-      console.log('[AutoSync] Network reconnected - refreshing session then syncing');
-    }
+          syncLog.log('[AutoSync] Network reconnected - refreshing session then syncing');
 
     // Pre-refresh session BEFORE sync to ensure fresh JWT.
     // Keep the 5s race as belt-and-suspenders: even though the outer handler is now
@@ -882,9 +857,7 @@ export const useAutoSync = () => {
       ]);
       if (refreshResult.error) {
         console.warn('[AutoSync] Session refresh failed:', refreshResult.error.message);
-      } else if (import.meta.env.DEV) {
-        console.log('[AutoSync] Session refreshed successfully');
-      }
+      } else         syncLog.log('[AutoSync] Session refreshed successfully');
     } catch (e) {
       console.warn('[AutoSync] Session refresh error:', e);
     }
@@ -961,17 +934,13 @@ export const useAutoSync = () => {
       // H5: tab is backgrounded — abort the in-flight sync so stuck I/O
       // (timeouts, Promise.race wrappers) doesn't keep the tab busy.
       if (activeSyncAbortRef.current && !activeSyncAbortRef.current.signal.aborted) {
-        if (import.meta.env.DEV) {
-          console.log('[AutoSync] Tab hidden — aborting in-flight sync');
-        }
+                  syncLog.log('[AutoSync] Tab hidden — aborting in-flight sync');
         activeSyncAbortRef.current.abort();
       }
       return;
     }
     if (navigator.onLine) {
-      if (import.meta.env.DEV) {
-        console.log('[AutoSync] App became visible - syncing');
-      }
+              syncLog.log('[AutoSync] App became visible - syncing');
       reconcileThenSync();
     }
   }, [reconcileThenSync]);
@@ -999,9 +968,7 @@ export const useAutoSync = () => {
           // Notify dashboards / forms that local IDB has fresh data
           window.dispatchEvent(new CustomEvent('dashboard-stale'));
         } catch (e) {
-          if (import.meta.env.DEV) {
-            console.warn('[AutoSync] Full-package refetch failed:', e);
-          }
+                      syncLog.warn('[AutoSync] Full-package refetch failed:', e);
         }
       };
       run();
@@ -1013,9 +980,7 @@ export const useAutoSync = () => {
    * Handle Realtime database changes from other devices
    */
   const handleRemoteChange = useCallback((payload: any) => {
-    if (import.meta.env.DEV) {
-      console.log('[AutoSync] Realtime change detected:', payload.eventType, payload.table);
-    }
+          syncLog.log('[AutoSync] Realtime change detected:', payload.eventType, payload.table);
     
     // Persist the remote record into IndexedDB so offline data stays fresh.
     // Skip if the local copy has unsynced edits (shouldPreserveLocalRecord).
@@ -1039,9 +1004,7 @@ export const useAutoSync = () => {
                 recordId: record.id,
                 remoteUpdatedAt: record.updated_at || new Date().toISOString(),
               });
-              if (import.meta.env.DEV) {
-                console.log('[AutoSync] Skipping IDB overwrite — form mounted for', record.id);
-              }
+                              syncLog.log('[AutoSync] Skipping IDB overwrite — form mounted for', record.id);
               return;
             }
             if (shouldPreserveLocalRecord(record)) return; // don't overwrite richer local data
@@ -1063,9 +1026,7 @@ export const useAutoSync = () => {
             window.dispatchEvent(new CustomEvent('dashboard-stale'));
           } catch (e) {
             // Non-critical — IndexedDB will catch up on next sync cycle
-            if (import.meta.env.DEV) {
-              console.warn('[AutoSync] Failed to persist Realtime payload to IndexedDB:', e);
-            }
+                          syncLog.warn('[AutoSync] Failed to persist Realtime payload to IndexedDB:', e);
           }
         };
         persistToIDB();
@@ -1094,9 +1055,7 @@ export const useAutoSync = () => {
     // self-writes since shouldPreserveLocalRecord short-circuits).
     const recordId = payload?.new?.id || payload?.old?.id;
     if (recordId && isRecentSelfWrite(recordId)) {
-      if (import.meta.env.DEV) {
-        console.log('[AutoSync] Skipping Realtime-triggered sync (self-write suppression)', { recordId });
-      }
+              syncLog.log('[AutoSync] Skipping Realtime-triggered sync (self-write suppression)', { recordId });
       return;
     }
 
@@ -1109,29 +1068,21 @@ export const useAutoSync = () => {
       const msSinceLastComplete = Date.now() - lastSyncCompletedAtRef.current;
       const msSinceLastAttempt = Date.now() - lastSyncAttemptRef.current;
       if (msSinceLastComplete < POST_SYNC_COOLDOWN) {
-        if (import.meta.env.DEV) {
-          console.log('[AutoSync] Skipping Realtime-triggered sync (post-sync cooldown)', { msSinceLastComplete });
-        }
+                  syncLog.log('[AutoSync] Skipping Realtime-triggered sync (post-sync cooldown)', { msSinceLastComplete });
       } else if (msSinceLastAttempt > MIN_SYNC_INTERVAL) {
         // S10: Call performSync directly — duplicate prevention is handled by syncInProgressRef +
         // POST_SYNC_COOLDOWN + MIN_SYNC_INTERVAL. The 3s debounce just adds lag for multi-device updates.
         performSync(true);
-      } else if (import.meta.env.DEV) {
-        console.log('[AutoSync] Skipping Realtime-triggered sync (min interval cooldown)', { msSinceLastAttempt });
-      }
-    } else if (import.meta.env.DEV) {
-      console.log('[AutoSync] Skipping Realtime-triggered sync (sync in progress)');
-    }
+      } else         syncLog.log('[AutoSync] Skipping Realtime-triggered sync (min interval cooldown)', { msSinceLastAttempt });
+    } else       syncLog.log('[AutoSync] Skipping Realtime-triggered sync (sync in progress)');
   }, [queryClient, performSync, scheduleFullRefetch]);
   
   // Initialize sync system
   useEffect(() => {
-    if (import.meta.env.DEV) {
-      console.log('[AutoSync] Initializing automatic sync system', {
+          syncLog.log('[AutoSync] Initializing automatic sync system', {
         isMobile: isMobileDevice,
         isIOS: isIOSDevice,
       });
-    }
     
     // PERFORMANCE: Defer initial sync to not block UI render
     // Dashboard data loads from Supabase directly, sync is for reconciliation
@@ -1151,9 +1102,7 @@ export const useAutoSync = () => {
     // so we skip the handleOnline debounce and reconcile inline.
     const handlePageShow = (event: PageTransitionEvent) => {
       if (event.persisted && navigator.onLine) {
-        if (import.meta.env.DEV) {
-          console.log('[AutoSync] Page restored from bfcache - reconciling auth then syncing');
-        }
+                  syncLog.log('[AutoSync] Page restored from bfcache - reconciling auth then syncing');
         reconcileThenSync();
       }
     };
@@ -1165,9 +1114,7 @@ export const useAutoSync = () => {
         const now = Date.now();
         if (now - lastSyncAttemptRef.current >= MIN_SYNC_INTERVAL) {
           reconcileThenSync();
-        } else if (import.meta.env.DEV) {
-          console.log('[AutoSync] Focus event debounced (too soon since last sync)');
-        }
+        } else           syncLog.log('[AutoSync] Focus event debounced (too soon since last sync)');
       }
     };
 
@@ -1199,7 +1146,7 @@ export const useAutoSync = () => {
     // while restore was in flight to avoid clobbering the snapshot).
     const unsubscribeRestoreLock = onRestoreLockChange((active) => {
       if (!active) {
-        if (import.meta.env.DEV) console.log('[AutoSync] Restore lock released - triggering sync');
+        syncLog.log('[AutoSync] Restore lock released - triggering sync');
         // Defer slightly so any trailing IDB writes from restore land first
         setTimeout(() => {
           if (navigator.onLine && !syncInProgressRef.current) {
@@ -1209,9 +1156,9 @@ export const useAutoSync = () => {
       }
     });
     
-    if (import.meta.env.DEV) {
+    {
       const currentInterval = unsyncedCountRef.current > 0 ? activeSyncInterval : idleSyncInterval;
-      console.log('[AutoSync] Initialized with interval:', currentInterval / 1000, 's (mobile viewport:', isMobileViewport, ', idle:', unsyncedCountRef.current === 0, ')');
+      syncLog.log('[AutoSync] Initialized with interval:', currentInterval / 1000, 's (mobile viewport:', isMobileViewport, ', idle:', unsyncedCountRef.current === 0, ')');
     }
     
     // Realtime subscriptions for multi-device sync — extracted for auto-recovery
@@ -1239,9 +1186,7 @@ export const useAutoSync = () => {
           handleRemoteChange
         )
         .subscribe((status) => {
-          if (import.meta.env.DEV) {
-            console.log('[AutoSync] Realtime subscription status:', status);
-          }
+                      syncLog.log('[AutoSync] Realtime subscription status:', status);
           if (status === 'CHANNEL_ERROR') {
             realtimeErrorCountRef.current++;
             if (realtimeErrorCountRef.current >= 3 && channelRef.current) {
@@ -1256,7 +1201,7 @@ export const useAutoSync = () => {
                 clearTimeout(realtimeReconnectTimerRef.current);
               }
               realtimeReconnectTimerRef.current = setTimeout(() => {
-                console.log('[AutoSync] Attempting Realtime channel reconnect...');
+                syncLog.log('[AutoSync] Attempting Realtime channel reconnect...');
                 setupRealtimeChannel();
               }, backoff);
               

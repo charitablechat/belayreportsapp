@@ -18,6 +18,8 @@
 // apply here, and the eslint rule that bans raw localStorage.setItem only
 // targets `localStorage`, not `sessionStorage`.
 
+import { syncLog } from "./sync-logger";
+
 const STORAGE_KEY = "sync-quarantine-v1";
 const FAILURE_THRESHOLD = 3; // cycles of consecutive failure
 const DAY_MS = 24 * 60 * 60 * 1000;
@@ -84,13 +86,11 @@ export function recordSyncFailure(recordId: string, error: string): boolean {
 
   if (entry.failures >= FAILURE_THRESHOLD && !entry.quarantinedUntil) {
     entry.quarantinedUntil = endOfDayUtc(now);
-    if (import.meta.env.DEV) {
-      console.warn(
-        `[SyncQuarantine] Record ${recordId.substring(0, 12)} quarantined until ${new Date(
-          entry.quarantinedUntil,
-        ).toISOString()} after ${entry.failures} failures: ${error}`,
-      );
-    }
+    syncLog.warn(
+      `[SyncQuarantine] Record ${recordId.substring(0, 12)} quarantined until ${new Date(
+        entry.quarantinedUntil,
+      ).toISOString()} after ${entry.failures} failures: ${error}`,
+    );
   }
 
   map[recordId] = entry;
