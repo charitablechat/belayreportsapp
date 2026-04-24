@@ -1,40 +1,49 @@
 
 
-## Plan — Belt-and-braces on temp→UUID child rewrite + concurrent-edit regression lock
+## P3 — Unify sync-path logging behind syncLog
 
-Two additions, both test-only (no behavioural code changes). Goal: lock in the contracts the audit relied on so a future refactor can't silently break them.
+**Problem.** Sync code currently uses two inconsistent gates:
+- `syncLog.log(...)` — respects `localStorage.debug_sync` runtime toggle (works in production for field debugging)
+- `if (import.meta.env.DEV) console.log(...)` — only ever prints in dev builds, no field toggle
 
-### 1. Temp→UUID child rewrite contract test
+This means turning on `debug_sync=1` in production reveals only ~half the sync trace, which is the exact moment you most need full visibility.
 
-**New file: `src/lib/__tests__/temp-uuid-child-rewrite.test.ts`**
+**Decision.** `syncLog` wins. It already covers the dev-build case (`isDev` short-circuits to always-on) AND the runtime toggle. The raw `import.meta.env.DEV` gates are strictly weaker.
 
-The sync pipeline transforms `temp-*` parent IDs to real UUIDs and must rewrite every child row's foreign key in the same transaction. We already have `assertNoTempIds` / `assertNoTempIdsInArray` (sw-sync-validators.ts) as the fail-loud guard. This test locks in three properties:
+### Scope
 
-- **Guard contract**: feed a mixed array (one good UUID, one `temp-` row) to `assertNoTempIdsInArray` and assert it throws naming the offending id and the call-site context. Already covered partly in `sw-sync-guards.test.ts` — extend with the child-table call-site labels actually used in `atomic-sync-manager.ts` (`inspection_systems.upsert`, `inspection_ziplines.upsert`, `inspection_equipment.upsert`, `inspection_standards.upsert`, `training_*`, `daily_assessment_*`).
-- **Rewrite completeness**: build a synthetic in-memory parent + children payload where parent.id = `temp-abc` and every child's FK points at `temp-abc`. Run it through the pure rewrite helper in `atomic-sync-manager.ts` (extract a small pure `rewriteChildForeignKeys(children, tempId, realUuid)` if one isn't already exported — read-only for now; if not exported, the plan extracts it in step 1a). Assert: zero `temp-` strings remain anywhere in the output, every child FK now equals the real UUID, and row counts are preserved.
-- **Negative case**: passing `realUuid === tempId` (no-op) returns the input untouched (no accidental clones).
+Replace `if (import.meta.env.DEV) console.log/warn(...)` patterns inside sync-path files with `syncLog.log/warn(...)`. Leave `console.error` alone — `syncLog.error` already passes through unconditionally, but rewriting all error sites is churn for no behavior change; only convert errors that sit next to a converted log for readability.
 
-**Step 1a (only if needed):** if `atomic-sync-manager.ts` keeps the rewrite logic inline, extract it into a tiny exported pure function `rewriteChildForeignKeys(children, tempId, realUuid, fkColumnByTable)` in the same file. The existing call site changes one line. No behavioural change — just makes the contract testable without spinning up the whole sync.
+Files in scope (sync-path only — not UI, not unrelated features):
+- `src/lib/sync-manager.ts`
+- `src/lib/atomic-sync-manager.ts`
+- `src/lib/sync-reconciliation.ts`
+- `src/lib/sync-quarantine.ts`
+- `src/lib/deferred-reconcile.ts`
+- `src/lib/background-sync.ts`
+- `src/lib/sync-events.ts`
+- `src/hooks/useAutoSync.tsx`
+- `src/hooks/useReportSync.tsx`
+- `src/hooks/useBackgroundSync.tsx`
 
-### 2. Concurrent-edit (field-level merge) regression lock
+Out of scope: photo upload pipeline, auth, UI components, edge functions. Those have their own logging conventions and aren't part of the sync trace the `debug_sync` flag is meant to surface.
 
-**New file: `src/lib/__tests__/field-merge-concurrent-edit.test.ts`**
+### Plan
 
-`src/lib/field-merge.ts` already has `mergeRecordFields` and `field-merge.test.ts` covers basic per-field LWW. The audit relied on three subtler properties that aren't currently locked:
+1. Grep each file for `import.meta.env.DEV` and `console.log|console.warn` outside of `logError`/`syncLog` calls.
+2. For each match in the sync-path files above:
+   - Add `import { syncLog } from '@/lib/sync-logger'` if missing.
+   - Replace `if (import.meta.env.DEV) console.log(...)` → `syncLog.log(...)`.
+   - Replace `if (import.meta.env.DEV) console.warn(...)` → `syncLog.warn(...)`.
+   - Replace bare `console.log(...)` that is clearly a sync-trace breadcrumb → `syncLog.log(...)`. Skip prints that look like one-time boot diagnostics.
+3. Leave `console.error` alone unless adjacent to a converted log.
+4. Spot-check `useAutoSync` (the unsynced-counts coalescer) since it's the highest-traffic site.
 
-- **Two devices, disjoint fields, both win**: device A edits `organization` at T+1, device B edits `location` at T+2, neither touched the other field. Merge result: A's organization + B's location, both per-field timestamps preserved in `field_timestamps`. Run the merge in both directions (A∪B and B∪A) and assert symmetric result.
-- **Same field, both devices, newest wins by per-field timestamp even when row-level `updated_at` disagrees**: device A has newer `updated_at` overall but device B has the newer per-field timestamp on the contested field. Assert B's value wins. (Locks in the `explicit-beats-fallback` rule already in `tsOf`.)
-- **Attestation first-sign-wins under concurrent edits**: both devices edited fields after one of them signed. Merge: per-field merges normally, but every `ATTESTATION_FIELDS` entry comes from the signed side, even if the other side has a later `updated_at`. Then flip: both signed at different times → earlier signature wins, all attestation fields come from that side as a block (no field-level interleaving on attestation).
-- **Tombstone-vs-edit child guard**: `shouldKeepEditedChild` returns true only when `child.updated_at > parentLastPulledAt`. Lock the boundary: equal timestamps → false; missing parentLastPulledAt → false; missing child.updated_at → false.
+### Technical details
 
-### Files touched
-
-- `src/lib/__tests__/temp-uuid-child-rewrite.test.ts` (new — ~5 cases)
-- `src/lib/__tests__/field-merge-concurrent-edit.test.ts` (new — ~6 cases)
-- `src/lib/atomic-sync-manager.ts` (only if the rewrite helper isn't already exportable; minimal extract-and-export refactor with zero call-site behaviour change)
-
-### Out of scope
-
-- Any change to the sync pipeline's actual behaviour.
-- The Realtime cross-device parent persistence gap and the temp-ID-adopts-existing-server-UUID overwrite — both still tracked separately as the audit noted.
+- No behavior change in production with `debug_sync` unset (`syncLog.log` is a no-op).
+- No behavior change in dev (`isDev=true` makes `syncLog.log` always print, matching the prior `import.meta.env.DEV` gate).
+- New behavior in production with `debug_sync=1`: **all** sync-path breadcrumbs print, not just half. This is the desired outcome.
+- No new files, no schema change, no test changes required. Existing `sync-logger.ts` is the single source of truth.
+- Bundle impact: negative — fewer inline `import.meta.env.DEV` branches.
 
