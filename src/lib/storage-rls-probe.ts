@@ -13,6 +13,7 @@ import { getUserWithCache } from '@/lib/cached-auth';
 import { isPreviewOrIframeEnvironment } from '@/lib/environment';
 import { logError } from '@/lib/log-error';
 import { addSyncNotification } from '@/lib/notification-center';
+import { safeSetItem } from '@/lib/safe-local-storage';
 
 const BUCKET = 'inspection-photos';
 const PROBE_TIMEOUT_MS = 10_000;
@@ -126,11 +127,7 @@ export async function runStorageRlsProbeOnce(): Promise<void> {
       );
       // Set flag anyway: a hard RLS failure won't fix itself within the day,
       // and we don't want to spam notifications on every reload.
-      try {
-        localStorage.setItem(flagKey, String(Date.now()));
-      } catch {
-        /* ignore */
-      }
+      safeSetItem(flagKey, String(Date.now()), { scope: 'storage-rls-probe.flag' });
       return;
     }
 
@@ -138,11 +135,7 @@ export async function runStorageRlsProbeOnce(): Promise<void> {
     if (import.meta.env.DEV) {
       console.log('[StorageRlsProbe] OK');
     }
-    try {
-      localStorage.setItem(flagKey, String(Date.now()));
-    } catch {
-      /* ignore */
-    }
+    safeSetItem(flagKey, String(Date.now()), { scope: 'storage-rls-probe.flag' });
   } catch (err) {
     // Last-resort guard: probe must never throw into boot path.
     if (import.meta.env.DEV) {

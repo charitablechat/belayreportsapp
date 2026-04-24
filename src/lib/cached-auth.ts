@@ -6,6 +6,7 @@ import {
   clearSyntheticSession,
 } from "@/lib/offline-auth";
 import { isPlaceholderToken } from "@/lib/synthetic-session-guard";
+import { safeSetItem } from "@/lib/safe-local-storage";
 
 export interface CachedUser {
   id: string;
@@ -430,7 +431,7 @@ export async function getAdminStatusWithCache(): Promise<boolean> {
       const u = await getUserWithCache();
       const id = u?.id ?? userId;
       if (id) {
-        localStorage.setItem(getAdminCacheKey(id), status.toString());
+        safeSetItem(getAdminCacheKey(id), status.toString(), { scope: 'cached-auth.adminFlag' });
       }
 
       return status;
@@ -503,7 +504,7 @@ export async function getIsTrueSuperAdmin(): Promise<boolean> {
       const u = await getUserWithCache();
       const id = u?.id ?? userId;
       if (id) {
-        localStorage.setItem(getTrueSuperAdminCacheKey(id), status.toString());
+        safeSetItem(getTrueSuperAdminCacheKey(id), status.toString(), { scope: 'cached-auth.trueSuperAdminFlag' });
       }
       return status;
     } catch (error) {
