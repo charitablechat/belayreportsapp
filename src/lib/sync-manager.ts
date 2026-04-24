@@ -220,8 +220,23 @@ export async function syncPhotos(signal?: AbortSignal): Promise<{ remaining: num
           }
         }
 
-        // Legacy `pending/` rewrite — only safe when there is no capturedBy
-        // tag (pre-S23 records) AND the current user owns the parent inspection.
+        // C6: Legacy `pending/` rewrite — refuse to attribute untagged photos
+        // to whoever is currently signed in. On shared devices (one iPad
+        // passed between inspectors) blind rewriting silently mis-attributes
+        // safety-inspection photos to the wrong inspector.
+        //
+        // Rules:
+        //   1. If the photo carries a `capturedBy` tag, use that.
+        //   2. If untagged, fall back to the parent inspection's owner
+        //      (`inspector_id` / `user_id`) — that's the authoritative
+        //      attribution for any photo belonging to that report.
+        //   3. If neither is known (orphan or offline-only parent without an
+        //      owner field), dead-letter immediately and surface in Sync
+        //      Diagnostics so the device owner can resolve manually instead
+        //      of letting the code guess.
+        //   4. Storage RLS still requires the upload prefix == auth.uid().
+        //      So if the resolved attribution !== current user, dead-letter
+        //      (the photo will sync correctly when the right user signs in).
         if (photo.photoUrl?.startsWith('pending/')) {
           if (!currentUserId) {
             if (import.meta.env.DEV) {
@@ -233,7 +248,8 @@ export async function syncPhotos(signal?: AbortSignal): Promise<{ remaining: num
             // Already handled above, but defense in depth.
             return;
           }
-          // Verify ownership of parent inspection before rewriting.
+
+          // Resolve the authoritative attribution: capturedBy -> parent owner.
           let parentOwnerId: string | null = null;
           try {
             const { getOfflineInspection, getOfflineDailyAssessment } = await import('./offline-storage');
@@ -242,26 +258,45 @@ export async function syncPhotos(signal?: AbortSignal): Promise<{ remaining: num
           } catch {
             parentOwnerId = null;
           }
-          if (parentOwnerId && parentOwnerId !== currentUserId) {
-            console.warn('[Sync Manager] Legacy pending photo belongs to a different user — dead-lettering:', photo.id);
+
+          const attributionUserId = capturedBy || parentOwnerId;
+
+          // Rule 3: untagged + no parent owner -> refuse to guess.
+          if (!attributionUserId) {
+            console.warn('[Sync Manager] Legacy pending photo has no attribution (no capturedBy and no parent owner) — dead-lettering:', photo.id);
+            const r = await handlePermanentPhotoFailure(
+              photo,
+              'Photo has no attribution — original capturer unknown. Open Sync Diagnostics to resolve.'
+            );
+            if (r.crossedThreshold) newlyDeadLettered++;
+            changedCount++;
+            return;
+          }
+
+          // Rule 4: attribution !== current user -> dead-letter rather than
+          // upload under the wrong inspector's folder.
+          if (attributionUserId !== currentUserId) {
+            console.warn('[Sync Manager] Legacy pending photo belongs to a different user — dead-lettering:', photo.id, 'attributedTo=', attributionUserId, 'currentUser=', currentUserId);
             const r = await handlePermanentPhotoFailure(photo, 'Photo belongs to a different signed-in user');
             if (r.crossedThreshold) newlyDeadLettered++;
             changedCount++;
             return;
           }
 
-          const normalizedPath = photo.photoUrl.replace(/^pending\//, `${currentUserId}/`);
+          // Safe to rewrite: attribution == current user.
+          const normalizedPath = photo.photoUrl.replace(/^pending\//, `${attributionUserId}/`);
           photo.photoUrl = normalizedPath;
           try {
             const { updatePhotoUrl, setPhotoCapturedBy } = await import('./offline-storage');
             await updatePhotoUrl(photo.id, normalizedPath);
-            // Stamp capturedBy now that we've definitively bound it.
-            await setPhotoCapturedBy(photo.id, currentUserId);
+            // Stamp capturedBy now that we've definitively bound it (using
+            // the resolved attribution, not blindly currentUserId).
+            await setPhotoCapturedBy(photo.id, attributionUserId);
           } catch (e) {
             console.warn('[Sync Manager] Failed to persist normalized path:', e);
           }
           if (import.meta.env.DEV) {
-            console.log('[Sync Manager] Normalized legacy pending path to:', normalizedPath);
+            console.log('[Sync Manager] Normalized legacy pending path to:', normalizedPath, '(attributed to parent owner)');
           }
         }
 
