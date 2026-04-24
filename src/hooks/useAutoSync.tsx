@@ -141,6 +141,9 @@ export const useAutoSync = () => {
   // S21: Shared completion promise for the in-flight sync run.
   // Concurrent callers await this directly instead of polling syncInProgressRef.
   const inFlightSyncRef = useRef<Promise<void> | null>(null);
+  // H5: external abort for the active sync run. Triggered on visibility-hidden
+  // so backgrounded tabs stop holding open Promise.race wrappers / timers.
+  const activeSyncAbortRef = useRef<AbortController | null>(null);
   
   /**
    * Perform the actual sync operation
