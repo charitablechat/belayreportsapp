@@ -21,6 +21,7 @@ import ropeWorksLogo from "@/assets/rope-works-logo.png";
 
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { AutoSaveIndicator } from "@/components/AutoSaveIndicator";
+import { SaveFailureBanner } from "@/components/SaveFailureBanner";
 import { useActiveTimer } from "@/hooks/useActiveTimer";
 import { ActiveTimerDisplay } from "@/components/ActiveTimerDisplay";
 import { Input } from "@/components/ui/input";
@@ -108,6 +109,7 @@ export default function TrainingForm() {
   const [refreshing, setRefreshing] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
+  const [saveError, setSaveError] = useState<import("@/components/SaveFailureBanner").SaveErrorState>(null);
   const [isGeneratingPDF, setIsGeneratingPDF] = useState(false);
   const [isGeneratingHTML, setIsGeneratingHTML] = useState(false);
   const [lastSaved, setLastSaved] = useState<Date | null>(null);
@@ -726,6 +728,7 @@ export default function TrainingForm() {
     if (import.meta.env.DEV) console.log('[Training Save] Starting save...');
     saveInProgressRef.current = true;
     setIsSaving(true);
+    if (!silent) setSaveError(null);
 
     // Safety timeout - ensure saving state is cleared after max 8 seconds (reduced from 30)
     const safetyTimeout = setTimeout(() => {
@@ -831,6 +834,10 @@ export default function TrainingForm() {
         // Gap 2.1: re-throw IdbSaveError so the outer save handler keeps the dirty flag set
         const { isIdbSaveError } = await import('@/lib/offline-storage');
         if (isIdbSaveError(offlineError)) {
+          setSaveError({
+            message: 'Local save failed — your changes are NOT stored. Tap to retry.',
+            code: (offlineError as any)?.code,
+          });
           toast.error("Save failed — your changes are NOT stored", {
             description: "Tap Save again to retry. Do not close this page.",
             duration: 8000,
@@ -1021,8 +1028,13 @@ export default function TrainingForm() {
       setLastSaved(new Date());
       hasUnsavedRef.current = false;
       setHasUnsavedChanges(false);
-    } catch (error) {
+      setSaveError(null);
+    } catch (error: any) {
       console.error('[Training Save] Error saving training:', error);
+      const { isIdbSaveError } = await import('@/lib/offline-storage');
+      if (isIdbSaveError(error)) {
+        setSaveError({ message: error.message || 'Save failed', code: error.code });
+      }
     } finally {
       clearTimeout(safetyTimeout);
       if (import.meta.env.DEV) console.log('[Training Save] Completed, setting isSaving to false');
@@ -1636,6 +1648,7 @@ export default function TrainingForm() {
                 lastSaved={lastManuallySaved}
                 isSaving={isSaving}
                 hasUnsavedChanges={hasUnsavedChanges}
+                error={saveError}
                 className="flex"
               />
               {/* DISABLED: Timer display hidden for now
@@ -1791,6 +1804,23 @@ export default function TrainingForm() {
           </div>
         </div>
       </header>
+
+      <SaveFailureBanner
+        saveError={saveError}
+        onRetry={() => saveTrainingRef.current?.() ?? Promise.resolve()}
+        onExportDraft={() => ({
+          training,
+          delivery_approaches: deliveryApproaches,
+          operating_systems: operatingSystems,
+          immediate_attention: immediateAttention,
+          verifiable_items: verifiableItems,
+          systems_in_place: systemsInPlace,
+          summary,
+          exported_at: new Date().toISOString(),
+        })}
+        reportType="training"
+        reportId={id}
+      />
 
       {/* Main Content */}
       <div onClickCapture={handleLockedFieldClick} onPointerDownCapture={handleLockedFieldClick} className={cn("container mx-auto px-4 py-8", isCompletionLocked && "completion-locked")}>

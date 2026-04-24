@@ -13,6 +13,7 @@ import { ArrowLeft, Save, FileText, Loader2, WifiOff, Check, Sunrise, Sunset, Se
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
 import { AutoSaveIndicator } from "@/components/AutoSaveIndicator";
+import { SaveFailureBanner } from "@/components/SaveFailureBanner";
 import { useActiveTimer } from "@/hooks/useActiveTimer";
 import { ActiveTimerDisplay } from "@/components/ActiveTimerDisplay";
 import {
@@ -113,6 +114,7 @@ export default function DailyAssessmentForm() {
   const [showAttestationDialog, setShowAttestationDialog] = useState(false);
   const { fullName: signerFullName } = useUserProfile();
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
+  const [saveError, setSaveError] = useState<import("@/components/SaveFailureBanner").SaveErrorState>(null);
   
   const [lastSaved, setLastSaved] = useState<Date | null>(null);
   const [lastManuallySaved, setLastManuallySaved] = useState<Date | null>(null);
@@ -786,7 +788,8 @@ export default function DailyAssessmentForm() {
     if (import.meta.env.DEV) console.log('[Save] Starting save progress...');
     saveInProgressRef.current = true;
     setSaving(true);
-    
+    if (!silent) setSaveError(null);
+
     // Safety timeout - ensure saving state is cleared after max 8 seconds (reduced from 30)
     const safetyTimeout = setTimeout(() => {
       console.warn('[Save] Safety timeout reached, forcing save state reset');
@@ -874,6 +877,10 @@ export default function DailyAssessmentForm() {
           // Gap 2.1: re-throw IdbSaveError so the outer save handler keeps the dirty flag set
           const { isIdbSaveError } = await import('@/lib/offline-storage');
           if (isIdbSaveError(offlineError)) {
+            setSaveError({
+              message: 'Local save failed — your changes are NOT stored. Tap to retry.',
+              code: (offlineError as any)?.code,
+            });
             toast.error("Save failed — your changes are NOT stored", {
               description: "Tap Save again to retry. Do not close this page.",
               duration: 8000,
@@ -1082,9 +1089,15 @@ export default function DailyAssessmentForm() {
       setHasUnsavedChanges(false);
       setLastSaved(new Date());
       setAssessment(updatedAssessment);
-    } catch (error) {
+      setSaveError(null);
+    } catch (error: any) {
       console.error('[Save] Error saving progress:', error);
-      toast.error("Failed to save progress");
+      const { isIdbSaveError } = await import('@/lib/offline-storage');
+      if (isIdbSaveError(error)) {
+        setSaveError({ message: error.message || 'Save failed', code: error.code });
+      } else {
+        toast.error("Failed to save progress");
+      }
     } finally {
       clearTimeout(safetyTimeout);
       console.log('[Save] Completed, setting saving to false');
@@ -1682,6 +1695,7 @@ export default function DailyAssessmentForm() {
                 lastSaved={lastManuallySaved}
                 isSaving={saving}
                 hasUnsavedChanges={hasUnsavedChanges}
+                error={saveError}
                 className="flex"
               />
               {/* DISABLED: Timer display hidden for now
@@ -1837,7 +1851,24 @@ export default function DailyAssessmentForm() {
           </div>
         </div>
       </header>
-      
+
+      <SaveFailureBanner
+        saveError={saveError}
+        onRetry={() => handleSaveProgressRef.current?.() ?? Promise.resolve()}
+        onExportDraft={() => ({
+          assessment,
+          beginning_of_day: beginningOfDay,
+          end_of_day: endOfDay,
+          operating_systems: operatingSystems,
+          equipment_checks: equipmentChecks,
+          structure_checks: structureChecks,
+          environment_checks: environmentChecks,
+          exported_at: new Date().toISOString(),
+        })}
+        reportType="daily-assessment"
+        reportId={id}
+      />
+
       <div onClickCapture={handleLockedFieldClick} onPointerDownCapture={handleLockedFieldClick} className={cn("container mx-auto px-4 py-4 lg:py-8 max-w-5xl", isCompletionLocked && "completion-locked")}>
         {isCompletionLocked && (
           <div className="border-2 border-green-500/60 bg-black/90 text-green-500 font-mono text-xs px-4 py-2 flex items-center gap-2 mb-4 rounded">

@@ -21,6 +21,7 @@ import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { ArrowLeft, Save, CheckCircle, Loader2, WifiOff, CloudOff, LogOut, User, FileText, Settings, Package, ClipboardList, FileCheck, RefreshCw, AlertTriangle, HardDrive } from "lucide-react";
 import { AutoSaveIndicator } from "@/components/AutoSaveIndicator";
+import { SaveFailureBanner } from "@/components/SaveFailureBanner";
 import { useActiveTimer } from "@/hooks/useActiveTimer";
 import { ActiveTimerDisplay } from "@/components/ActiveTimerDisplay";
 import ropeWorksLogo from "@/assets/rope-works-logo.png";
@@ -145,7 +146,7 @@ export default function InspectionForm() {
   const [versionPanelOpen, setVersionPanelOpen] = useState(false);
   const [lastVersionNumber, setLastVersionNumber] = useState<number | undefined>(undefined);
   const [lastFieldCount, setLastFieldCount] = useState<number | undefined>(undefined);
-  const [saveError, setSaveError] = useState<string | null>(null);
+  const [saveError, setSaveError] = useState<import("@/components/SaveFailureBanner").SaveErrorState>(null);
   // M9: Versioning health — surface a banner when version writes silently fail.
   const [versioningFailures, setVersioningFailures] = useState<number>(
     () => getVersioningHealth().consecutiveFailures
@@ -601,7 +602,8 @@ export default function InspectionForm() {
           return null;
         }
         // Check multiple patterns that indicate sync errors
-        const isSyncError = /sync|failed|offline|queued|network|locally/i.test(prev);
+        const msg = typeof prev === 'string' ? prev : prev.message;
+        const isSyncError = /sync|failed|offline|queued|network|locally/i.test(msg);
         if (isSyncError) {
           if (import.meta.env.DEV) {
             console.log('[InspectionForm] Cleared sync error after successful background sync');
@@ -1653,7 +1655,7 @@ export default function InspectionForm() {
         // localStorage snapshot above is still the user's safety net.
         const { isIdbSaveError } = await import('@/lib/offline-storage');
         if (isIdbSaveError(offlineError)) {
-          setSaveError('Local save failed — your changes are NOT stored. Tap to retry.');
+          setSaveError({ message: 'Local save failed — your changes are NOT stored. Tap to retry.', code: (offlineError as any)?.code });
           throw offlineError;
         }
         if (!silent) {
@@ -1662,7 +1664,7 @@ export default function InspectionForm() {
             duration: 4000,
           });
         }
-        setSaveError('Local save failed — please retry');
+        setSaveError({ message: 'Local save failed — please retry' });
       }
 
       // DEV: warn if filtering excludes items from server sync
@@ -2011,7 +2013,7 @@ export default function InspectionForm() {
       }
     } catch (error: any) {
       console.error('[InspectionForm] Save error:', error);
-      setSaveError(error.message || 'Failed to save');
+      setSaveError({ message: error.message || 'Failed to save', code: error?.code });
       throw error;
     } finally {
       anySaveInProgressRef.current = false;
@@ -2058,7 +2060,7 @@ export default function InspectionForm() {
       // Sync is now handled automatically by useAutoSync hook
     } catch (error: any) {
       console.error("Immediate save failed:", error);
-      setSaveError(error.message || 'Immediate save failed');
+      setSaveError({ message: error.message || 'Immediate save failed', code: error?.code });
     } finally {
       clearTimeout(safetyTimeout);
       setAutoSaving(false);
@@ -2097,7 +2099,7 @@ export default function InspectionForm() {
       // Sync is now handled automatically by useAutoSync hook
     } catch (error: any) {
       console.error("Auto-save failed:", error);
-      setSaveError(error.message || 'Auto-save failed');
+      setSaveError({ message: error.message || 'Auto-save failed', code: error?.code });
     } finally {
       clearTimeout(safetyTimeout);
       setAutoSaving(false);
@@ -2140,7 +2142,7 @@ export default function InspectionForm() {
     } catch (error: any) {
       console.error("Save error:", error);
       const errorMsg = error.message || "Failed to save progress";
-      setSaveError(errorMsg);
+      setSaveError({ message: errorMsg, code: error?.code });
     } finally {
       clearTimeout(safetyTimeout);
       console.log('[InspectionForm] Completed, setting saving to false');
@@ -3007,6 +3009,22 @@ export default function InspectionForm() {
           </div>
         </div>
       </header>
+
+      <SaveFailureBanner
+        saveError={saveError}
+        onRetry={() => saveProgress()}
+        onExportDraft={() => ({
+          inspection,
+          systems,
+          ziplines,
+          equipment,
+          standards,
+          summary,
+          exported_at: new Date().toISOString(),
+        })}
+        reportType="inspection"
+        reportId={id}
+      />
 
       <main onClickCapture={handleLockedFieldClick} onPointerDownCapture={handleLockedFieldClick} className={cn("container mx-auto px-4 py-8 max-w-6xl", isCompletionLocked && "completion-locked")}>
         {isCompletionLocked && (
