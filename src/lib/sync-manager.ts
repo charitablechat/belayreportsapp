@@ -163,9 +163,7 @@ export async function syncPhotos(signal?: AbortSignal): Promise<{ remaining: num
         }
 
         if (photo.inspectionId?.startsWith('temp-')) {
-          if (import.meta.env.DEV) {
-            console.warn('[Sync Manager] Skipping photo with temporary inspection ID:', photo.id);
-          }
+          syncLog.warn('[Sync Manager] Skipping photo with temporary inspection ID:', photo.id);
           // S13: Count temp-parent skips toward retry ceiling so chronically
           // stuck photos eventually surface in the dead-letter UI instead of
           // being silently invisible. Age-based GC (evictStuckTempPhotos)
@@ -298,9 +296,7 @@ export async function syncPhotos(signal?: AbortSignal): Promise<{ remaining: num
             // C5: Real, non-pending storage path is on record — the previous upload
             // succeeded and only the markPhotoAsUploaded write lost its way.
             // Safe to finalize with the known-good path.
-            if (import.meta.env.DEV) {
-              console.warn('[Sync Manager] Finalizing photo with null blob but known photoUrl:', photo.id);
-            }
+            syncLog.warn('[Sync Manager] Finalizing photo with null blob but known photoUrl:', photo.id);
             await markPhotoAsUploaded(photo.id, photo.photoUrl);
             changedCount++;
             return;
