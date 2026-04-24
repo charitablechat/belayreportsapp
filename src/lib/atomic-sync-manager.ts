@@ -2855,7 +2855,10 @@ export async function syncDailyAssessmentAtomic(assessmentId: string, preValidat
       });
     }
     
-    return { success: true };
+    // H3: parent + children committed. Surface deferred-reconcile status.
+    return assessmentReconcileBlocked
+      ? { success: true, partial: true, reason: 'reconcile_pending', message: 'Some local deletions could not be confirmed; will retry on next sync.' }
+      : { success: true };
     
   } catch (error: any) {
     console.error('[Atomic Sync] Failed to sync daily assessment:', assessmentId, error);
