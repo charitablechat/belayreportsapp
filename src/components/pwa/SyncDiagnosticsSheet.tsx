@@ -122,6 +122,11 @@ export const SyncDiagnosticsSheet = () => {
     setEmptyLocalConflicts(conflicts);
     const failures = await listPhotoUploadFailures().catch(() => [] as PhotoUploadFailureEntry[]);
     setPhotoFailures(failures);
+    try {
+      setEmergencyFailures(getEmergencyFallbackFailures());
+    } catch {
+      setEmergencyFailures([]);
+    }
     setDiag({
       swRegistered,
       swController,
