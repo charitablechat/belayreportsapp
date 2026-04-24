@@ -3010,6 +3010,22 @@ export default function InspectionForm() {
         </div>
       </header>
 
+      <SaveFailureBanner
+        saveError={saveError}
+        onRetry={() => saveProgress()}
+        onExportDraft={() => ({
+          inspection,
+          systems,
+          ziplines,
+          equipment,
+          standards,
+          summary,
+          exported_at: new Date().toISOString(),
+        })}
+        reportType="inspection"
+        reportId={id}
+      />
+
       <main onClickCapture={handleLockedFieldClick} onPointerDownCapture={handleLockedFieldClick} className={cn("container mx-auto px-4 py-8 max-w-6xl", isCompletionLocked && "completion-locked")}>
         {isCompletionLocked && (
           <div className="border-2 border-green-500/60 bg-black/90 text-green-500 font-mono text-xs px-4 py-2 flex items-center gap-2 mb-4 rounded">
