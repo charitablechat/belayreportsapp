@@ -104,6 +104,38 @@ import {
 } from "./offline-storage";
 import { appendVersion, getLatestFieldCount, calculateFieldCount } from "./report-version-manager";
 import { runWithConcurrency } from "./concurrency";
+import type { MergeableRecord } from "./field-merge";
+
+// ─── internal type aliases ──────────────────────────────────────────────────
+/** Opaque DB row (child tables prefetched for rollback; we only ever spread or length-check them). */
+type DbRow = Record<string, unknown>;
+/** Shape of the `align_synced_at` RPC response. Both branches are optional — the
+ * call is advisory and can return either a normal `{ updated_at }` payload or
+ * an `{ error }` envelope. */
+interface AlignSyncedAtResult { updated_at?: string; error?: string }
+/** Shape returned by `syncInspectionAtomic` / `syncTrainingAtomic` /
+ * `syncDailyAssessmentAtomic`. Only the batch-caller cares about the
+ * `skipped` / `partial` / `reason` flags. */
+interface AtomicSyncItemResult {
+  success?: boolean;
+  skipped?: boolean;
+  partial?: boolean;
+  reason?: string;
+  message?: string;
+}
+/** Narrow subset of the Supabase client we use when the table name is only
+ * known at runtime (refetchX helpers). Keeps us out of the generated
+ * `Database` type without resorting to `any`. */
+type DynamicSupabaseClient = {
+  from: (table: string) => {
+    select: (columns: string) => {
+      eq: (column: string, value: string) => Promise<{
+        data: DbRow[] | null;
+        error: unknown;
+      }>;
+    };
+  };
+};
 
 // ─── C5 helper ──────────────────────────────────────────────────────────────
 /**
@@ -280,7 +312,7 @@ import { SYNC_DRIFT_TOLERANCE_MS } from "./local-data-guards";
  * No-op when `oldId === newId`. Rows whose FK doesn't currently match `oldId`
  * are left untouched (defence against accidentally re-pointing unrelated rows).
  */
-export function rewriteChildForeignKeys<T extends Record<string, any>>(
+export function rewriteChildForeignKeys<T extends Record<string, unknown>>(
   children: T[],
   oldId: string,
   newId: string,
@@ -290,7 +322,7 @@ export function rewriteChildForeignKeys<T extends Record<string, any>>(
   if (oldId === newId) return children;
   for (const child of children) {
     if (child[fkColumn] === oldId) {
-      (child as any)[fkColumn] = newId;
+      (child as Record<string, unknown>)[fkColumn] = newId;
     }
   }
   return children;
@@ -552,7 +584,7 @@ export async function syncInspectionAtomic(inspectionId: string, preValidatedUse
       // S5: DEDUP via stable client_idempotency_key (server-enforced via partial unique index).
       // Falls back to deriving the key from the temp id for legacy temp records that
       // were created before this column existed.
-      const idempKey = (inspection as any).client_idempotency_key
+      const idempKey = (inspection as { client_idempotency_key?: string | null }).client_idempotency_key
         ?? inspection.id.replace(/^temp-/, '');
 
       const { data: dupRows } = await supabase
@@ -588,7 +620,7 @@ export async function syncInspectionAtomic(inspectionId: string, preValidatedUse
       }
 
       // Always carry the idempotency key forward into the upsert payload.
-      (inspection as any).client_idempotency_key = idempKey;
+      (inspection as { client_idempotency_key?: string | null }).client_idempotency_key = idempKey;
     }
     
     // Use pre-validated user from batch caller, or validate session if called individually
@@ -729,9 +761,9 @@ export async function syncInspectionAtomic(inspectionId: string, preValidatedUse
           .maybeSingle();
 
         if (remoteRow) {
-          const merged = mergeRecordFields<any>(
-            inspection as any,
-            remoteRow as any,
+          const merged = mergeRecordFields(
+            inspection as unknown as MergeableRecord,
+            remoteRow as unknown as MergeableRecord,
             TRACKED_FIELDS.inspection,
           );
           // Mutate in place so the existing transaction steps below upsert merged values.
@@ -788,7 +820,7 @@ export async function syncInspectionAtomic(inspectionId: string, preValidatedUse
           notifyRegressionBlock(
             'inspection',
             inspectionId,
-            (inspection as any)?.organization || (inspection as any)?.location || '',
+            inspection.organization || inspection.location || '',
             skipCount,
           );
           return { success: false, skipped: true, reason: 'field_count_regression' };
@@ -818,7 +850,9 @@ export async function syncInspectionAtomic(inspectionId: string, preValidatedUse
     const steps: TransactionStep[] = [];
     
     // Exclude joined 'inspector' object - only inspector_id column exists in DB
-    const { inspector, ...inspectionWithoutJoin } = inspection as any;
+    const { inspector: _inspector, ...inspectionWithoutJoin } =
+      inspection as typeof inspection & { inspector?: unknown };
+    void _inspector;
     
     // For rollback, capture both synced_at and updated_at for proper state restoration
     const rollbackData = recordStatus?.record_exists 
@@ -840,11 +874,11 @@ export async function syncInspectionAtomic(inspectionId: string, preValidatedUse
     // ZERO DATA LOSS: Empty-array safeguard
     // If the server has child data but local is completely empty, this is suspicious
     // (likely IndexedDB corruption or failed read) -- skip sync to prevent data loss
-    let existingSystems: any[] = [];
-    let existingZiplines: any[] = [];
-    let existingEquipment: any[] = [];
-    let existingStandards: any[] = [];
-    let existingSummary: any[] = [];
+    let existingSystems: DbRow[] = [];
+    let existingZiplines: DbRow[] = [];
+    let existingEquipment: DbRow[] = [];
+    let existingStandards: DbRow[] = [];
+    let existingSummary: DbRow[] = [];
 
     // S25: When the server row is at exactly our last-known baseline, skip the
     // 5x rollback pre-fetch. reconcileChildTable will fall back to its own
@@ -901,7 +935,7 @@ export async function syncInspectionAtomic(inspectionId: string, preValidatedUse
           'inspection',
           inspectionId,
           serverCounts,
-          inspection.organization || (inspection as any).location || undefined,
+          inspection.organization || inspection.location || undefined,
         );
 
         return { success: false, skipped: true, reason: 'empty_local_guard' };
@@ -957,7 +991,7 @@ export async function syncInspectionAtomic(inspectionId: string, preValidatedUse
     if (recordStatus?.record_exists && !recordStatus?.is_deleted) {
       // S25: when prefetch was skipped, pass `undefined` (not `[]`) so
       // reconcileChildTable falls back to its own live fetch when needed.
-      const pf = (arr: any[]) => (serverUnchangedSinceBaseline ? undefined : arr);
+      const pf = (arr: DbRow[]) => (serverUnchangedSinceBaseline ? undefined : arr);
       inspectionReconcileSpec = [
         { childTable: 'inspection_systems', parentIdColumn: 'inspection_id', localItems: systems, prefetchedServerRows: pf(existingSystems), expectedNonEmpty: idbReadFlags.systems },
         { childTable: 'inspection_ziplines', parentIdColumn: 'inspection_id', localItems: ziplines, prefetchedServerRows: pf(existingZiplines), expectedNonEmpty: idbReadFlags.ziplines },
@@ -1074,7 +1108,7 @@ export async function syncInspectionAtomic(inspectionId: string, preValidatedUse
     // updated_at/synced_at — the client-clock fallback was the source of the
     // "1 pending" drift trap on slow networks.
     let serverTimestamp: string;
-    const alignedData = aligned as any;
+    const alignedData = aligned as AlignSyncedAtResult | null;
     if (alignError || !alignedData || alignedData.error) {
       console.warn(
         '[Atomic Sync] align_synced_at non-fatal failure — fetching server timestamp',
@@ -1085,12 +1119,11 @@ export async function syncInspectionAtomic(inspectionId: string, preValidatedUse
         .select('updated_at, synced_at')
         .eq('id', inspectionId)
         .maybeSingle();
-      serverTimestamp =
-        (serverRow as any)?.synced_at ||
-        (serverRow as any)?.updated_at ||
-        (steps[steps.length - 1].data as any).synced_at;
+      const sr = serverRow as { synced_at?: string | null; updated_at?: string | null } | null;
+      const lastStep = steps[steps.length - 1].data as { synced_at?: string };
+      serverTimestamp = sr?.synced_at || sr?.updated_at || lastStep.synced_at || '';
     } else {
-      serverTimestamp = alignedData.updated_at;
+      serverTimestamp = alignedData.updated_at ?? '';
       syncLog.log(
         '%c[SYNC_TERMINAL] align_synced_at CONFIRMED %c%s',
         'color: #4ade80; font-family: monospace; font-weight: bold',
@@ -1112,7 +1145,7 @@ export async function syncInspectionAtomic(inspectionId: string, preValidatedUse
       {
         user_cleared_at: null,
         inspector: inspectorProfile || { first_name: null, last_name: null, avatar_url: null },
-      } as any,
+      } as Partial<typeof inspection>,
       getOfflineInspection,
       saveInspectionOffline,
       { reconcileBlocked: inspectionReconcileBlocked },
@@ -1169,7 +1202,7 @@ export async function syncInspectionAtomic(inspectionId: string, preValidatedUse
       ? { success: true, partial: true, reason: 'reconcile_pending', message: 'Some local deletions could not be confirmed; will retry on next sync.' }
       : { success: true };
     
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error('[Atomic Sync] Failed to sync inspection:', inspectionId, error);
     throw error;
   }
@@ -1218,7 +1251,8 @@ export async function syncAllInspectionsAtomic(preValidatedUser?: CachedUser, si
   // Note: getUnsyncedInspections has its own internal timeout via withIndexedDBReadBoundary;
   // the outer 15s timeout here is a safety net for very slow mobile networks.
   // S11: getUnsyncedInspections now returns IdbReadFailure on failure (silent [] fallback removed).
-  let unsynced: any[];
+  type UnsyncedInspection = { id: string; organization?: string | null; [k: string]: unknown };
+  let unsynced: UnsyncedInspection[];
   let fetchFailureReason: string | null = null;
   try {
     const timeoutPromise = new Promise<never>((_, reject) => 
@@ -1234,15 +1268,16 @@ export async function syncAllInspectionsAtomic(preValidatedUser?: CachedUser, si
       fetchFailureReason = result.error;
       unsynced = [];
     } else {
-      unsynced = result;
+      unsynced = result as UnsyncedInspection[];
     }
-  } catch (e: any) {
-    if (e.message === 'IndexedDB timeout') {
+  } catch (e: unknown) {
+    const message = e instanceof Error ? e.message : String(e);
+    if (message === 'IndexedDB timeout') {
       console.warn('[Atomic Sync] IndexedDB timeout getting unsynced inspections - will retry next cycle');
       fetchFailureReason = 'idb_outer_timeout';
     } else {
       console.warn('[Atomic Sync] Failed to get unsynced inspections:', e);
-      fetchFailureReason = e?.message || 'unknown';
+      fetchFailureReason = message || 'unknown';
     }
     unsynced = [];
   }
@@ -1344,19 +1379,20 @@ export async function syncAllInspectionsAtomic(preValidatedUser?: CachedUser, si
           new Promise<never>((_, reject) => setTimeout(() => reject(new Error('Item sync timeout')), ITEM_SYNC_TIMEOUT))
         ]);
         // Only count as success if item was actually synced (not skipped)
-        if (itemResult && typeof itemResult === 'object' && (itemResult as any).skipped) {
+        const r = (itemResult && typeof itemResult === 'object' ? itemResult : null) as AtomicSyncItemResult | null;
+        if (r?.skipped) {
           // Skipped items don't count as success or failure
-          syncLog.log(`[Atomic Sync] Skipped ${i + 1}/${unsynced.length}:`, inspection.id, (itemResult as any).reason);
+          syncLog.log(`[Atomic Sync] Skipped ${i + 1}/${unsynced.length}:`, inspection.id, r.reason);
           synced = true; // Don't retry skipped items
-        } else if (itemResult && typeof itemResult === 'object' && (itemResult as any).partial) {
+        } else if (r?.partial) {
           // N-A: parent + children committed, but deferred reconcile was blocked.
           // safePostSyncSave left synced_at intact so the next cycle retries.
           // Do NOT recordSyncSuccess — keep the quarantine counter ticking so
           // chronically blocked reconciles eventually surface to the user.
           partialCount++;
-          partialRecords.push({ id: inspection.id, reason: (itemResult as any).reason || 'reconcile_pending' });
+          partialRecords.push({ id: inspection.id, reason: r.reason || 'reconcile_pending' });
           synced = true; // Don't retry within this cycle; next cycle picks it up.
-          syncLog.log(`[Atomic Sync] Partial ${i + 1}/${unsynced.length}:`, inspection.id, (itemResult as any).reason);
+          syncLog.log(`[Atomic Sync] Partial ${i + 1}/${unsynced.length}:`, inspection.id, r.reason);
         } else {
           successCount++;
           synced = true;
@@ -1365,8 +1401,9 @@ export async function syncAllInspectionsAtomic(preValidatedUser?: CachedUser, si
         }
 
         syncLog.log(`[Atomic Sync] Synced ${i + 1}/${batch.length} (${remaining} remaining):`, inspection.id);
-      } catch (error: any) {
+      } catch (error: unknown) {
         retryCount++;
+        const message = error instanceof Error ? error.message : String(error);
 
         if (retryCount < maxRetries && !signal?.aborted) {
           // H5: jittered exponential backoff (1s, 4s, 12s ±20%) prevents
@@ -1376,9 +1413,9 @@ export async function syncAllInspectionsAtomic(preValidatedUser?: CachedUser, si
           await new Promise(resolve => setTimeout(resolve, delay));
         } else {
           failCount++;
-          errors.push({ id: inspection.id, error: error.message });
+          errors.push({ id: inspection.id, error: message });
           // H5: increment per-item failure counter; quarantine after 3 cycles.
-          recordSyncFailure(inspection.id, error.message ?? 'unknown');
+          recordSyncFailure(inspection.id, message || 'unknown');
           console.error('[Atomic Sync] Failed to sync inspection after retries:', inspection.id, error);
         }
       }
@@ -1467,7 +1504,7 @@ async function rewriteTrainingChildrenIdb(oldId: string, newId: string): Promise
     try {
       const items = await getTrainingDataOffline(store, oldId);
       if (!items || items.length === 0) continue;
-      const rewritten = items.map((item: any) => ({ ...item, training_id: newId }));
+      const rewritten = items.map((item: DbRow) => ({ ...item, training_id: newId }));
       await saveTrainingDataOffline(store, newId, rewritten);
       await clearTrainingDataOffline(store, oldId);
     } catch (e) {
@@ -1487,7 +1524,7 @@ async function rewriteAssessmentChildrenIdb(oldId: string, newId: string): Promi
     try {
       const items = await getAssessmentDataOffline(store, oldId);
       if (!items || items.length === 0) continue;
-      const rewritten = items.map((item: any) => ({ ...item, assessment_id: newId }));
+      const rewritten = items.map((item: DbRow) => ({ ...item, assessment_id: newId }));
       await saveAssessmentDataOffline(store, newId, rewritten);
       await clearAssessmentDataOffline(store, oldId);
     } catch (e) {
@@ -1520,7 +1557,7 @@ export async function syncTrainingAtomic(trainingId: string, preValidatedUser?: 
     // Detect and replace temp training IDs with real UUIDs before validation
     if (training.id.startsWith('temp-')) {
       // S5: DEDUP via stable client_idempotency_key (server-enforced via partial unique index).
-      const idempKey = (training as any).client_idempotency_key
+      const idempKey = (training as { client_idempotency_key?: string | null }).client_idempotency_key
         ?? training.id.replace(/^temp-/, '');
 
       const { data: dupRows } = await supabase
@@ -1555,7 +1592,7 @@ export async function syncTrainingAtomic(trainingId: string, preValidatedUser?: 
         trainingId = newId;
       }
 
-      (training as any).client_idempotency_key = idempKey;
+      (training as { client_idempotency_key?: string | null }).client_idempotency_key = idempKey;
     }
     
     // Use pre-validated user from batch caller, or validate session if called individually
@@ -1709,9 +1746,9 @@ export async function syncTrainingAtomic(trainingId: string, preValidatedUser?: 
           .eq('id', trainingId)
           .maybeSingle();
         if (remoteRow) {
-          const merged = mergeRecordFields<any>(
-            training as any,
-            remoteRow as any,
+          const merged = mergeRecordFields(
+            training as unknown as MergeableRecord,
+            remoteRow as unknown as MergeableRecord,
             TRACKED_FIELDS.training,
           );
           Object.assign(training, merged);
@@ -1748,7 +1785,7 @@ export async function syncTrainingAtomic(trainingId: string, preValidatedUser?: 
           notifyRegressionBlock(
             'training',
             trainingId,
-            (training as any)?.organization || (training as any)?.location || '',
+            training.organization || training.location || '',
             skipCount,
           );
           return { success: false, skipped: true, reason: 'field_count_regression' };
@@ -1778,7 +1815,10 @@ export async function syncTrainingAtomic(trainingId: string, preValidatedUser?: 
     const steps: TransactionStep[] = [];
     
     // Exclude joined objects - only column fields exist in DB
-    const { inspector, trainer, ...trainingWithoutJoin } = training as any;
+    const { inspector: _inspector, trainer: _trainer, ...trainingWithoutJoin } =
+      training as typeof training & { inspector?: unknown; trainer?: unknown };
+    void _inspector;
+    void _trainer;
     
     // For rollback, capture both synced_at and updated_at for proper state restoration
     const rollbackData = recordStatus?.record_exists 
@@ -1797,12 +1837,12 @@ export async function syncTrainingAtomic(trainingId: string, preValidatedUser?: 
       rollbackData,
     });
     
-    let existingApproaches: any[] = [];
-    let existingSystems: any[] = [];
-    let existingAttention: any[] = [];
-    let existingVerifiable: any[] = [];
-    let existingSystemsInPlace: any[] = [];
-    let existingSummary: any[] = [];
+    let existingApproaches: DbRow[] = [];
+    let existingSystems: DbRow[] = [];
+    let existingAttention: DbRow[] = [];
+    let existingVerifiable: DbRow[] = [];
+    let existingSystemsInPlace: DbRow[] = [];
+    let existingSummary: DbRow[] = [];
 
     // S25: skip 6x rollback prefetch when server row is at our last-known baseline
     const serverUnchangedSinceBaseline =
@@ -1853,7 +1893,7 @@ export async function syncTrainingAtomic(trainingId: string, preValidatedUser?: 
           'training',
           trainingId,
           serverCounts,
-          (training as any).organization || undefined,
+          training.organization || undefined,
         );
 
         return { success: false, skipped: true, reason: 'empty_local_guard' };
@@ -1905,7 +1945,7 @@ export async function syncTrainingAtomic(trainingId: string, preValidatedUser?: 
     // after the transaction commits (H3).
     let trainingReconcileSpec: import('./deferred-reconcile').DeferredReconcileSpec[] | null = null;
     if (recordStatus?.record_exists && !recordStatus?.is_deleted) {
-      const pf = (arr: any[]) => (serverUnchangedSinceBaseline ? undefined : arr);
+      const pf = (arr: DbRow[]) => (serverUnchangedSinceBaseline ? undefined : arr);
       trainingReconcileSpec = [
         { childTable: 'training_delivery_approaches', parentIdColumn: 'training_id', localItems: delivery_approaches, prefetchedServerRows: pf(existingApproaches), expectedNonEmpty: trainingIdbReadFlags.delivery_approaches },
         { childTable: 'training_operating_systems', parentIdColumn: 'training_id', localItems: operating_systems, prefetchedServerRows: pf(existingSystems), expectedNonEmpty: trainingIdbReadFlags.operating_systems },
@@ -2025,7 +2065,7 @@ export async function syncTrainingAtomic(trainingId: string, preValidatedUser?: 
     // S3: align_synced_at is ADVISORY. Transaction final step already wrote synced_at.
     // S14: on RPC failure, fetch server-authoritative timestamps instead of using client clock.
     let serverTimestamp: string;
-    const alignedData = aligned as any;
+    const alignedData = aligned as AlignSyncedAtResult | null;
     if (alignError || !alignedData || alignedData.error) {
       console.warn(
         '[Atomic Sync] align_synced_at non-fatal failure — fetching server timestamp',
@@ -2036,12 +2076,11 @@ export async function syncTrainingAtomic(trainingId: string, preValidatedUser?: 
         .select('updated_at, synced_at')
         .eq('id', trainingId)
         .maybeSingle();
-      serverTimestamp =
-        (serverRow as any)?.synced_at ||
-        (serverRow as any)?.updated_at ||
-        (steps[steps.length - 1].data as any).synced_at;
+      const sr = serverRow as { synced_at?: string | null; updated_at?: string | null } | null;
+      const lastStep = steps[steps.length - 1].data as { synced_at?: string };
+      serverTimestamp = sr?.synced_at || sr?.updated_at || lastStep.synced_at || '';
     } else {
-      serverTimestamp = alignedData.updated_at;
+      serverTimestamp = alignedData.updated_at ?? '';
       syncLog.log(
         '%c[SYNC_TERMINAL] align_synced_at CONFIRMED %c%s',
         'color: #4ade80; font-family: monospace; font-weight: bold',
@@ -2061,7 +2100,7 @@ export async function syncTrainingAtomic(trainingId: string, preValidatedUser?: 
       {
         user_cleared_at: null,
         inspector: inspectorProfile || { first_name: null, last_name: null, avatar_url: null },
-      } as any,
+      } as Partial<typeof training>,
       getOfflineTraining,
       saveTrainingOffline,
       { reconcileBlocked: trainingReconcileBlocked },
@@ -2105,7 +2144,8 @@ export async function syncTrainingAtomic(trainingId: string, preValidatedUser?: 
     try {
       const queuedOps = await getQueuedTrainingOperations();
       const matchingOps = queuedOps.filter(op => {
-        const opTrainingId = (op as any).trainingId || op.data?.id;
+        const opTrainingId =
+          (op as { trainingId?: string }).trainingId || op.data?.id;
         return opTrainingId === trainingId || (trainingIdMapping && opTrainingId === trainingIdMapping.oldId);
       });
       for (const op of matchingOps) {
@@ -2123,7 +2163,7 @@ export async function syncTrainingAtomic(trainingId: string, preValidatedUser?: 
       ? { success: true, partial: true, reason: 'reconcile_pending', message: 'Some local deletions could not be confirmed; will retry on next sync.' }
       : { success: true };
     
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error('[Atomic Sync] Failed to sync training:', trainingId, error);
     throw error;
   }
@@ -2168,7 +2208,8 @@ export async function syncAllTrainingsAtomic(preValidatedUser?: CachedUser, sign
   }
   
   // S11: getUnsyncedTrainings now returns IdbReadFailure on failure
-  let unsynced: any[];
+  type UnsyncedTraining = { id: string; organization?: string | null; [k: string]: unknown };
+  let unsynced: UnsyncedTraining[];
   let fetchFailureReason: string | null = null;
   try {
     const timeoutPromise = new Promise<never>((_, reject) => 
@@ -2184,15 +2225,16 @@ export async function syncAllTrainingsAtomic(preValidatedUser?: CachedUser, sign
       fetchFailureReason = result.error;
       unsynced = [];
     } else {
-      unsynced = result;
+      unsynced = result as UnsyncedTraining[];
     }
-  } catch (e: any) {
-    if (e.message === 'IndexedDB timeout') {
+  } catch (e: unknown) {
+    const message = e instanceof Error ? e.message : String(e);
+    if (message === 'IndexedDB timeout') {
       console.warn('[Atomic Sync] IndexedDB timeout getting unsynced trainings - will retry next cycle');
       fetchFailureReason = 'idb_outer_timeout';
     } else {
       console.warn('[Atomic Sync] Failed to get unsynced trainings:', e);
-      fetchFailureReason = e?.message || 'unknown';
+      fetchFailureReason = message || 'unknown';
     }
     unsynced = [];
   }
@@ -2277,14 +2319,15 @@ export async function syncAllTrainingsAtomic(preValidatedUser?: CachedUser, sign
           syncTrainingAtomic(training.id, user as CachedUser, signal),
           new Promise<never>((_, reject) => setTimeout(() => reject(new Error('Item sync timeout')), ITEM_SYNC_TIMEOUT))
         ]);
-        if (itemResult && typeof itemResult === 'object' && (itemResult as any).skipped) {
+        const r = (itemResult && typeof itemResult === 'object' ? itemResult : null) as AtomicSyncItemResult | null;
+        if (r?.skipped) {
           synced = true;
-        } else if (itemResult && typeof itemResult === 'object' && (itemResult as any).partial) {
+        } else if (r?.partial) {
           // N-A: see syncAllInspectionsAtomic for rationale.
           partialCount++;
-          partialRecords.push({ id: training.id, reason: (itemResult as any).reason || 'reconcile_pending' });
+          partialRecords.push({ id: training.id, reason: r.reason || 'reconcile_pending' });
           synced = true;
-          syncLog.log(`[Atomic Sync] Partial training ${i + 1}/${batch.length}:`, training.id, (itemResult as any).reason);
+          syncLog.log(`[Atomic Sync] Partial training ${i + 1}/${batch.length}:`, training.id, r.reason);
         } else {
           successCount++;
           synced = true;
@@ -2292,8 +2335,9 @@ export async function syncAllTrainingsAtomic(preValidatedUser?: CachedUser, sign
         }
 
         syncLog.log(`[Atomic Sync] Synced training ${i + 1}/${batch.length} (${remaining} remaining):`, training.id);
-      } catch (error: any) {
+      } catch (error: unknown) {
         retryCount++;
+        const message = error instanceof Error ? error.message : String(error);
 
         if (retryCount < maxRetries && !signal?.aborted) {
           const delay = jitteredBackoffMs(retryCount); // H5
@@ -2301,8 +2345,8 @@ export async function syncAllTrainingsAtomic(preValidatedUser?: CachedUser, sign
           await new Promise(resolve => setTimeout(resolve, delay));
         } else {
           failCount++;
-          errors.push({ id: training.id, error: error.message });
-          recordSyncFailure(training.id, error.message ?? 'unknown'); // H5
+          errors.push({ id: training.id, error: message });
+          recordSyncFailure(training.id, message || 'unknown'); // H5
           console.error('[Atomic Sync] Failed to sync training after retries:', training.id, error);
         }
       }
@@ -2356,7 +2400,7 @@ export async function syncDailyAssessmentAtomic(assessmentId: string, preValidat
     // Detect and replace temp assessment IDs with real UUIDs before validation
     if (assessment.id.startsWith('temp-')) {
       // S5: DEDUP via stable client_idempotency_key (server-enforced via partial unique index).
-      const idempKey = (assessment as any).client_idempotency_key
+      const idempKey = (assessment as { client_idempotency_key?: string | null }).client_idempotency_key
         ?? assessment.id.replace(/^temp-/, '');
 
       const { data: dupRows } = await supabase
@@ -2391,7 +2435,7 @@ export async function syncDailyAssessmentAtomic(assessmentId: string, preValidat
         assessmentId = newId;
       }
 
-      (assessment as any).client_idempotency_key = idempKey;
+      (assessment as { client_idempotency_key?: string | null }).client_idempotency_key = idempKey;
     }
     
     // Use pre-validated user from batch caller, or validate session if called individually
@@ -2534,9 +2578,9 @@ export async function syncDailyAssessmentAtomic(assessmentId: string, preValidat
           .eq('id', assessmentId)
           .maybeSingle();
         if (remoteRow) {
-          const merged = mergeRecordFields<any>(
-            assessment as any,
-            remoteRow as any,
+          const merged = mergeRecordFields(
+            assessment as unknown as MergeableRecord,
+            remoteRow as unknown as MergeableRecord,
             TRACKED_FIELDS.daily_assessment,
           );
           Object.assign(assessment, merged);
@@ -2573,7 +2617,7 @@ export async function syncDailyAssessmentAtomic(assessmentId: string, preValidat
           notifyRegressionBlock(
             'assessment',
             assessmentId,
-            (assessment as any)?.organization || (assessment as any)?.site || '',
+            assessment.organization || (assessment as { site?: string | null }).site || '',
             skipCount,
           );
           return { success: false, skipped: true, reason: 'field_count_regression' };
@@ -2603,7 +2647,9 @@ export async function syncDailyAssessmentAtomic(assessmentId: string, preValidat
     const steps: TransactionStep[] = [];
     
     // Exclude joined objects - only column fields exist in DB
-    const { inspector, ...assessmentWithoutJoin } = assessment as any;
+    const { inspector: _inspector, ...assessmentWithoutJoin } =
+      assessment as typeof assessment & { inspector?: unknown };
+    void _inspector;
     
     // For rollback, capture both synced_at and updated_at for proper state restoration
     const rollbackData = recordStatus?.record_exists 
@@ -2622,12 +2668,12 @@ export async function syncDailyAssessmentAtomic(assessmentId: string, preValidat
       rollbackData,
     });
     
-    let existingBeginning: any[] = [];
-    let existingEnd: any[] = [];
-    let existingSystems: any[] = [];
-    let existingEquipment: any[] = [];
-    let existingStructure: any[] = [];
-    let existingEnvironment: any[] = [];
+    let existingBeginning: DbRow[] = [];
+    let existingEnd: DbRow[] = [];
+    let existingSystems: DbRow[] = [];
+    let existingEquipment: DbRow[] = [];
+    let existingStructure: DbRow[] = [];
+    let existingEnvironment: DbRow[] = [];
 
     // S25: skip 6x rollback prefetch when server row is at our last-known baseline
     const serverUnchangedSinceBaseline =
@@ -2678,7 +2724,7 @@ export async function syncDailyAssessmentAtomic(assessmentId: string, preValidat
           'daily_assessment',
           assessmentId,
           serverCounts,
-          (assessment as any).organization || (assessment as any).site || undefined,
+          assessment.organization || (assessment as { site?: string | null }).site || undefined,
         );
 
         return { success: false, skipped: true, reason: 'empty_local_guard' };
@@ -2733,7 +2779,7 @@ export async function syncDailyAssessmentAtomic(assessmentId: string, preValidat
     // after the transaction commits (H3).
     let assessmentReconcileSpec: import('./deferred-reconcile').DeferredReconcileSpec[] | null = null;
     if (recordStatus?.record_exists && !recordStatus?.is_deleted) {
-      const pf = (arr: any[]) => (serverUnchangedSinceBaseline ? undefined : arr);
+      const pf = (arr: DbRow[]) => (serverUnchangedSinceBaseline ? undefined : arr);
       assessmentReconcileSpec = [
         { childTable: 'daily_assessment_beginning_of_day', parentIdColumn: 'assessment_id', localItems: beginning_of_day, prefetchedServerRows: pf(existingBeginning), expectedNonEmpty: assessmentIdbReadFlags.beginning_of_day },
         { childTable: 'daily_assessment_end_of_day', parentIdColumn: 'assessment_id', localItems: end_of_day, prefetchedServerRows: pf(existingEnd), expectedNonEmpty: assessmentIdbReadFlags.end_of_day },
@@ -2847,7 +2893,7 @@ export async function syncDailyAssessmentAtomic(assessmentId: string, preValidat
     // S3: align_synced_at is ADVISORY. Transaction final step already wrote synced_at.
     // S14: on RPC failure, fetch server-authoritative timestamps instead of using client clock.
     let serverTimestamp: string;
-    const alignedData = aligned as any;
+    const alignedData = aligned as AlignSyncedAtResult | null;
     if (alignError || !alignedData || alignedData.error) {
       console.warn(
         '[Atomic Sync] align_synced_at non-fatal failure — fetching server timestamp',
@@ -2858,12 +2904,11 @@ export async function syncDailyAssessmentAtomic(assessmentId: string, preValidat
         .select('updated_at, synced_at')
         .eq('id', assessmentId)
         .maybeSingle();
-      serverTimestamp =
-        (serverRow as any)?.synced_at ||
-        (serverRow as any)?.updated_at ||
-        (steps[steps.length - 1].data as any).synced_at;
+      const sr = serverRow as { synced_at?: string | null; updated_at?: string | null } | null;
+      const lastStep = steps[steps.length - 1].data as { synced_at?: string };
+      serverTimestamp = sr?.synced_at || sr?.updated_at || lastStep.synced_at || '';
     } else {
-      serverTimestamp = alignedData.updated_at;
+      serverTimestamp = alignedData.updated_at ?? '';
       syncLog.log(
         '%c[SYNC_TERMINAL] align_synced_at CONFIRMED %c%s',
         'color: #4ade80; font-family: monospace; font-weight: bold',
@@ -2883,7 +2928,7 @@ export async function syncDailyAssessmentAtomic(assessmentId: string, preValidat
       {
         user_cleared_at: null,
         inspector: inspectorProfile || { first_name: null, last_name: null, avatar_url: null },
-      } as any,
+      } as Partial<typeof assessment>,
       getOfflineDailyAssessment,
       saveDailyAssessmentOffline,
       { reconcileBlocked: assessmentReconcileBlocked },
@@ -2920,7 +2965,8 @@ export async function syncDailyAssessmentAtomic(assessmentId: string, preValidat
     try {
       const queuedOps = await getQueuedAssessmentOperations();
       const matchingOps = queuedOps.filter(op => {
-        const opAssessmentId = (op as any).assessmentId || op.data?.id;
+        const opAssessmentId =
+          (op as { assessmentId?: string }).assessmentId || op.data?.id;
         return opAssessmentId === assessmentId || (assessmentIdMapping && opAssessmentId === assessmentIdMapping.oldId);
       });
       for (const op of matchingOps) {
@@ -2944,7 +2990,7 @@ export async function syncDailyAssessmentAtomic(assessmentId: string, preValidat
       ? { success: true, partial: true, reason: 'reconcile_pending', message: 'Some local deletions could not be confirmed; will retry on next sync.' }
       : { success: true };
     
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error('[Atomic Sync] Failed to sync daily assessment:', assessmentId, error);
     throw error;
   }
@@ -2989,7 +3035,8 @@ export async function syncAllDailyAssessmentsAtomic(preValidatedUser?: CachedUse
   }
   
   // S11: getUnsyncedDailyAssessments now returns IdbReadFailure on failure
-  let unsynced: any[];
+  type UnsyncedAssessment = { id: string; organization?: string | null; [k: string]: unknown };
+  let unsynced: UnsyncedAssessment[];
   let fetchFailureReason: string | null = null;
   try {
     const timeoutPromise = new Promise<never>((_, reject) => 
@@ -3005,15 +3052,16 @@ export async function syncAllDailyAssessmentsAtomic(preValidatedUser?: CachedUse
       fetchFailureReason = result.error;
       unsynced = [];
     } else {
-      unsynced = result;
+      unsynced = result as UnsyncedAssessment[];
     }
-  } catch (e: any) {
-    if (e.message === 'IndexedDB timeout') {
+  } catch (e: unknown) {
+    const message = e instanceof Error ? e.message : String(e);
+    if (message === 'IndexedDB timeout') {
       console.warn('[Atomic Sync] IndexedDB timeout getting unsynced assessments - will retry next cycle');
       fetchFailureReason = 'idb_outer_timeout';
     } else {
       console.warn('[Atomic Sync] Failed to get unsynced assessments:', e);
-      fetchFailureReason = e?.message || 'unknown';
+      fetchFailureReason = message || 'unknown';
     }
     unsynced = [];
   }
@@ -3097,14 +3145,15 @@ export async function syncAllDailyAssessmentsAtomic(preValidatedUser?: CachedUse
           syncDailyAssessmentAtomic(assessment.id, user as CachedUser, signal),
           new Promise<never>((_, reject) => setTimeout(() => reject(new Error('Item sync timeout')), ITEM_SYNC_TIMEOUT))
         ]);
-        if (itemResult && typeof itemResult === 'object' && (itemResult as any).skipped) {
+        const r = (itemResult && typeof itemResult === 'object' ? itemResult : null) as AtomicSyncItemResult | null;
+        if (r?.skipped) {
           synced = true;
-        } else if (itemResult && typeof itemResult === 'object' && (itemResult as any).partial) {
+        } else if (r?.partial) {
           // N-A: see syncAllInspectionsAtomic for rationale.
           partialCount++;
-          partialRecords.push({ id: assessment.id, reason: (itemResult as any).reason || 'reconcile_pending' });
+          partialRecords.push({ id: assessment.id, reason: r.reason || 'reconcile_pending' });
           synced = true;
-          syncLog.log(`[Atomic Sync] Partial assessment ${i + 1}/${batch.length}:`, assessment.id, (itemResult as any).reason);
+          syncLog.log(`[Atomic Sync] Partial assessment ${i + 1}/${batch.length}:`, assessment.id, r.reason);
         } else {
           successCount++;
           synced = true;
@@ -3112,8 +3161,9 @@ export async function syncAllDailyAssessmentsAtomic(preValidatedUser?: CachedUse
         }
 
         syncLog.log(`[Atomic Sync] Synced daily assessment ${i + 1}/${batch.length} (${remaining} remaining):`, assessment.id);
-      } catch (error: any) {
+      } catch (error: unknown) {
         retryCount++;
+        const message = error instanceof Error ? error.message : String(error);
 
         if (retryCount < maxRetries && !signal?.aborted) {
           const delay = jitteredBackoffMs(retryCount); // H5
@@ -3121,8 +3171,8 @@ export async function syncAllDailyAssessmentsAtomic(preValidatedUser?: CachedUse
           await new Promise(resolve => setTimeout(resolve, delay));
         } else {
           failCount++;
-          errors.push({ id: assessment.id, error: error.message });
-          recordSyncFailure(assessment.id, error.message ?? 'unknown'); // H5
+          errors.push({ id: assessment.id, error: message });
+          recordSyncFailure(assessment.id, message || 'unknown'); // H5
           console.error('[Atomic Sync] Failed to sync daily assessment after retries:', assessment.id, error);
         }
       }
@@ -3167,12 +3217,13 @@ export async function syncAllDailyAssessmentsAtomic(preValidatedUser?: CachedUse
 // Self-write registration suppresses the resulting Realtime echo (S6).
 // ============================================================================
 
-async function fetchAllRows(table: string, parentColumn: string, parentId: string): Promise<any[]> {
-  const { data, error } = await (supabase.from(table as any) as any)
+async function fetchAllRows(table: string, parentColumn: string, parentId: string): Promise<DbRow[]> {
+  const { data, error } = await (supabase as unknown as DynamicSupabaseClient)
+    .from(table)
     .select('*')
     .eq(parentColumn, parentId);
   if (error) throw error;
-  return (data as any[]) || [];
+  return data || [];
 }
 
 export async function refetchInspectionPackage(inspectionId: string): Promise<void> {
@@ -3190,13 +3241,14 @@ export async function refetchInspectionPackage(inspectionId: string): Promise<vo
     registerSelfWrite(inspectionId);
     // C1: refetched server payload — guard against a concurrent local edit
     // landing during the refetch round-trip (T0 here is the freshly-fetched server row).
+    type LocalInspection = NonNullable<Awaited<ReturnType<typeof getOfflineInspection>>>;
     const refetchT0Ms = inspection.updated_at ? Date.parse(inspection.updated_at as string) : NaN;
-    await safePostSyncSave(
+    await safePostSyncSave<LocalInspection>(
       inspectionId,
-      inspection as any,
+      inspection as unknown as LocalInspection,
       refetchT0Ms,
-      (inspection as any).updated_at,
-      {} as any,
+      (inspection.updated_at as string) ?? '',
+      {},
       getOfflineInspection,
       saveInspectionOffline,
     );
@@ -3228,13 +3280,14 @@ export async function refetchTrainingPackage(trainingId: string): Promise<void> 
     if (error || !training) return;
     registerSelfWrite(trainingId);
     // C1: see refetchInspectionPackage above.
+    type LocalTraining = NonNullable<Awaited<ReturnType<typeof getOfflineTraining>>>;
     const refetchT0Ms = training.updated_at ? Date.parse(training.updated_at as string) : NaN;
-    await safePostSyncSave(
+    await safePostSyncSave<LocalTraining>(
       trainingId,
-      training as any,
+      training as unknown as LocalTraining,
       refetchT0Ms,
-      (training as any).updated_at,
-      {} as any,
+      (training.updated_at as string) ?? '',
+      {},
       getOfflineTraining,
       saveTrainingOffline,
     );
@@ -3267,13 +3320,14 @@ export async function refetchAssessmentPackage(assessmentId: string): Promise<vo
     if (error || !assessment) return;
     registerSelfWrite(assessmentId);
     // C1: see refetchInspectionPackage above.
+    type LocalAssessment = NonNullable<Awaited<ReturnType<typeof getOfflineDailyAssessment>>>;
     const refetchT0Ms = assessment.updated_at ? Date.parse(assessment.updated_at as string) : NaN;
-    await safePostSyncSave(
+    await safePostSyncSave<LocalAssessment>(
       assessmentId,
-      assessment as any,
+      assessment as unknown as LocalAssessment,
       refetchT0Ms,
-      (assessment as any).updated_at,
-      {} as any,
+      (assessment.updated_at as string) ?? '',
+      {},
       getOfflineDailyAssessment,
       saveDailyAssessmentOffline,
     );
