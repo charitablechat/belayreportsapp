@@ -104,7 +104,8 @@ describe('rewriteChildForeignKeys — pure FK rewrite contract', () => {
 
   it('handles empty / nullish input safely', () => {
     expect(rewriteChildForeignKeys([], 'temp-x', REAL_UUID, 'inspection_id')).toEqual([]);
-    // @ts-expect-error — verify defensive null-handling at runtime
-    expect(rewriteChildForeignKeys(null, 'temp-x', REAL_UUID, 'inspection_id')).toBeNull();
+    expect(
+      rewriteChildForeignKeys(null as unknown as any[], 'temp-x', REAL_UUID, 'inspection_id'),
+    ).toBeNull();
   });
 });
