@@ -908,41 +908,21 @@ export async function syncInspectionAtomic(inspectionId: string, preValidatedUse
       }
     }
 
-    // Step 2: RECONCILE then UPSERT child data
-    // Delete server rows that were removed locally, then upsert current local data
-    let inspectionReconciledDeletes: ReconciledTableDelete[] = [];
+    // Step 2: UPSERT child data first; reconcile (DELETE) is DEFERRED until
+    // after the transaction commits (H3). The reconcile spec is captured here
+    // so we can use the same prefetched server snapshots and IDB read flags.
+    let inspectionReconcileSpec: import('./deferred-reconcile').DeferredReconcileSpec[] | null = null;
     if (recordStatus?.record_exists && !recordStatus?.is_deleted) {
       // S25: when prefetch was skipped, pass `undefined` (not `[]`) so
       // reconcileChildTable falls back to its own live fetch when needed.
       const pf = (arr: any[]) => (serverUnchangedSinceBaseline ? undefined : arr);
-      const reconcileResult = await reconcileAllChildTables(
-        [
-          { childTable: 'inspection_systems', parentIdColumn: 'inspection_id', localItems: systems, prefetchedServerRows: pf(existingSystems), expectedNonEmpty: idbReadFlags.systems },
-          { childTable: 'inspection_ziplines', parentIdColumn: 'inspection_id', localItems: ziplines, prefetchedServerRows: pf(existingZiplines), expectedNonEmpty: idbReadFlags.ziplines },
-          { childTable: 'inspection_equipment', parentIdColumn: 'inspection_id', localItems: equipment, prefetchedServerRows: pf(existingEquipment), expectedNonEmpty: idbReadFlags.equipment },
-          { childTable: 'inspection_standards', parentIdColumn: 'inspection_id', localItems: standards, prefetchedServerRows: pf(existingStandards), expectedNonEmpty: idbReadFlags.standards },
-          { childTable: 'inspection_summary', parentIdColumn: 'inspection_id', localItems: summary ? [summary] : [], prefetchedServerRows: pf(existingSummary), expectedNonEmpty: idbReadFlags.summary },
-        ],
-        inspectionId,
-        'inspection',
-        user.id,
-      );
-      // C4: capture per-table pre-images so we can restore them if the upsert tx fails.
-      inspectionReconciledDeletes = reconcileResult.deletedByTable;
-      // If any child table's reconcile was blocked by a safety guard, do NOT mark
-      // the parent as synced — the user still has unflushed deletions to retry.
-      if (reconcileResult.blocked) {
-        console.warn('[Atomic Sync] Inspection reconcile blocked — marking sync as failed so user can retry', {
-          inspectionId: inspectionId.substring(0, 8),
-          blockedTables: reconcileResult.blockedTables,
-        });
-        return {
-          success: false,
-          skipped: true,
-          reason: 'reconcile_blocked',
-          message: 'Some local deletions could not be confirmed against the server. Will retry on next sync.',
-        };
-      }
+      inspectionReconcileSpec = [
+        { childTable: 'inspection_systems', parentIdColumn: 'inspection_id', localItems: systems, prefetchedServerRows: pf(existingSystems), expectedNonEmpty: idbReadFlags.systems },
+        { childTable: 'inspection_ziplines', parentIdColumn: 'inspection_id', localItems: ziplines, prefetchedServerRows: pf(existingZiplines), expectedNonEmpty: idbReadFlags.ziplines },
+        { childTable: 'inspection_equipment', parentIdColumn: 'inspection_id', localItems: equipment, prefetchedServerRows: pf(existingEquipment), expectedNonEmpty: idbReadFlags.equipment },
+        { childTable: 'inspection_standards', parentIdColumn: 'inspection_id', localItems: standards, prefetchedServerRows: pf(existingStandards), expectedNonEmpty: idbReadFlags.standards },
+        { childTable: 'inspection_summary', parentIdColumn: 'inspection_id', localItems: summary ? [summary] : [], prefetchedServerRows: pf(existingSummary), expectedNonEmpty: idbReadFlags.summary },
+      ];
     }
 
     if (systems.length > 0) {
