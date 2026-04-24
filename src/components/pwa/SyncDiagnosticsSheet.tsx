@@ -19,6 +19,8 @@ import {
   removePhotoUploadFailure,
   type DeadLetterSoftDelete,
   type PhotoUploadFailureEntry,
+  getEmergencyFallbackFailures,
+  type EmergencyFallbackFailure,
 } from '@/lib/offline-storage';
 import { retryDeadLetterSoftDelete } from '@/lib/queued-soft-delete-processor';
 import {
