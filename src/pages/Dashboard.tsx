@@ -366,10 +366,15 @@ export default function Dashboard() {
         loadDailyAssessments(userId, superAdminStatus, sessionValid),
       ]);
 
-      // Mark per-dataset validation based on whether each got a definitive result
-      if (results[0].definitive) setInspectionsValidated(true);
-      if (results[1].definitive) setTrainingsValidated(true);
-      if (results[2].definitive) setDailyValidated(true);
+      // Fix 1: Always flip per-dataset validation true once the load function
+      // returns. Previously this only happened on `definitive: true`, which
+      // left the StatsBar pulsing forever when network timed out AND IDB was
+      // empty. We'd rather show real numbers from cache (or a real 0) than
+      // skeletons indefinitely.
+      setInspectionsValidated(true);
+      setTrainingsValidated(true);
+      setDailyValidated(true);
+      void results; // (kept for future telemetry if needed)
 
       // Track network failures for stale-data banner
       const anyNetworkSuccess = results.some(r => r.networkSuccess);
@@ -382,6 +387,13 @@ export default function Dashboard() {
         networkFailCountRef.current = 0;
         setShowStaleDataBanner(false);
       }
+    } catch (err) {
+      // Even on outright failure, flip validation true so the StatsBar shows
+      // cached numbers rather than skeletons forever.
+      console.warn('[Dashboard] refreshReports threw — showing cached counts:', err);
+      setInspectionsValidated(true);
+      setTrainingsValidated(true);
+      setDailyValidated(true);
     } finally {
       refreshInFlightRef.current = false;
       // If a refresh was queued while we were busy, trigger it now
