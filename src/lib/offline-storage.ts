@@ -1759,14 +1759,19 @@ export async function getUnsyncedInspections(userId?: string) {
         if ((record as any).dirty === true) return true;
         if (!record.synced_at) return true; // never synced
         if (record.updated_at) {
-          const drift = new Date(record.updated_at).getTime() - new Date(record.synced_at).getTime();
-          const isUnsynced = isUpdatedAheadOfSync(new Date(record.updated_at).getTime(), new Date(record.synced_at).getTime());
+          // M4: Parse each timestamp ONCE per record per scan. Previously
+          // `new Date(...).getTime()` was invoked four times per record per
+          // filter pass — measurable battery cost on a 500-record store
+          // polled ~10×/min. Locals drop that to two parses per record.
+          const updatedMs = new Date(record.updated_at).getTime();
+          const syncedMs = new Date(record.synced_at).getTime();
+          const isUnsynced = isUpdatedAheadOfSync(updatedMs, syncedMs);
           if (isUnsynced && import.meta.env.DEV) {
             console.log('[Offline Storage] Inspection flagged unsynced (drift):', {
               id: String(record.id).substring(0, 8),
               localUpdated: record.updated_at,
               localSynced: record.synced_at,
-              drift_ms: drift,
+              drift_ms: updatedMs - syncedMs,
             });
           }
           return isUnsynced;
@@ -3048,7 +3053,10 @@ export async function getUnsyncedDailyAssessments(userId?: string) {
         if ((record as any).dirty === true) return true;
         if (!record.synced_at) return true;
         if (record.updated_at) {
-          return isUpdatedAheadOfSync(new Date(record.updated_at).getTime(), new Date(record.synced_at).getTime());
+          // M4: Parse each timestamp once per record (see getUnsyncedInspections).
+          const updatedMs = new Date(record.updated_at).getTime();
+          const syncedMs = new Date(record.synced_at).getTime();
+          return isUpdatedAheadOfSync(updatedMs, syncedMs);
         }
         return false;
       });
@@ -3396,7 +3404,10 @@ export async function getUnsyncedTrainings(userId?: string) {
         if ((record as any).dirty === true) return true;
         if (!record.synced_at) return true;
         if (record.updated_at) {
-          return isUpdatedAheadOfSync(new Date(record.updated_at).getTime(), new Date(record.synced_at).getTime());
+          // M4: Parse each timestamp once per record (see getUnsyncedInspections).
+          const updatedMs = new Date(record.updated_at).getTime();
+          const syncedMs = new Date(record.synced_at).getTime();
+          return isUpdatedAheadOfSync(updatedMs, syncedMs);
         }
         return false;
       });
