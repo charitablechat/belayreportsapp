@@ -315,14 +315,13 @@ export function LocalSnapshotsPanel({ allowDelete = true }: SnapshotsPanelProps)
             },
             { expectedChildren: snapshot.children as Record<string, any[]> },
           );
+          toast.success("Snapshot restored to local storage");
         } catch (verifyErr) {
           console.error('[Recovery] Restore verification failed', verifyErr);
           toast.error(
             'Restore finished but verification failed. Please refresh and confirm the report looks correct.'
           );
         }
-
-        toast.success("Snapshot restored to local storage");
       } catch (error) {
         console.error('[Data Recovery] Restore failed:', error);
         toast.error("Failed to restore snapshot");
