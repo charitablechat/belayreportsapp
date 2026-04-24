@@ -1,28 +1,34 @@
 
 
-## Verification follow-ups — status check
+## C1 — IDBKeyRange.only photos.by-uploaded contract — status check
 
-Three items called out in your spot-check verdict. Current state in the codebase:
+All four sub-points from the verdict are already resolved in the codebase. No changes needed.
 
-### C2 — `getUnsyncedCounts` participation
-**Already resolved.** The batched `getUnsyncedCounts` was deleted as part of the earlier C2 fix. `useAutoSync.updateUnsyncedCounts` now calls `getUnsyncedInspections`, `getUnsyncedTrainings`, `getUnsyncedDailyAssessments` in parallel via `Promise.all`, each returning `IdbReadFailure` through `withIndexedDBReadBoundary`. No remaining all-empty fallback path. No work needed.
+### Sub-point 1 — "backing data still written as boolean"
+**Resolved.** `savePhotoOffline` (line 2163) and `markPhotoAsUploaded` (line 2450) both funnel through `toUploadedFlag(...)` (lines 2129-2131), which coerces every shape to `0 | 1`. Grep for `uploaded:\s*(true|false|boolean)` in `offline-storage.ts` returns zero matches.
 
-### C3 — drift race
-**Already resolved.** `saveInspectionOffline` (and the training / assessment equivalents) stamps `dirty: true` on every local write, and `getUnsynced*` treats `dirty=true` as overriding the drift comparison. Boundary test `unsynced-read-boundary.test.ts` locks the contract: a record with `synced_at == updated_at` (zero drift) still surfaces when `dirty=true`. No work needed.
+### Sub-point 2 — "no IDB schema migration to convert legacy boolean values"
+**Resolved.** Two migrations exist:
+- **v16** (lines 1559-1585) — first attempt, rewrites legacy boolean `uploaded` → `0|1`.
+- **v18** (lines 1634+) — re-runs the coercion using the wrapped `IDBPObjectStore` because v16 used raw IDB cursors that didn't keep the upgrade transaction alive long enough on slow devices. Idempotent and safe to re-run.
 
-### Tests — "No unit tests for any of the above"
-**Already resolved.** `src/lib/__tests__/unsynced-read-boundary.test.ts` (logged in `mem://architecture/sync-boundary-test-coverage`) covers, against a real `fake-indexeddb`:
-- Empty store → `[]`, not `IdbReadFailure`.
-- 29s drift → synced; 31s drift → unsynced.
-- `dirty=true` overrides zero drift.
-- `_remote_deleted_at` quarantined rows excluded.
-- Cross-user temp-id orphans still surface.
-- `saveInspectionOffline` stamps `dirty=true` so next read sees the edit.
-- `photos.by-uploaded` index uses `0|1` (C1 contract).
+`DB_VERSION = 18` in `offline-storage.ts`, matched by `version: 18` in `public/db-config.js`. The build-time `viteDbVersionCheck` plugin enforces parity.
 
-Plus `drift-tolerance-override.test.ts` for the P4 override and `local-data-guards.test.ts` for the boundary helpers.
+### Sub-point 3 — "index type contradicts record type"
+**Resolved.** Schema declaration at line 64:
+```ts
+indexes: { 'by-inspection': string; 'by-uploaded': number };
+```
+The `uploaded` field on the record is now typed as `0 | 1` and every write path goes through `toUploadedFlag` which returns `0 | 1`. TypeScript would now catch a regression at the write site.
+
+### Sub-point 4 — "no regression test against the by-uploaded key-type contract"
+**Resolved.** Two test files lock the contract against a real `fake-indexeddb`:
+- `src/lib/__tests__/photos-by-uploaded-contract.test.ts` — five-case suite covering: write-site coercion, `IDBKeyRange.only(0)` vs `only(1)` round-trip, `markPhotoAsUploaded` bucket transition, `toUploadedFlag` shape coverage, and v15→v16 schema migration of legacy boolean rows.
+- `src/lib/__tests__/photo-uploaded-index.test.ts` — companion regression test confirming `getUnuploadedPhotos` actually returns rows written via the public API.
+
+Plus a memory entry: `mem://constraints/photos-uploaded-index`.
 
 ### Verdict
 
-All three follow-ups from the spot-check are already shipped. No code changes required. If you want a deeper test (e.g. integration coverage of `useAutoSync.updateUnsyncedCounts` handling a mixed success/`IdbReadFailure` triple, which the current suite does NOT cover), say the word and I'll plan that out separately.
+C1 is fully shipped — write-site coercion, double schema migration (v16 + v18 belt-and-braces), schema typing, and contract tests. Nothing to plan.
 
