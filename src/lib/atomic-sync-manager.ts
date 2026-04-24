@@ -48,6 +48,7 @@ async function resolveOrgIdForAudit(inspection: {
   }
 }
 import { getUserWithCache, ensureValidSession, type CachedUser } from "@/lib/cached-auth";
+import { isUnsafeToTransmit, looksLikeJwt } from "@/lib/synthetic-session-guard";
 import { 
   getUnsyncedInspections,
   saveInspectionOffline,
@@ -103,6 +104,50 @@ import {
 } from "./offline-storage";
 import { appendVersion, getLatestFieldCount, calculateFieldCount } from "./report-version-manager";
 import { runWithConcurrency } from "./concurrency";
+
+// ─── C5 helper ──────────────────────────────────────────────────────────────
+/**
+ * C5: Pre-flight session validation for sync batches.
+ *
+ * Reads the current Supabase session and asserts the access_token is a real
+ * JWT — not the offline placeholder (`offline_placeholder_token`). If the
+ * placeholder token leaks into a sync batch, every Supabase request will 401,
+ * dead-lettering otherwise-healthy records and exposing the placeholder string
+ * in edge logs.
+ *
+ * Returns true if it's safe to proceed with sync, false otherwise.
+ */
+async function assertRealSessionForSync(ctx: string): Promise<boolean> {
+  try {
+    const { data: { session } } = await supabase.auth.getSession();
+    const token = session?.access_token;
+    if (!token) {
+      console.warn(`[Atomic Sync] ${ctx}: no active session — aborting batch`);
+      return false;
+    }
+    if (isUnsafeToTransmit(token, ctx)) {
+      // isUnsafeToTransmit already logs in dev. Surface a user-visible toast
+      // via the dynamic import to avoid pulling sonner into this module.
+      try {
+        const { toast } = await import('@/components/ui/sonner');
+        toast.error('Session expired — please sign in again to sync your work', {
+          id: 'sync-session-invalid',
+          duration: 8000,
+        });
+      } catch { /* non-critical */ }
+      return false;
+    }
+    if (!looksLikeJwt(token)) {
+      console.warn(`[Atomic Sync] ${ctx}: access_token is not a valid JWT — aborting batch`);
+      return false;
+    }
+    return true;
+  } catch (err) {
+    console.warn(`[Atomic Sync] ${ctx}: session check failed:`, err);
+    // Fail open on read errors — let downstream session-validation do its job.
+    return true;
+  }
+}
 
 // ─── C1 helper ──────────────────────────────────────────────────────────────
 type LiveGetter<T> = (id: string) => Promise<T | null | undefined>;
@@ -1116,7 +1161,14 @@ export async function syncAllInspectionsAtomic(preValidatedUser?: CachedUser, si
     }
     return;
   }
-  
+
+  // C5: Refuse to start a batch when the active session token is the offline
+  // placeholder or otherwise invalid. Prevents transmitting the placeholder
+  // token over the wire and dead-lettering healthy records on 401s.
+  if (!(await assertRealSessionForSync('inspections'))) {
+    return { total: 0, success: 0, failed: 0, errors: [] };
+  }
+
   // Use pre-validated user if provided (avoids redundant LockManager calls)
   let user: CachedUser | null = preValidatedUser || null;
   if (!user) {
@@ -2056,7 +2108,13 @@ export async function syncAllTrainingsAtomic(preValidatedUser?: CachedUser, sign
     }
     return { total: 0, success: 0, failed: 0, errors: [] };
   }
-  
+
+  // C5: Refuse to start a batch when the active session token is the offline
+  // placeholder or otherwise invalid.
+  if (!(await assertRealSessionForSync('trainings'))) {
+    return { total: 0, success: 0, failed: 0, errors: [] };
+  }
+
   // Use pre-validated user if provided (avoids redundant LockManager calls)
   let user: CachedUser | null = preValidatedUser || null;
   if (!user) {
@@ -2870,7 +2928,13 @@ export async function syncAllDailyAssessmentsAtomic(preValidatedUser?: CachedUse
     }
     return { total: 0, success: 0, failed: 0, errors: [] };
   }
-  
+
+  // C5: Refuse to start a batch when the active session token is the offline
+  // placeholder or otherwise invalid.
+  if (!(await assertRealSessionForSync('daily_assessments'))) {
+    return { total: 0, success: 0, failed: 0, errors: [] };
+  }
+
   // Use pre-validated user if provided (avoids redundant LockManager calls)
   let user: CachedUser | null = preValidatedUser || null;
   if (!user) {

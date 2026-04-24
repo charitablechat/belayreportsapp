@@ -5,7 +5,7 @@ import {
   readSyntheticSession,
   clearSyntheticSession,
 } from "@/lib/offline-auth";
-import { isPlaceholderToken } from "@/lib/synthetic-session-guard";
+import { isPlaceholderToken, looksLikeJwt } from "@/lib/synthetic-session-guard";
 import { safeSetItem } from "@/lib/safe-local-storage";
 
 export interface CachedUser {
@@ -753,6 +753,12 @@ export async function ensureValidSession(): Promise<CachedUser | null> {
         return null;
       }
       
+      // C5: refuse to bless a session whose token isn't a real JWT.
+      if (!looksLikeJwt(refreshedSession.access_token)) {
+        console.warn('[CachedAuth] Refresh returned non-JWT access_token — refusing to validate session');
+        return null;
+      }
+
       cachedUser = refreshedSession.user;
       cacheTimestamp = Date.now();
       
@@ -763,6 +769,13 @@ export async function ensureValidSession(): Promise<CachedUser | null> {
       return refreshedSession.user;
     }
     
+    // C5: belt-and-suspenders — if the session somehow carries the placeholder
+    // token (shouldn't happen at this point, but defense-in-depth), refuse it.
+    if (!looksLikeJwt(session.access_token)) {
+      console.warn('[CachedAuth] Active session has non-JWT access_token — refusing to validate');
+      return null;
+    }
+
     cachedUser = session.user;
     cacheTimestamp = Date.now();
     return session.user;

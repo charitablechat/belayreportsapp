@@ -793,6 +793,25 @@ export const useAutoSync = () => {
       }
     }
 
+    // C5: After refresh, assert the active session has a real JWT — not the
+    // offline placeholder token. If the refresh silently failed and we're still
+    // carrying a synthetic session, transmitting that token would 401 every
+    // single sync request and dead-letter healthy records.
+    try {
+      const { looksLikeJwt } = await import('@/lib/synthetic-session-guard');
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session?.access_token || !looksLikeJwt(session.access_token)) {
+        console.warn('[AutoSync] Skipping sync — session token is not a valid JWT (likely expired refresh token)');
+        toast.error('Session expired — please sign in again to sync your work', {
+          id: 'sync-session-invalid',
+          duration: 8000,
+        });
+        return;
+      }
+    } catch (e) {
+      console.warn('[AutoSync] Session validation check failed, proceeding cautiously:', e);
+    }
+
     // Use debounced sync to prevent rapid re-syncs on network flicker
     triggerDebouncedSync();
   }, [triggerDebouncedSync]);
