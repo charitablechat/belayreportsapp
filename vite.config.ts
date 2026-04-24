@@ -4,6 +4,7 @@ import path from "path";
 import { componentTagger } from "lovable-tagger";
 import { pwaConfig } from "./vite-pwa-config";
 import { viteAutoVersion } from "./vite-auto-version";
+import { viteDbVersionCheck } from "./vite-db-version-check";
 
 // App version is auto-generated on every build by vite-auto-version.ts
 // (PATCH = git commit count). See that plugin for the canonical scheme.
@@ -20,6 +21,7 @@ export default defineConfig(({ mode }) => ({
   plugins: [
     react(),
     viteAutoVersion(),
+    viteDbVersionCheck(),
     mode === "development" && componentTagger(),
     pwaConfig
   ].filter(Boolean),
