@@ -220,16 +220,23 @@ export default function InspectionForm() {
     return `${nextDate.getFullYear()}-${String(nextDate.getMonth() + 1).padStart(2, '0')}-${String(nextDate.getDate()).padStart(2, '0')}`;
   };
 
-  // On initial summary load: if the saved next_inspection_date doesn't match inspection_date + 1y,
-  // assume it was intentionally set (manual edit or imported value) — pin the flag so we don't overwrite.
+  // On initial summary load: decide whether the saved next_inspection_date is a deliberate
+  // user override (preserve it) or stale legacy data (let auto-track recompute it).
+  // - Equal to inspection_date + 1y → not an override (auto-track will keep it in sync).
+  // - Strictly after inspection_date but != +1y → deliberate override (e.g. 6mo / 2y cycle).
+  // - On or before inspection_date → stale/invalid; clear the override flag so +1y auto-fills.
   const initialNextDateCheckedRef = useRef(false);
   useEffect(() => {
     if (initialNextDateCheckedRef.current) return;
     if (!summary.inspection_id && !summary.id) return;
     initialNextDateCheckedRef.current = true;
-    if (summary.next_inspection_date) {
-      const expected = computeNextInspectionDate(inspection?.inspection_date);
-      if (expected && summary.next_inspection_date !== expected) {
+    if (summary.next_inspection_date && inspection?.inspection_date) {
+      const expected = computeNextInspectionDate(inspection.inspection_date);
+      if (
+        expected &&
+        summary.next_inspection_date !== expected &&
+        summary.next_inspection_date > inspection.inspection_date
+      ) {
         userTouchedNextDateRef.current = true;
       }
     }
