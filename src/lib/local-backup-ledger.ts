@@ -641,8 +641,43 @@ export async function importReportBackup(input: string | File): Promise<{
       }
     }
 
-    // H2: Verify the restored parent matches the snapshot. Re-apply once on drift.
-    await verifyRestoreIntegrity(reportType!, reportId!, snapshot!.parent, writeParent);
+    // H2 + N-B: Verify the restored parent AND each child array. Re-apply
+    // both on drift; the shared reapply callback below re-writes both so a
+    // child-only regression is self-healing. N-C: verifier now throws if the
+    // post-write read itself fails — the caller surfaces that to the user.
+    const reapplyAll = async () => {
+      await writeParent();
+      if (reportType === 'inspection') {
+        for (const [key, data] of Object.entries(snapshot!.children)) {
+          if (Array.isArray(data)) await saveRelatedDataOffline(key as any, reportId!, data);
+        }
+      } else if (reportType === 'training') {
+        for (const [key, data] of Object.entries(snapshot!.children)) {
+          if (Array.isArray(data)) await saveTrainingDataOffline(key as any, reportId!, data);
+        }
+      } else if (reportType === 'daily_assessment') {
+        for (const [key, data] of Object.entries(snapshot!.children)) {
+          if (Array.isArray(data)) await saveAssessmentDataOffline(key as any, reportId!, data);
+        }
+      }
+    };
+    // N-C: verifier now throws on IDB read failure. The parent + children
+    // data was already written in steps 1-2, so a verify failure does NOT
+    // invalidate the restore — swallow it with a warning and keep going.
+    // Steps 3-5 (photo import, cloud upload, report-data-imported dispatch)
+    // MUST still run on verify failure; propagating the throw here would
+    // skip them and surface a misleading "Import failed" to the user.
+    try {
+      await verifyRestoreIntegrity(
+        reportType!,
+        reportId!,
+        snapshot!.parent,
+        reapplyAll,
+        { expectedChildren: snapshot!.children as Record<string, any[]> },
+      );
+    } catch (verifyErr) {
+      console.warn('[Backup Ledger] Post-import verification failed — data was restored but drift check could not complete:', verifyErr);
+    }
 
     // 3. Import photos from ZIP if present
     if (zipPhotoEntries.length > 0) {

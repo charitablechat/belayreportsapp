@@ -286,16 +286,42 @@ export function LocalSnapshotsPanel({ allowDelete = true }: SnapshotsPanelProps)
           }
         }
 
-        // H2: Post-restore integrity check. Re-read the parent and confirm key
-        // identifying fields survived. If anything regressed (e.g., a stray
-        // sync slipped past the lock), log loudly + re-apply once.
-        await verifyRestoreIntegrity(reportType, reportId, snapshot.parent, async () => {
-          if (reportType === 'inspection') await saveInspectionOffline(snapshot.parent);
-          else if (reportType === 'training') await saveTrainingOffline(snapshot.parent);
-          else if (reportType === 'daily_assessment') await saveDailyAssessmentOffline(snapshot.parent);
-        });
-
-        toast.success("Snapshot restored to local storage");
+        // H2 + N-B: Post-restore integrity check. Re-read the parent AND each
+        // restored child array; if a concurrent sync stripped a child row the
+        // verifier re-applies. N-C: verifier now throws on read failure so we
+        // surface to the user rather than silently claim success.
+        try {
+          await verifyRestoreIntegrity(
+            reportType,
+            reportId,
+            snapshot.parent,
+            async () => {
+              if (reportType === 'inspection') {
+                await saveInspectionOffline(snapshot.parent);
+                for (const [key, data] of Object.entries(snapshot.children)) {
+                  if (Array.isArray(data) && data.length > 0) await saveRelatedDataOffline(key as any, reportId, data);
+                }
+              } else if (reportType === 'training') {
+                await saveTrainingOffline(snapshot.parent);
+                for (const [key, data] of Object.entries(snapshot.children)) {
+                  if (Array.isArray(data) && data.length > 0) await saveTrainingDataOffline(key as any, reportId, data);
+                }
+              } else if (reportType === 'daily_assessment') {
+                await saveDailyAssessmentOffline(snapshot.parent);
+                for (const [key, data] of Object.entries(snapshot.children)) {
+                  if (Array.isArray(data) && data.length > 0) await saveAssessmentDataOffline(key as any, reportId, data);
+                }
+              }
+            },
+            { expectedChildren: snapshot.children as Record<string, any[]> },
+          );
+          toast.success("Snapshot restored to local storage");
+        } catch (verifyErr) {
+          console.error('[Recovery] Restore verification failed', verifyErr);
+          toast.error(
+            'Restore finished but verification failed. Please refresh and confirm the report looks correct.'
+          );
+        }
       } catch (error) {
         console.error('[Data Recovery] Restore failed:', error);
         toast.error("Failed to restore snapshot");
@@ -615,14 +641,37 @@ export function CloudSnapshotsPanel({ allowDelete = true }: CloudSnapshotsPanelP
           }
         }
 
-        // H2: Post-restore integrity diff + re-apply on regression
-        await verifyRestoreIntegrity(reportType, reportId, parent, async () => {
-          if (reportType === 'inspection') await saveInspectionOffline(parent);
-          else if (reportType === 'training') await saveTrainingOffline(parent);
-          else if (reportType === 'daily_assessment') await saveDailyAssessmentOffline(parent);
-        });
-
-        toast.success("Cloud backup restored to local storage");
+        // H2 + N-B: parent + child drift detection. N-C: surface verify failures.
+        try {
+          await verifyRestoreIntegrity(
+            reportType,
+            reportId,
+            parent,
+            async () => {
+              if (reportType === 'inspection') {
+                await saveInspectionOffline(parent);
+                for (const [key, data] of Object.entries(children)) {
+                  if (Array.isArray(data) && data.length > 0) await saveRelatedDataOffline(key as any, reportId, data);
+                }
+              } else if (reportType === 'training') {
+                await saveTrainingOffline(parent);
+                for (const [key, data] of Object.entries(children)) {
+                  if (Array.isArray(data) && data.length > 0) await saveTrainingDataOffline(key as any, reportId, data);
+                }
+              } else if (reportType === 'daily_assessment') {
+                await saveDailyAssessmentOffline(parent);
+                for (const [key, data] of Object.entries(children)) {
+                  if (Array.isArray(data) && data.length > 0) await saveAssessmentDataOffline(key as any, reportId, data);
+                }
+              }
+            },
+            { expectedChildren: children as Record<string, any[]> },
+          );
+          toast.success("Cloud backup restored to local storage");
+        } catch (verifyErr) {
+          console.error('[Cloud Recovery] Restore verification failed', verifyErr);
+          toast.error('Cloud restore finished but verification failed. Please refresh and confirm the report looks correct.');
+        }
       } catch (error) {
         console.error('[Cloud Recovery] Restore failed:', error);
         toast.error("Failed to restore cloud backup");

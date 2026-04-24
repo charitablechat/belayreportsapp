@@ -1832,6 +1832,57 @@ export async function getOfflineInspection(id: string) {
   );
 }
 
+/**
+ * N-C strict readers used by verifyRestoreIntegrity. Unlike the regular
+ * getOffline* / get*DataOffline helpers, these intentionally bypass
+ * `withIndexedDBErrorBoundary` so that IDB failures during a post-restore
+ * read propagate as exceptions. The restore-integrity module converts those
+ * into `RestoreVerificationError`, which the DataRecoveryTool / backup-ledger
+ * callers surface as a user-visible error toast.
+ *
+ * A silent "null on read" here would be indistinguishable from "record
+ * legitimately missing" and defeat the entire purpose of the verifier.
+ */
+export async function readParentStrict(
+  reportType: 'inspection' | 'training' | 'daily_assessment',
+  id: string,
+): Promise<unknown> {
+  const db = await getDB();
+  const storeName =
+    reportType === 'inspection' ? 'inspections'
+      : reportType === 'training' ? 'trainings'
+        : 'daily_assessments';
+  return await db.get(storeName as 'inspections' | 'trainings' | 'daily_assessments', id);
+}
+
+export async function readChildrenStrict(
+  reportType: 'inspection' | 'training' | 'daily_assessment',
+  childStoreKey: string,
+  parentId: string,
+): Promise<unknown[]> {
+  const db = await getDB();
+  let storeName: string | undefined;
+  let indexName: 'by-inspection' | 'by-training' | 'by-assessment';
+  if (reportType === 'inspection') {
+    storeName = storeNameMap[childStoreKey as RelatedDataType];
+    indexName = 'by-inspection';
+  } else if (reportType === 'training') {
+    storeName = trainingStoreNameMap[childStoreKey as TrainingDataType];
+    indexName = 'by-training';
+  } else {
+    storeName = assessmentStoreNameMap[childStoreKey as AssessmentDataType];
+    indexName = 'by-assessment';
+  }
+  if (!storeName) {
+    throw new Error(
+      `[readChildrenStrict] Unknown child store key: ${reportType}/${childStoreKey}`,
+    );
+  }
+  const idx = db.transaction(storeName as never).store.index(indexName as never);
+  const rows = (await idx.getAll(parentId)) as unknown[];
+  return rows;
+}
+
 export async function deleteOfflineInspection(id: string) {
   return withIndexedDBErrorBoundary(
     async () => {
@@ -2160,6 +2211,27 @@ export function toUploadedFlag(v: unknown): 0 | 1 {
   return v ? 1 : 0;
 }
 
+/**
+ * N-G: The ONLY allowed `db.put('photos', …)` call site.
+ * Every other write (`markPhotoAsUploaded`, `updatePhotoPath`, caption edits,
+ * retry bookkeeping, `photo-cache.ts`, etc.) funnels through this helper.
+ *
+ * Why: any write that bypasses `toUploadedFlag` silently regresses the C1 fix
+ * — on spec-strict IDB (Safari/iOS) a boolean `uploaded: false` is dropped
+ * from the `by-uploaded` index, so the photo never surfaces to `syncPhotos`.
+ * Centralising the write means adding a new photo-mutation function can't
+ * skip the coercion by accident.
+ */
+export async function putPhotoRecord(
+  db: IDBPDatabase<InspectionDB>,
+  photo: any,
+): Promise<void> {
+  await db.put('photos', {
+    ...photo,
+    uploaded: toUploadedFlag(photo?.uploaded),
+  });
+}
+
 export async function savePhotoOffline(photo: {
   id: string;
   inspectionId: string;
@@ -2186,11 +2258,12 @@ export async function savePhotoOffline(photo: {
           }
         }).catch(() => {});
         
-        await db.put('photos', {
+        // N-G: route every photo write through putPhotoRecord so toUploadedFlag
+        // is guaranteed to run — protects the C1 fix from being regressed by
+        // future photo-mutation code paths.
+        await putPhotoRecord(db, {
           ...photo,
           timestamp: Date.now(),
-          // C1: Funnel through toUploadedFlag so the by-uploaded index keys the row.
-          uploaded: toUploadedFlag(photo.uploaded),
         });
         
         if (import.meta.env.DEV) {
@@ -2234,6 +2307,10 @@ export async function relinkPhotosToNewInspectionId(
         if (photo.photoUrl && photo.photoUrl.includes(oldInspectionId)) {
           photo.photoUrl = photo.photoUrl.replace(oldInspectionId, newInspectionId);
         }
+        // N-G: in-transaction put — coerce uploaded so a legacy boolean value
+        // (from a pre-v18 row that migration missed) cannot sneak back into
+        // the store and silently break the by-uploaded index.
+        photo.uploaded = toUploadedFlag((photo as any).uploaded);
         await tx.store.put(photo);
         relinkedCount++;
       }
@@ -2263,6 +2340,8 @@ export async function updatePhotoUrl(photoId: string, newUrl: string): Promise<v
       const photo = await tx.store.get(photoId);
       if (photo) {
         photo.photoUrl = newUrl;
+        // N-G: coerce uploaded in case a legacy boolean value is present.
+        photo.uploaded = toUploadedFlag((photo as any).uploaded);
         await tx.store.put(photo);
       }
       await tx.done;
@@ -2294,7 +2373,8 @@ export async function updateOfflinePhotoCaption(photoId: string, caption: string
       const photo = await db.get('photos', photoId);
       if (photo) {
         photo.caption = caption;
-        await db.put('photos', photo);
+        // N-G: centralised photo write.
+        await putPhotoRecord(db, photo);
         if (import.meta.env.DEV) {
           console.log('[Offline Storage] Updated offline photo caption:', photoId);
         }
@@ -2414,6 +2494,12 @@ export async function resetPhotoRetryCounts(onlyIds?: string[]): Promise<number>
         const matches = idSet ? idSet.has(photo.id) : true;
         if (matches && (photo.retryCount || 0) > 0) {
           photo.retryCount = 0;
+          // N-G: must coerce `uploaded` on every photo write — this path
+          // iterates ALL photos and a legacy boolean-keyed row (pre-v18 or
+          // a row whose migration failed) would otherwise round-trip
+          // through here with the boolean intact, keeping the by-uploaded
+          // index broken on Safari.
+          photo.uploaded = toUploadedFlag(photo.uploaded);
           await cursor.update(photo);
           reset++;
         }
@@ -2454,6 +2540,12 @@ export async function pruneOldSyncedPhotoBlobs(): Promise<number> {
         const referenceTime = photo.uploadedAt ?? photo.cachedAt;
         if (photo.blob != null && referenceTime && referenceTime < cutoff) {
           photo.blob = null;
+          // N-G defence-in-depth: coerce `uploaded` on every cursor.update.
+          // Even though this cursor is opened on `by-uploaded` only(1) —
+          // so the visible rows are already numeric-indexed — round-tripping
+          // without coercion leaves a latent regression if a future index
+          // rebuild ever admits a boolean row.
+          photo.uploaded = toUploadedFlag(photo.uploaded);
           await cursor.update(photo);
           pruned++;
         }
@@ -2490,7 +2582,8 @@ export async function markPhotoAsUploaded(id: string, photoUrl: string) {
         // S22: Clear any prior error state on success
         photo.lastError = null;
         photo.lastErrorAt = null;
-        await db.put('photos', photo);
+        // N-G: centralised photo write.
+        await putPhotoRecord(db, photo);
         
         if (import.meta.env.DEV) {
           console.log('[Offline Storage] Marked photo as uploaded (blob released):', id);
@@ -2509,7 +2602,8 @@ export async function updatePhotoPath(id: string, newPath: string) {
       const photo = await db.get('photos', id);
       if (photo) {
         photo.photoUrl = newPath;
-        await db.put('photos', photo);
+        // N-G: centralised photo write.
+        await putPhotoRecord(db, photo);
         if (import.meta.env.DEV) {
           console.log('[Offline Storage] Updated photo path:', id, '->', newPath);
         }
@@ -2528,7 +2622,8 @@ export async function incrementPhotoRetryCount(id: string): Promise<number> {
       if (photo) {
         const newCount = (photo.retryCount || 0) + 1;
         photo.retryCount = newCount;
-        await db.put('photos', photo);
+        // N-G: centralised photo write.
+        await putPhotoRecord(db, photo);
         return newCount;
       }
       return 0;
@@ -2551,7 +2646,8 @@ export async function setPhotoLastError(id: string, message: string): Promise<vo
       if (photo) {
         photo.lastError = message.slice(0, 500);
         photo.lastErrorAt = Date.now();
-        await db.put('photos', photo);
+        // N-G: centralised photo write.
+        await putPhotoRecord(db, photo);
       }
     },
     undefined,
@@ -2572,7 +2668,8 @@ export async function resetPhotoForRetry(id: string): Promise<boolean> {
       photo.retryCount = 0;
       photo.lastError = null;
       photo.lastErrorAt = null;
-      await db.put('photos', photo);
+      // N-G: centralised photo write.
+      await putPhotoRecord(db, photo);
       return true;
     },
     false,
@@ -2591,7 +2688,8 @@ export async function setPhotoCapturedBy(id: string, userId: string): Promise<vo
       const photo = await db.get('photos', id);
       if (photo && !photo.capturedByUserId) {
         photo.capturedByUserId = userId;
-        await db.put('photos', photo);
+        // N-G: centralised photo write.
+        await putPhotoRecord(db, photo);
       }
     },
     undefined,
@@ -2724,6 +2822,10 @@ export async function backfillCapturedByUserIdForPendingPhotos(): Promise<number
           p.photoUrl.startsWith('pending/')
         ) {
           p.capturedByUserId = onlyUserId;
+          // N-G: this cursor is opened on the full store (not by-uploaded)
+          // so legacy boolean-keyed rows are visible here. Coerce on write
+          // to keep the by-uploaded index queryable on Safari.
+          p.uploaded = toUploadedFlag(p.uploaded);
           await cursor.update(p);
           updated++;
         }
@@ -2796,6 +2898,11 @@ export async function updatePhotoDisplayOrder(
           const photo = await store.get(id);
           if (photo && photo.inspectionId === inspectionId && photo.section === section) {
             photo.display_order = index;
+            // N-G: drag-and-drop reorder would otherwise round-trip a
+            // legacy boolean `uploaded` value and re-break the Safari
+            // by-uploaded index. Coerce on every write to the photos
+            // store without exception.
+            photo.uploaded = toUploadedFlag(photo.uploaded);
             await store.put(photo);
           }
         })
