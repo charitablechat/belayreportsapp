@@ -1,17 +1,20 @@
-import { openDB, DBSchema, IDBPDatabase } from 'idb';
+import { openDB, DBSchema, IDBPDatabase, StoreNames } from 'idb';
 import { checkStorageQuota, requestPersistentStorage, isMobile } from './mobile-detection';
 import { isUpdatedAheadOfSync } from './local-data-guards';
 import { safeSetItem } from './safe-local-storage';
 
+/** Opaque DB row — fields vary across tables and are read/written structurally. */
+export type DbRow = Record<string, unknown> & { id?: string };
+
 interface InspectionDB extends DBSchema {
   inspections: {
     key: string;
-    value: any;
+    value: DbRow;
     indexes: { 'by-status': string; 'by-synced': string };
   };
   daily_assessments: {
     key: string;
-    value: any;
+    value: DbRow;
     indexes: { 'by-status': string; 'by-synced': string };
   };
   operations: {
@@ -20,7 +23,7 @@ interface InspectionDB extends DBSchema {
       id?: number;
       type: 'create' | 'update' | 'delete';
       inspectionId: string;
-      data: any;
+      data: Record<string, unknown>;
       timestamp: number;
       retries: number;
     };
@@ -31,7 +34,7 @@ interface InspectionDB extends DBSchema {
       id?: number;
       type: 'create' | 'update' | 'delete';
       assessmentId: string;
-      data: any;
+      data: Record<string, unknown>;
       timestamp: number;
       retries: number;
     };
@@ -65,62 +68,62 @@ interface InspectionDB extends DBSchema {
   };
   inspection_systems: {
     key: string;
-    value: any;
+    value: DbRow;
     indexes: { 'by-inspection': string };
   };
   inspection_ziplines: {
     key: string;
-    value: any;
+    value: DbRow;
     indexes: { 'by-inspection': string };
   };
   inspection_equipment: {
     key: string;
-    value: any;
+    value: DbRow;
     indexes: { 'by-inspection': string };
   };
   inspection_standards: {
     key: string;
-    value: any;
+    value: DbRow;
     indexes: { 'by-inspection': string };
   };
   inspection_summary: {
     key: string;
-    value: any;
+    value: DbRow;
     indexes: { 'by-inspection': string };
   };
   daily_assessment_beginning_of_day: {
     key: string;
-    value: any;
+    value: DbRow;
     indexes: { 'by-assessment': string };
   };
   daily_assessment_end_of_day: {
     key: string;
-    value: any;
+    value: DbRow;
     indexes: { 'by-assessment': string };
   };
   daily_assessment_operating_systems: {
     key: string;
-    value: any;
+    value: DbRow;
     indexes: { 'by-assessment': string };
   };
   daily_assessment_equipment_checks: {
     key: string;
-    value: any;
+    value: DbRow;
     indexes: { 'by-assessment': string };
   };
   daily_assessment_structure_checks: {
     key: string;
-    value: any;
+    value: DbRow;
     indexes: { 'by-assessment': string };
   };
   daily_assessment_environment_checks: {
     key: string;
-    value: any;
+    value: DbRow;
     indexes: { 'by-assessment': string };
   };
   trainings: {
     key: string;
-    value: any;
+    value: DbRow;
     indexes: { 'by-status': string; 'by-synced': string };
   };
   training_operations: {
@@ -129,39 +132,39 @@ interface InspectionDB extends DBSchema {
       id?: number;
       type: 'create' | 'update' | 'delete';
       trainingId: string;
-      data: any;
+      data: Record<string, unknown>;
       timestamp: number;
       retries: number;
     };
   };
   training_delivery_approaches: {
     key: string;
-    value: any;
+    value: DbRow;
     indexes: { 'by-training': string };
   };
   training_operating_systems: {
     key: string;
-    value: any;
+    value: DbRow;
     indexes: { 'by-training': string };
   };
   training_immediate_attention: {
     key: string;
-    value: any;
+    value: DbRow;
     indexes: { 'by-training': string };
   };
   training_verifiable_items: {
     key: string;
-    value: any;
+    value: DbRow;
     indexes: { 'by-training': string };
   };
   training_systems_in_place: {
     key: string;
-    value: any;
+    value: DbRow;
     indexes: { 'by-training': string };
   };
   training_summary: {
     key: string;
-    value: any;
+    value: DbRow;
     indexes: { 'by-training': string };
   };
   report_backups: {
@@ -172,7 +175,7 @@ interface InspectionDB extends DBSchema {
       reportId: string;
       reportKey: string;
       timestamp: number;
-      data: any;
+      data: Record<string, unknown>;
     };
     indexes: { 'by-report': string; 'by-timestamp': number };
   };
@@ -185,8 +188,8 @@ interface InspectionDB extends DBSchema {
       versionNumber: number;
       timestamp: number;
       device: string;
-      parentData: Record<string, any>;
-      childrenData: Record<string, any[]>;
+      parentData: Record<string, unknown>;
+      childrenData: Record<string, Record<string, unknown>[]>;
       trigger: string;
       fieldCount: number;
     };
@@ -236,6 +239,27 @@ interface InspectionDB extends DBSchema {
       capturedByUserId?: string | null;
     };
     indexes: { 'by-failed-at': number };
+  };
+  /** v11: field-count regression skip counters (S10). */
+  sync_regression_counters: {
+    key: string;
+    value: DbRow;
+  };
+  /** v12: dead-letter queue for exhausted soft-delete queue ops (S28). */
+  dead_letter_soft_deletes: {
+    key: string;
+    value: DbRow;
+  };
+  /** v13: empty-local conflict holds (C2). */
+  sync_empty_local_conflicts: {
+    key: string;
+    value: DbRow;
+  };
+  /** v14: queued admin pre-edit snapshots captured while offline (H10). */
+  admin_edit_snapshot_queue: {
+    key: number;
+    value: DbRow;
+    indexes: { 'by-report': [string, string] };
   };
 }
 
@@ -311,7 +335,7 @@ async function probeIndexedDB(): Promise<boolean> {
       'probeIndexedDB:open',
       'light',
       () => openDB('rope-works-inspections', undefined),
-      null as any
+      null,
     );
     if (!db) return false;
     // Lightweight count query to verify the connection is live
@@ -494,12 +518,12 @@ export type TimeoutTier = keyof typeof IDB_TIMEOUTS;
  * Returns { data, timedOut } so callers can distinguish
  * real empties from timeout fallbacks.
  */
-export async function withIDBTimeout<T>(
+export async function withIDBTimeout<T, F = T>(
   operationName: string,
   tier: TimeoutTier,
   fn: () => Promise<T>,
-  fallback: T
-): Promise<{ data: T; timedOut: boolean }> {
+  fallback: F
+): Promise<{ data: T | F; timedOut: boolean }> {
   const ms = IDB_TIMEOUTS[tier];
   let timer: ReturnType<typeof setTimeout> | undefined;
   const timeout = new Promise<never>((_, reject) => {
@@ -529,10 +553,10 @@ let timeoutWarningCount = 0;
 let lastTimeoutLogAt = 0;
 const TIMEOUT_LOG_INTERVAL = 30000; // Only log once per 30s
 
-function withTimeout<T>(promise: Promise<T>, timeoutMs: number, fallbackValue: T): Promise<T> {
-  return Promise.race([
+function withTimeout<T, F = T>(promise: Promise<T>, timeoutMs: number, fallbackValue: F): Promise<T | F> {
+  return Promise.race<T | F>([
     promise,
-    new Promise<T>((resolve) => setTimeout(() => {
+    new Promise<F>((resolve) => setTimeout(() => {
       // Suppress repeated timeout warnings to reduce console noise
       timeoutWarningCount++;
       const now = Date.now();
@@ -712,10 +736,11 @@ function classifyLocalStorageError(
  * persistent "Save failed" state. We additionally classify + log the failure and
  * record it to a sessionStorage ring buffer for later diagnostics.
  */
-function emergencyLocalStorageFallback(operationName: string, data: any): boolean {
+function emergencyLocalStorageFallback(operationName: string, data: unknown): boolean {
   // Only attempt for report-level saves that carry meaningful data
   if (!data || typeof data !== 'object') return false;
-  const id = data.id;
+  const rec = data as Record<string, unknown>;
+  const id = rec.id;
   if (!id || typeof id !== 'string') return false;
 
   let reportType: 'inspection' | 'training' | 'daily_assessment' | null = null;
@@ -735,7 +760,7 @@ function emergencyLocalStorageFallback(operationName: string, data: any): boolea
       ts: Date.now(),
       synced: false,
       device: isMobile() ? 'mobile' : 'desktop',
-      parent: data,
+      parent: rec,
       children: {},
     };
     json = JSON.stringify(snapshot);
@@ -832,7 +857,7 @@ export type IdbReadFailure = {
 };
 
 export function isIdbReadFailure(v: unknown): v is IdbReadFailure {
-  return !!v && typeof v === 'object' && (v as any).__idbReadFailed === IDB_READ_FAILED;
+  return !!v && typeof v === 'object' && (v as { __idbReadFailed?: unknown }).__idbReadFailed === IDB_READ_FAILED;
 }
 
 function makeIdbReadFailure(context: string, error: unknown): IdbReadFailure {
@@ -913,7 +938,7 @@ async function withIndexedDBReadBoundary<T>(
         return await operation();
       })(),
       OPERATION_TIMEOUT,
-      TIMEOUT_SENTINEL as any,
+      TIMEOUT_SENTINEL,
     );
 
     if (result === TIMEOUT_SENTINEL) {
@@ -979,9 +1004,10 @@ export class IdbSaveError extends Error {
 }
 
 export function isIdbSaveError(e: unknown): e is IdbSaveError {
-  return e instanceof IdbSaveError || (
-    !!e && typeof e === 'object' && (e as any).name === 'IdbSaveError' && typeof (e as any).code === 'string'
-  );
+  if (e instanceof IdbSaveError) return true;
+  if (!e || typeof e !== 'object') return false;
+  const o = e as { name?: unknown; code?: unknown };
+  return o.name === 'IdbSaveError' && typeof o.code === 'string';
 }
 
 export type SaveResult = { savedToBackup: boolean };
@@ -989,7 +1015,7 @@ export type SaveResult = { savedToBackup: boolean };
 async function withIndexedDBSaveBoundary(
   operation: () => Promise<void>,
   operationName: string,
-  parentDataForFallback?: any,
+  parentDataForFallback?: unknown,
   options?: { store?: BreakerStoreKey },
 ): Promise<SaveResult> {
   const store: BreakerStoreKey = options?.store ?? 'global';
@@ -1065,7 +1091,7 @@ async function withIndexedDBSaveBoundary(
         return 'ok' as const;
       })(),
       OPERATION_TIMEOUT,
-      TIMEOUT_SENTINEL as any,
+      TIMEOUT_SENTINEL,
     );
 
     if (result === TIMEOUT_SENTINEL) {
@@ -1081,7 +1107,7 @@ async function withIndexedDBSaveBoundary(
 
     recordIndexedDBSuccess(store);
     return { savedToBackup: false };
-  } catch (error: any) {
+  } catch (error: unknown) {
     if (isIdbSaveError(error)) {
       // Already-tagged failures (idb_unhealthy / timeout) — re-throw as-is
       if (error.code === 'idb_unhealthy') recordIndexedDBFailure(store);
@@ -1091,7 +1117,9 @@ async function withIndexedDBSaveBoundary(
     console.error(`[Offline Storage] Save error in ${operationName}:`, error);
     dbConnectionVerified = false;
 
-    const isQuotaError = error?.name === 'QuotaExceededError' || error?.message?.includes('QuotaExceeded');
+    const errName = (error as { name?: unknown } | null | undefined)?.name;
+    const errMsg = (error as { message?: unknown } | null | undefined)?.message;
+    const isQuotaError = errName === 'QuotaExceededError' || (typeof errMsg === 'string' && errMsg.includes('QuotaExceeded'));
     if (!isQuotaError) {
       recordIndexedDBFailure(store);
     }
@@ -1222,7 +1250,7 @@ async function withIndexedDBErrorBoundary<T>(
         return await operation();
       })(),
       OPERATION_TIMEOUT,
-      TIMEOUT_SENTINEL as any
+      TIMEOUT_SENTINEL,
     );
     
     // Check if the result is the sentinel -- meaning a timeout occurred
@@ -1240,13 +1268,15 @@ async function withIndexedDBErrorBoundary<T>(
     
     recordIndexedDBSuccess(store);
     return result;
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error(`[Offline Storage] Error in ${operationName}:`, error);
     // Reset verification on error so next operation re-checks
     dbConnectionVerified = false;
 
     // QuotaExceededError is NOT an IndexedDB health issue — don't count toward circuit breaker
-    const isQuotaError = error?.name === 'QuotaExceededError' || error?.message?.includes('QuotaExceeded');
+    const errName = (error as { name?: unknown } | null | undefined)?.name;
+    const errMsg = (error as { message?: unknown } | null | undefined)?.message;
+    const isQuotaError = errName === 'QuotaExceededError' || (typeof errMsg === 'string' && errMsg.includes('QuotaExceeded'));
     if (!isQuotaError) {
       recordIndexedDBFailure(store);
     }
@@ -1504,8 +1534,8 @@ export async function getDB() {
           // Persists field-count regression skip counters across reloads so the
           // guard's "after MAX_REGRESSION_SKIPS, allow sync" release isn't lost
           // when a user happens to refresh between sync cycles.
-          if (!db.objectStoreNames.contains('sync_regression_counters' as any)) {
-            (db as any).createObjectStore('sync_regression_counters', { keyPath: 'id' });
+          if (!db.objectStoreNames.contains('sync_regression_counters')) {
+            db.createObjectStore('sync_regression_counters', { keyPath: 'id' });
             if (import.meta.env.DEV) {
               console.log('[Offline Storage] Created sync_regression_counters store (v11 upgrade)');
             }
@@ -1513,8 +1543,8 @@ export async function getDB() {
           // === NEW in v12: dead_letter_soft_deletes store (S28) ===
           // Holds soft-delete queue ops that exhausted MAX_SOFT_DELETE_ATTEMPTS.
           // Operator-visible only — never auto-retried.
-          if (!db.objectStoreNames.contains('dead_letter_soft_deletes' as any)) {
-            (db as any).createObjectStore('dead_letter_soft_deletes', { keyPath: 'id' });
+          if (!db.objectStoreNames.contains('dead_letter_soft_deletes')) {
+            db.createObjectStore('dead_letter_soft_deletes', { keyPath: 'id' });
             if (import.meta.env.DEV) {
               console.log('[Offline Storage] Created dead_letter_soft_deletes store (v12 upgrade)');
             }
@@ -1524,8 +1554,8 @@ export async function getDB() {
           // child data but local cache is empty and the user_cleared_at marker
           // wasn't stamped. Surfaced in SyncDiagnosticsSheet for user resolution
           // instead of silently restoring server data.
-          if (!db.objectStoreNames.contains('sync_empty_local_conflicts' as any)) {
-            (db as any).createObjectStore('sync_empty_local_conflicts', { keyPath: 'id' });
+          if (!db.objectStoreNames.contains('sync_empty_local_conflicts')) {
+            db.createObjectStore('sync_empty_local_conflicts', { keyPath: 'id' });
             if (import.meta.env.DEV) {
               console.log('[Offline Storage] Created sync_empty_local_conflicts store (v13 upgrade)');
             }
@@ -1534,8 +1564,8 @@ export async function getDB() {
           // Queues admin pre-edit snapshot intents captured while offline so they
           // can be uploaded to admin_edit_snapshots on the next online cycle —
           // before the admin's edit itself syncs to the server.
-          if (!db.objectStoreNames.contains('admin_edit_snapshot_queue' as any)) {
-            const aeqStore = (db as any).createObjectStore('admin_edit_snapshot_queue', {
+          if (!db.objectStoreNames.contains('admin_edit_snapshot_queue')) {
+            const aeqStore = db.createObjectStore('admin_edit_snapshot_queue', {
               keyPath: 'id',
               autoIncrement: true,
             });
@@ -1547,8 +1577,8 @@ export async function getDB() {
           // === NEW in v15: photo_upload_failures store (1.C) ===
           // Persistent dead-letter for photos that crossed MAX_PHOTO_RETRIES.
           // Surfaces in SyncDiagnosticsSheet so failures aren't silent orphans.
-          if (!db.objectStoreNames.contains('photo_upload_failures' as any)) {
-            const pufStore = (db as any).createObjectStore('photo_upload_failures', {
+          if (!db.objectStoreNames.contains('photo_upload_failures')) {
+            const pufStore = db.createObjectStore('photo_upload_failures', {
               keyPath: 'id',
             });
             pufStore.createIndex('by-failed-at', 'lastErrorAt');
@@ -1564,10 +1594,10 @@ export async function getDB() {
             try {
               // Use the raw IDBObjectStore so we can drive the cursor with
               // native onsuccess callbacks inside the upgrade transaction.
-              const photoStore = (transaction as any).objectStore('photos') as IDBObjectStore;
+              const photoStore = (transaction as unknown as { objectStore(name: string): IDBObjectStore }).objectStore('photos');
               const cursorReq = photoStore.openCursor();
-              cursorReq.onsuccess = (ev: any) => {
-                const cursor: IDBCursorWithValue | null = ev.target.result;
+              cursorReq.onsuccess = (ev: Event) => {
+                const cursor = (ev.target as IDBRequest<IDBCursorWithValue | null>).result;
                 if (!cursor) return;
                 const v = cursor.value;
                 if (typeof v.uploaded === 'boolean') {
@@ -1597,10 +1627,10 @@ export async function getDB() {
             const backfillDirty = (storeName: 'inspections' | 'trainings' | 'daily_assessments') => {
               if (!db.objectStoreNames.contains(storeName)) return;
               try {
-                const store = (transaction as any).objectStore(storeName) as IDBObjectStore;
+                const store = (transaction as unknown as { objectStore(name: string): IDBObjectStore }).objectStore(storeName);
                 const cursorReq = store.openCursor();
-                cursorReq.onsuccess = (ev: any) => {
-                  const cursor: IDBCursorWithValue | null = ev.target.result;
+                cursorReq.onsuccess = (ev: Event) => {
+                  const cursor = (ev.target as IDBRequest<IDBCursorWithValue | null>).result;
                   if (!cursor) return;
                   const v = cursor.value;
                   if (typeof v.dirty !== 'boolean') {
@@ -1644,7 +1674,7 @@ export async function getDB() {
               let cursor = await store.openCursor();
               let rewritten = 0;
               while (cursor) {
-                const v: any = cursor.value;
+                const v = cursor.value as { uploaded?: unknown };
                 if (typeof v.uploaded === 'boolean') {
                   v.uploaded = v.uploaded ? 1 : 0;
                   await cursor.update(v);
@@ -1715,7 +1745,10 @@ export async function getDB() {
             { storeName: 'equipment_type_cache', indexes: ['by-category'] },
             { storeName: 'dead_letter_soft_deletes' },
           ];
-          const fp = await migrationSafety.validateSchemaFingerprint(db as any, expected);
+          const fp = await migrationSafety.validateSchemaFingerprint(
+            db as unknown as IDBPDatabase<InspectionDB>,
+            expected,
+          );
           await migrationSafety.recordMigrationOutcome({
             dbName: DB_NAME,
             fromVersion: upgradeFromVersion,
@@ -1736,7 +1769,7 @@ export async function getDB() {
       console.error('[Offline Storage] Failed to open IndexedDB:', error);
       // Phase 5 — record the failure so the recovery UI can offer rollback.
       if (upgradeStartTs > 0 && migrationSafety) {
-        upgradeError = (error as any)?.message || String(error);
+        upgradeError = (error as { message?: string } | null | undefined)?.message || String(error);
         migrationSafety.recordMigrationOutcome({
           dbName: DB_NAME,
           fromVersion: upgradeFromVersion,
@@ -1768,7 +1801,7 @@ export async function getDB() {
  * emergency fallback instead of IDB.
  */
 export async function saveInspectionOffline(
-  inspection: any,
+  inspection: Record<string, unknown> & { id: string; child_count_hint?: number; dirty?: boolean },
   opts?: { childCountHint?: number }
 ): Promise<SaveResult> {
   return withIndexedDBSaveBoundary(
@@ -1955,7 +1988,7 @@ export async function getUnsyncedInspections(userId?: string) {
       const unsynced = candidates.filter(record => {
         // C3: dirty flag is the authoritative "has unshipped edits" signal.
         // Drift-tolerance check is the belt-and-braces secondary path.
-        if ((record as any).dirty === true) return true;
+        if ((record as { dirty?: unknown }).dirty === true) return true;
         if (!record.synced_at) return true; // never synced
         if (record.updated_at) {
           // M4: Parse each timestamp ONCE per record per scan. Previously
@@ -2000,7 +2033,7 @@ export async function getUnsyncedInspections(userId?: string) {
   );
 }
 
-export async function queueOperation(type: 'create' | 'update' | 'delete', inspectionId: string, data: any) {
+export async function queueOperation(type: 'create' | 'update' | 'delete', inspectionId: string, data: Record<string, unknown>) {
   return withIndexedDBErrorBoundary(
     async () => {
       const db = await getDB();
@@ -2128,37 +2161,37 @@ export interface DeadLetterSoftDelete {
   firstFailedAt: string;
   lastError: string;
   deadLetteredAt: string;
-  originalOp: any;
+  originalOp: Record<string, unknown>;
 }
 
 async function patchOpInStore(
   storeName: 'operations' | 'assessment_operations' | 'training_operations',
   id: number | undefined | null,
-  patch: Record<string, any>
+  patch: Record<string, unknown>
 ) {
   if (id === undefined || id === null) return;
   return withIndexedDBErrorBoundary(
     async () => {
       const db = await getDB();
-      const op = await db.get(storeName as any, id);
+      const op = await db.get(storeName, id);
       if (!op) return;
       const merged = { ...op, ...patch };
-      await db.put(storeName as any, merged);
+      await db.put(storeName, merged);
     },
     undefined,
     `patchOp:${storeName}`
   );
 }
 
-export async function updateQueuedOperation(id: number | undefined | null, patch: Record<string, any>) {
+export async function updateQueuedOperation(id: number | undefined | null, patch: Record<string, unknown>) {
   return patchOpInStore('operations', id, patch);
 }
 
-export async function updateQueuedAssessmentOperation(id: number | undefined | null, patch: Record<string, any>) {
+export async function updateQueuedAssessmentOperation(id: number | undefined | null, patch: Record<string, unknown>) {
   return patchOpInStore('assessment_operations', id, patch);
 }
 
-export async function updateQueuedTrainingOperation(id: number | undefined | null, patch: Record<string, any>) {
+export async function updateQueuedTrainingOperation(id: number | undefined | null, patch: Record<string, unknown>) {
   return patchOpInStore('training_operations', id, patch);
 }
 
@@ -2166,7 +2199,7 @@ export async function addToDeadLetterSoftDeletes(entry: DeadLetterSoftDelete) {
   return withIndexedDBErrorBoundary(
     async () => {
       const db = await getDB();
-      await (db as any).put('dead_letter_soft_deletes', entry);
+      await db.put('dead_letter_soft_deletes', entry as unknown as DbRow);
       if (import.meta.env.DEV) {
         console.warn('[Offline Storage] Dead-lettered soft-delete:', entry.id, entry.lastError);
       }
@@ -2180,8 +2213,8 @@ export async function getDeadLetterSoftDeletes(): Promise<DeadLetterSoftDelete[]
   return withIndexedDBErrorBoundary(
     async () => {
       const db = await getDB();
-      const all = await (db as any).getAll('dead_letter_soft_deletes');
-      return (all as DeadLetterSoftDelete[]).sort(
+      const all = await db.getAll('dead_letter_soft_deletes');
+      return (all as unknown as DeadLetterSoftDelete[]).sort(
         (a, b) => new Date(b.deadLetteredAt).getTime() - new Date(a.deadLetteredAt).getTime()
       );
     },
@@ -2194,7 +2227,7 @@ export async function removeDeadLetterSoftDelete(id: string) {
   return withIndexedDBErrorBoundary(
     async () => {
       const db = await getDB();
-      await (db as any).delete('dead_letter_soft_deletes', id);
+      await db.delete('dead_letter_soft_deletes', id);
     },
     undefined,
     'removeDeadLetterSoftDelete'
@@ -2224,7 +2257,7 @@ export function toUploadedFlag(v: unknown): 0 | 1 {
  */
 export async function putPhotoRecord(
   db: IDBPDatabase<InspectionDB>,
-  photo: any,
+  photo: Record<string, unknown> & { id: string; inspectionId: string; uploaded?: unknown },
 ): Promise<void> {
   await db.put('photos', {
     ...photo,
@@ -2274,10 +2307,10 @@ export async function savePhotoOffline(photo: {
         // useAutoSync schedules photo uploads from the main thread.
         
         return true;
-      } catch (error: any) {
+      } catch (error: unknown) {
         console.error('[Offline Storage] Failed to save photo:', error);
         
-        if (error.name === 'QuotaExceededError') {
+        if ((error as { name?: unknown } | null | undefined)?.name === 'QuotaExceededError') {
           throw new Error('Storage quota exceeded. Please sync photos to free up space.');
         }
         
@@ -2310,7 +2343,7 @@ export async function relinkPhotosToNewInspectionId(
         // N-G: in-transaction put — coerce uploaded so a legacy boolean value
         // (from a pre-v18 row that migration missed) cannot sneak back into
         // the store and silently break the by-uploaded index.
-        photo.uploaded = toUploadedFlag((photo as any).uploaded);
+        photo.uploaded = toUploadedFlag((photo as { uploaded?: unknown }).uploaded);
         await tx.store.put(photo);
         relinkedCount++;
       }
@@ -2341,7 +2374,7 @@ export async function updatePhotoUrl(photoId: string, newUrl: string): Promise<v
       if (photo) {
         photo.photoUrl = newUrl;
         // N-G: coerce uploaded in case a legacy boolean value is present.
-        photo.uploaded = toUploadedFlag((photo as any).uploaded);
+        photo.uploaded = toUploadedFlag((photo as { uploaded?: unknown }).uploaded);
         await tx.store.put(photo);
       }
       await tx.done;
@@ -2438,7 +2471,7 @@ export async function getUnuploadedPhotos(userId?: string) {
  * Returns photos that are stuck (dead-letter): retry-exhausted or orphaned.
  * Used by the SyncPulse sheet so users can manually retry them.
  */
-export async function getDeadLetterPhotos(): Promise<any[]> {
+export async function getDeadLetterPhotos(): Promise<InspectionDB['photos']['value'][]> {
   return withIndexedDBErrorBoundary(
     async () => {
       const db = await getDB();
@@ -2453,7 +2486,7 @@ export async function getDeadLetterPhotos(): Promise<any[]> {
       const tempPhotos = withBlob.filter(
         p => p.inspectionId?.startsWith('temp-') && (p.retryCount || 0) < MAX_PHOTO_RETRIES
       );
-      const orphans: any[] = [];
+      const orphans: InspectionDB['photos']['value'][] = [];
       if (tempPhotos.length > 0) {
         const inspTx = db.transaction('inspections', 'readonly');
         await Promise.all(
@@ -2721,7 +2754,7 @@ export async function recordPhotoUploadFailure(
   return withIndexedDBErrorBoundary(
     async () => {
       const db = await getDB();
-      const existing = await (db as any).get('photo_upload_failures', entry.id).catch(() => null);
+      const existing = await db.get('photo_upload_failures', entry.id).catch(() => null);
       const merged: PhotoUploadFailureEntry = {
         id: entry.id,
         inspectionId: entry.inspectionId,
@@ -2734,7 +2767,7 @@ export async function recordPhotoUploadFailure(
         firstFailedAt: existing?.firstFailedAt ?? entry.firstFailedAt ?? entry.lastErrorAt,
         capturedByUserId: entry.capturedByUserId ?? null,
       };
-      await (db as any).put('photo_upload_failures', merged);
+      await db.put('photo_upload_failures', merged);
       if (import.meta.env.DEV) {
         console.warn('[Offline Storage] Photo upload failure recorded:', merged.id, merged.lastError);
       }
@@ -2748,7 +2781,7 @@ export async function listPhotoUploadFailures(): Promise<PhotoUploadFailureEntry
   return withIndexedDBErrorBoundary(
     async () => {
       const db = await getDB();
-      const all: PhotoUploadFailureEntry[] = await (db as any).getAll('photo_upload_failures');
+      const all: PhotoUploadFailureEntry[] = await db.getAll('photo_upload_failures');
       // Newest failures first.
       return (all || []).sort((a, b) => (b.lastErrorAt || 0) - (a.lastErrorAt || 0));
     },
@@ -2761,7 +2794,7 @@ export async function removePhotoUploadFailure(id: string): Promise<void> {
   return withIndexedDBErrorBoundary(
     async () => {
       const db = await getDB();
-      await (db as any).delete('photo_upload_failures', id);
+      await db.delete('photo_upload_failures', id);
     },
     undefined,
     'removePhotoUploadFailure'
@@ -2772,7 +2805,7 @@ export async function getPhotoUploadFailureCount(): Promise<number> {
   return withIndexedDBErrorBoundary(
     async () => {
       const db = await getDB();
-      return await (db as any).count('photo_upload_failures');
+      return await db.count('photo_upload_failures');
     },
     0,
     'getPhotoUploadFailureCount'
@@ -2793,7 +2826,7 @@ export async function backfillCapturedByUserIdForPendingPhotos(): Promise<number
       try {
         const authDb = await openDB('offline-auth-store');
         if (authDb.objectStoreNames.contains('user_mappings')) {
-          const mappings: any[] = await authDb.getAll('user_mappings');
+          const mappings: { userId?: string }[] = await authDb.getAll('user_mappings');
           for (const m of mappings) {
             if (m?.userId) knownUserIds.add(m.userId);
           }
@@ -2814,7 +2847,7 @@ export async function backfillCapturedByUserIdForPendingPhotos(): Promise<number
       let updated = 0;
       let cursor = await tx.store.openCursor();
       while (cursor) {
-        const p: any = cursor.value;
+        const p = cursor.value;
         if (
           !p.uploaded &&
           !p.capturedByUserId &&
@@ -2952,7 +2985,7 @@ const ensureValidUUID = (id: string | undefined): string => {
 // Uses cheap count() per "other" store (not getAllFromIndex) to minimize IDB load,
 // and skips entirely on read errors (a stale hint is safe for the SW guard).
 async function recomputeInspectionChildCountHint(
-  db: any,
+  db: IDBPDatabase<InspectionDB>,
   inspectionId: string,
   justSavedType: RelatedDataType,
   justSavedCount: number,
@@ -3008,7 +3041,7 @@ async function recomputeInspectionChildCountHint(
 }
 
 async function recomputeAssessmentChildCountHint(
-  db: any,
+  db: IDBPDatabase<InspectionDB>,
   assessmentId: string,
   justSavedType: AssessmentDataType,
   justSavedCount: number,
@@ -3046,7 +3079,7 @@ async function recomputeAssessmentChildCountHint(
 }
 
 async function recomputeTrainingChildCountHint(
-  db: any,
+  db: IDBPDatabase<InspectionDB>,
   trainingId: string,
   justSavedType: TrainingDataType,
   justSavedCount: number,
@@ -3086,7 +3119,7 @@ async function recomputeTrainingChildCountHint(
 export async function saveRelatedDataOffline(
   type: RelatedDataType,
   inspectionId: string,
-  data: any[],
+  data: Record<string, unknown>[],
   options?: { allowEmpty?: boolean }
 ) {
   // SAFETY: Never overwrite existing IndexedDB data with an empty array
@@ -3140,7 +3173,7 @@ export async function saveRelatedDataOffline(
 export async function getRelatedDataOffline(
   type: RelatedDataType,
   inspectionId: string
-): Promise<any[]> {
+): Promise<DbRow[]> {
   return withIndexedDBErrorBoundary(
     async () => {
       const db = await getDB();
@@ -3148,7 +3181,11 @@ export async function getRelatedDataOffline(
       const index = db.transaction(storeName).store.index('by-inspection');
       const results = await index.getAll(inspectionId);
       // Sort by display_order to maintain consistent ordering
-      return results.sort((a: any, b: any) => (a.display_order ?? 0) - (b.display_order ?? 0));
+      return results.sort(
+        (a, b) =>
+          ((a as { display_order?: number }).display_order ?? 0) -
+          ((b as { display_order?: number }).display_order ?? 0),
+      );
     },
     [],
     `getRelatedDataOffline:${type}`
@@ -3163,18 +3200,19 @@ export async function getRelatedDataOffline(
 export async function getRelatedDataOfflineWithStatus(
   type: RelatedDataType,
   inspectionId: string
-): Promise<{ items: any[]; readSucceeded: boolean }> {
+): Promise<{ items: DbRow[]; readSucceeded: boolean }> {
   // If the circuit breaker is already open, the read is guaranteed to be a fallback.
   if (isCircuitBreakerOpen('inspections')) {
     return { items: [], readSucceeded: false };
   }
-  const { data, timedOut } = await withIDBTimeout(
+  const { data, timedOut } = await withIDBTimeout<DbRow[]>(
     `getRelatedData(${type}/${inspectionId})`,
     'batch',
     () => getRelatedDataOffline(type, inspectionId),
-    [] as any[]
+    [],
   );
-  return { items: data || [], readSucceeded: !timedOut };
+  const items = isIdbReadFailure(data) ? [] : (data ?? []);
+  return { items, readSucceeded: !timedOut };
 }
 
 export async function clearRelatedDataOffline(
@@ -3221,7 +3259,7 @@ export async function clearRelatedDataOffline(
  * Throws `IdbSaveError` on hard failure (Gap 2.1) — callers MUST handle rejection.
  */
 export async function saveDailyAssessmentOffline(
-  assessment: any,
+  assessment: Record<string, unknown> & { id: string; child_count_hint?: number; dirty?: boolean },
   opts?: { childCountHint?: number }
 ): Promise<SaveResult> {
   return withIndexedDBSaveBoundary(
@@ -3320,7 +3358,7 @@ export async function getUnsyncedDailyAssessments(userId?: string) {
 
       const unsynced = candidates.filter(record => {
         // C3: dirty flag = authoritative "has unshipped edits"; drift = secondary.
-        if ((record as any).dirty === true) return true;
+        if ((record as { dirty?: unknown }).dirty === true) return true;
         if (!record.synced_at) return true;
         if (record.updated_at) {
           // M4: Parse each timestamp once per record (see getUnsyncedInspections).
@@ -3350,7 +3388,7 @@ export async function getUnsyncedDailyAssessments(userId?: string) {
   );
 }
 
-export async function queueAssessmentOperation(type: 'create' | 'update' | 'delete', assessmentId: string, data: any) {
+export async function queueAssessmentOperation(type: 'create' | 'update' | 'delete', assessmentId: string, data: Record<string, unknown>) {
   return withIndexedDBErrorBoundary(
     async () => {
       const db = await getDB();
@@ -3443,7 +3481,7 @@ const assessmentStoreNameMap: Record<AssessmentDataType, AssessmentStoreNames> =
 export async function saveAssessmentDataOffline(
   type: AssessmentDataType,
   assessmentId: string,
-  data: any[],
+  data: Record<string, unknown>[],
   options?: { allowEmpty?: boolean }
 ) {
   // SAFETY: Never overwrite existing IndexedDB data with an empty array
@@ -3498,16 +3536,18 @@ export async function saveAssessmentDataOffline(
 export async function getAssessmentDataOffline(
   type: AssessmentDataType,
   assessmentId: string
-): Promise<any[]> {
+): Promise<DbRow[]> {
   return withIndexedDBErrorBoundary(
     async () => {
       const db = await getDB();
       const storeName = assessmentStoreNameMap[type];
       const index = db.transaction(storeName).store.index('by-assessment');
       const results = await index.getAll(assessmentId);
-      return results.sort((a: any, b: any) => 
-        new Date(a.created_at || 0).getTime() - new Date(b.created_at || 0).getTime()
-      );
+      return results.sort((a, b) => {
+        const ac = (a as { created_at?: string | number }).created_at ?? 0;
+        const bc = (b as { created_at?: string | number }).created_at ?? 0;
+        return new Date(ac).getTime() - new Date(bc).getTime();
+      });
     },
     [],
     `getAssessmentDataOffline:${type}`
@@ -3518,17 +3558,17 @@ export async function getAssessmentDataOffline(
 export async function getAssessmentDataOfflineWithStatus(
   type: AssessmentDataType,
   assessmentId: string
-): Promise<{ items: any[]; readSucceeded: boolean }> {
+): Promise<{ items: DbRow[]; readSucceeded: boolean }> {
   if (isCircuitBreakerOpen('daily_assessments')) {
     return { items: [], readSucceeded: false };
   }
-  const { data, timedOut } = await withIDBTimeout(
+  const { data, timedOut } = await withIDBTimeout<DbRow[]>(
     `getAssessmentData(${type}/${assessmentId})`,
     'batch',
     () => getAssessmentDataOffline(type, assessmentId),
-    [] as any[]
+    [],
   );
-  return { items: data || [], readSucceeded: !timedOut };
+  return { items: data ?? [], readSucceeded: !timedOut };
 }
 
 export async function clearAssessmentDataOffline(
@@ -3575,7 +3615,7 @@ export async function clearAssessmentDataOffline(
  * Throws `IdbSaveError` on hard failure (Gap 2.1) — callers MUST handle rejection.
  */
 export async function saveTrainingOffline(
-  training: any,
+  training: Record<string, unknown> & { id: string; child_count_hint?: number; dirty?: boolean },
   opts?: { childCountHint?: number }
 ): Promise<SaveResult> {
   return withIndexedDBSaveBoundary(
@@ -3674,7 +3714,7 @@ export async function getUnsyncedTrainings(userId?: string) {
 
       const unsynced = candidates.filter(record => {
         // C3: dirty flag = authoritative "has unshipped edits"; drift = secondary.
-        if ((record as any).dirty === true) return true;
+        if ((record as { dirty?: unknown }).dirty === true) return true;
         if (!record.synced_at) return true;
         if (record.updated_at) {
           // M4: Parse each timestamp once per record (see getUnsyncedInspections).
@@ -3712,7 +3752,7 @@ export async function getUnsyncedTrainings(userId?: string) {
 // and inspect each result with `isIdbReadFailure` so a failed read never
 // masquerades as an empty queue.
 
-export async function queueTrainingOperation(type: 'create' | 'update' | 'delete', trainingId: string, data: any) {
+export async function queueTrainingOperation(type: 'create' | 'update' | 'delete', trainingId: string, data: Record<string, unknown>) {
   return withIndexedDBErrorBoundary(
     async () => {
       const db = await getDB();
@@ -3805,7 +3845,7 @@ const trainingStoreNameMap: Record<TrainingDataType, TrainingStoreNames> = {
 export async function saveTrainingDataOffline(
   type: TrainingDataType,
   trainingId: string,
-  data: any[] | any,
+  data: Record<string, unknown>[] | Record<string, unknown>,
   options?: { allowEmpty?: boolean }
 ) {
   // SAFETY: Never overwrite existing IndexedDB data with an empty array
@@ -3864,16 +3904,18 @@ export async function saveTrainingDataOffline(
 export async function getTrainingDataOffline(
   type: TrainingDataType,
   trainingId: string
-): Promise<any[]> {
+): Promise<DbRow[]> {
   return withIndexedDBErrorBoundary(
     async () => {
       const db = await getDB();
       const storeName = trainingStoreNameMap[type];
       const index = db.transaction(storeName).store.index('by-training');
       const results = await index.getAll(trainingId);
-      return results.sort((a: any, b: any) => 
-        new Date(a.created_at || 0).getTime() - new Date(b.created_at || 0).getTime()
-      );
+      return results.sort((a, b) => {
+        const ac = (a as { created_at?: string | number }).created_at ?? 0;
+        const bc = (b as { created_at?: string | number }).created_at ?? 0;
+        return new Date(ac).getTime() - new Date(bc).getTime();
+      });
     },
     [],
     `getTrainingDataOffline:${type}`
@@ -3884,17 +3926,17 @@ export async function getTrainingDataOffline(
 export async function getTrainingDataOfflineWithStatus(
   type: TrainingDataType,
   trainingId: string
-): Promise<{ items: any[]; readSucceeded: boolean }> {
+): Promise<{ items: DbRow[]; readSucceeded: boolean }> {
   if (isCircuitBreakerOpen('trainings')) {
     return { items: [], readSucceeded: false };
   }
-  const { data, timedOut } = await withIDBTimeout(
+  const { data, timedOut } = await withIDBTimeout<DbRow[]>(
     `getTrainingData(${type}/${trainingId})`,
     'batch',
     () => getTrainingDataOffline(type, trainingId),
-    [] as any[]
+    [],
   );
-  return { items: data || [], readSucceeded: !timedOut };
+  return { items: data ?? [], readSucceeded: !timedOut };
 }
 
 export async function clearTrainingDataOffline(
@@ -3950,7 +3992,7 @@ const MAX_BACKUPS_PER_REPORT = 3;
 export async function createReportBackup(
   reportType: string,
   reportId: string,
-  data: any,
+  data: Record<string, unknown>,
   backupCategory: 'wal' | 'ver' = 'wal'
 ): Promise<void> {
   return withIndexedDBErrorBoundary(
@@ -4000,7 +4042,7 @@ export async function createReportBackup(
 export async function restoreFromBackup(
   reportType: string,
   reportId: string
-): Promise<any | null> {
+): Promise<Record<string, unknown> | null> {
   return withIndexedDBErrorBoundary(
     async () => {
       const db = await getDB();
@@ -4115,7 +4157,7 @@ export async function getUnsyncedAutocompleteEntries(): Promise<AutocompleteEntr
     async () => {
       const db = await getDB();
       // synced index stores boolean; false = unsynced
-      return await db.getAllFromIndex('autocomplete_history', 'by-synced', 0 as any);
+      return await db.getAllFromIndex('autocomplete_history', 'by-synced', IDBKeyRange.only(0 as unknown as IDBValidKey));
     },
     [],
     'getUnsyncedAutocompleteEntries'
@@ -4244,18 +4286,22 @@ export async function evictSyncedReports(ageDays: number): Promise<number> {
           continue;
         }
 
-        // Evict parent + children in a single transaction
-        // Use 'as any' to bypass strict store name typing for dynamic store list
+        // Evict parent + children in a single transaction.
+        // Store names are runtime-built from config; narrow via StoreNames<InspectionDB>
+        // when handing them to the typed db.transaction/objectStore APIs.
+        type OSName = StoreNames<InspectionDB>;
         const allStoreNames = [parentStoreName, ...childStores, 'photos'];
-        const availableStores = allStoreNames.filter(s => db.objectStoreNames.contains(s as any));
-        const deleteTx = db.transaction(availableStores as any, 'readwrite');
+        const availableStores = allStoreNames.filter(
+          s => db.objectStoreNames.contains(s as OSName),
+        ) as OSName[];
+        const deleteTx = db.transaction(availableStores, 'readwrite');
 
-        (deleteTx as any).objectStore(parentStoreName).delete(id);
+        deleteTx.objectStore(parentStoreName as OSName).delete(id);
 
         // Evict child records
         for (const childStore of childStores) {
-          if (!db.objectStoreNames.contains(childStore as any)) continue;
-          const store = (deleteTx as any).objectStore(childStore);
+          if (!db.objectStoreNames.contains(childStore as OSName)) continue;
+          const store = deleteTx.objectStore(childStore as OSName);
           const indexName = `by-${childIndexPrefix}`;
           if (store.indexNames.contains(indexName)) {
             const childKeys = await store.index(indexName).getAllKeys(id);
@@ -4463,7 +4509,7 @@ export async function bulkPutEquipmentTypeOptions(entries: EquipmentTypeCacheEnt
  * Function declaration (hoisted) so it is callable from earlier-in-file
  * readers without a forward-reference error.
  */
-export function isNotQuarantined<T extends Record<string, any>>(record: T): boolean {
+export function isNotQuarantined<T extends Record<string, unknown>>(record: T): boolean {
   return !record._remote_deleted_at;
 }
 
@@ -4477,7 +4523,7 @@ export interface QuarantinedRecord {
   site?: string | null;
   remoteDeletedAt: string;
   reason: string;
-  raw: any;
+  raw: Record<string, unknown>;
 }
 
 export async function quarantineRecord(
@@ -4523,16 +4569,16 @@ export async function getQuarantinedRecords(
       const out: QuarantinedRecord[] = [];
       for (const t of tables) {
         const all = await db.getAll(t);
-        for (const r of all as any[]) {
+        for (const r of all as Record<string, unknown>[]) {
           if (r._remote_deleted_at) {
             out.push({
               table: t,
-              id: r.id,
-              organization: r.organization ?? null,
-              location: r.location ?? null,
-              site: r.site ?? null,
-              remoteDeletedAt: r._remote_deleted_at,
-              reason: r._quarantine_reason ?? 'remote_soft_delete',
+              id: String(r.id),
+              organization: (r.organization as string | null | undefined) ?? null,
+              location: (r.location as string | null | undefined) ?? null,
+              site: (r.site as string | null | undefined) ?? null,
+              remoteDeletedAt: String(r._remote_deleted_at),
+              reason: String(r._quarantine_reason ?? 'remote_soft_delete'),
               raw: r,
             });
           }
@@ -4585,8 +4631,8 @@ export async function restoreQuarantinedAsNew(
 
       // Strip quarantine + sync state on the clone so it looks like a
       // brand-new local record to the next sync cycle.
-      const clone: any = {
-        ...row,
+      const clone: Record<string, unknown> = {
+        ...(row as Record<string, unknown>),
         id: newId,
         synced_at: null,
         updated_at: nowIso,
@@ -4633,19 +4679,21 @@ export async function restoreQuarantinedAsNew(
       // Write the new parent.
       await db.put(table, clone);
 
+      type OSName = StoreNames<InspectionDB>;
       for (const store of childStores[table]) {
         try {
-          const idx = db.transaction(store.name as any).store.index(store.index as any);
+          const storeName = store.name as OSName;
+          const idx = db.transaction(storeName).store.index(store.index as never);
           const children = await idx.getAll(id);
           if (!children || children.length === 0) continue;
-          const tx = db.transaction(store.name as any, 'readwrite');
-          for (const child of children as any[]) {
+          const tx = db.transaction(storeName, 'readwrite');
+          for (const child of children as Record<string, unknown>[]) {
             const newChild = {
               ...child,
               id: crypto.randomUUID(),
               [store.fk]: newId,
             };
-            await tx.store.put(newChild);
+            await tx.store.put(newChild as never);
           }
           await tx.done;
         } catch (err) {
@@ -4663,11 +4711,12 @@ export async function restoreQuarantinedAsNew(
       // the old id are now orphaned in IDB — clear them too.
       try {
         for (const store of childStores[table]) {
-          const idx = db.transaction(store.name as any).store.index(store.index as any);
+          const storeName = store.name as OSName;
+          const idx = db.transaction(storeName).store.index(store.index as never);
           const children = await idx.getAll(id);
           if (!children || children.length === 0) continue;
-          const tx = db.transaction(store.name as any, 'readwrite');
-          for (const child of children as any[]) {
+          const tx = db.transaction(storeName, 'readwrite');
+          for (const child of children as { id: string }[]) {
             await tx.store.delete(child.id);
           }
           await tx.done;
