@@ -1279,7 +1279,7 @@ export async function getDB() {
     // Version 8: Add report_versions store for append-only versioning
     // DB_NAME and DB_VERSION shared with public/db-config.js for SW consistency
     const DB_NAME = 'rope-works-inspections';
-    const DB_VERSION = 17;
+    const DB_VERSION = 18;
 
     // Phase 5 — Schema Migration Safety. Lazy-load to avoid circular imports
     // and to keep the boot path resilient if this module ever fails to parse.
@@ -1345,7 +1345,7 @@ export async function getDB() {
             console.warn('[Offline Storage] Failed to close blocking connection:', err);
           }
         },
-        upgrade(db, oldVersion, newVersion, transaction) {
+        async upgrade(db, oldVersion, newVersion, transaction) {
           upgradeStartTs = Date.now();
           upgradeFromVersion = oldVersion;
           if (import.meta.env.DEV) {
@@ -1630,11 +1630,40 @@ export async function getDB() {
             backfillDirty('trainings');
             backfillDirty('daily_assessments');
           }
+
+          // === NEW in v18: re-coerce photos.uploaded boolean → 0|1 ===
+          // C1: The v16 migration used raw IDBObjectStore cursors which the
+          // `idb` wrapper does not await on transaction completion. Any rows
+          // that were boolean-typed at v15 may still carry boolean values
+          // through to v17. v18 redoes the rewrite using the wrapped
+          // IDBPObjectStore so `await` keeps the upgrade tx alive until every
+          // row is persisted. Idempotent — numeric rows are skipped.
+          if (oldVersion < 18 && db.objectStoreNames.contains('photos')) {
+            try {
+              const store = transaction.objectStore('photos');
+              let cursor = await store.openCursor();
+              let rewritten = 0;
+              while (cursor) {
+                const v: any = cursor.value;
+                if (typeof v.uploaded === 'boolean') {
+                  v.uploaded = v.uploaded ? 1 : 0;
+                  await cursor.update(v);
+                  rewritten++;
+                }
+                cursor = await cursor.continue();
+              }
+              if (import.meta.env.DEV) {
+                console.log(`[Offline Storage] v18: re-coerced photos.uploaded on ${rewritten} legacy row(s)`);
+              }
+            } catch (err) {
+              console.warn('[Offline Storage] v18 photos.uploaded re-coercion failed:', err);
+            }
+          }
         },
       });
     };
 
-    // Phase 5 — pre-flight snapshot when an actual version bump is coming.
+
     // We detect the existing version by opening with no upgrade hook first.
     try {
       if (migrationSafety) {
@@ -2092,6 +2121,15 @@ export async function removeDeadLetterSoftDelete(id: string) {
 }
 
 
+/**
+ * C1: Coerce any caller-supplied `uploaded` value to the on-disk shape (0|1).
+ * IndexedDB silently drops boolean values from indexes — every write site
+ * MUST funnel through this helper so the `by-uploaded` index stays queryable.
+ */
+export function toUploadedFlag(v: unknown): 0 | 1 {
+  return v ? 1 : 0;
+}
+
 export async function savePhotoOffline(photo: {
   id: string;
   inspectionId: string;
@@ -2121,8 +2159,8 @@ export async function savePhotoOffline(photo: {
         await db.put('photos', {
           ...photo,
           timestamp: Date.now(),
-          // Coerce boolean → 0|1 so the by-uploaded index actually keys the row.
-          uploaded: photo.uploaded ? 1 : 0,
+          // C1: Funnel through toUploadedFlag so the by-uploaded index keys the row.
+          uploaded: toUploadedFlag(photo.uploaded),
         });
         
         if (import.meta.env.DEV) {
@@ -2409,7 +2447,7 @@ export async function markPhotoAsUploaded(id: string, photoUrl: string) {
       const photo = await db.get('photos', id);
       if (photo) {
         const now = Date.now();
-        photo.uploaded = 1;
+        photo.uploaded = toUploadedFlag(true);
         photo.photoUrl = photoUrl;
         photo.lastValidated = now;
         // M6: Stamp upload-confirmation time so prune can age-out blobs
