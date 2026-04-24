@@ -35,11 +35,12 @@ type TableName = 'inspections' | 'trainings' | 'daily_assessments';
 interface QueuedOp {
   id?: number;
   type?: string;
-  data?: Record<string, unknown> & {
+  data?: {
     id?: string;
     deleted_at?: string | null;
     deleted_by?: string | null;
     retention_until?: string | null;
+    [key: string]: unknown;
   };
   attempts?: number;
   firstFailedAt?: string;
