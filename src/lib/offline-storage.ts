@@ -1,6 +1,7 @@
 import { openDB, DBSchema, IDBPDatabase } from 'idb';
 import { checkStorageQuota, requestPersistentStorage, isMobile } from './mobile-detection';
 import { isUpdatedAheadOfSync } from './local-data-guards';
+import { safeSetItem } from './safe-local-storage';
 
 interface InspectionDB extends DBSchema {
   inspections: {
@@ -544,7 +545,7 @@ async function ensureStorage(): Promise<void> {
       storageWarningShown = true;
       // Finding 5: Surface storage eviction risk to user (one-time banner)
       if (typeof window !== 'undefined' && !localStorage.getItem('storage-eviction-warned')) {
-        localStorage.setItem('storage-eviction-warned', 'true');
+        safeSetItem('storage-eviction-warned', 'true', { scope: 'offline-storage.evictionWarned' });
         import('@/hooks/use-toast').then(({ toast }) => {
           toast({
             title: "Offline storage not guaranteed",

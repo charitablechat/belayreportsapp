@@ -6,6 +6,7 @@ import {
   getOfflineUserId,
   getAdminCacheKey,
 } from "@/lib/cached-auth";
+import { safeSetItem } from "@/lib/safe-local-storage";
 
 /**
  * Hook that restricts access to users with 'admin' or 'super_admin' roles.
@@ -64,7 +65,7 @@ export const useRequireAdmin = () => {
 
         // Persist for resilience against transient failures (namespaced)
         if (user?.id) {
-          localStorage.setItem(getAdminCacheKey(user.id), hasAccess.toString());
+          safeSetItem(getAdminCacheKey(user.id), hasAccess.toString(), { scope: 'useRequireAdmin.cache' });
         }
 
         if (!hasAccess) {

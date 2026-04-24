@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { isPreviewOrIframeEnvironment } from '@/lib/environment';
+import { safeSetItem } from '@/lib/safe-local-storage';
 
 export type UpdateCheckResult = 'update_found' | 'up_to_date' | 'no_sw' | 'error';
 
@@ -118,7 +119,7 @@ export const usePWAUpdate = (): PWAUpdateStatus => {
 
           const now = new Date();
           setLastChecked(now);
-          localStorage.setItem('pwa-last-update-check', now.toISOString());
+          safeSetItem('pwa-last-update-check', now.toISOString(), { scope: 'usePWAUpdate.lastChecked' });
         }, 60 * 60 * 1000);
       })
       .catch(() => {
@@ -156,7 +157,7 @@ export const usePWAUpdate = (): PWAUpdateStatus => {
           if (reg.waiting) setNeedRefresh(true);
           const stamp = new Date();
           setLastChecked(stamp);
-          localStorage.setItem('pwa-last-update-check', stamp.toISOString());
+          safeSetItem('pwa-last-update-check', stamp.toISOString(), { scope: 'usePWAUpdate.lastChecked' });
         })
         .catch((error) => {
           if (import.meta.env.DEV) {
@@ -246,7 +247,7 @@ export const usePWAUpdate = (): PWAUpdateStatus => {
     } finally {
       const now = new Date();
       setLastChecked(now);
-      localStorage.setItem('pwa-last-update-check', now.toISOString());
+      safeSetItem('pwa-last-update-check', now.toISOString(), { scope: 'usePWAUpdate.lastChecked' });
       setIsChecking(false);
     }
   }, [registration]);
@@ -256,7 +257,7 @@ export const usePWAUpdate = (): PWAUpdateStatus => {
       console.log('[PWA Update] Activating waiting service worker');
 
       if (reloadPage) {
-        localStorage.setItem(UPDATE_APPLIED_KEY, 'true');
+        safeSetItem(UPDATE_APPLIED_KEY, 'true', { scope: 'usePWAUpdate.applied' });
       }
 
       setNeedRefresh(false);
@@ -278,7 +279,7 @@ export const usePWAUpdate = (): PWAUpdateStatus => {
     } else {
       console.log('[PWA Update] No waiting service worker found');
       if (needRefresh && reloadPage) {
-        localStorage.setItem(UPDATE_APPLIED_KEY, 'true');
+        safeSetItem(UPDATE_APPLIED_KEY, 'true', { scope: 'usePWAUpdate.applied' });
         setNeedRefresh(false);
         window.location.reload();
       }
