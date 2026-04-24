@@ -396,7 +396,7 @@ export async function downloadReportBackup(
       snapshot,
     };
 
-    const org = snapshot.parent?.organization;
+    const org = snapshot.parent?.organization as string | undefined;
     const json = JSON.stringify(payload, null, 2);
 
     // Try to collect photos and build a ZIP
