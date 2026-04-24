@@ -199,7 +199,7 @@ type LiveSaver<T>  = (record: T) => Promise<unknown>;
  * Any read/parse failure falls through to the legacy write so a guard-read
  * failure can never block sync completion.
  */
-export async function safePostSyncSave<T extends { id: string; updated_at?: string | null }>(
+export async function safePostSyncSave<T extends { id?: string; updated_at?: string | null }>(
   recordId: string,
   t0Snapshot: T,
   t0UpdatedAtMs: number,
@@ -1251,7 +1251,8 @@ export async function syncAllInspectionsAtomic(preValidatedUser?: CachedUser, si
   // Note: getUnsyncedInspections has its own internal timeout via withIndexedDBReadBoundary;
   // the outer 15s timeout here is a safety net for very slow mobile networks.
   // S11: getUnsyncedInspections now returns IdbReadFailure on failure (silent [] fallback removed).
-  type UnsyncedInspection = { id: string; organization?: string | null; [k: string]: unknown };
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  type UnsyncedInspection = { id: string; organization?: string | null; location?: string | null; inspector_id?: string; updated_at?: string; synced_at?: string; [k: string]: any };
   let unsynced: UnsyncedInspection[];
   let fetchFailureReason: string | null = null;
   try {
@@ -2208,7 +2209,8 @@ export async function syncAllTrainingsAtomic(preValidatedUser?: CachedUser, sign
   }
   
   // S11: getUnsyncedTrainings now returns IdbReadFailure on failure
-  type UnsyncedTraining = { id: string; organization?: string | null; [k: string]: unknown };
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  type UnsyncedTraining = { id: string; organization?: string | null; location?: string | null; inspector_id?: string; updated_at?: string; synced_at?: string; [k: string]: any };
   let unsynced: UnsyncedTraining[];
   let fetchFailureReason: string | null = null;
   try {
@@ -3035,7 +3037,8 @@ export async function syncAllDailyAssessmentsAtomic(preValidatedUser?: CachedUse
   }
   
   // S11: getUnsyncedDailyAssessments now returns IdbReadFailure on failure
-  type UnsyncedAssessment = { id: string; organization?: string | null; [k: string]: unknown };
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  type UnsyncedAssessment = { id: string; organization?: string | null; site?: string | null; inspector_id?: string; updated_at?: string; synced_at?: string; [k: string]: any };
   let unsynced: UnsyncedAssessment[];
   let fetchFailureReason: string | null = null;
   try {

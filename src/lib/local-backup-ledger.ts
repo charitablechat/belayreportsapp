@@ -36,7 +36,8 @@ export interface ReportSnapshot {
   synced: boolean;
   device: 'mobile' | 'desktop';
   parent: Record<string, unknown>;
-  children: Record<string, unknown[]>;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  children: Record<string, any[]>;
   photoMetadata?: PhotoMetadataEntry[];
 }
 
@@ -256,7 +257,7 @@ export function listAllSnapshots(): Array<{
           synced: snapshot.synced,
           device: snapshot.device,
           sizeBytes: raw.length * 2,
-          organization: snapshot.parent?.organization,
+          organization: snapshot.parent?.organization as string | undefined,
         });
       } catch {
         // Skip corrupt entries
@@ -396,7 +397,7 @@ export async function downloadReportBackup(
       snapshot,
     };
 
-    const org = snapshot.parent?.organization;
+    const org = snapshot.parent?.organization as string | undefined;
     const json = JSON.stringify(payload, null, 2);
 
     // Try to collect photos and build a ZIP
@@ -536,17 +537,19 @@ export async function importReportBackup(input: string | File): Promise<{
     jsonString = input;
   }
 
-  let parsed: unknown;
+  let rawParsed: unknown;
   try {
-    parsed = JSON.parse(jsonString);
+    rawParsed = JSON.parse(jsonString);
   } catch {
     throw new Error('Invalid JSON file — could not parse contents.');
   }
 
   // Reject arrays (bulk exports)
-  if (Array.isArray(parsed)) {
+  if (Array.isArray(rawParsed)) {
     throw new Error('This looks like a bulk export containing multiple reports. Please import individual report files instead.');
   }
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const parsed = (rawParsed ?? {}) as any;
 
   // --- Normalize: support multiple export formats ---
   let reportType: ReportType | undefined = parsed.reportType ?? parsed.report_type;

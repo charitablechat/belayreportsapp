@@ -960,7 +960,7 @@ function AllUserSnapshotsPanel() {
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
-      const org = full?.snapshot_data?.parent?.organization;
+      const org = full?.snapshot_data?.parent?.organization as string | undefined;
       a.download = formatReportFilename(org || undefined, reportType as any, 'json');
       a.click();
       URL.revokeObjectURL(url);
