@@ -481,6 +481,8 @@ async function syncInspectionsAtomic() {
 async function syncPhotos() {
   console.log('[SW Sync] Starting photo sync...');
   
+  if (!dbConfigGuard('photo sync')) return;
+  
   const authHeaders = getAuthHeaders();
   if (!authHeaders) {
     console.warn('[SW Sync] No valid auth token — skipping photo sync');
