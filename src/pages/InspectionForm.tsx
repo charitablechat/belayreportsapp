@@ -601,7 +601,8 @@ export default function InspectionForm() {
           return null;
         }
         // Check multiple patterns that indicate sync errors
-        const isSyncError = /sync|failed|offline|queued|network|locally/i.test(prev);
+        const msg = typeof prev === 'string' ? prev : prev.message;
+        const isSyncError = /sync|failed|offline|queued|network|locally/i.test(msg);
         if (isSyncError) {
           if (import.meta.env.DEV) {
             console.log('[InspectionForm] Cleared sync error after successful background sync');
