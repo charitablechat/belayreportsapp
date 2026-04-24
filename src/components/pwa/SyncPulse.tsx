@@ -28,6 +28,7 @@ export const SyncPulse = ({ className }: { className?: string }) => {
     isSyncing,
     lastSyncTime,
     syncError,
+    syncErrorSeverity,
     isOnline,
     unsyncedPhotoCount,
     deadLetterCount,
@@ -67,9 +68,13 @@ export const SyncPulse = ({ className }: { className?: string }) => {
   }, [isSyncing, syncError, previousSyncingState]);
 
   // Derive phase
+  // S42 (Fix F): only fatal-severity errors flip the indicator to red SYNC FAILED.
+  // Soft errors (stats/photo-counts hiccups) keep the underlying phase and surface
+  // an amber advisory line in the terminal instead.
+  const isFatalError = syncError !== null && syncErrorSeverity === 'fatal';
   let phase: Phase = 'idle';
   if (!isOnline) phase = 'error';
-  else if (syncError) phase = 'error';
+  else if (isFatalError) phase = 'error';
   else if (isSyncing) phase = 'syncing';
   else if (justSynced) phase = 'synced';
   else if (totalUnsynced > 0) phase = 'unsynced';
@@ -280,10 +285,15 @@ export const SyncPulse = ({ className }: { className?: string }) => {
               </div>
             )}
 
-            {/* Error */}
+            {/* Error — soft (amber) for stats/photo-counts hiccups, red for fatal pipeline failure */}
             {syncError && (
-              <p className="text-red-400 text-[10px] bg-red-950/40 rounded px-2 py-1.5 border border-red-900/40">
-                ERR: {syncError}
+              <p className={cn(
+                'text-[10px] rounded px-2 py-1.5 border',
+                isFatalError
+                  ? 'text-red-400 bg-red-950/40 border-red-900/40'
+                  : 'text-amber-400 bg-amber-950/30 border-amber-900/40',
+              )}>
+                {isFatalError ? 'ERR' : 'NOTE'}: {syncError}
               </p>
             )}
 

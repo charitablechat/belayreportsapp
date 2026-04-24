@@ -98,6 +98,10 @@ export interface AutoSyncState {
   // S11: surfaces IDB read failures so the badge keeps last-known counts
   // and the user gets a real error instead of a silent 0.
   syncError: string | null;
+  // S42 (Fix F): severity of syncError. 'fatal' = pipeline crashed, show red SYNC FAILED.
+  // 'soft' = stats-refresh hiccup (Fix C path) or photo-counts read failure — sync itself
+  // is fine, just show an amber advisory in the terminal. null when no error.
+  syncErrorSeverity: 'fatal' | 'soft' | null;
 }
 
 /**
@@ -121,6 +125,7 @@ export const useAutoSync = () => {
     unsyncedTrainings: [],
     unsyncedAssessments: [],
     syncError: null,
+    syncErrorSeverity: null,
   });
   
   // Refs for debouncing and preventing duplicate syncs
@@ -761,9 +766,12 @@ export const useAutoSync = () => {
         // lights amber via the syncError truthy check, which is correct: the
         // numbers shown may be stale until the next successful read.
         console.warn('[AutoSync] IDB counts read failed — preserving last-known counts', failure?.error);
+        // S42 (Fix F): mark severity 'soft' — sync pipeline is fine, this is a stats-read
+        // hiccup. The Sync Terminal styles soft errors in amber rather than fatal red.
         setState(prev => ({
           ...prev,
           syncError: 'Stats refresh delayed — pending counts may be out of date',
+          syncErrorSeverity: 'soft',
         }));
         return;
       }
@@ -780,6 +788,7 @@ export const useAutoSync = () => {
         unsyncedTrainings: trainings,
         unsyncedAssessments: assessments,
         syncError: null,
+        syncErrorSeverity: null,
       }));
 
       if (total > 0) {

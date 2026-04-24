@@ -52,6 +52,7 @@ class PWAErrorBoundary extends Component<
         isSyncing: false,
         lastSyncTime: null,
         syncError: this.state.error?.message || 'PWA initialization failed',
+        syncErrorSeverity: 'fatal',
         updateUnsyncedCount: async () => {},
         forceSync: async () => {},
         unsyncedPhotoCount: 0,
@@ -102,6 +103,9 @@ export interface PWAContextType {
   isSyncing: boolean;
   lastSyncTime: Date | null;
   syncError: string | null;
+  /** S42 (Fix F): 'fatal' = pipeline crashed, render red SYNC FAILED.
+   *  'soft' = stats/photo-counts read hiccup, render amber advisory only. */
+  syncErrorSeverity: 'fatal' | 'soft' | null;
   updateUnsyncedCount: () => Promise<void>;
   forceSync: () => Promise<void>;
   
@@ -131,6 +135,7 @@ const PWAProviderContent = ({ children }: PWAProviderProps) => {
     isSyncing, 
     lastSyncTime, 
     syncError: autoSyncError,
+    syncErrorSeverity: autoSyncErrorSeverity,
     updateUnsyncedCounts,
     performSync
   } = useAutoSync();
@@ -154,6 +159,13 @@ const PWAProviderContent = ({ children }: PWAProviderProps) => {
   // Combine sync errors from both sources (auto-sync IDB failures + photo IDB failures).
   // Photo error wins only when there's no broader sync error to show.
   const syncError = autoSyncError ?? photoIdbError ?? null;
+  // S42 (Fix F): Both stats-counts and photo-counts read failures are non-fatal
+  // (the sync pipeline itself is fine). Default to 'soft' when photoIdbError is
+  // the only signal. Never promote to 'fatal' here.
+  const syncErrorSeverity: PWAContextType['syncErrorSeverity'] =
+    autoSyncError ? autoSyncErrorSeverity ?? 'soft'
+    : photoIdbError ? 'soft'
+    : null;
 
   const value: PWAContextType = {
     isInstallable,
@@ -178,6 +190,7 @@ const PWAProviderContent = ({ children }: PWAProviderProps) => {
     isSyncing,
     lastSyncTime,
     syncError,
+    syncErrorSeverity,
     updateUnsyncedCount: updateUnsyncedCounts,
     forceSync,
     unsyncedPhotoCount,
