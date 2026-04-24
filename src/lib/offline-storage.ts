@@ -3073,7 +3073,8 @@ export async function getUnsyncedDailyAssessments(userId?: string) {
       
       return unsynced;
     },
-    'getUnsyncedDailyAssessments'
+    'getUnsyncedDailyAssessments',
+    { tier: 'batch' }
   );
 }
 
