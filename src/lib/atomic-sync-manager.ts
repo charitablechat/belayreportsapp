@@ -2108,7 +2108,13 @@ export async function syncAllTrainingsAtomic(preValidatedUser?: CachedUser, sign
     }
     return { total: 0, success: 0, failed: 0, errors: [] };
   }
-  
+
+  // C5: Refuse to start a batch when the active session token is the offline
+  // placeholder or otherwise invalid.
+  if (!(await assertRealSessionForSync('trainings'))) {
+    return { total: 0, success: 0, failed: 0, errors: [] };
+  }
+
   // Use pre-validated user if provided (avoids redundant LockManager calls)
   let user: CachedUser | null = preValidatedUser || null;
   if (!user) {
@@ -2922,7 +2928,13 @@ export async function syncAllDailyAssessmentsAtomic(preValidatedUser?: CachedUse
     }
     return { total: 0, success: 0, failed: 0, errors: [] };
   }
-  
+
+  // C5: Refuse to start a batch when the active session token is the offline
+  // placeholder or otherwise invalid.
+  if (!(await assertRealSessionForSync('daily_assessments'))) {
+    return { total: 0, success: 0, failed: 0, errors: [] };
+  }
+
   // Use pre-validated user if provided (avoids redundant LockManager calls)
   let user: CachedUser | null = preValidatedUser || null;
   if (!user) {
