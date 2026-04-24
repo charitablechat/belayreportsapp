@@ -1695,6 +1695,7 @@ export default function DailyAssessmentForm() {
                 lastSaved={lastManuallySaved}
                 isSaving={saving}
                 hasUnsavedChanges={hasUnsavedChanges}
+                error={saveError}
                 className="flex"
               />
               {/* DISABLED: Timer display hidden for now
@@ -1850,7 +1851,24 @@ export default function DailyAssessmentForm() {
           </div>
         </div>
       </header>
-      
+
+      <SaveFailureBanner
+        saveError={saveError}
+        onRetry={() => handleSaveProgressRef.current?.() ?? Promise.resolve()}
+        onExportDraft={() => ({
+          assessment,
+          beginning_of_day: beginningOfDay,
+          end_of_day: endOfDay,
+          operating_systems: operatingSystems,
+          equipment_checks: equipmentChecks,
+          structure_checks: structureChecks,
+          environment_checks: environmentChecks,
+          exported_at: new Date().toISOString(),
+        })}
+        reportType="daily-assessment"
+        reportId={id}
+      />
+
       <div onClickCapture={handleLockedFieldClick} onPointerDownCapture={handleLockedFieldClick} className={cn("container mx-auto px-4 py-4 lg:py-8 max-w-5xl", isCompletionLocked && "completion-locked")}>
         {isCompletionLocked && (
           <div className="border-2 border-green-500/60 bg-black/90 text-green-500 font-mono text-xs px-4 py-2 flex items-center gap-2 mb-4 rounded">
