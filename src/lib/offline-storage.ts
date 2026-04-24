@@ -1659,8 +1659,11 @@ export async function getDB() {
               console.warn('[Offline Storage] v18 photos.uploaded re-coercion failed:', err);
             }
           }
+        },
+      });
+    };
 
-    // Phase 5 — pre-flight snapshot when an actual version bump is coming.
+
     // We detect the existing version by opening with no upgrade hook first.
     try {
       if (migrationSafety) {
