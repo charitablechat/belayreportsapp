@@ -595,6 +595,8 @@ export default function Dashboard() {
     const dashboardChannel = supabase
       .channel('dashboard-realtime')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'inspections' }, (payload: any) => {
+        // Fix 5: any incoming row guarantees we have data — un-skeletonize.
+        setInspectionsValidated(true);
         if (payload.eventType === 'DELETE') {
           const id = payload.old?.id;
           if (id) setInspections((prev) => removeRow(prev, id));
@@ -609,6 +611,7 @@ export default function Dashboard() {
         setInspections((prev) => mergeRow(prev, row));
       })
       .on('postgres_changes', { event: '*', schema: 'public', table: 'trainings' }, (payload: any) => {
+        setTrainingsValidated(true);
         if (payload.eventType === 'DELETE') {
           const id = payload.old?.id;
           if (id) setTrainings((prev) => removeRow(prev, id));
@@ -623,6 +626,7 @@ export default function Dashboard() {
         setTrainings((prev) => mergeRow(prev, row));
       })
       .on('postgres_changes', { event: '*', schema: 'public', table: 'daily_assessments' }, (payload: any) => {
+        setDailyValidated(true);
         if (payload.eventType === 'DELETE') {
           const id = payload.old?.id;
           if (id) setDailyAssessments((prev) => removeRow(prev, id));
@@ -636,7 +640,16 @@ export default function Dashboard() {
         }
         setDailyAssessments((prev) => mergeRow(prev, row));
       })
-      .subscribe();
+      // Fix 4: realtime health check. If the channel errors or times out we
+      // log it and trigger a one-shot refetch so the dashboard counts don't
+      // silently drift from server reality.
+      .subscribe((status) => {
+        if (import.meta.env.DEV) console.log('[Dashboard] realtime status:', status);
+        if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT' || status === 'CLOSED') {
+          console.warn('[Dashboard] realtime channel degraded:', status, '— scheduling fallback refetch');
+          setTimeout(() => refreshReports(true), 1500);
+        }
+      });
 
     return () => {
       window.removeEventListener('online', handleOnline);
