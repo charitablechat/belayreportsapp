@@ -1770,9 +1770,9 @@ export async function getOfflineInspections(userId?: string, isSuperAdmin?: bool
       const allInspections = await db.getAll('inspections');
       
       // Filter out soft-deleted records so they don't reappear on dashboard
-      // C9: Also filter out records quarantined due to remote soft-delete; they
+      // C9 (P2): Also filter out records quarantined due to remote soft-delete; they
       // remain in IDB pending user resolution via RemoteDeletedConflictDialog.
-      const activeInspections = allInspections.filter(i => !i.deleted_at && !(i as any)._remote_deleted_at);
+      const activeInspections = allInspections.filter(i => !i.deleted_at && isNotQuarantined(i));
       
       // Super admins see all reports - bypass user filtering
       if (isSuperAdmin) {
@@ -1837,9 +1837,9 @@ export async function getUnsyncedInspections(userId?: string) {
       // Simple getAll() + filter — reliable across all browsers.
       // These stores typically hold <100 records so full scans are fast.
       const all = await db.getAll('inspections');
-      // C9: Exclude quarantined records (remote was soft-deleted) from unsynced
+      // C9 (P2): Exclude quarantined records (remote was soft-deleted) from unsynced
       // candidates so we don't keep re-attempting to upload them.
-      let unsynced = all.filter(record => !(record as any)._remote_deleted_at).filter(record => {
+      let unsynced = all.filter(isNotQuarantined).filter(record => {
         // C3: dirty flag is the authoritative "has unshipped edits" signal.
         // Drift-tolerance check is the belt-and-braces secondary path.
         if ((record as any).dirty === true) return true;
@@ -3074,8 +3074,8 @@ export async function getOfflineDailyAssessments(userId?: string, isSuperAdmin?:
       const allAssessments = await db.getAll('daily_assessments');
       
       // Filter out soft-deleted records so they don't reappear on dashboard
-      // C9: Also filter out quarantined remote-deleted records.
-      const activeAssessments = allAssessments.filter(a => !a.deleted_at && !(a as any)._remote_deleted_at);
+      // C9 (P2): Also filter out quarantined remote-deleted records.
+      const activeAssessments = allAssessments.filter(a => !a.deleted_at && isNotQuarantined(a));
       
       // Super admins see all reports - bypass user filtering
       if (isSuperAdmin) {
@@ -3134,8 +3134,8 @@ export async function getUnsyncedDailyAssessments(userId?: string) {
       const db = await getDB();
       
       const all = await db.getAll('daily_assessments');
-      // C9: Exclude quarantined records.
-      let unsynced = all.filter(record => !(record as any)._remote_deleted_at).filter(record => {
+      // C9 (P2): Exclude quarantined records.
+      let unsynced = all.filter(isNotQuarantined).filter(record => {
         // C3: dirty flag = authoritative "has unshipped edits"; drift = secondary.
         if ((record as any).dirty === true) return true;
         if (!record.synced_at) return true;
@@ -3426,8 +3426,8 @@ export async function getOfflineTrainings(userId?: string, isSuperAdmin?: boolea
       const allTrainings = await db.getAll('trainings');
       
       // Filter out soft-deleted records so they don't reappear on dashboard
-      // C9: Also filter out quarantined remote-deleted records.
-      const activeTrainings = allTrainings.filter(t => !t.deleted_at && !(t as any)._remote_deleted_at);
+      // C9 (P2): Also filter out quarantined remote-deleted records.
+      const activeTrainings = allTrainings.filter(t => !t.deleted_at && isNotQuarantined(t));
       
       // Super admins see all reports - bypass user filtering
       if (isSuperAdmin) {
@@ -3486,8 +3486,8 @@ export async function getUnsyncedTrainings(userId?: string) {
       const db = await getDB();
       
       const all = await db.getAll('trainings');
-      // C9: Exclude quarantined records.
-      let unsynced = all.filter(record => !(record as any)._remote_deleted_at).filter(record => {
+      // C9 (P2): Exclude quarantined records.
+      let unsynced = all.filter(isNotQuarantined).filter(record => {
         // C3: dirty flag = authoritative "has unshipped edits"; drift = secondary.
         if ((record as any).dirty === true) return true;
         if (!record.synced_at) return true;
@@ -4270,10 +4270,23 @@ export async function bulkPutEquipmentTypeOptions(entries: EquipmentTypeCacheEnt
 // When a sync detects the server-side row has been soft-deleted but the
 // local copy still has unsynced edits, we mark the local parent with
 // `_remote_deleted_at` + `_quarantine_reason` instead of wiping it. The
-// dashboard / list-getters and getUnsynced* filters skip quarantined rows;
-// the user resolves them via RemoteDeletedConflictDialog.
+// dashboard / list-getters and getUnsynced* filters skip quarantined rows
+// via `isNotQuarantined` (P2 — single source of truth); the user resolves
+// them via RemoteDeletedConflictDialog.
 //
 // These helpers are intentionally additive — no existing call sites change.
+
+/**
+ * P2: Single source of truth for "is this row NOT quarantined by C9".
+ * Used by every dashboard reader and every getUnsynced* filter so the
+ * three call sites can never drift apart.
+ *
+ * Function declaration (hoisted) so it is callable from earlier-in-file
+ * readers without a forward-reference error.
+ */
+export function isNotQuarantined<T extends Record<string, any>>(record: T): boolean {
+  return !record._remote_deleted_at;
+}
 
 export type QuarantineTable = 'inspections' | 'trainings' | 'daily_assessments';
 
