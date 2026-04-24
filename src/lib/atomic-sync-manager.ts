@@ -199,7 +199,7 @@ type LiveSaver<T>  = (record: T) => Promise<unknown>;
  * Any read/parse failure falls through to the legacy write so a guard-read
  * failure can never block sync completion.
  */
-export async function safePostSyncSave<T extends { id: string; updated_at?: string | null }>(
+export async function safePostSyncSave<T extends { id?: string; updated_at?: string | null }>(
   recordId: string,
   t0Snapshot: T,
   t0UpdatedAtMs: number,
