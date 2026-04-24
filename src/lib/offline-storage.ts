@@ -3421,7 +3421,8 @@ export async function getUnsyncedTrainings(userId?: string) {
       
       return unsynced;
     },
-    'getUnsyncedTrainings'
+    'getUnsyncedTrainings',
+    { tier: 'batch' }
   );
 }
 
