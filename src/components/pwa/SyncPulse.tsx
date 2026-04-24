@@ -11,6 +11,7 @@ import {
 } from '@/components/ui/sheet';
 import { getDeadLetterPhotos, resetPhotoRetryCounts } from '@/lib/offline-storage';
 import { useUnsyncedPhotos } from '@/hooks/useUnsyncedPhotos';
+import { getQuarantineSnapshot, clearAllQuarantines } from '@/lib/sync-quarantine';
 
 type Phase = 'idle' | 'syncing' | 'synced' | 'unsynced' | 'error';
 
@@ -40,6 +41,18 @@ export const SyncPulse = ({ className }: { className?: string }) => {
   const [previousSyncingState, setPreviousSyncingState] = useState(false);
   const [open, setOpen] = useState(false);
   const [retrying, setRetrying] = useState(false);
+  const [quarantinedCount, setQuarantinedCount] = useState(0);
+
+  // S41 (Fix E + option i): surface session-quarantined records the sync pipeline has
+  // given up on this session. Refresh when sheet opens or sync state changes.
+  useEffect(() => {
+    const snap = getQuarantineSnapshot();
+    const now = Date.now();
+    const active = Object.values(snap).filter(
+      (e) => e.quarantinedUntil !== null && now < (e.quarantinedUntil as number),
+    ).length;
+    setQuarantinedCount(active);
+  }, [open, isSyncing, lastSyncTime]);
 
   const totalUnsynced = unsyncedCount + unsyncedPhotoCount;
 
