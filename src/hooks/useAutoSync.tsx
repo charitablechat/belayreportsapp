@@ -154,6 +154,17 @@ export const useAutoSync = () => {
       return;
     }
 
+    // H2: Restore-in-progress guard. The restore flow writes records with
+    // synced_at=null; if a sync batch fires mid-restore the freshly-restored
+    // rows can be clobbered by an in-flight T0 snapshot (see C4). The lock
+    // is released by withRestoreLock(); a fresh sync is kicked off then.
+    if (isRestoreInProgress()) {
+      if (import.meta.env.DEV) {
+        console.log('[AutoSync] Restore in progress - skipping sync cycle');
+      }
+      return;
+    }
+
     // Skip sync when circuit breaker is open to avoid hammering a broken IndexedDB
     const cbStatus = getCircuitBreakerStatus();
     if (cbStatus.open) {
