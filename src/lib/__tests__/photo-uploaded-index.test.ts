@@ -34,7 +34,8 @@ describe('photos.by-uploaded index — boolean → 0|1 coercion', () => {
     });
     expect(ok).toBe(true);
 
-    const out = await mod.getUnuploadedPhotos();
+    const out = (await mod.getUnuploadedPhotos()) as any[];
+    expect(Array.isArray(out)).toBe(true);
     expect(out.find((p: any) => p.id === 'photo-1')).toBeDefined();
   });
 
@@ -52,7 +53,8 @@ describe('photos.by-uploaded index — boolean → 0|1 coercion', () => {
 
     await mod.markPhotoAsUploaded('photo-2', 'insp-2/photo-2.jpg');
 
-    const out = await mod.getUnuploadedPhotos();
+    const out = (await mod.getUnuploadedPhotos()) as any[];
+    expect(Array.isArray(out)).toBe(true);
     expect(out.find((p: any) => p.id === 'photo-2')).toBeUndefined();
   });
 });

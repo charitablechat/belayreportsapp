@@ -1458,10 +1458,12 @@ export async function getDB() {
           // the index actually keys them. Safe to re-run (idempotent).
           if (oldVersion < 16 && db.objectStoreNames.contains('photos')) {
             try {
-              const photoStore = transaction.objectStore('photos');
+              // Use the raw IDBObjectStore so we can drive the cursor with
+              // native onsuccess callbacks inside the upgrade transaction.
+              const photoStore = (transaction as any).objectStore('photos') as IDBObjectStore;
               const cursorReq = photoStore.openCursor();
               cursorReq.onsuccess = (ev: any) => {
-                const cursor = ev.target.result;
+                const cursor: IDBCursorWithValue | null = ev.target.result;
                 if (!cursor) return;
                 const v = cursor.value;
                 if (typeof v.uploaded === 'boolean') {
