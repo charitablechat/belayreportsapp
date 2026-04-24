@@ -256,7 +256,7 @@ export function listAllSnapshots(): Array<{
           synced: snapshot.synced,
           device: snapshot.device,
           sizeBytes: raw.length * 2,
-          organization: snapshot.parent?.organization,
+          organization: snapshot.parent?.organization as string | undefined,
         });
       } catch {
         // Skip corrupt entries
