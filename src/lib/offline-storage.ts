@@ -3130,7 +3130,7 @@ async function recomputeTrainingChildCountHint(
 export async function saveRelatedDataOffline(
   type: RelatedDataType,
   inspectionId: string,
-  data: readonly unknown[],
+  data: Record<string, unknown>[],
   options?: { allowEmpty?: boolean }
 ) {
   // SAFETY: Never overwrite existing IndexedDB data with an empty array
