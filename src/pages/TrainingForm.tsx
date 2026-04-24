@@ -727,6 +727,7 @@ export default function TrainingForm() {
     if (import.meta.env.DEV) console.log('[Training Save] Starting save...');
     saveInProgressRef.current = true;
     setIsSaving(true);
+    if (!silent) setSaveError(null);
 
     // Safety timeout - ensure saving state is cleared after max 8 seconds (reduced from 30)
     const safetyTimeout = setTimeout(() => {
@@ -1026,8 +1027,13 @@ export default function TrainingForm() {
       setLastSaved(new Date());
       hasUnsavedRef.current = false;
       setHasUnsavedChanges(false);
-    } catch (error) {
+      setSaveError(null);
+    } catch (error: any) {
       console.error('[Training Save] Error saving training:', error);
+      const { isIdbSaveError } = await import('@/lib/offline-storage');
+      if (isIdbSaveError(error)) {
+        setSaveError({ message: error.message || 'Save failed', code: error.code });
+      }
     } finally {
       clearTimeout(safetyTimeout);
       if (import.meta.env.DEV) console.log('[Training Save] Completed, setting isSaving to false');
