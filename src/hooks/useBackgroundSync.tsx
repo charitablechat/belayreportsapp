@@ -1,6 +1,7 @@
 import { useEffect, useCallback } from 'react';
 import { onSyncComplete, isBackgroundSyncSupported, registerPeriodicSync } from '@/lib/background-sync';
 import { useAutoSync } from './useAutoSync';
+import { syncLog } from '@/lib/sync-logger';
 
 /**
  * Hook for managing background sync functionality

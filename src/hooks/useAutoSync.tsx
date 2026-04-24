@@ -183,7 +183,7 @@ export const useAutoSync = () => {
         return;
       }
       // Force sync: reset the circuit breaker so user action always works
-      console.log('[AutoSync] Circuit breaker open but force sync requested - resetting circuit breaker');
+      syncLog.log('[AutoSync] Circuit breaker open but force sync requested - resetting circuit breaker');
       resetCircuitBreaker();
     }
     
@@ -376,7 +376,7 @@ export const useAutoSync = () => {
               const { processQueuedSoftDeletes } = await import('@/lib/queued-soft-delete-processor');
               const deleteResult = await processQueuedSoftDeletes();
               if (deleteResult.processed > 0) {
-                console.log(`[AutoSync] Processed ${deleteResult.processed} queued soft-deletes`);
+                syncLog.log(`[AutoSync] Processed ${deleteResult.processed} queued soft-deletes`);
               }
               if (deleteResult.deadLettered > 0) {
                 try {
@@ -397,7 +397,7 @@ export const useAutoSync = () => {
               const pruned = await pruneCompletedQueuedOperations();
               const total = pruned.inspections + pruned.trainings + pruned.assessments;
               if (total > 0) {
-                console.log(`[AutoSync] Pruned ${total} completed queued operations`, pruned);
+                syncLog.log(`[AutoSync] Pruned ${total} completed queued operations`, pruned);
               }
             } catch (e) {
               console.warn('[AutoSync] Non-blocking: queue prune failed:', e);
@@ -441,7 +441,7 @@ export const useAutoSync = () => {
             const { processQueuedSoftDeletes } = await import('@/lib/queued-soft-delete-processor');
             const deleteResult = await processQueuedSoftDeletes(signal);
             if (deleteResult.processed > 0) {
-              console.log(`[AutoSync] Processed ${deleteResult.processed} queued soft-deletes`);
+              syncLog.log(`[AutoSync] Processed ${deleteResult.processed} queued soft-deletes`);
             }
             if (deleteResult.deadLettered > 0) {
               try {
@@ -538,7 +538,7 @@ export const useAutoSync = () => {
                const pruned = await pruneCompletedQueuedOperations();
                const total = pruned.inspections + pruned.trainings + pruned.assessments;
                if (total > 0) {
-                 console.log(`[AutoSync] Post-sync pruned ${total} completed queued operations`, pruned);
+                 syncLog.log(`[AutoSync] Post-sync pruned ${total} completed queued operations`, pruned);
                }
              } catch (e) {
                console.warn('[AutoSync] Non-blocking: post-sync queue prune failed:', e);
@@ -552,7 +552,7 @@ export const useAutoSync = () => {
           
           // Mobile: Log sync success to console for debugging without toast spam
           if (isMobileDevice) {
-            console.log('[AutoSync] Mobile sync complete:', {
+            syncLog.log('[AutoSync] Mobile sync complete:', {
               timestamp: new Date().toISOString(),
               itemsSynced: totalSynced,
               remaining: totalRemaining,
@@ -578,7 +578,7 @@ export const useAutoSync = () => {
             staleWarningShownRef.current = false;
 
             // BUILD_TIMESTAMP audit logging for production diagnostics
-            console.log('[AutoSync] Sync confirmed', {
+            syncLog.log('[AutoSync] Sync confirmed', {
               version: import.meta.env.APP_VERSION,
               build: import.meta.env.BUILD_TIMESTAMP,
               itemsSynced: totalSynced,
@@ -775,7 +775,7 @@ export const useAutoSync = () => {
       }));
 
       if (total > 0) {
-        console.log('[AutoSync] Unsynced count:', total);
+        syncLog.log('[AutoSync] Unsynced count:', total);
       }
     } catch (error) {
       console.error('[AutoSync] Error updating unsynced counts:', error);
@@ -1155,9 +1155,9 @@ export const useAutoSync = () => {
       }
     });
     
-    if (import.meta.env.DEV) {
+    {
       const currentInterval = unsyncedCountRef.current > 0 ? activeSyncInterval : idleSyncInterval;
-      console.log('[AutoSync] Initialized with interval:', currentInterval / 1000, 's (mobile viewport:', isMobileViewport, ', idle:', unsyncedCountRef.current === 0, ')');
+      syncLog.log('[AutoSync] Initialized with interval:', currentInterval / 1000, 's (mobile viewport:', isMobileViewport, ', idle:', unsyncedCountRef.current === 0, ')');
     }
     
     // Realtime subscriptions for multi-device sync — extracted for auto-recovery
@@ -1200,7 +1200,7 @@ export const useAutoSync = () => {
                 clearTimeout(realtimeReconnectTimerRef.current);
               }
               realtimeReconnectTimerRef.current = setTimeout(() => {
-                console.log('[AutoSync] Attempting Realtime channel reconnect...');
+                syncLog.log('[AutoSync] Attempting Realtime channel reconnect...');
                 setupRealtimeChannel();
               }, backoff);
               

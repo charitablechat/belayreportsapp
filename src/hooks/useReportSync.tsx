@@ -19,6 +19,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { useNetworkStatus } from './useNetworkStatus';
+import { syncLog } from '@/lib/sync-logger';
 
 export type ReportType = 'inspection' | 'training' | 'daily_assessment';
 
@@ -100,7 +101,7 @@ const queueReportSync = (entityId: string, reportType: ReportType, html: string)
   });
   
   savePendingSyncs(filtered);
-  console.log('[ReportSync] Queued report sync:', { entityId, reportType });
+  syncLog.log('[ReportSync] Queued report sync:', { entityId, reportType });
 };
 
 // Remove a sync from the queue
@@ -141,7 +142,7 @@ export const syncReportToDatabase = async (
     
     if (updateError) throw updateError;
     
-    console.log('[ReportSync] Successfully synced report:', { 
+    syncLog.log('[ReportSync] Successfully synced report:', { 
       entityId, 
       reportType, 
       version: newVersion 
@@ -234,7 +235,7 @@ export const useReportSync = (entityId: string | undefined, reportType: ReportTy
           
           // Only update if version increased (prevents stale updates)
           if ((newData.report_version || 0) > state.reportVersion) {
-            console.log('[ReportSync] Realtime update received:', { 
+            syncLog.log('[ReportSync] Realtime update received:', { 
               entityId, 
               newVersion: newData.report_version 
             });
@@ -277,7 +278,7 @@ export const useReportSync = (entityId: string | undefined, reportType: ReportTy
           continue;
         }
         
-        console.log('[ReportSync] Processing pending sync:', sync);
+        syncLog.log('[ReportSync] Processing pending sync:', sync);
         setState(prev => ({ ...prev, isSyncing: true }));
         
         const result = await syncReportToDatabase(
