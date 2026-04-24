@@ -1218,6 +1218,20 @@ export async function syncAllInspectionsAtomic(preValidatedUser?: CachedUser, si
     return { total: 0, success: 0, failed: 0, errors: [] };
   }
   
+  // H5: Drop quarantined records before slicing the batch — they had ≥3
+  // consecutive failed cycles and are skipped until end-of-day to free up
+  // wall-clock for items that can actually sync.
+  const { filterQuarantined, recordSyncFailure, recordSyncSuccess, jitteredBackoffMs } =
+    await import('./sync-quarantine');
+  const filtered = filterQuarantined(unsynced);
+  if (filtered.dropped > 0) {
+    syncLog.log('[Atomic Sync] Skipping quarantined inspections', {
+      dropped: filtered.dropped,
+      sample: filtered.droppedIds.slice(0, 3).map((id) => id.substring(0, 12)),
+    });
+  }
+  unsynced = filtered.kept;
+
   // S7: Adaptive batch — grows on success, resets on failure
   const adaptiveSize = getCurrentBatchSize();
   const totalUnsynced = unsynced.length;
