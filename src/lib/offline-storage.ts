@@ -1192,11 +1192,53 @@ export async function getDB() {
 
     const openDBV8WithTimeout = async () => {
       return openDB<InspectionDB>(DB_NAME, DB_VERSION, {
-        async blocked() {
-          console.warn('[Offline Storage] DB upgrade blocked by another tab');
+        async blocked(currentVersion, blockedVersion) {
+          console.warn(
+            `[Offline Storage] DB upgrade blocked: open at v${currentVersion}, want v${blockedVersion}. ` +
+            `Asking Service Worker to release its connection.`
+          );
+          // Ask the SW to close any IDB handles it's holding so the upgrade can proceed.
+          try {
+            if (typeof navigator !== 'undefined' && 'serviceWorker' in navigator) {
+              const reg = await navigator.serviceWorker.ready;
+              reg.active?.postMessage({
+                type: 'CLOSE_IDB_FOR_UPGRADE',
+                dbName: DB_NAME,
+                targetVersion: blockedVersion,
+              });
+            }
+          } catch (err) {
+            console.warn('[Offline Storage] Could not notify SW about upgrade:', err);
+          }
+          // Best-effort user notification — only fires if the upgrade is actually slow.
+          // Defer 1500ms so the common case (fast SW close + auto-retry) stays silent.
+          setTimeout(() => {
+            if (dbPromise) {
+              try {
+                void import('./notification-center').then(({ addSyncNotification }) => {
+                  try {
+                    addSyncNotification(
+                      'Database upgrade pending — close other tabs of this app to complete the upgrade.'
+                    );
+                  } catch { /* swallow */ }
+                }).catch(() => {});
+              } catch { /* swallow */ }
+            }
+          }, 1500);
         },
-        async blocking() {
-          console.warn('[Offline Storage] This tab is blocking a newer DB version');
+        async blocking(currentVersion, blockedVersion, event) {
+          console.warn(
+            `[Offline Storage] This tab is blocking DB upgrade: holding v${currentVersion}, ` +
+            `another context wants v${blockedVersion}. Closing connection.`
+          );
+          try {
+            // Close our handle so the other context can upgrade.
+            (event.target as IDBDatabase | null)?.close?.();
+            // Invalidate the cached promise so the next getDB() call reopens at the new version.
+            dbPromise = null;
+          } catch (err) {
+            console.warn('[Offline Storage] Failed to close blocking connection:', err);
+          }
         },
         upgrade(db, oldVersion, newVersion, transaction) {
           upgradeStartTs = Date.now();

@@ -21,10 +21,28 @@ if (!DB_CONFIG_OK) {
   } catch (e) {}
 }
 
+// When the main thread is mid-upgrade, the SW must release its IDB handle.
+// Set by main thread via postMessage; auto-clears after 30s as a safety net.
+var SW_IDB_PAUSED_FOR_UPGRADE = false;
+
+self.addEventListener('message', function(event) {
+  var data = event && event.data;
+  if (!data || data.type !== 'CLOSE_IDB_FOR_UPGRADE') return;
+  if (DB_NAME && data.dbName && data.dbName !== DB_NAME) return;
+  console.log('[SW Sync] Pausing IDB access for main-thread upgrade to v' + data.targetVersion);
+  SW_IDB_PAUSED_FOR_UPGRADE = true;
+  // Auto-resume after 30s in case the upgrade fails / no follow-up signal arrives.
+  setTimeout(function() { SW_IDB_PAUSED_FOR_UPGRADE = false; }, 30000);
+});
+
 // Guard helper: every sync entry point calls this before touching IndexedDB.
 function dbConfigGuard(label) {
   if (!DB_CONFIG_OK) {
     console.warn('[SW Sync] Skipping ' + label + ' — db-config.js missing, refusing to open IDB at guessed version.');
+    return false;
+  }
+  if (SW_IDB_PAUSED_FOR_UPGRADE) {
+    console.warn('[SW Sync] Skipping ' + label + ' — IDB paused for main-thread upgrade.');
     return false;
   }
   return true;
