@@ -434,6 +434,7 @@ export const SyncDiagnosticsSheet = () => {
             </div>
           )}
 
+          {deadLetterDeletes.length > 0 && (
             <div>
               <h3 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-2">
                 Failed Deletions ({deadLetterDeletes.length})
