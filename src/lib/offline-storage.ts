@@ -3492,7 +3492,7 @@ const assessmentStoreNameMap: Record<AssessmentDataType, AssessmentStoreNames> =
 export async function saveAssessmentDataOffline(
   type: AssessmentDataType,
   assessmentId: string,
-  data: readonly unknown[],
+  data: Record<string, unknown>[],
   options?: { allowEmpty?: boolean }
 ) {
   // SAFETY: Never overwrite existing IndexedDB data with an empty array
