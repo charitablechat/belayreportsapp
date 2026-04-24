@@ -8,6 +8,7 @@
     "build": "vite build",
     "build:dev": "vite build --mode development",
     "lint": "eslint .",
+    "lint:any-budget": "node scripts/lint-any-budget.mjs",
     "preview": "vite preview"
   },
   "dependencies": {

@@ -22,7 +22,6 @@ import { syncLog } from "./sync-logger";
 
 const STORAGE_KEY = "sync-quarantine-v1";
 const FAILURE_THRESHOLD = 3; // cycles of consecutive failure
-const DAY_MS = 24 * 60 * 60 * 1000;
 
 interface QuarantineEntry {
   /** Number of consecutive failed sync cycles. */
@@ -48,17 +47,71 @@ function readMap(): QuarantineMap {
   }
 }
 
+function isQuotaError(err: unknown): boolean {
+  if (!err || typeof err !== "object") return false;
+  // Different browsers report quota errors differently:
+  //   Chrome/Edge: DOMException named "QuotaExceededError" with code 22
+  //   Firefox:     DOMException "NS_ERROR_DOM_QUOTA_REACHED" with code 1014
+  //   Safari:      DOMException "QuotaExceededError" with code 22
+  const e = err as { name?: string; code?: number };
+  return (
+    e.name === "QuotaExceededError" ||
+    e.name === "NS_ERROR_DOM_QUOTA_REACHED" ||
+    e.code === 22 ||
+    e.code === 1014
+  );
+}
+
 function writeMap(map: QuarantineMap): void {
   try {
     sessionStorage.setItem(STORAGE_KEY, JSON.stringify(map));
-  } catch {
-    /* non-critical — quarantine is best-effort */
+  } catch (err) {
+    if (isQuotaError(err)) {
+      // N-F: sessionStorage is full. A silent catch here means new failures
+      // stop being recorded for the rest of the tab's life — quarantine
+      // becomes effectively non-functional without the user ever knowing.
+      // Prune oldest half of entries (by firstFailedAt) and retry once so
+      // the quarantine map keeps working. If it still fails, fall through
+      // to the warn below.
+      syncLog.warn(
+        "[SyncQuarantine] sessionStorage quota hit — pruning oldest entries",
+      );
+      try {
+        const entries = Object.entries(map).sort(
+          (a, b) => a[1].firstFailedAt - b[1].firstFailedAt,
+        );
+        const keepFrom = Math.floor(entries.length / 2);
+        const pruned: QuarantineMap = {};
+        for (let i = keepFrom; i < entries.length; i++) {
+          pruned[entries[i][0]] = entries[i][1];
+        }
+        sessionStorage.setItem(STORAGE_KEY, JSON.stringify(pruned));
+        return;
+      } catch (retryErr) {
+        syncLog.warn(
+          "[SyncQuarantine] sessionStorage write failed even after pruning:",
+          retryErr,
+        );
+      }
+    } else {
+      syncLog.warn("[SyncQuarantine] sessionStorage write failed:", err);
+    }
   }
 }
 
-function endOfDayUtc(now: number): number {
+/**
+ * N-E: End-of-day boundary in LOCAL time (the device the user is operating).
+ *
+ * Previous implementation used `setUTCHours(23,59,59,999)`. For a user at
+ * UTC-8 working at 20:00 local (04:00 UTC next day), the UTC-day boundary was
+ * 03:59 local the following morning — a quarantine intended to "expire at end
+ * of day" actually expired mid-night local time, and for users east of UTC it
+ * expired during their working day. Using local time makes the behaviour
+ * match the user's intuition regardless of timezone.
+ */
+function endOfDay(now: number): number {
   const d = new Date(now);
-  d.setUTCHours(23, 59, 59, 999);
+  d.setHours(23, 59, 59, 999);
   return d.getTime();
 }
 
@@ -85,7 +138,7 @@ export function recordSyncFailure(recordId: string, error: string): boolean {
       };
 
   if (entry.failures >= FAILURE_THRESHOLD && !entry.quarantinedUntil) {
-    entry.quarantinedUntil = endOfDayUtc(now);
+    entry.quarantinedUntil = endOfDay(now);
     syncLog.warn(
       `[SyncQuarantine] Record ${recordId.substring(0, 12)} quarantined until ${new Date(
         entry.quarantinedUntil,
