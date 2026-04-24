@@ -3270,7 +3270,7 @@ export async function clearRelatedDataOffline(
  * Throws `IdbSaveError` on hard failure (Gap 2.1) — callers MUST handle rejection.
  */
 export async function saveDailyAssessmentOffline(
-  assessment: Record<string, unknown> & { id: string; child_count_hint?: number; dirty?: boolean },
+  assessment: Record<string, unknown> & { id?: string; child_count_hint?: number; dirty?: boolean },
   opts?: { childCountHint?: number }
 ): Promise<SaveResult> {
   return withIndexedDBSaveBoundary(
