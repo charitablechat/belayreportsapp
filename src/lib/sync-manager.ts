@@ -10,6 +10,7 @@ import {
   MAX_PHOTO_RETRIES,
 } from "./offline-storage";
 import { addSyncNotification } from "./notification-center";
+import { syncLog } from "./sync-logger";
 
 /**
  * S22: Classify a photo upload / DB error into a sync-policy bucket.
@@ -110,15 +111,11 @@ async function handlePermanentPhotoFailure(
 export async function syncPhotos(signal?: AbortSignal): Promise<{ remaining: number; changed?: number; error?: string }> {
   if (signal?.aborted) return { remaining: 0, changed: 0 };
   if (!navigator.onLine) {
-    if (import.meta.env.DEV) {
-      console.log('[Sync Manager] Offline - skipping photo sync');
-    }
+    syncLog.log('[Sync Manager] Offline - skipping photo sync');
     return { remaining: 0, changed: 0 };
   }
 
-  if (import.meta.env.DEV) {
-    console.log('[Sync Manager] Starting photo sync...');
-  }
+  syncLog.log('[Sync Manager] Starting photo sync...');
 
   try {
     const { isIdbReadFailure } = await import('./offline-storage');
@@ -134,13 +131,11 @@ export async function syncPhotos(signal?: AbortSignal): Promise<{ remaining: num
     const batch = eligiblePhotos.slice(0, MAX_PHOTO_BATCH_SIZE);
     const remaining = Math.max(0, eligiblePhotos.length - MAX_PHOTO_BATCH_SIZE);
     
-    if (skippedCount > 0 && import.meta.env.DEV) {
-      console.warn(`[Sync Manager] Skipping ${skippedCount} photos that exceeded ${MAX_PHOTO_RETRIES} retries`);
+    if (skippedCount > 0) {
+      syncLog.warn(`[Sync Manager] Skipping ${skippedCount} photos that exceeded ${MAX_PHOTO_RETRIES} retries`);
     }
 
-    if (import.meta.env.DEV) {
-      console.log(`[Sync Manager] Uploading photos: ${batch.length} of ${eligiblePhotos.length} (${remaining} remaining)`);
-    }
+    syncLog.log(`[Sync Manager] Uploading photos: ${batch.length} of ${eligiblePhotos.length} (${remaining} remaining)`);
 
     let successCount = 0;
     // S34: Count any state-changing photo outcome (success or dead-letter
@@ -168,9 +163,7 @@ export async function syncPhotos(signal?: AbortSignal): Promise<{ remaining: num
         }
 
         if (photo.inspectionId?.startsWith('temp-')) {
-          if (import.meta.env.DEV) {
-            console.warn('[Sync Manager] Skipping photo with temporary inspection ID:', photo.id);
-          }
+          syncLog.warn('[Sync Manager] Skipping photo with temporary inspection ID:', photo.id);
           // S13: Count temp-parent skips toward retry ceiling so chronically
           // stuck photos eventually surface in the dead-letter UI instead of
           // being silently invisible. Age-based GC (evictStuckTempPhotos)
@@ -196,8 +189,8 @@ export async function syncPhotos(signal?: AbortSignal): Promise<{ remaining: num
             const r = await handlePermanentPhotoFailure(photo, 'Photo belongs to a different signed-in user');
             if (r.crossedThreshold) newlyDeadLettered++;
             changedCount++;
-          } else if (import.meta.env.DEV) {
-            console.log('[Sync Manager] Skipping photo captured by different user:', photo.id, 'capturedBy=', capturedBy, 'currentUser=', currentUserId);
+          } else {
+            syncLog.log('[Sync Manager] Skipping photo captured by different user:', photo.id, 'capturedBy=', capturedBy, 'currentUser=', currentUserId);
           }
           return;
         }
@@ -240,9 +233,7 @@ export async function syncPhotos(signal?: AbortSignal): Promise<{ remaining: num
         //      (the photo will sync correctly when the right user signs in).
         if (photo.photoUrl?.startsWith('pending/')) {
           if (!currentUserId) {
-            if (import.meta.env.DEV) {
-              console.log('[Sync Manager] Skipping pending photo (no auth):', photo.id);
-            }
+            syncLog.log('[Sync Manager] Skipping pending photo (no auth):', photo.id);
             return;
           }
           if (capturedBy && capturedBy !== currentUserId) {
@@ -296,9 +287,7 @@ export async function syncPhotos(signal?: AbortSignal): Promise<{ remaining: num
           } catch (e) {
             console.warn('[Sync Manager] Failed to persist normalized path:', e);
           }
-          if (import.meta.env.DEV) {
-            console.log('[Sync Manager] Normalized legacy pending path to:', normalizedPath, '(attributed to parent owner)');
-          }
+          syncLog.log('[Sync Manager] Normalized legacy pending path to:', normalizedPath, '(attributed to parent owner)');
         }
 
         // Guard: blob must exist (may have been nullified by a previous partial success)
@@ -307,9 +296,7 @@ export async function syncPhotos(signal?: AbortSignal): Promise<{ remaining: num
             // C5: Real, non-pending storage path is on record — the previous upload
             // succeeded and only the markPhotoAsUploaded write lost its way.
             // Safe to finalize with the known-good path.
-            if (import.meta.env.DEV) {
-              console.warn('[Sync Manager] Finalizing photo with null blob but known photoUrl:', photo.id);
-            }
+            syncLog.warn('[Sync Manager] Finalizing photo with null blob but known photoUrl:', photo.id);
             await markPhotoAsUploaded(photo.id, photo.photoUrl);
             changedCount++;
             return;
@@ -425,9 +412,7 @@ export async function syncPhotos(signal?: AbortSignal): Promise<{ remaining: num
           // "transient per-photo error". Fire-and-forget — never blocks the
           // sync cycle.
           triggerProbeOnPhotoFailure(uploadError);
-          if (import.meta.env.DEV) {
-            console.log(`[Sync Manager] Upload error classified as ${cls.kind} for ${photo.id}:`, cls.message);
-          }
+          syncLog.log(`[Sync Manager] Upload error classified as ${cls.kind} for ${photo.id}:`, cls.message);
           if (cls.kind === 'success-equivalent') {
             // Storage already has the object — proceed to DB insert path.
           } else if (cls.kind === 'transient') {
@@ -467,13 +452,9 @@ export async function syncPhotos(signal?: AbortSignal): Promise<{ remaining: num
             // S22: Classify DB errors. 23505 / duplicate already maps to
             // success-equivalent in classifyPhotoError.
             const cls = classifyPhotoError(dbError);
-            if (import.meta.env.DEV) {
-              console.log(`[Sync Manager] DB insert error classified as ${cls.kind} for ${photo.id}:`, cls.message);
-            }
+            syncLog.log(`[Sync Manager] DB insert error classified as ${cls.kind} for ${photo.id}:`, cls.message);
             if (cls.kind === 'success-equivalent') {
-              if (import.meta.env.DEV) {
-                console.log('[Sync Manager] Unique constraint hit (race OK), treating as success:', photo.id);
-              }
+              syncLog.log('[Sync Manager] Unique constraint hit (race OK), treating as success:', photo.id);
             } else if (cls.kind === 'transient') {
               console.warn('[Sync Manager] Transient DB insert error, will retry next cycle:', photo.id, cls.message);
               return;
@@ -485,8 +466,8 @@ export async function syncPhotos(signal?: AbortSignal): Promise<{ remaining: num
               return;
             }
           }
-        } else if (import.meta.env.DEV) {
-          console.log('[Sync Manager] Skipped duplicate DB row for photo:', photo.id);
+        } else {
+          syncLog.log('[Sync Manager] Skipped duplicate DB row for photo:', photo.id);
         }
 
         // Mark as uploaded and release blob from IndexedDB (also clears lastError)
@@ -495,9 +476,7 @@ export async function syncPhotos(signal?: AbortSignal): Promise<{ remaining: num
         successCount++;
         changedCount++;
 
-        if (import.meta.env.DEV) {
-          console.log('[Sync Manager] Uploaded photo:', photo.id);
-        }
+        syncLog.log('[Sync Manager] Uploaded photo:', photo.id);
       } catch (error) {
         // S22: Unexpected throws (e.g. auth/network exceptions outside the
         // explicit error checks). Classify before bumping retryCount.
@@ -513,9 +492,7 @@ export async function syncPhotos(signal?: AbortSignal): Promise<{ remaining: num
       }
     });
 
-    if (import.meta.env.DEV) {
-      console.log(`[Sync Manager] Photo sync completed: ${successCount} photos, ${remaining} remaining (changed=${changedCount}, newlyDeadLettered=${newlyDeadLettered})`);
-    }
+    syncLog.log(`[Sync Manager] Photo sync completed: ${successCount} photos, ${remaining} remaining (changed=${changedCount}, newlyDeadLettered=${newlyDeadLettered})`);
 
     // 1.C — Surface dead-letter crossings to the in-app notification center
     // so the user sees they have stuck photos to review (one notification per
