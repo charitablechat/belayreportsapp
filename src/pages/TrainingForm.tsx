@@ -1648,6 +1648,7 @@ export default function TrainingForm() {
                 lastSaved={lastManuallySaved}
                 isSaving={isSaving}
                 hasUnsavedChanges={hasUnsavedChanges}
+                error={saveError}
                 className="flex"
               />
               {/* DISABLED: Timer display hidden for now
