@@ -145,7 +145,7 @@ export default function InspectionForm() {
   const [versionPanelOpen, setVersionPanelOpen] = useState(false);
   const [lastVersionNumber, setLastVersionNumber] = useState<number | undefined>(undefined);
   const [lastFieldCount, setLastFieldCount] = useState<number | undefined>(undefined);
-  const [saveError, setSaveError] = useState<string | null>(null);
+  const [saveError, setSaveError] = useState<import("@/components/SaveFailureBanner").SaveErrorState>(null);
   // M9: Versioning health — surface a banner when version writes silently fail.
   const [versioningFailures, setVersioningFailures] = useState<number>(
     () => getVersioningHealth().consecutiveFailures
