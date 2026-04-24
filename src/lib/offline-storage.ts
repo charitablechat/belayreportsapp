@@ -1798,7 +1798,8 @@ export async function getOfflineInspection(id: string) {
       return await db.get('inspections', id);
     },
     null,
-    'getOfflineInspection'
+    'getOfflineInspection',
+    { store: 'inspections', criticalRead: true }
   );
 }
 
