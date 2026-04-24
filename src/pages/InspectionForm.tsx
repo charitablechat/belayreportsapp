@@ -3294,6 +3294,7 @@ export default function InspectionForm() {
                   onUpdate={setSummary} 
                   onImmediateSave={stableTriggerImmediateSave}
                   onRegenerate={handleManualRegenerateSummary}
+                  onNextDateUserEdit={handleNextDateUserEdit}
                 />
                 
                 <div className="mt-8 border-t pt-6">
