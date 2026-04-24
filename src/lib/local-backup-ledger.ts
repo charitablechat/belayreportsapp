@@ -536,17 +536,19 @@ export async function importReportBackup(input: string | File): Promise<{
     jsonString = input;
   }
 
-  let parsed: unknown;
+  let rawParsed: unknown;
   try {
-    parsed = JSON.parse(jsonString);
+    rawParsed = JSON.parse(jsonString);
   } catch {
     throw new Error('Invalid JSON file — could not parse contents.');
   }
 
   // Reject arrays (bulk exports)
-  if (Array.isArray(parsed)) {
+  if (Array.isArray(rawParsed)) {
     throw new Error('This looks like a bulk export containing multiple reports. Please import individual report files instead.');
   }
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const parsed = (rawParsed ?? {}) as any;
 
   // --- Normalize: support multiple export formats ---
   let reportType: ReportType | undefined = parsed.reportType ?? parsed.report_type;
