@@ -3053,6 +3053,7 @@ export async function syncAllDailyAssessmentsAtomic(preValidatedUser?: CachedUse
         } else {
           successCount++;
           synced = true;
+          recordSyncSuccess(assessment.id); // H5
         }
 
         if (import.meta.env.DEV) {
@@ -3061,8 +3062,8 @@ export async function syncAllDailyAssessmentsAtomic(preValidatedUser?: CachedUse
       } catch (error: any) {
         retryCount++;
 
-        if (retryCount < maxRetries) {
-          const delay = Math.min(500 * retryCount, 2000);
+        if (retryCount < maxRetries && !signal?.aborted) {
+          const delay = jitteredBackoffMs(retryCount); // H5
           if (import.meta.env.DEV) {
             syncLog.log(`[Atomic Sync] Retry ${retryCount}/${maxRetries} for assessment ${assessment.id} after ${delay}ms`);
           }
@@ -3070,6 +3071,7 @@ export async function syncAllDailyAssessmentsAtomic(preValidatedUser?: CachedUse
         } else {
           failCount++;
           errors.push({ id: assessment.id, error: error.message });
+          recordSyncFailure(assessment.id, error.message ?? 'unknown'); // H5
           console.error('[Atomic Sync] Failed to sync daily assessment after retries:', assessment.id, error);
         }
       }
