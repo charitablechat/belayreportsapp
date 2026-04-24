@@ -2980,6 +2980,18 @@ export async function syncAllDailyAssessmentsAtomic(preValidatedUser?: CachedUse
     return { total: 0, success: 0, failed: 0, errors: [] };
   }
   
+  // H5: drop quarantined records before batching.
+  const { filterQuarantined, recordSyncFailure, recordSyncSuccess, jitteredBackoffMs } =
+    await import('./sync-quarantine');
+  const filtered = filterQuarantined(unsynced);
+  if (filtered.dropped > 0) {
+    syncLog.log('[Atomic Sync] Skipping quarantined assessments', {
+      dropped: filtered.dropped,
+      sample: filtered.droppedIds.slice(0, 3).map((id) => id.substring(0, 12)),
+    });
+  }
+  unsynced = filtered.kept;
+
   // S7: Adaptive batch — grows on success, resets on failure
   const adaptiveSize = getCurrentBatchSize();
   const totalUnsynced = unsynced.length;
