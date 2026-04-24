@@ -1794,7 +1794,8 @@ export async function getUnsyncedInspections(userId?: string) {
       
       return unsynced;
     },
-    'getUnsyncedInspections'
+    'getUnsyncedInspections',
+    { tier: 'batch' }
   );
 }
 
