@@ -1893,12 +1893,13 @@ export async function getUnsyncedInspections(userId?: string) {
       // are not this user's sync responsibility — evaluating drift on them is
       // pure noise that drove the "295 IDB timeouts/cycle" hot loop. Keep
       // temp-ID orphans regardless of owner so cross-user recovery still works.
+      const { isQuarantined: isSessionQuarantined } = await import('./sync-quarantine');
       const candidates = all.filter(isNotQuarantined).filter(record => {
         if (!userId) return true;
         if (record.inspector_id === userId) return true;
         if (record.id?.startsWith('temp-')) return true; // orphan recovery
         return false;
-      });
+      }).filter(record => !isSessionQuarantined(record.id)); // S41 (Fix E): drop session-quarantined ids from user-facing count
 
       const unsynced = candidates.filter(record => {
         // C3: dirty flag is the authoritative "has unshipped edits" signal.
@@ -3202,12 +3203,13 @@ export async function getUnsyncedDailyAssessments(userId?: string) {
       
       const all = await db.getAll('daily_assessments');
       // S40 (Fix A): Ownership filter before drift check (see getUnsyncedInspections).
+      const { isQuarantined: isSessionQuarantined } = await import('./sync-quarantine');
       const candidates = all.filter(isNotQuarantined).filter(record => {
         if (!userId) return true;
         if (record.inspector_id === userId) return true;
         if (record.id?.startsWith('temp-')) return true;
         return false;
-      });
+      }).filter(record => !isSessionQuarantined(record.id)); // S41 (Fix E): see getUnsyncedInspections
 
       const unsynced = candidates.filter(record => {
         // C3: dirty flag = authoritative "has unshipped edits"; drift = secondary.
@@ -3555,12 +3557,13 @@ export async function getUnsyncedTrainings(userId?: string) {
       
       const all = await db.getAll('trainings');
       // S40 (Fix A): Ownership filter before drift check (see getUnsyncedInspections).
+      const { isQuarantined: isSessionQuarantined } = await import('./sync-quarantine');
       const candidates = all.filter(isNotQuarantined).filter(record => {
         if (!userId) return true;
         if (record.inspector_id === userId) return true;
         if (record.id?.startsWith('temp-')) return true;
         return false;
-      });
+      }).filter(record => !isSessionQuarantined(record.id)); // S41 (Fix E): see getUnsyncedInspections
 
       const unsynced = candidates.filter(record => {
         // C3: dirty flag = authoritative "has unshipped edits"; drift = secondary.
