@@ -991,25 +991,24 @@ export async function syncInspectionAtomic(inspectionId: string, preValidatedUse
     const result = await executeTransaction(steps, { signal });
     
     if (!result.success) {
-      // C4: rollback can only undo the steps the transaction itself executed.
-      // The reconcile pass that ran *before* the transaction already hard-deleted
-      // server child rows, so re-insert their pre-images here. report_deleted_items
-      // still has the audit copy if this best-effort restore also fails.
-      if (inspectionReconciledDeletes.length > 0) {
-        try {
-          const r = await restoreReconciledDeletions(inspectionReconciledDeletes, inspectionId);
-          if (r.failed > 0) {
-            console.error('[C4] Inspection sync: some reconciled rows could not be auto-restored', {
-              inspectionId: inspectionId.substring(0, 8),
-              restored: r.restored,
-              failed: r.failed,
-            });
-          }
-        } catch (restoreErr) {
-          console.error('[C4] Inspection sync: restoreReconciledDeletions threw', restoreErr);
-        }
-      }
+      // H3: nothing to compensate — reconcile is now deferred until AFTER the
+      // transaction commits, so a failed upsert leaves the server untouched.
       throw new Error(`Transaction failed after ${result.completedSteps}/${result.totalSteps} steps. Rollback: ${result.rollbackSuccess ? 'successful' : 'failed'}`);
+    }
+
+    // H3: Now that parent + children are safely on the server, run reconcile.
+    // If reconcile is blocked or fails, the user's deletions remain unflushed
+    // locally and the next sync cycle retries — no destructive server side-effect.
+    let inspectionReconcileBlocked = false;
+    if (inspectionReconcileSpec) {
+      const { runDeferredReconcile } = await import('./deferred-reconcile');
+      const outcome = await runDeferredReconcile(
+        inspectionReconcileSpec,
+        inspectionId,
+        'inspection',
+        user.id,
+      );
+      inspectionReconcileBlocked = outcome.result?.blocked === true || !outcome.ran;
     }
     
     // S4: Skip post-transaction verify SELECT — `executeTransaction` already throws on
