@@ -48,14 +48,9 @@ function readMap(): QuarantineMap {
 
 function writeMap(map: QuarantineMap): void {
   try {
-    // sessionStorage write — small payload (record id → 4 numbers), no quota
-    // pressure expected, but route through safeSetItem so failures get logged.
-    safeSetItem(STORAGE_KEY, JSON.stringify(map), {
-      storage: sessionStorage,
-      bucket: "sync-quarantine",
-    });
+    sessionStorage.setItem(STORAGE_KEY, JSON.stringify(map));
   } catch {
-    /* non-critical */
+    /* non-critical — quarantine is best-effort */
   }
 }
 
