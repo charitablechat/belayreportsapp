@@ -25,10 +25,6 @@ beforeEach(async () => {
   (globalThis as any).indexedDB = new IDBFactory();
   // Drop the cached module so internal `dbConnectionVerified` resets.
   await import('../offline-storage');
-  const mod = await import('../offline-storage');
-  // @ts-expect-error — vitest resetModules between describes also works, but
-  // explicit re-import keeps each test self-contained.
-  return mod;
 });
 
 describe('H6 — getUnsyncedInspections drift tolerance & dirty flag', () => {
@@ -55,8 +51,8 @@ describe('H6 — getUnsyncedInspections drift tolerance & dirty flag', () => {
     expect(Array.isArray(result)).toBe(true);
     // saveInspectionOffline always stamps dirty=true → it WILL show up.
     // To isolate the drift check we manually clear dirty afterwards.
-    const { default: idb } = await import('idb');
-    const db = await idb.openDB('rope-works-inspections');
+    const { openDB } = await import('idb');
+    const db = await openDB('rope-works-inspections');
     const live = await db.get('inspections', 'insp-29s');
     await db.put('inspections', { ...live, dirty: false });
     db.close();
@@ -77,8 +73,8 @@ describe('H6 — getUnsyncedInspections drift tolerance & dirty flag', () => {
       updated_at: updated,
     });
     // Clear dirty to isolate drift behavior.
-    const { default: idb } = await import('idb');
-    const db = await idb.openDB('rope-works-inspections');
+    const { openDB } = await import('idb');
+    const db = await openDB('rope-works-inspections');
     const live = await db.get('inspections', 'insp-31s');
     await db.put('inspections', { ...live, dirty: false });
     db.close();
@@ -168,8 +164,8 @@ describe('H6 — by-uploaded photos index uses 0|1 (C1 contract)', () => {
       created_at: Date.now(),
     } as any);
 
-    const { default: idb } = await import('idb');
-    const db = await idb.openDB('rope-works-inspections');
+    const { openDB } = await import('idb');
+    const db = await openDB('rope-works-inspections');
     const unUploaded = await db.getAllFromIndex('photos', 'by-uploaded', IDBKeyRange.only(0));
     db.close();
     expect(unUploaded.length).toBe(1);
