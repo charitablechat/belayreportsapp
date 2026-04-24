@@ -93,7 +93,7 @@ import {
   TransactionStep,
   fetchRollbackData
 } from "./transaction-manager";
-import { reconcileAllChildTables, restoreReconciledDeletions, type ReconciledTableDelete } from "./sync-reconciliation";
+import { reconcileAllChildTables } from "./sync-reconciliation";
 import { syncProgressEmitter } from "@/hooks/useSyncProgress";
 import { getMobileCapabilities } from "./mobile-detection";
 import { getCachedProfile } from "./profile-cache";
