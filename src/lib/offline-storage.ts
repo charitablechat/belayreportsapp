@@ -3341,56 +3341,13 @@ export async function getUnsyncedTrainings(userId?: string) {
   );
 }
 
-/**
- * Batched unsynced counts — single IndexedDB transaction instead of 3 separate calls.
- * Reduces timeout storm when multiple hooks poll concurrently.
- */
-export async function getUnsyncedCounts(userId?: string): Promise<{
-  inspections: any[];
-  trainings: any[];
-  assessments: any[];
-}> {
-  return withIndexedDBErrorBoundary(
-    async () => {
-      const db = await getDB();
-      
-      const getUnsyncedFromStore = async (storeName: 'inspections' | 'trainings' | 'daily_assessments', ownerField = 'inspector_id') => {
-        const allItems = await db.getAll(storeName);
-        let unsynced = allItems.filter(i => {
-          if (!i.synced_at) return true;
-          if (!i.updated_at) return false;
-          const drift = new Date(i.updated_at).getTime() - new Date(i.synced_at).getTime();
-          const isUnsynced = isUpdatedAheadOfSync(new Date(i.updated_at).getTime(), new Date(i.synced_at).getTime());
-          if (isUnsynced && import.meta.env.DEV) {
-            console.log(`[Offline Storage] ${storeName} flagged unsynced:`, {
-              id: String(i.id).substring(0, 8),
-              localUpdated: i.updated_at,
-              localSynced: i.synced_at,
-              drift_ms: drift,
-            });
-          }
-          return isUnsynced;
-        });
-        
-        if (userId) {
-          const owned = unsynced.filter(i => i[ownerField] === userId);
-          const orphaned = unsynced.filter(i => i[ownerField] !== userId && i.id.startsWith('temp-'));
-          unsynced = [...owned, ...orphaned];
-        }
-        return unsynced;
-      };
-      
-      // RC-1: Sequential reads instead of parallel to reduce Safari IDB lock contention
-      const inspections = await getUnsyncedFromStore('inspections');
-      const trainings = await getUnsyncedFromStore('trainings');
-      const assessments = await getUnsyncedFromStore('daily_assessments');
-      
-      return { inspections, trainings, assessments };
-    },
-    { inspections: [], trainings: [], assessments: [] },
-    'getUnsyncedCounts'
-  );
-}
+// `getUnsyncedCounts` (batched single-transaction reader) was removed (Fix C2).
+// It used `withIndexedDBErrorBoundary` with an empty-array fallback, which
+// silently turned IDB hiccups into "queue empty" — zeroing the badge and
+// tripping the sync early-exit. Callers must now use the three individual
+// `getUnsynced{Inspections,Trainings,DailyAssessments}` readers in parallel
+// and inspect each result with `isIdbReadFailure` so a failed read never
+// masquerades as an empty queue.
 
 export async function queueTrainingOperation(type: 'create' | 'update' | 'delete', trainingId: string, data: any) {
   return withIndexedDBErrorBoundary(
