@@ -49,6 +49,7 @@ interface QueuedOp {
   inspectionId?: string;
   assessmentId?: string;
   trainingId?: string;
+  [key: string]: unknown;
 }
 
 /** Minimal shape of an offline report record used to determine sync status. */
