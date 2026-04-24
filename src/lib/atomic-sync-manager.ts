@@ -1311,6 +1311,8 @@ export async function syncAllInspectionsAtomic(preValidatedUser?: CachedUser, si
         } else {
           successCount++;
           synced = true;
+          // H5: clear quarantine counter on success.
+          recordSyncSuccess(inspection.id);
         }
 
         if (import.meta.env.DEV) {
@@ -1319,9 +1321,10 @@ export async function syncAllInspectionsAtomic(preValidatedUser?: CachedUser, si
       } catch (error: any) {
         retryCount++;
 
-        if (retryCount < maxRetries) {
-          // Reduced backoff for faster iteration
-          const delay = Math.min(500 * retryCount, 2000);
+        if (retryCount < maxRetries && !signal?.aborted) {
+          // H5: jittered exponential backoff (1s, 4s, 12s ±20%) prevents
+          // synchronized retry storms from concurrent items on flaky networks.
+          const delay = jitteredBackoffMs(retryCount);
           if (import.meta.env.DEV) {
             syncLog.log(`[Atomic Sync] Retry ${retryCount}/${maxRetries} for ${inspection.id} after ${delay}ms`);
           }
@@ -1329,12 +1332,14 @@ export async function syncAllInspectionsAtomic(preValidatedUser?: CachedUser, si
         } else {
           failCount++;
           errors.push({ id: inspection.id, error: error.message });
+          // H5: increment per-item failure counter; quarantine after 3 cycles.
+          recordSyncFailure(inspection.id, error.message ?? 'unknown');
           console.error('[Atomic Sync] Failed to sync inspection after retries:', inspection.id, error);
         }
       }
     }
   });
-  
+
   // Emit completion
   syncProgressEmitter.emit({
     total: batch.length,
