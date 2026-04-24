@@ -1,30 +1,28 @@
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach, vi } from 'vitest';
 import 'fake-indexeddb/auto';
 import { IDBFactory } from 'fake-indexeddb';
 
 /**
  * H6 — boundary coverage for the top-3 sync-gating reads.
  *
- * These tests run against a real (in-memory) IndexedDB via `fake-indexeddb`,
- * so they exercise the actual schema + boundary helpers in offline-storage.ts
- * — not mocks. Vitest reloads the module per `beforeEach` so each test starts
- * with a fresh DB.
+ * Real (in-memory) IndexedDB via `fake-indexeddb`, so the schema, boundary
+ * helpers, dirty-flag stamping, and drift logic are exercised end-to-end.
  *
  * Covered contracts:
- *   1. getUnsynced* drift tolerance: 29s drift → synced; 31s drift → unsynced.
- *   2. dirty=true overrides drift even when synced_at >= updated_at.
- *   3. _remote_deleted_at quarantined records are excluded from unsynced set.
- *   4. Empty store / only-synced store returns [] (NOT IdbReadFailure).
- *   5. saveInspectionOffline stamps dirty=true so the very next read flags it.
- *   6. by-uploaded photos index uses 0|1 (the C1 contract — booleans break IDB).
+ *   1. getUnsyncedInspections drift tolerance: 29s drift → synced; 31s drift → unsynced.
+ *   2. dirty=true overrides drift even when synced_at == updated_at.
+ *   3. _remote_deleted_at quarantined records are excluded from the unsynced set.
+ *   4. Empty store returns [] (NOT IdbReadFailure).
+ *   5. saveInspectionOffline stamps dirty=true so the next read flags the record.
+ *   6. photos.by-uploaded index uses 0|1 (the C1 contract — booleans break IDB).
+ *
+ * Each test gets a fresh IDBFactory + a fresh module instance so the cached
+ * `dbPromise` inside offline-storage doesn't leak across tests.
  */
 
-// fresh DB per test
 beforeEach(async () => {
-  // Reset both module + DB so the schema migration runs again.
   (globalThis as any).indexedDB = new IDBFactory();
-  // Drop the cached module so internal `dbConnectionVerified` resets.
-  await import('../offline-storage');
+  vi.resetModules();
 });
 
 describe('H6 — getUnsyncedInspections drift tolerance & dirty flag', () => {
