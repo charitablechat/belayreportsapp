@@ -1145,6 +1145,21 @@ export const useAutoSync = () => {
     // Re-schedule when unsynced count changes (adaptive interval)
     const handleSyncPhotosUpdated = () => scheduleNextSync();
     window.addEventListener('sync-photos-updated', handleSyncPhotosUpdated);
+
+    // H2: When the restore lock releases, kick off a fresh sync so the
+    // restored records get pushed to the server promptly (sync was paused
+    // while restore was in flight to avoid clobbering the snapshot).
+    const unsubscribeRestoreLock = onRestoreLockChange((active) => {
+      if (!active) {
+        if (import.meta.env.DEV) console.log('[AutoSync] Restore lock released - triggering sync');
+        // Defer slightly so any trailing IDB writes from restore land first
+        setTimeout(() => {
+          if (navigator.onLine && !syncInProgressRef.current) {
+            performSync(true);
+          }
+        }, 250);
+      }
+    });
     
     if (import.meta.env.DEV) {
       const currentInterval = unsyncedCountRef.current > 0 ? activeSyncInterval : idleSyncInterval;
