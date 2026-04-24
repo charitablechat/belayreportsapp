@@ -1,108 +1,87 @@
 
 
-## Gap 2.3 — Quota-aware localStorage writes across the codebase
+## Fix 2.A — Sticky save-failure error card with "Copy draft" escape hatch
 
-### Problem
+### Status of the wrapper-flag piece
 
-Multiple direct `localStorage.setItem` call sites have no `QuotaExceededError` handling. When storage fills up:
+The wrapper-side change you described (`rethrowOn: 'quota'`) is already in place under a different shape from Gap 2.1: `withIndexedDBSaveBoundary` is a parallel wrapper that **always throws `IdbSaveError` on hard failure** (quota, timeout, idb_unhealthy, storage_unavailable). The three user-facing saves — `saveInspectionOffline`, `saveTrainingOffline`, `saveDailyAssessmentOffline` — already route through it (`offline-storage.ts:1523, 1541, 1569`). All three form pages already `import { isIdbSaveError }` and branch on it in their save catch handlers, and `setSaveError(...)` is wired into the header `AutoSaveIndicator`.
 
-- `local-backup-ledger.ts:147` (`saveReportSnapshot`) — wrapped in a generic `try/catch` that prints `console.warn('Failed to save snapshot')` and exits. The user-facing IDB save proceeds and the form thinks everything is fine, but the backup ledger row was silently dropped.
-- `local-backup-ledger.ts:284` (`markSnapshotSynced`) — outer `try/catch` swallows everything; if the rewrite fails, the snapshot stays flagged unsynced forever.
-- `offline-auth.ts` and other auth/admin writers — silent quota failures here can corrupt offline-auth state without any signal.
-- `useAutoSync.tsx` and other hooks — minor flag writes that set a project-wide precedent that quota is ignored.
+**Verdict:** no wrapper refactor needed. Adding a `rethrowOn` flag to the silent `withIndexedDBErrorBoundary` would duplicate behavior and risk drift. Skipping that part.
 
-There is also no central place to apply Phase 3's eviction/headroom logic before non-auth writes.
+### What's missing
 
-### Solution: a single `safeSetItem` helper + audited adoption
+What 2.A still adds is the **UI escape hatch** for the user when a save genuinely cannot land:
 
-Add one tiny utility, then route quota-sensitive writers through it. Don't try to refactor every `localStorage.setItem` in the codebase — only the ones where silent failure costs data or stalls a workflow.
+1. The current `AutoSaveIndicator` shows the error as a small pill in the header. It is dismissible (the "Retry Save" button calls `setSaveError(null)`), it scrolls out of view, and on mobile it collapses to the word "Error" — not loud enough for "your data is at risk."
+2. There is no way for the user to physically extract their unsaved draft when both IDB and localStorage have failed. They can only retry, which will likely fail again, or refresh and lose everything.
 
-#### 1. New helper `src/lib/safe-local-storage.ts`
+### Plan
 
-A small module with a single primary function `safeSetItem`:
+#### 1. New component: `SaveFailureBanner`
 
-```ts
-export type SafeSetItemResult =
-  | { ok: true }
-  | { ok: false; code: 'quota' | 'blocked' | 'unknown'; error: unknown };
+`src/components/SaveFailureBanner.tsx` — a sticky, full-width, **non-auto-dismissing** error card that mounts at the top of the form's main scroll area whenever `saveError` is a real error (not `null`, not `'pending_sync'`).
 
-export function safeSetItem(
-  key: string,
-  value: string,
-  opts?: {
-    scope?: string;       // for log-error routing
-    critical?: boolean;   // true → also surface to notification center
-    onFail?: (code, error) => void; // optional caller hook (e.g. retry, evict)
-  }
-): SafeSetItemResult;
-```
+Structure:
+- Full-width red glassmorphism strip (`bg-destructive/10 border-destructive/40 backdrop-blur-xl`) anchored just below the form header so it stays visible as the user scrolls the form.
+- Bold title: **"Save failed — your changes are NOT stored on this device."**
+- Body: the error message + a one-line plain-English explanation derived from the `IdbSaveError.code` (quota → "Your device storage is full.", storage_unavailable → "Both fast and backup storage are unavailable.", idb_unhealthy → "Your browser's local database is in a bad state.", timeout → "The save took too long to complete.", unknown → generic).
+- Three actions, in this order:
+  1. **Retry save** — calls the same `saveProgress()` already wired to the header retry button.
+  2. **Copy draft to clipboard** — primary escape hatch (see below).
+  3. **Download draft (.json)** — secondary escape hatch (see below).
+- A small `<details>` "Show technical details" disclosure with the raw error code/message for support copy-paste. Collapsed by default.
+- No `X` close button. The banner only disappears when the next save succeeds (`saveError === null`).
 
-Behavior:
-- Try `localStorage.setItem(key, value)`.
-- On success: return `{ ok: true }`.
-- On error: classify (`QuotaExceededError`/code 22/1014 → `'quota'`, `SecurityError` → `'blocked'`, else `'unknown'`).
-- Always `console.error('[safeSetItem] FAILED', { key, scope, code, bytes, error })` — operational signal, never gated.
-- Forward to `logError` (existing `src/lib/log-error.ts`) with `scope`, `key`, `code`, `approxBytes` so admins see it in `audit_logs.client.error`. Best-effort dynamic import; never throws.
-- If `opts.critical === true`, fire-and-forget `addSyncNotification('Storage is full — {scope} could not be saved.')` via the notification-center dynamic import.
-- Call `opts.onFail?.(code, error)` so callers can attempt their own recovery (e.g. `local-backup-ledger` evict + retry, see step 2).
-- Return `{ ok: false, code, error }`.
+#### 2. "Copy draft to clipboard" — the core escape hatch
 
-Also export a thin `safeRemoveItem(key)` (for symmetry; never throws) — useful in dead-letter cleanups but optional adoption.
+The hard part of 2.A. Each form page already holds the live in-memory draft state. The banner needs access to that state without each form re-implementing the serializer.
 
-**Out of scope:** no eviction logic inside `safeSetItem` itself. Callers know best what to evict (e.g. backup ledger evicts old synced snapshots; auth writes are pinned and must not evict).
+Approach: each form page passes an **`onExportDraft: () => Record<string, unknown>`** callback to `SaveFailureBanner`. The callback returns a plain JSON-serializable object snapshot (e.g. `{ inspection, systems, ziplines, equipment, photos, ... }`) — exactly the same shape it would have passed to `saveInspectionOffline`. The banner then:
 
-#### 2. Adopt in `src/lib/local-backup-ledger.ts`
+- **Copy:** `await navigator.clipboard.writeText(JSON.stringify(payload, null, 2))`. On success, swap the button label to "✓ Copied" for 3s and toast confirm. On failure (clipboard API blocked / not in secure context), fall back to a textarea + auto-select for manual copy, and show a one-time hint "Long-press to copy."
+- **Download:** Build a `Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' })`, create an object URL, click an `<a download="rope-works-draft-{reportType}-{idShort}-{ts}.json">`, revoke the URL.
 
-Two call sites:
+The downloaded file shape is the same JSON the user can later paste back to support, who can re-insert it via the existing recovery tooling (`DataRecoveryTool`). No new ingest path is built in this gap — the file is the rescue artifact.
 
-a) **`saveReportSnapshot` (~line 147)** — replace the bare `localStorage.setItem(key, json)` with `safeSetItem(key, json, { scope: 'backup-ledger.save', critical: !isSynced, onFail })`. The `onFail` for `'quota'` should:
-  - Call the existing `evictIfNeeded(estimatedBytes * 2)` with a doubled budget,
-  - Retry `safeSetItem` once; if still failing, give up and rely on the logged error + notification.
+Each of the three forms gets a tiny `buildDraftSnapshot()` helper wired to its page-level state. That's the only new logic per form.
 
-This means the eviction LRU runs more aggressively under pressure, but **never evicts unsynced snapshots** (already enforced inside `evictIfNeeded`). The cloud-backup fire-and-forget continues unchanged so the row at least lives off-device.
+#### 3. Wiring the three forms
 
-b) **`markSnapshotSynced` (~line 284)** — replace the inner `localStorage.setItem(key, JSON.stringify(snapshot))` with `safeSetItem(...)`, scope `'backup-ledger.markSynced'`, `critical: false` (this is a status update, not data loss). On failure just log; the snapshot is still in localStorage with its old `synced=false` flag and will be retried at the next sync completion.
+For `InspectionForm.tsx`, `TrainingForm.tsx`, `DailyAssessmentForm.tsx`:
 
-c) Bonus tightening: invalidate the cached `_cachedStorageBytes` (`_storageBytesTs = 0`) on a successful set so eviction decisions stay accurate after writes.
+- Add `<SaveFailureBanner saveError={saveError} onRetry={...} onExportDraft={buildDraftSnapshot} />` immediately inside the main form scroll container, above the existing header pill.
+- Implement `buildDraftSnapshot()` — collect the same fields the form passes to its `saveXxxOffline` call (already gathered in one place inside the auto-save helpers — extract that object into a local builder).
+- Leave the existing header `AutoSaveIndicator` exactly as-is — the pill is still useful as a status glance, but the banner is now the loud authoritative error UI.
+- No catch-handler changes required — they already call `setSaveError(...)` with a meaningful message; the banner reads that.
 
-#### 3. Adopt in `src/lib/offline-auth.ts`
+Edge cases:
+- If `saveError === 'pending_sync'`, do **not** show the banner. Pending-sync is not a failure.
+- If the user retries and the next save succeeds, the existing `setSaveError(null)` call (already in the success path of every auto-save helper) automatically dismisses the banner. No new lifecycle code needed.
+- Lovable preview already short-circuits saves; the banner is suppressed when `isLovablePreview()` returns true (matches the existing `AutoSaveIndicator` behavior).
 
-Audit `localStorage.setItem` calls there. For each one:
+#### 4. Tiny ergonomics: include the `IdbSaveError.code` in `setSaveError`
 
-- **Cached profile / admin-status writes** (e.g. `cached-admin-status`, `cached_profile`): route through `safeSetItem` with `scope: 'offline-auth.cached-profile'`, `critical: false`. These regenerate on next online sign-in, so a logged warning is the right surface.
-- **Offline-auth credential slot writes** (the `offline_auth_*` / `offline_auth_backup_*` keys written by `auth-resilience.ts`, if any are still done directly here rather than via `auth-resilience`): leave alone — Phase 1/3 already handle these via `auth-resilience.ts` with `ensureSpaceForAuth` pre-flight + retry-with-eviction (`mem://auth/phase3-storage-pressure`). Do **not** wrap them in `safeSetItem` as well; doing so could re-trigger eviction loops and conflict with auth-key pinning.
+Today's `setSaveError('Local save failed — your changes are NOT stored. Tap to retry.')` is a free-form string. To let the banner pick the right plain-English explanation, change those three call sites to also stash the code:
 
-I will grep for `localStorage.setItem(` in `src/lib/offline-auth.ts` during implementation and only swap the non-auth-credential sites.
+- Promote `saveError` from `string | null` to `{ message: string; code?: IdbSaveErrorCode } | 'pending_sync' | null` in each form page.
+- Update the few comparisons (`saveError === 'pending_sync'`, `saveError && saveError !== 'pending_sync'`) accordingly.
+- `AutoSaveIndicator` reads `saveError.message` instead of the raw string.
 
-#### 4. Adopt in `src/hooks/useAutoSync.tsx` (and a handful of similar flag-style writers)
-
-The `storage-eviction-warned` and similar UI-only flags are minor, but the precedent matters. Convert them to `safeSetItem(..., { scope: 'auto-sync.flag', critical: false })`. On `'quota'` we silently ignore — these flags' only job is debouncing notifications, so losing them just means an extra notification, not data loss.
-
-If similar one-line writers exist nearby (e.g. `useReportSync.tsx`, `useStoragePressure.tsx`), apply the same swap as part of the same edit pass. **Do not** sweep every file in the project — that's out of scope for this gap. Pure-debounce flag writes are the only "courtesy" adoption; everything else is opt-in per the call-site's data-loss profile.
-
-#### 5. Tests
-
-Add `src/lib/__tests__/safe-local-storage.test.ts`:
-- Returns `{ ok: true }` on normal write.
-- Returns `{ ok: false, code: 'quota' }` when `setItem` throws a `QuotaExceededError`.
-- Returns `{ ok: false, code: 'blocked' }` on `SecurityError`.
-- Calls the `onFail` hook with the right code.
-- Never throws synchronously, even if dynamic imports inside (`logError`, `notification-center`) fail.
-
-A small additional test in the existing `offline-storage-save-boundary.test.ts` would be nice but is not required — the new helper is independent of the IDB save boundary.
+This is a mechanical sweep contained to the three pages and one component.
 
 ### Out of scope
 
-- No project-wide sweep of every `localStorage.setItem` site. Only the data-integrity / workflow-stalling ones listed above. Future call sites should use `safeSetItem` by default; documenting that convention is part of this commit but enforcing it across legacy code is a follow-up.
-- No changes to `auth-resilience.ts` writes — those already have Phase 3 quota handling; doubling up would conflict with pinning.
-- No new UI. `addSyncNotification` already surfaces critical failures into the existing notification rail.
-- No DB / edge-function / migration changes.
+- No changes to `withIndexedDBErrorBoundary` or `withIndexedDBSaveBoundary`. The throwing path is already correct from Gap 2.1.
+- No reverse-import path for the JSON draft (admin-side ingestion is separate work; the file is a manual rescue artifact today).
+- No persistence of the draft to a server endpoint as a third escape hatch — explicitly excluded because the failure case is "all local + network storage paths are degraded."
+- No changes to the silent boundary used by reads/queues/photo helpers.
 
 ### Files touched
 
-1. `src/lib/safe-local-storage.ts` — new helper (~70 lines).
-2. `src/lib/local-backup-ledger.ts` — wrap two `setItem` sites; add evict-and-retry on quota in `saveReportSnapshot`; invalidate `_cachedStorageBytes` on success.
-3. `src/lib/offline-auth.ts` — wrap non-auth-credential `setItem` sites only.
-4. `src/hooks/useAutoSync.tsx` — wrap flag writes.
-5. `src/lib/__tests__/safe-local-storage.test.ts` — new tests.
+1. **`src/components/SaveFailureBanner.tsx`** — new (~120 lines).
+2. **`src/pages/InspectionForm.tsx`** — add banner mount + `buildDraftSnapshot()`; promote `saveError` shape.
+3. **`src/pages/TrainingForm.tsx`** — same.
+4. **`src/pages/DailyAssessmentForm.tsx`** — same.
+5. **`src/components/AutoSaveIndicator.tsx`** — read `error.message` from the new shape (small).
+6. **`src/lib/offline-storage.ts`** — re-export `IdbSaveErrorCode` type if not already exported, so forms can type the new state shape.
 
