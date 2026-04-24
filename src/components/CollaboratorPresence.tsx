@@ -76,7 +76,7 @@ export function CollaboratorPresence({
 
   return (
     <div
-      className="flex items-center gap-2 rounded-md border border-warning/40 bg-warning/10 px-3 py-2 text-sm text-warning-foreground"
+      className="flex items-center gap-2 rounded-md border border-warning/50 bg-warning/15 px-3 py-2 text-sm font-medium text-foreground"
       role="status"
       aria-live="polite"
     >
