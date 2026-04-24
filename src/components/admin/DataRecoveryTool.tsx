@@ -246,7 +246,7 @@ export function LocalSnapshotsPanel({ allowDelete = true }: SnapshotsPanelProps)
     const a = document.createElement('a');
     a.href = url;
     const org = snapshot.parent?.organization;
-    a.download = formatReportFilename(org || undefined, reportType as any, 'json');
+    a.download = formatReportFilename((org as string | undefined) || undefined, reportType as any, 'json');
     a.click();
     URL.revokeObjectURL(url);
     toast.success("Snapshot exported as JSON");
@@ -263,25 +263,26 @@ export function LocalSnapshotsPanel({ allowDelete = true }: SnapshotsPanelProps)
         const offline = await import('@/lib/offline-storage');
         const { saveInspectionOffline, saveRelatedDataOffline, saveTrainingOffline, saveTrainingDataOffline, saveDailyAssessmentOffline, saveAssessmentDataOffline } = offline;
 
+        const parentArg = snapshot.parent as Record<string, unknown> & { id: string };
         if (reportType === 'inspection') {
-          await saveInspectionOffline(snapshot.parent);
+          await saveInspectionOffline(parentArg);
           for (const [key, data] of Object.entries(snapshot.children)) {
             if (Array.isArray(data) && data.length > 0) {
-              await saveRelatedDataOffline(key as any, reportId, data);
+              await saveRelatedDataOffline(key as any, reportId, data as Record<string, unknown>[]);
             }
           }
         } else if (reportType === 'training') {
-          await saveTrainingOffline(snapshot.parent);
+          await saveTrainingOffline(parentArg);
           for (const [key, data] of Object.entries(snapshot.children)) {
             if (Array.isArray(data) && data.length > 0) {
-              await saveTrainingDataOffline(key as any, reportId, data);
+              await saveTrainingDataOffline(key as any, reportId, data as Record<string, unknown>[]);
             }
           }
         } else if (reportType === 'daily_assessment') {
-          await saveDailyAssessmentOffline(snapshot.parent);
+          await saveDailyAssessmentOffline(parentArg);
           for (const [key, data] of Object.entries(snapshot.children)) {
             if (Array.isArray(data) && data.length > 0) {
-              await saveAssessmentDataOffline(key as any, reportId, data);
+              await saveAssessmentDataOffline(key as any, reportId, data as Record<string, unknown>[]);
             }
           }
         }
@@ -297,19 +298,19 @@ export function LocalSnapshotsPanel({ allowDelete = true }: SnapshotsPanelProps)
             snapshot.parent,
             async () => {
               if (reportType === 'inspection') {
-                await saveInspectionOffline(snapshot.parent);
+                await saveInspectionOffline(parentArg);
                 for (const [key, data] of Object.entries(snapshot.children)) {
-                  if (Array.isArray(data) && data.length > 0) await saveRelatedDataOffline(key as any, reportId, data);
+                  if (Array.isArray(data) && data.length > 0) await saveRelatedDataOffline(key as any, reportId, data as Record<string, unknown>[]);
                 }
               } else if (reportType === 'training') {
-                await saveTrainingOffline(snapshot.parent);
+                await saveTrainingOffline(parentArg);
                 for (const [key, data] of Object.entries(snapshot.children)) {
-                  if (Array.isArray(data) && data.length > 0) await saveTrainingDataOffline(key as any, reportId, data);
+                  if (Array.isArray(data) && data.length > 0) await saveTrainingDataOffline(key as any, reportId, data as Record<string, unknown>[]);
                 }
               } else if (reportType === 'daily_assessment') {
-                await saveDailyAssessmentOffline(snapshot.parent);
+                await saveDailyAssessmentOffline(parentArg);
                 for (const [key, data] of Object.entries(snapshot.children)) {
-                  if (Array.isArray(data) && data.length > 0) await saveAssessmentDataOffline(key as any, reportId, data);
+                  if (Array.isArray(data) && data.length > 0) await saveAssessmentDataOffline(key as any, reportId, data as Record<string, unknown>[]);
                 }
               }
             },
@@ -621,23 +622,24 @@ export function CloudSnapshotsPanel({ allowDelete = true }: CloudSnapshotsPanelP
         const offline = await import('@/lib/offline-storage');
         const { saveInspectionOffline, saveRelatedDataOffline, saveTrainingOffline, saveTrainingDataOffline, saveDailyAssessmentOffline, saveAssessmentDataOffline } = offline;
         const { parent, children } = full.snapshot_data;
+        const parentArg = parent as Record<string, unknown> & { id: string };
         const reportType = full.report_type as ReportType;
         const reportId = full.report_id;
 
         if (reportType === 'inspection') {
-          await saveInspectionOffline(parent);
+          await saveInspectionOffline(parentArg);
           for (const [key, data] of Object.entries(children)) {
-            if (Array.isArray(data) && data.length > 0) await saveRelatedDataOffline(key as any, reportId, data);
+            if (Array.isArray(data) && data.length > 0) await saveRelatedDataOffline(key as any, reportId, data as Record<string, unknown>[]);
           }
         } else if (reportType === 'training') {
-          await saveTrainingOffline(parent);
+          await saveTrainingOffline(parentArg);
           for (const [key, data] of Object.entries(children)) {
-            if (Array.isArray(data) && data.length > 0) await saveTrainingDataOffline(key as any, reportId, data);
+            if (Array.isArray(data) && data.length > 0) await saveTrainingDataOffline(key as any, reportId, data as Record<string, unknown>[]);
           }
         } else if (reportType === 'daily_assessment') {
-          await saveDailyAssessmentOffline(parent);
+          await saveDailyAssessmentOffline(parentArg);
           for (const [key, data] of Object.entries(children)) {
-            if (Array.isArray(data) && data.length > 0) await saveAssessmentDataOffline(key as any, reportId, data);
+            if (Array.isArray(data) && data.length > 0) await saveAssessmentDataOffline(key as any, reportId, data as Record<string, unknown>[]);
           }
         }
 
@@ -646,22 +648,22 @@ export function CloudSnapshotsPanel({ allowDelete = true }: CloudSnapshotsPanelP
           await verifyRestoreIntegrity(
             reportType,
             reportId,
-            parent,
+            parentArg,
             async () => {
               if (reportType === 'inspection') {
-                await saveInspectionOffline(parent);
+                await saveInspectionOffline(parentArg);
                 for (const [key, data] of Object.entries(children)) {
-                  if (Array.isArray(data) && data.length > 0) await saveRelatedDataOffline(key as any, reportId, data);
+                  if (Array.isArray(data) && data.length > 0) await saveRelatedDataOffline(key as any, reportId, data as Record<string, unknown>[]);
                 }
               } else if (reportType === 'training') {
-                await saveTrainingOffline(parent);
+                await saveTrainingOffline(parentArg);
                 for (const [key, data] of Object.entries(children)) {
-                  if (Array.isArray(data) && data.length > 0) await saveTrainingDataOffline(key as any, reportId, data);
+                  if (Array.isArray(data) && data.length > 0) await saveTrainingDataOffline(key as any, reportId, data as Record<string, unknown>[]);
                 }
               } else if (reportType === 'daily_assessment') {
-                await saveDailyAssessmentOffline(parent);
+                await saveDailyAssessmentOffline(parentArg);
                 for (const [key, data] of Object.entries(children)) {
-                  if (Array.isArray(data) && data.length > 0) await saveAssessmentDataOffline(key as any, reportId, data);
+                  if (Array.isArray(data) && data.length > 0) await saveAssessmentDataOffline(key as any, reportId, data as Record<string, unknown>[]);
                 }
               }
             },
