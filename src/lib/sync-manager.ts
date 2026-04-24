@@ -64,6 +64,7 @@ export function classifyPhotoError(err: unknown): { kind: PhotoErrorClass; messa
 // Photo sync manager - still valid, not deprecated
 import { runWithConcurrency } from './concurrency';
 import { isMobile } from './mobile-detection';
+import { triggerProbeOnPhotoFailure } from './storage-rls-probe';
 
 // S7: Raised from 10 → 30. Photo upload is bounded-parallel (3 mobile / 5 desktop)
 // and Storage handles concurrent PUTs fine; the previous 10/cycle made backlogs of
