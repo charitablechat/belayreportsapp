@@ -1345,7 +1345,7 @@ export async function getDB() {
             console.warn('[Offline Storage] Failed to close blocking connection:', err);
           }
         },
-        upgrade(db, oldVersion, newVersion, transaction) {
+        async upgrade(db, oldVersion, newVersion, transaction) {
           upgradeStartTs = Date.now();
           upgradeFromVersion = oldVersion;
           if (import.meta.env.DEV) {
