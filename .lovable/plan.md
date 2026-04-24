@@ -1,108 +1,88 @@
 
 
-## Fix 2.C — Project-wide adoption of a safe `localStorage.setItem` helper + ESLint guard
+## Fix 3.A + 3.B — Hard-fail the SW when `db-config.js` isn't loaded
 
-### Status check
+### Problem
 
-Gap 2.3 already shipped `src/lib/safe-local-storage.ts` exporting `safeSetItem` (and `safeRemoveItem`). It does everything the requested `safeLocalStorageSet` does and more: classifies errors (`quota` / `blocked` / `unknown`), forwards to `logError` for audit visibility, optionally surfaces to the notification center, and supports an `onFail` recovery hook. It also has a passing test suite at `src/lib/__tests__/safe-local-storage.test.ts`.
+`public/sw-sync.js` defines:
+```js
+var DB_NAME = (typeof DB_CONFIG !== 'undefined' && DB_CONFIG.name) || 'rope-works-inspections';
+var DB_VERSION = (typeof DB_CONFIG !== 'undefined' && DB_CONFIG.version) || 9;
+```
 
-**Decision:** keep `safeSetItem` as the single helper — do not introduce a second `safeLocalStorageSet` that duplicates it with weaker behavior (toast-only, no audit log, no classification). Adding a parallel helper would split adoption and lose the audit trail. This plan therefore reads as: **finish the project-wide adoption of the existing `safeSetItem` and lock it in with ESLint.**
+Two failure modes hide here:
 
-### What's already adopted
-
-- `src/lib/local-backup-ledger.ts` — both `setItem` sites (Gap 2.3).
-- `src/lib/offline-auth.ts` — `queueOfflineSignout` (Gap 2.3).
-- `src/hooks/useReportSync.tsx` — `savePendingSyncs` (Gap 2.3).
-
-### What's still missing
-
-A grep of `src/lib/**` and `src/hooks/**` for raw `localStorage.setItem(` will turn up the remaining sites. The ones likely to need conversion based on the file listing:
-
-- `src/hooks/useAutoSync.tsx` — flag writes (e.g. `storage-eviction-warned`) explicitly called out in the request.
-- `src/lib/profile-cache.ts` — `persistProfileToLocalStorage` writes `cached_profile_<userId>`.
-- `src/lib/photo-receipts.ts` — `savePhotoReceipt`, `markReceiptUploaded`, `removePhotoReceipt` (3 sites).
-- `src/lib/sync-logger.ts`, `src/lib/regression-skip-store.ts`, `src/lib/clear-intent.ts`, `src/lib/notification-center.ts`, `src/lib/notification-config.ts`, `src/lib/version-telemetry.ts`, `src/lib/version-policy.ts`, `src/lib/storage-pressure-manager.ts` — likely candidates; will be confirmed by grep.
-- A handful of UI-flag writes in hooks: `useNotificationCenter.tsx`, `usePWAUpdate.tsx`, `useStoragePressure.tsx`.
-
-### Explicit do-not-touch list (must stay raw)
-
-These have purpose-built quota handling and will be **excluded** from the sweep + **whitelisted** in ESLint via inline overrides:
-
-- `src/lib/auth-resilience.ts` — pinned + `ensureSpaceForAuth` pre-flight + retry-with-eviction (Phase 3, `mem://auth/phase3-storage-pressure`). Wrapping with `safeSetItem` would conflict with auth-key pinning and re-trigger eviction loops.
-- `src/lib/auth-crypto.ts` — encryption-key persistence (Phase 4). Same reason.
-- `src/lib/safe-local-storage.ts` itself — the helper.
-- `src/lib/idb-migration-safety.ts` audit log writes that intentionally bypass app helpers during migration boot (Phase 5). Will reconfirm during implementation; if they're plain writes, they get wrapped.
+1. **`db-config.js` is never imported into the SW.** `vite-pwa-config.ts` lists `importScripts: ['/sw-push.js', '/sw-sync.js']` but not `/db-config.js`. When the SW runs, `DB_CONFIG` is undefined and the fallback silently picks **version 9** — but the live schema is **version 15** (`public/db-config.js`). Opening IDB at v9 against a v15 store throws `VersionError` on every sync; worse, in some browsers it can trigger a downgrade attempt and corrupt state.
+2. **Even if 3.A is fixed, the silent `|| 9` fallback masks future regressions** (e.g. if `db-config.js` is renamed, evicted from cache, or 404s). The SW should refuse to open IDB at a guessed version rather than diverge from the main thread.
 
 ### Plan
 
-#### 1. Sweep remaining `localStorage.setItem` sites under `src/lib/**` and `src/hooks/**`
+#### 1. `vite-pwa-config.ts` — load `db-config.js` into the SW
 
-For each non-excluded file, replace `localStorage.setItem(key, value)` with `safeSetItem(key, value, { scope: '<file>.<operation>', critical: false })`. The default `critical: false` is correct for these — they're caches, debounce flags, telemetry counters, and receipts; their loss is annoying but not user-data-loss-class. The two existing `critical: true` call sites (backup ledger unsynced-snapshot writes) stay as-is.
+- Add `'/db-config.js'` as the **first** entry in `workbox.importScripts` so it executes before `sw-sync.js` reads `DB_CONFIG`.
+- Add `'db-config.js'` to `includeAssets` so the file is copied into `dist/` on build (the file already exists at `public/db-config.js`, so Vite already copies it — this is belt-and-suspenders to make the dependency explicit).
+- Verify it isn't filtered out by `globIgnores` — current ignore list is only `['**/version.json']`, so `db-config.js` is fine. No change needed there.
 
-Specific notes per file:
-- **`profile-cache.ts`** — wrap `persistProfileToLocalStorage`. Scope `'profile-cache.persist'`. Loss is fine; profile re-fetches on next online sign-in.
-- **`photo-receipts.ts`** — wrap all 3 sites. Scope `'photo-receipts.save'` / `'photo-receipts.markUploaded'` / `'photo-receipts.remove'`. Loss means we can't detect photo blob loss — annoying but not catastrophic.
-- **`useAutoSync.tsx`** flag writes — scope `'auto-sync.flag'`. Loss means the user sees an extra notification once.
-- All other hits — scope `'<module>.<purpose>'`, `critical: false`. No `onFail` hooks needed.
+Result: the production SW boots with `DB_CONFIG = { name: 'rope-works-inspections', version: 15 }` exactly matching the main thread.
 
-No call sites change behavior other than gaining an audit-log entry on failure.
+#### 2. `public/sw-sync.js` — remove the silent fallback, hard-no-op when missing
 
-#### 2. ESLint guard — `no-restricted-syntax`
-
-Update `eslint.config.js` with a rule that bans raw `localStorage.setItem(...)` calls inside `src/lib/**` and `src/hooks/**`, with a clear error message pointing to `safe-local-storage.ts`.
-
-Approach: add a new flat-config block scoped to `files: ['src/lib/**/*.{ts,tsx}', 'src/hooks/**/*.{ts,tsx}']` with:
+Replace lines 3-5 with:
 
 ```js
-'no-restricted-syntax': ['error', {
-  selector: "CallExpression[callee.object.name='localStorage'][callee.property.name='setItem']",
-  message: "Use safeSetItem from '@/lib/safe-local-storage' instead of localStorage.setItem. See mem://architecture/storage-pressure-eviction.",
-}]
-```
+// db-config.js must be loaded via importScripts BEFORE this script.
+// If it isn't, refuse to open IndexedDB rather than guess a version.
+var DB_CONFIG_OK = (typeof DB_CONFIG !== 'undefined' && DB_CONFIG && DB_CONFIG.name && typeof DB_CONFIG.version === 'number');
+var DB_NAME = DB_CONFIG_OK ? DB_CONFIG.name : null;
+var DB_VERSION = DB_CONFIG_OK ? DB_CONFIG.version : null;
 
-Then add a second block that **overrides this rule back to `'off'`** for the explicit allow-list:
-
-```js
-{
-  files: [
-    'src/lib/safe-local-storage.ts',
-    'src/lib/auth-resilience.ts',
-    'src/lib/auth-crypto.ts',
-    // any idb-migration-safety.ts entries confirmed during implementation
-  ],
-  rules: { 'no-restricted-syntax': 'off' },
+if (!DB_CONFIG_OK) {
+  console.error('[SW Sync] FATAL: db-config.js not loaded — sync handlers will no-op until next SW activation.');
 }
 ```
 
-This pins adoption going forward — any new `localStorage.setItem` outside the allow-list fails CI lint.
+Add a single guard helper and call it at the top of each of the four sync entry points (`syncInspectionsAtomic`, `syncPhotos`, `syncTrainingsAtomic`, `syncDailyAssessmentsAtomic`):
 
-`src/components/**`, `src/pages/**`, and tests are intentionally **not** scoped by the rule. Components rarely write directly to `localStorage`; if they do, it's almost always a UI-only flag where the existing inline `try/catch` pattern is fine. Forcing every component to import `safeSetItem` creates more churn than value. This can be tightened in a follow-up if it becomes a problem.
+```js
+function dbConfigGuard(label) {
+  if (!DB_CONFIG_OK) {
+    console.warn('[SW Sync] Skipping ' + label + ' — db-config.js missing, refusing to open IDB at guessed version.');
+    return false;
+  }
+  return true;
+}
+```
 
-#### 3. Documentation
+Each entry point gets:
+```js
+if (!dbConfigGuard('inspection sync')) return;
+```
+inserted right after the existing main-thread-active deferral check, before the `try { const db = await openDB(...) }` block. Same pattern for the other three entry points (with their own labels).
 
-Add a one-line note at the top of `src/lib/safe-local-storage.ts` reaffirming the convention and listing the ESLint-whitelisted files, so a future reader understands why those exceptions exist.
+The `sync` and `periodicsync` event listeners themselves don't need touching — they call into these entry-point functions, which now early-return safely.
 
-Update `mem://architecture/storage-pressure-eviction` with the new convention sentence: "All `src/lib/**` and `src/hooks/**` writes go through `safeSetItem` (enforced by ESLint). Auth-credential and encryption-key writes are exempt — see Phase 3/4 memory."
+#### 3. Notify clients on the failure mode
 
-#### 4. No new tests
+Inside the FATAL `console.error` branch, also fire-and-forget a `postMessage` to all clients so the main thread can surface it:
 
-The helper is already tested. The sweep is mechanical. Adding tests per call site adds noise without coverage value. The ESLint rule is its own enforcement.
+```js
+self.clients && self.clients.matchAll && self.clients.matchAll().then(function(clients) {
+  clients.forEach(function(c) { c.postMessage({ type: 'SW_DB_CONFIG_MISSING' }); });
+}).catch(function(){});
+```
+
+No new main-thread handler is added in this gap — adding the message is cheap and lets a follow-up surface it in `SyncDiagnosticsSheet` without another SW redeploy. Forward-only plumbing.
 
 ### Out of scope
 
-- No new helper module — `safeSetItem` already exists and is strictly more capable than the requested `safeLocalStorageSet`.
-- No sweep of `src/components/**` or `src/pages/**` — keeps blast radius small. Future tightening is a follow-up.
-- No `safeLocalStorageGet` — reads don't throw on quota; `getItem` only fails on `SecurityError` (private mode), which is already handled by the existing `try { return JSON.parse(localStorage.getItem(...) ...) } catch { return null }` pattern everywhere it matters.
-- No changes to `auth-resilience.ts`, `auth-crypto.ts`, or migration-snapshot writes.
-- No CI workflow changes — the existing lint step picks up the new rule automatically.
+- No changes to `sw-push.js` — it doesn't reference `DB_CONFIG`.
+- No changes to the openDB helper itself — the guards live in the four entry points where the failure mode actually matters.
+- No changes to `db-config.js` content (already at the correct `version: 15`).
+- No new main-thread UI for the `SW_DB_CONFIG_MISSING` message — postMessage is wired but no listener consumes it yet. Follow-up if desired.
+- No SW version/cache-bust logic — VitePWA `autoUpdate` already activates the new SW on next page load.
 
 ### Files touched
 
-1. **`eslint.config.js`** — new `no-restricted-syntax` rule + targeted overrides for the allow-list.
-2. **`src/lib/safe-local-storage.ts`** — header comment refresh listing the whitelisted files.
-3. **`src/hooks/useAutoSync.tsx`** — flag-write swaps.
-4. **`src/lib/profile-cache.ts`** — wrap `persistProfileToLocalStorage`.
-5. **`src/lib/photo-receipts.ts`** — wrap 3 sites.
-6. **Other `src/lib/**` and `src/hooks/**` files identified by grep during implementation** — same mechanical swap, scope-named per file.
-7. **`mem://architecture/storage-pressure-eviction.md`** — append the new convention sentence.
+1. **`vite-pwa-config.ts`** — add `'/db-config.js'` to `workbox.importScripts` (first), add `'db-config.js'` to `includeAssets`.
+2. **`public/sw-sync.js`** — replace lines 3-5 with strict config validation; add `dbConfigGuard()` helper; add early-return guards in the four sync entry points; emit `SW_DB_CONFIG_MISSING` postMessage on FATAL.
 
