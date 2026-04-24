@@ -52,14 +52,23 @@ export function useSoftDelete() {
 
     try {
       if (navigator.onLine) {
-        const { error } = await supabase
-          .from(table)
-          .update(updateData)
-          .eq('id', recordId);
+        // Use SECURITY DEFINER RPC to bypass the RLS visibility gap
+        // (UPDATE … RETURNING returns 0 rows once deleted_at is set, because
+        // the user-level SELECT policy filters out soft-deleted rows).
+        const { data, error } = await supabase.rpc('soft_delete_record', {
+          p_table_name: table,
+          p_record_id: recordId,
+          p_deleted_by: userId,
+          p_retention_days: retentionDays,
+        });
 
         if (error) {
           console.error(`[SoftDelete] Error soft-deleting ${table}:`, error);
           return { success: false, error: error.message };
+        }
+
+        if (data === false) {
+          return { success: false, error: 'Record could not be deleted (already deleted or not found).' };
         }
 
         if (import.meta.env.DEV) {
