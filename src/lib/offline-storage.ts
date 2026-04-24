@@ -2898,6 +2898,11 @@ export async function updatePhotoDisplayOrder(
           const photo = await store.get(id);
           if (photo && photo.inspectionId === inspectionId && photo.section === section) {
             photo.display_order = index;
+            // N-G: drag-and-drop reorder would otherwise round-trip a
+            // legacy boolean `uploaded` value and re-break the Safari
+            // by-uploaded index. Coerce on every write to the photos
+            // store without exception.
+            photo.uploaded = toUploadedFlag(photo.uploaded);
             await store.put(photo);
           }
         })
