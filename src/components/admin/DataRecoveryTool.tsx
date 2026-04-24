@@ -253,36 +253,52 @@ export function LocalSnapshotsPanel({ allowDelete = true }: SnapshotsPanelProps)
   const handleRestore = async (reportType: ReportType, reportId: string) => {
     const snapshot = getReportSnapshot(reportType, reportId);
     if (!snapshot) return;
-    try {
-      const { saveInspectionOffline, saveRelatedDataOffline, saveTrainingOffline, saveTrainingDataOffline, saveDailyAssessmentOffline, saveAssessmentDataOffline } = await import('@/lib/offline-storage');
-      
-      if (reportType === 'inspection') {
-        await saveInspectionOffline(snapshot.parent);
-        for (const [key, data] of Object.entries(snapshot.children)) {
-          if (Array.isArray(data) && data.length > 0) {
-            await saveRelatedDataOffline(key as any, reportId, data);
+    // H2: Hold the restore lock so auto-sync cannot interleave a T0-snapshot
+    // overwrite over the freshly-restored rows. Lock is released on completion
+    // (success or failure); useAutoSync triggers a fresh sync on release.
+    await withRestoreLock(async () => {
+      try {
+        const offline = await import('@/lib/offline-storage');
+        const { saveInspectionOffline, saveRelatedDataOffline, saveTrainingOffline, saveTrainingDataOffline, saveDailyAssessmentOffline, saveAssessmentDataOffline } = offline;
+
+        if (reportType === 'inspection') {
+          await saveInspectionOffline(snapshot.parent);
+          for (const [key, data] of Object.entries(snapshot.children)) {
+            if (Array.isArray(data) && data.length > 0) {
+              await saveRelatedDataOffline(key as any, reportId, data);
+            }
+          }
+        } else if (reportType === 'training') {
+          await saveTrainingOffline(snapshot.parent);
+          for (const [key, data] of Object.entries(snapshot.children)) {
+            if (Array.isArray(data) && data.length > 0) {
+              await saveTrainingDataOffline(key as any, reportId, data);
+            }
+          }
+        } else if (reportType === 'daily_assessment') {
+          await saveDailyAssessmentOffline(snapshot.parent);
+          for (const [key, data] of Object.entries(snapshot.children)) {
+            if (Array.isArray(data) && data.length > 0) {
+              await saveAssessmentDataOffline(key as any, reportId, data);
+            }
           }
         }
-      } else if (reportType === 'training') {
-        await saveTrainingOffline(snapshot.parent);
-        for (const [key, data] of Object.entries(snapshot.children)) {
-          if (Array.isArray(data) && data.length > 0) {
-            await saveTrainingDataOffline(key as any, reportId, data);
-          }
-        }
-      } else if (reportType === 'daily_assessment') {
-        await saveDailyAssessmentOffline(snapshot.parent);
-        for (const [key, data] of Object.entries(snapshot.children)) {
-          if (Array.isArray(data) && data.length > 0) {
-            await saveAssessmentDataOffline(key as any, reportId, data);
-          }
-        }
+
+        // H2: Post-restore integrity check. Re-read the parent and confirm key
+        // identifying fields survived. If anything regressed (e.g., a stray
+        // sync slipped past the lock), log loudly + re-apply once.
+        await verifyRestoreIntegrity(reportType, reportId, snapshot.parent, async () => {
+          if (reportType === 'inspection') await saveInspectionOffline(snapshot.parent);
+          else if (reportType === 'training') await saveTrainingOffline(snapshot.parent);
+          else if (reportType === 'daily_assessment') await saveDailyAssessmentOffline(snapshot.parent);
+        });
+
+        toast.success("Snapshot restored to local storage");
+      } catch (error) {
+        console.error('[Data Recovery] Restore failed:', error);
+        toast.error("Failed to restore snapshot");
       }
-      toast.success("Snapshot restored to local storage");
-    } catch (error) {
-      console.error('[Data Recovery] Restore failed:', error);
-      toast.error("Failed to restore snapshot");
-    }
+    });
   };
 
   const handleDelete = (reportType: ReportType, reportId: string) => {
