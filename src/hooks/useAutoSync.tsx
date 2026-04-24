@@ -1232,6 +1232,7 @@ export const useAutoSync = () => {
       clearTimeout(initialSyncTimer);
       window.removeEventListener('online', handleOnline);
       window.removeEventListener('sync-photos-updated', handleSyncPhotosUpdated);
+      unsubscribeRestoreLock();
       document.removeEventListener('visibilitychange', handleVisibilityChange);
       
       if (isIOSDevice) {
