@@ -4,6 +4,8 @@
  * due to browser storage pressure and warn the user.
  */
 
+import { safeSetItem } from '@/lib/safe-local-storage';
+
 const RECEIPTS_KEY = 'photoReceipts';
 const MAX_RECEIPTS = 100;
 
@@ -26,7 +28,7 @@ export function savePhotoReceipt(receipt: PhotoReceipt): void {
     if (receipts.length > MAX_RECEIPTS) {
       receipts.splice(0, receipts.length - MAX_RECEIPTS);
     }
-    localStorage.setItem(RECEIPTS_KEY, JSON.stringify(receipts));
+    safeSetItem(RECEIPTS_KEY, JSON.stringify(receipts), { scope: 'photo-receipts.save' });
   } catch {
     // localStorage may be full — fail silently
   }
@@ -41,7 +43,7 @@ export function markReceiptUploaded(photoId: string): void {
     const receipt = receipts.find(r => r.id === photoId);
     if (receipt) {
       receipt.uploaded = true;
-      localStorage.setItem(RECEIPTS_KEY, JSON.stringify(receipts));
+      safeSetItem(RECEIPTS_KEY, JSON.stringify(receipts), { scope: 'photo-receipts.markUploaded' });
     }
   } catch {}
 }
@@ -65,6 +67,6 @@ export function removePhotoReceipt(photoId: string): void {
   try {
     const receipts: PhotoReceipt[] = JSON.parse(localStorage.getItem(RECEIPTS_KEY) || '[]');
     const filtered = receipts.filter(r => r.id !== photoId);
-    localStorage.setItem(RECEIPTS_KEY, JSON.stringify(filtered));
+    safeSetItem(RECEIPTS_KEY, JSON.stringify(filtered), { scope: 'photo-receipts.remove' });
   } catch {}
 }

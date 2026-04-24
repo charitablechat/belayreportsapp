@@ -1,4 +1,5 @@
 import { supabase } from '@/integrations/supabase/client';
+import { safeSetItem } from '@/lib/safe-local-storage';
 
 interface CachedProfile {
   first_name: string | null;
@@ -21,14 +22,11 @@ const CACHE_TTL = 5 * 60 * 1000; // 5 minutes
 // --- localStorage persistence (last-known-good fallback) ---
 
 function persistProfileToLocalStorage(userId: string, profile: ProfileData): void {
-  try {
-    localStorage.setItem(
-      `cached_profile_${userId}`,
-      JSON.stringify(profile),
-    );
-  } catch {
-    // localStorage full or unavailable — non-critical
-  }
+  safeSetItem(
+    `cached_profile_${userId}`,
+    JSON.stringify(profile),
+    { scope: 'profile-cache.persist' },
+  );
 }
 
 function getPersistedProfile(userId: string): ProfileData | null {
