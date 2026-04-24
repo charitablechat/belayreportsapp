@@ -631,37 +631,51 @@ export function CloudSnapshotsPanel({ allowDelete = true }: CloudSnapshotsPanelP
   }, []);
 
   const handleRestore = async (snapshotId: string) => {
-    try {
-      const { fetchCloudSnapshot } = await import('@/lib/cloud-backup');
-      const full = await fetchCloudSnapshot(snapshotId);
-      if (!full) { toast.error("Failed to fetch snapshot data"); return; }
+    // H2: Hold the restore lock so auto-sync cannot interleave a T0-snapshot
+    // overwrite over the freshly-restored rows. Lock is released on completion
+    // (success or failure); useAutoSync triggers a fresh sync on release.
+    await withRestoreLock(async () => {
+      try {
+        const { fetchCloudSnapshot } = await import('@/lib/cloud-backup');
+        const full = await fetchCloudSnapshot(snapshotId);
+        if (!full) { toast.error("Failed to fetch snapshot data"); return; }
 
-      const { saveInspectionOffline, saveRelatedDataOffline, saveTrainingOffline, saveTrainingDataOffline, saveDailyAssessmentOffline, saveAssessmentDataOffline } = await import('@/lib/offline-storage');
-      const { parent, children } = full.snapshot_data;
-      const reportType = full.report_type as ReportType;
-      const reportId = full.report_id;
+        const offline = await import('@/lib/offline-storage');
+        const { saveInspectionOffline, saveRelatedDataOffline, saveTrainingOffline, saveTrainingDataOffline, saveDailyAssessmentOffline, saveAssessmentDataOffline } = offline;
+        const { parent, children } = full.snapshot_data;
+        const reportType = full.report_type as ReportType;
+        const reportId = full.report_id;
 
-      if (reportType === 'inspection') {
-        await saveInspectionOffline(parent);
-        for (const [key, data] of Object.entries(children)) {
-          if (Array.isArray(data) && data.length > 0) await saveRelatedDataOffline(key as any, reportId, data);
+        if (reportType === 'inspection') {
+          await saveInspectionOffline(parent);
+          for (const [key, data] of Object.entries(children)) {
+            if (Array.isArray(data) && data.length > 0) await saveRelatedDataOffline(key as any, reportId, data);
+          }
+        } else if (reportType === 'training') {
+          await saveTrainingOffline(parent);
+          for (const [key, data] of Object.entries(children)) {
+            if (Array.isArray(data) && data.length > 0) await saveTrainingDataOffline(key as any, reportId, data);
+          }
+        } else if (reportType === 'daily_assessment') {
+          await saveDailyAssessmentOffline(parent);
+          for (const [key, data] of Object.entries(children)) {
+            if (Array.isArray(data) && data.length > 0) await saveAssessmentDataOffline(key as any, reportId, data);
+          }
         }
-      } else if (reportType === 'training') {
-        await saveTrainingOffline(parent);
-        for (const [key, data] of Object.entries(children)) {
-          if (Array.isArray(data) && data.length > 0) await saveTrainingDataOffline(key as any, reportId, data);
-        }
-      } else if (reportType === 'daily_assessment') {
-        await saveDailyAssessmentOffline(parent);
-        for (const [key, data] of Object.entries(children)) {
-          if (Array.isArray(data) && data.length > 0) await saveAssessmentDataOffline(key as any, reportId, data);
-        }
+
+        // H2: Post-restore integrity diff + re-apply on regression
+        await verifyRestoreIntegrity(reportType, reportId, parent, async () => {
+          if (reportType === 'inspection') await saveInspectionOffline(parent);
+          else if (reportType === 'training') await saveTrainingOffline(parent);
+          else if (reportType === 'daily_assessment') await saveDailyAssessmentOffline(parent);
+        });
+
+        toast.success("Cloud backup restored to local storage");
+      } catch (error) {
+        console.error('[Cloud Recovery] Restore failed:', error);
+        toast.error("Failed to restore cloud backup");
       }
-      toast.success("Cloud backup restored to local storage");
-    } catch (error) {
-      console.error('[Cloud Recovery] Restore failed:', error);
-      toast.error("Failed to restore cloud backup");
-    }
+    });
   };
 
   const handleDelete = async (snapshotId: string) => {
