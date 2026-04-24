@@ -167,7 +167,7 @@ type LiveSaver<T>  = (record: T) => Promise<unknown>;
  * Any read/parse failure falls through to the legacy write so a guard-read
  * failure can never block sync completion.
  */
-async function safePostSyncSave<T extends { id: string; updated_at?: string | null }>(
+export async function safePostSyncSave<T extends { id: string; updated_at?: string | null }>(
   recordId: string,
   t0Snapshot: T,
   t0UpdatedAtMs: number,
@@ -175,7 +175,9 @@ async function safePostSyncSave<T extends { id: string; updated_at?: string | nu
   mergedFields: Partial<T>,
   getLive: LiveGetter<T>,
   save: LiveSaver<T>,
+  options: { reconcileBlocked?: boolean } = {},
 ): Promise<void> {
+  const { reconcileBlocked = false } = options;
   let live: T | null | undefined = null;
   try { live = await getLive(recordId); } catch { live = null; }
 
@@ -184,6 +186,34 @@ async function safePostSyncSave<T extends { id: string; updated_at?: string | nu
     Number.isFinite(liveUpdatedMs) &&
     Number.isFinite(t0UpdatedAtMs) &&
     liveUpdatedMs > t0UpdatedAtMs;
+
+  // N-A: when deferred reconcile is blocked, the parent + children DID
+  // commit on the server, but the user's intentional child-row deletions
+  // were not propagated (safety tripwire fired). We MUST leave synced_at
+  // alone so `getUnsynced*` re-flags the record on the next cycle and
+  // reconcile gets another shot. Stamping synced_at here would let the
+  // deletions silently die.
+  if (reconcileBlocked) {
+    if (concurrentEdit && live) {
+      // Don't clobber the concurrent edit and don't stamp synced_at.
+      syncLog.log('[N-A] Reconcile blocked + concurrent edit — leaving live record unchanged', {
+        id: recordId.substring(0, 8),
+      });
+      return;
+    }
+    // No concurrent edit: merge the post-sync fields (inspector profile,
+    // user_cleared_at) onto the live record if we have it, else onto the
+    // T0 snapshot. Do NOT set synced_at or clear dirty.
+    const base = live ?? t0Snapshot;
+    await save({
+      ...base,
+      ...mergedFields,
+    } as T);
+    syncLog.log('[N-A] Reconcile blocked — merged fields only, synced_at preserved for retry', {
+      id: recordId.substring(0, 8),
+    });
+    return;
+  }
 
   if (concurrentEdit && live) {
     // C3: preserve `live.dirty` — a concurrent edit ran saveX Offline which
@@ -1071,6 +1101,9 @@ export async function syncInspectionAtomic(inspectionId: string, preValidatedUse
     
     // C1: guard against clobbering an auto-save that landed during the round-trip.
     // mergedFields below mirrors the original spread (S9: clear user_cleared_at, attach inspector).
+    // N-A: pass reconcileBlocked so safePostSyncSave leaves synced_at alone when
+    // deferred reconcile didn't confirm local deletions on the server — the next
+    // cycle will re-flag this record and retry reconcile.
     await safePostSyncSave(
       inspectionId,
       inspection,
@@ -1082,6 +1115,7 @@ export async function syncInspectionAtomic(inspectionId: string, preValidatedUse
       } as any,
       getOfflineInspection,
       saveInspectionOffline,
+      { reconcileBlocked: inspectionReconcileBlocked },
     );
     
     // 7. If we swapped a temp ID, clean up old IndexedDB entries
@@ -1272,6 +1306,10 @@ export async function syncAllInspectionsAtomic(preValidatedUser?: CachedUser, si
   
   let successCount = 0;
   let failCount = 0;
+  // N-A: partial = parent+children committed but deferred reconcile blocked.
+  // Surfaced separately so the caller can show a "retry next cycle" indicator.
+  let partialCount = 0;
+  const partialRecords: Array<{ id: string; reason: string }> = [];
   const errors: Array<{ id: string; error: string }> = [];
   
   // Mobile devices get retry logic
@@ -1310,6 +1348,15 @@ export async function syncAllInspectionsAtomic(preValidatedUser?: CachedUser, si
           // Skipped items don't count as success or failure
           syncLog.log(`[Atomic Sync] Skipped ${i + 1}/${unsynced.length}:`, inspection.id, (itemResult as any).reason);
           synced = true; // Don't retry skipped items
+        } else if (itemResult && typeof itemResult === 'object' && (itemResult as any).partial) {
+          // N-A: parent + children committed, but deferred reconcile was blocked.
+          // safePostSyncSave left synced_at intact so the next cycle retries.
+          // Do NOT recordSyncSuccess — keep the quarantine counter ticking so
+          // chronically blocked reconciles eventually surface to the user.
+          partialCount++;
+          partialRecords.push({ id: inspection.id, reason: (itemResult as any).reason || 'reconcile_pending' });
+          synced = true; // Don't retry within this cycle; next cycle picks it up.
+          syncLog.log(`[Atomic Sync] Partial ${i + 1}/${unsynced.length}:`, inspection.id, (itemResult as any).reason);
         } else {
           successCount++;
           synced = true;
@@ -1353,16 +1400,22 @@ export async function syncAllInspectionsAtomic(preValidatedUser?: CachedUser, si
     totalPending: totalUnsynced,
     remaining,
     success: successCount,
+    partial: partialCount,
     failed: failCount,
   });
   if (failCount > 0) {
     console.error('[Atomic Sync] Errors:', errors);
+  }
+  if (partialCount > 0) {
+    console.warn('[Atomic Sync] Reconcile pending for records (will retry next cycle):', partialRecords);
   }
   
   return {
     total: totalUnsynced,
     success: successCount,
     failed: failCount,
+    partial: partialCount,
+    partialRecords,
     remaining,
     errors,
   };
@@ -1998,6 +2051,8 @@ export async function syncTrainingAtomic(trainingId: string, preValidatedUser?: 
     }
     
     // C1: guard against clobbering an auto-save that landed during the round-trip.
+    // N-A: see safePostSyncSave — reconcileBlocked suppresses synced_at stamping
+    // so the next cycle retries the deferred reconcile.
     await safePostSyncSave(
       trainingId,
       training,
@@ -2009,6 +2064,7 @@ export async function syncTrainingAtomic(trainingId: string, preValidatedUser?: 
       } as any,
       getOfflineTraining,
       saveTrainingOffline,
+      { reconcileBlocked: trainingReconcileBlocked },
     );
     
     // 7. If we swapped a temp ID, clean up old IndexedDB entries
@@ -2187,6 +2243,10 @@ export async function syncAllTrainingsAtomic(preValidatedUser?: CachedUser, sign
   
   let successCount = 0;
   let failCount = 0;
+  // N-A: partial = parent+children committed but deferred reconcile blocked.
+  // Surfaced separately so the caller can show a "retry next cycle" indicator.
+  let partialCount = 0;
+  const partialRecords: Array<{ id: string; reason: string }> = [];
   const errors: Array<{ id: string; error: string }> = [];
   
   // Reduced retries for faster recovery
@@ -2219,6 +2279,12 @@ export async function syncAllTrainingsAtomic(preValidatedUser?: CachedUser, sign
         ]);
         if (itemResult && typeof itemResult === 'object' && (itemResult as any).skipped) {
           synced = true;
+        } else if (itemResult && typeof itemResult === 'object' && (itemResult as any).partial) {
+          // N-A: see syncAllInspectionsAtomic for rationale.
+          partialCount++;
+          partialRecords.push({ id: training.id, reason: (itemResult as any).reason || 'reconcile_pending' });
+          synced = true;
+          syncLog.log(`[Atomic Sync] Partial training ${i + 1}/${batch.length}:`, training.id, (itemResult as any).reason);
         } else {
           successCount++;
           synced = true;
@@ -2248,13 +2314,19 @@ export async function syncAllTrainingsAtomic(preValidatedUser?: CachedUser, sign
     totalPending: totalUnsynced,
     remaining,
     success: successCount,
+    partial: partialCount,
     failed: failCount,
   });
+  if (partialCount > 0) {
+    console.warn('[Atomic Sync] Reconcile pending for training records (will retry next cycle):', partialRecords);
+  }
   
   return {
     total: totalUnsynced,
     success: successCount,
     failed: failCount,
+    partial: partialCount,
+    partialRecords,
     remaining,
     errors,
   };
@@ -2801,6 +2873,8 @@ export async function syncDailyAssessmentAtomic(assessmentId: string, preValidat
     }
     
     // C1: guard against clobbering an auto-save that landed during the round-trip.
+    // N-A: see safePostSyncSave — reconcileBlocked suppresses synced_at stamping
+    // so the next cycle retries the deferred reconcile.
     await safePostSyncSave(
       assessmentId,
       assessment,
@@ -2812,6 +2886,7 @@ export async function syncDailyAssessmentAtomic(assessmentId: string, preValidat
       } as any,
       getOfflineDailyAssessment,
       saveDailyAssessmentOffline,
+      { reconcileBlocked: assessmentReconcileBlocked },
     );
     
     // 7. If we swapped a temp ID, clean up old IndexedDB entries
@@ -2988,6 +3063,10 @@ export async function syncAllDailyAssessmentsAtomic(preValidatedUser?: CachedUse
   
   let successCount = 0;
   let failCount = 0;
+  // N-A: partial = parent+children committed but deferred reconcile blocked.
+  // Surfaced separately so the caller can show a "retry next cycle" indicator.
+  let partialCount = 0;
+  const partialRecords: Array<{ id: string; reason: string }> = [];
   const errors: Array<{ id: string; error: string }> = [];
   
   // Reduced retries for faster recovery
@@ -3020,6 +3099,12 @@ export async function syncAllDailyAssessmentsAtomic(preValidatedUser?: CachedUse
         ]);
         if (itemResult && typeof itemResult === 'object' && (itemResult as any).skipped) {
           synced = true;
+        } else if (itemResult && typeof itemResult === 'object' && (itemResult as any).partial) {
+          // N-A: see syncAllInspectionsAtomic for rationale.
+          partialCount++;
+          partialRecords.push({ id: assessment.id, reason: (itemResult as any).reason || 'reconcile_pending' });
+          synced = true;
+          syncLog.log(`[Atomic Sync] Partial assessment ${i + 1}/${batch.length}:`, assessment.id, (itemResult as any).reason);
         } else {
           successCount++;
           synced = true;
@@ -3049,8 +3134,12 @@ export async function syncAllDailyAssessmentsAtomic(preValidatedUser?: CachedUse
     totalPending: totalUnsynced,
     remaining,
     success: successCount,
+    partial: partialCount,
     failed: failCount,
   });
+  if (partialCount > 0) {
+    console.warn('[Atomic Sync] Reconcile pending for assessment records (will retry next cycle):', partialRecords);
+  }
   
 }
 
