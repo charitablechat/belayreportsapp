@@ -45,9 +45,18 @@ const POST_SYNC_COOLDOWN = 10000; // 10s cooldown after sync completes to ignore
 function withSyncTimeout<T>(
   run: (signal: AbortSignal) => Promise<T>,
   timeoutMs: number,
+  externalSignal?: AbortSignal,
 ): Promise<{ result: T | null; timedOut: boolean }> {
   const controller = new AbortController();
   let timeoutHandle: ReturnType<typeof setTimeout>;
+
+  // H5: forward an external abort (e.g. visibility-hidden) so we don't keep
+  // stuck Promise.race wrappers alive while the tab is backgrounded.
+  const onExternalAbort = () => controller.abort();
+  if (externalSignal) {
+    if (externalSignal.aborted) controller.abort();
+    else externalSignal.addEventListener('abort', onExternalAbort, { once: true });
+  }
 
   const timeoutPromise = new Promise<{ result: null; timedOut: true }>((resolve) => {
     timeoutHandle = setTimeout(() => {
@@ -60,10 +69,12 @@ function withSyncTimeout<T>(
   const wrappedPromise = run(controller.signal).then(
     (result) => {
       clearTimeout(timeoutHandle);
+      externalSignal?.removeEventListener('abort', onExternalAbort);
       return { result, timedOut: false as const };
     },
     (err) => {
       clearTimeout(timeoutHandle);
+      externalSignal?.removeEventListener('abort', onExternalAbort);
       // Aborts surface as AbortError — treat as a timed-out skip rather than a hard failure
       if (err?.name === 'AbortError') {
         return { result: null, timedOut: true as const };
