@@ -51,8 +51,8 @@ describe('H6 — getUnsyncedInspections drift tolerance & dirty flag', () => {
     expect(Array.isArray(result)).toBe(true);
     // saveInspectionOffline always stamps dirty=true → it WILL show up.
     // To isolate the drift check we manually clear dirty afterwards.
-    const { openDB } = await import('idb');
-    const db = await openDB('rope-works-inspections');
+    const { getDB } = await import('../offline-storage');
+    const db = await getDB();
     const live = await db.get('inspections', 'insp-29s');
     await db.put('inspections', { ...live, dirty: false });
     db.close();
@@ -73,8 +73,8 @@ describe('H6 — getUnsyncedInspections drift tolerance & dirty flag', () => {
       updated_at: updated,
     });
     // Clear dirty to isolate drift behavior.
-    const { openDB } = await import('idb');
-    const db = await openDB('rope-works-inspections');
+    const { getDB } = await import('../offline-storage');
+    const db = await getDB();
     const live = await db.get('inspections', 'insp-31s');
     await db.put('inspections', { ...live, dirty: false });
     db.close();
@@ -164,8 +164,8 @@ describe('H6 — by-uploaded photos index uses 0|1 (C1 contract)', () => {
       created_at: Date.now(),
     } as any);
 
-    const { openDB } = await import('idb');
-    const db = await openDB('rope-works-inspections');
+    const { getDB } = await import('../offline-storage');
+    const db = await getDB();
     const unUploaded = await db.getAllFromIndex('photos', 'by-uploaded', IDBKeyRange.only(0));
     db.close();
     expect(unUploaded.length).toBe(1);
