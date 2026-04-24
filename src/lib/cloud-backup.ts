@@ -10,6 +10,41 @@ import { supabase } from '@/integrations/supabase/client';
 import { getUserWithCache } from '@/lib/cached-auth';
 import type { ReportType, ReportSnapshot } from './local-backup-ledger';
 
+/** Opaque structural row type shared across report tables. */
+type Row = Record<string, unknown>;
+
+/** Narrow subset of the Supabase client used for dynamic table names.
+ * Mirrors the DynamicSupabaseClient pattern from atomic-sync-manager.ts /
+ * transaction-manager.ts — models only the methods this module actually calls. */
+type PgResult<T> = Promise<{ data: T | null; error: { message?: string } | null }>;
+type DynamicSupabaseClient = {
+  from: (table: string) => {
+    select: (columns: string) => {
+      order: (column: string, opts: { ascending: boolean }) => {
+        limit: (n: number) => PgResult<Row[]>;
+      };
+      eq: (column: string, value: unknown) => PgResult<Row[]> & {
+        single: () => PgResult<Row>;
+      };
+    };
+    upsert: (data: Row | Row[], opts?: { onConflict: string }) => PgResult<Row[]>;
+    insert: (data: Row | Row[]) => PgResult<Row[]>;
+    update: (data: Row) => {
+      eq: (column: string, value: unknown) => {
+        eq: (column: string, value: unknown) => {
+          eq: (column: string, value: unknown) => PgResult<Row[]>;
+        } & PgResult<Row[]>;
+      } & PgResult<Row[]>;
+    };
+    delete: () => {
+      eq: (column: string, value: unknown) => PgResult<Row[]>;
+    };
+  };
+  rpc: (fn: string, args?: Record<string, unknown>) => PgResult<unknown>;
+};
+
+const sb = supabase as unknown as DynamicSupabaseClient;
+
 export interface CloudBackupEntry {
   id: string;
   report_type: string;
@@ -24,9 +59,9 @@ export interface CloudBackupEntry {
 
 export interface CloudBackupFull extends CloudBackupEntry {
   snapshot_data: {
-    parent: Record<string, any>;
-    children: Record<string, any[]>;
-    photoMetadata?: any[];
+    parent: Record<string, unknown>;
+    children: Record<string, Record<string, unknown>[]>;
+    photoMetadata?: Record<string, unknown>[];
   };
 }
 
@@ -60,9 +95,10 @@ export function uploadSnapshotToCloud(
   snapshot: ReportSnapshot
 ): void {
   // Fire-and-forget — don't await
-  _doUpload(reportType, reportId, snapshot).catch((err) => {
+  _doUpload(reportType, reportId, snapshot).catch((err: unknown) => {
     console.warn('[Cloud Backup] Upload failed (non-blocking):', err);
-    _notifyError(String(err?.message ?? err));
+    const message = (err as { message?: unknown } | null | undefined)?.message;
+    _notifyError(String(typeof message === 'string' ? message : err));
   });
 }
 
@@ -123,9 +159,13 @@ async function _doUpload(
     return;
   }
 
-  const facility = snapshot.parent?.organization || snapshot.parent?.site || '';
+  const parentRecord = (snapshot.parent ?? {}) as Record<string, unknown>;
+  const facility =
+    (typeof parentRecord.organization === 'string' ? parentRecord.organization : null) ||
+    (typeof parentRecord.site === 'string' ? parentRecord.site : null) ||
+    '';
 
-  const { error } = await (supabase.from('report_cloud_backups') as any).upsert(
+  const { error } = await sb.from('report_cloud_backups').upsert(
     {
       user_id: user.id,
       report_type: reportType,
@@ -150,7 +190,7 @@ async function _doUpload(
  * Fetch cloud backup metadata (no full snapshot data) for the current user.
  */
 export async function fetchCloudSnapshots(): Promise<CloudBackupEntry[]> {
-  const { data, error } = await (supabase.from('report_cloud_backups') as any)
+  const { data, error } = await sb.from('report_cloud_backups')
     .select('id, report_type, report_id, device, synced, snapshot_ts, created_at, user_id, facility')
     .order('snapshot_ts', { ascending: false })
     .limit(50);
@@ -161,9 +201,16 @@ export async function fetchCloudSnapshots(): Promise<CloudBackupEntry[]> {
   }
 
   if (!data || data.length === 0) return [];
+  const rows = data;
 
   const { getCachedProfile } = await import('@/lib/profile-cache');
-  const uniqueUserIds = [...new Set((data as any[]).map((d: any) => d.user_id))] as string[];
+  const uniqueUserIds = [
+    ...new Set(
+      rows
+        .map((d) => (d as { user_id?: unknown }).user_id)
+        .filter((id): id is string => typeof id === 'string'),
+    ),
+  ];
   const profileMap = new Map<string, string>();
 
   await Promise.all(
@@ -176,24 +223,28 @@ export async function fetchCloudSnapshots(): Promise<CloudBackupEntry[]> {
     })
   );
 
-  return (data as any[]).map((row: any) => ({
-    id: row.id,
-    report_type: row.report_type,
-    report_id: row.report_id,
-    device: row.device,
-    synced: row.synced,
-    snapshot_ts: row.snapshot_ts,
-    created_at: row.created_at,
-    user_name: profileMap.get(row.user_id) || 'Unknown',
-    facility: row.facility || 'N/A',
-  })) as CloudBackupEntry[];
+  return rows.map((raw) => {
+    const row = raw as Record<string, unknown>;
+    const userId = typeof row.user_id === 'string' ? row.user_id : '';
+    return {
+      id: String(row.id ?? ''),
+      report_type: String(row.report_type ?? ''),
+      report_id: String(row.report_id ?? ''),
+      device: String(row.device ?? ''),
+      synced: row.synced === true,
+      snapshot_ts: typeof row.snapshot_ts === 'number' ? row.snapshot_ts : 0,
+      created_at: String(row.created_at ?? ''),
+      user_name: profileMap.get(userId) || 'Unknown',
+      facility: typeof row.facility === 'string' && row.facility ? row.facility : 'N/A',
+    };
+  });
 }
 
 /**
  * Fetch a single cloud backup with full snapshot data for restore.
  */
 export async function fetchCloudSnapshot(id: string): Promise<CloudBackupFull | null> {
-  const { data, error } = await (supabase.from('report_cloud_backups') as any)
+  const { data, error } = await sb.from('report_cloud_backups')
     .select('*')
     .eq('id', id)
     .single();
@@ -202,7 +253,7 @@ export async function fetchCloudSnapshot(id: string): Promise<CloudBackupFull | 
     console.warn('[Cloud Backup] Failed to fetch snapshot:', error?.message);
     return null;
   }
-  return data as CloudBackupFull;
+  return data as unknown as CloudBackupFull;
 }
 
 /**
@@ -221,7 +272,7 @@ async function _doMarkSynced(reportType: string, reportId: string): Promise<void
   const user = await getUserWithCache();
   if (!user) return;
 
-  const { error } = await (supabase.from('report_cloud_backups') as any)
+  const { error } = await sb.from('report_cloud_backups')
     .update({ synced: true })
     .eq('user_id', user.id)
     .eq('report_type', reportType)
@@ -236,7 +287,7 @@ async function _doMarkSynced(reportType: string, reportId: string): Promise<void
  * Delete a cloud backup by id.
  */
 export async function deleteCloudSnapshot(id: string): Promise<boolean> {
-  const { error } = await (supabase.from('report_cloud_backups') as any)
+  const { error } = await sb.from('report_cloud_backups')
     .delete()
     .eq('id', id);
 
@@ -259,7 +310,7 @@ export interface AllUserCloudSnapshot extends CloudBackupEntry {
  * Joins with profiles to get user names. RLS enforces super-admin access.
  */
 export async function fetchAllCloudSnapshots(): Promise<AllUserCloudSnapshot[]> {
-  const { data, error } = await (supabase.from('report_cloud_backups') as any)
+  const { data, error } = await sb.from('report_cloud_backups')
     .select('id, report_type, report_id, device, synced, snapshot_ts, created_at, user_id, facility')
     .order('snapshot_ts', { ascending: false })
     .limit(200);
@@ -270,10 +321,17 @@ export async function fetchAllCloudSnapshots(): Promise<AllUserCloudSnapshot[]> 
   }
 
   if (!data || data.length === 0) return [];
+  const rows = data;
 
   // Batch-fetch profile names for unique user IDs
   const { getCachedProfile } = await import('@/lib/profile-cache');
-  const uniqueUserIds = [...new Set((data as any[]).map((d: any) => d.user_id))] as string[];
+  const uniqueUserIds = [
+    ...new Set(
+      rows
+        .map((d) => (d as { user_id?: unknown }).user_id)
+        .filter((id): id is string => typeof id === 'string'),
+    ),
+  ];
   const profileMap = new Map<string, string>();
 
   await Promise.all(
@@ -286,11 +344,15 @@ export async function fetchAllCloudSnapshots(): Promise<AllUserCloudSnapshot[]> 
     })
   );
 
-  return (data as any[]).map((row: any) => ({
-    ...row,
-    user_name: profileMap.get(row.user_id) || 'Unknown User',
-    facility: row.facility || 'N/A',
-  })) as AllUserCloudSnapshot[];
+  return rows.map((raw) => {
+    const row = raw as Record<string, unknown>;
+    const userId = typeof row.user_id === 'string' ? row.user_id : '';
+    return {
+      ...(row as unknown as AllUserCloudSnapshot),
+      user_name: profileMap.get(userId) || 'Unknown User',
+      facility: typeof row.facility === 'string' && row.facility ? row.facility : 'N/A',
+    };
+  });
 }
 
 /**
@@ -314,7 +376,7 @@ export async function restoreSnapshotToServer(snapshotId: string): Promise<boole
       : 'assessment_id';
 
     // Upsert parent record (single row by ID — upsert is equivalent to replace)
-    const { error: parentError } = await (supabase.from(parentTable as any) as any)
+    const { error: parentError } = await sb.from(parentTable)
       .upsert(parent, { onConflict: 'id' });
 
     if (parentError) {
@@ -326,7 +388,10 @@ export async function restoreSnapshotToServer(snapshotId: string): Promise<boole
     try {
       const { capturePreEditSnapshot } = await import('./admin-edit-snapshot');
       const { data: { user } } = await supabase.auth.getUser();
-      const ownerId = (parent as any)?.inspector_id || user?.id;
+      const parentRec = (parent ?? {}) as Record<string, unknown>;
+      const parentInspectorId =
+        typeof parentRec.inspector_id === 'string' ? parentRec.inspector_id : null;
+      const ownerId = parentInspectorId || user?.id;
       if (user && ownerId) {
         capturePreEditSnapshot(reportType, full.report_id, ownerId, user.id);
       }
@@ -337,7 +402,7 @@ export async function restoreSnapshotToServer(snapshotId: string): Promise<boole
     const { assertSafeToDeleteChildRows } = await import('./child-row-deletion-tripwire');
 
     // Server-side trigger opt-in (replacement is intentional bulk operation)
-    try { await (supabase as any).rpc('set_bulk_delete_opt_in'); } catch (e) {
+    try { await sb.rpc('set_bulk_delete_opt_in'); } catch (e) {
       console.warn('[Cloud Backup] set_bulk_delete_opt_in rpc failed:', e);
     }
 
@@ -350,10 +415,12 @@ export async function restoreSnapshotToServer(snapshotId: string): Promise<boole
       }
 
       // Fetch live IDs and route through tripwire (bulk: true legitimate replacement)
-      const { data: existingRows } = await (supabase.from(tableKey as any) as any)
+      const { data: existingRows } = await sb.from(tableKey)
         .select('id')
         .eq(fkColumn, full.report_id);
-      const existingIds = (existingRows || []).map((r: any) => r.id);
+      const existingIds = (existingRows || [])
+        .map((r) => (r as { id?: unknown }).id)
+        .filter((id): id is string => typeof id === 'string');
 
       if (existingIds.length > 0) {
         const tw = await assertSafeToDeleteChildRows({
@@ -368,7 +435,7 @@ export async function restoreSnapshotToServer(snapshotId: string): Promise<boole
           continue;
         }
 
-        const { error: deleteError } = await (supabase.from(tableKey as any) as any)
+        const { error: deleteError } = await sb.from(tableKey)
           .delete()
           .eq(fkColumn, full.report_id);
         if (deleteError) {
@@ -376,8 +443,8 @@ export async function restoreSnapshotToServer(snapshotId: string): Promise<boole
         }
       }
 
-      const { error: insertError } = await (supabase.from(tableKey as any) as any)
-        .insert(rows);
+      const { error: insertError } = await sb.from(tableKey)
+        .insert(rows as Row[]);
       if (insertError) {
         console.warn(`[Cloud Backup] Server restore insert ${tableKey} failed:`, insertError.message);
       }

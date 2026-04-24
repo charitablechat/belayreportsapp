@@ -9,6 +9,34 @@ import { supabase } from '@/integrations/supabase/client';
 
 type ReportType = 'inspection' | 'training' | 'daily_assessment';
 
+/** Opaque structural row type shared across report tables. */
+type Row = Record<string, unknown>;
+
+/** Narrow subset of the Supabase client used for dynamic table names.
+ * Mirrors the DynamicSupabaseClient pattern used elsewhere in this repo. */
+type PgResult<T> = Promise<{ data: T | null; error: { message?: string } | null }>;
+type DynamicSupabaseClient = {
+  from: (table: string) => {
+    select: (columns: string) => {
+      eq: (column: string, value: unknown) => PgResult<Row[]> & {
+        maybeSingle: () => PgResult<Row>;
+        single: () => PgResult<Row>;
+      };
+      order: (column: string, opts: { ascending: boolean }) => {
+        limit: (n: number) => PgResult<Row[]>;
+      };
+    };
+    upsert: (data: Row | Row[], opts?: { onConflict: string }) => PgResult<Row[]>;
+    insert: (data: Row | Row[]) => PgResult<Row[]>;
+    delete: () => {
+      eq: (column: string, value: unknown) => PgResult<Row[]>;
+    };
+  };
+  rpc: (fn: string, args?: Record<string, unknown>) => PgResult<unknown>;
+};
+
+const sb = supabase as unknown as DynamicSupabaseClient;
+
 /** Child table keys per report type */
 const CHILD_TABLES: Record<ReportType, string[]> = {
   inspection: [
@@ -98,7 +126,7 @@ async function _doCapture(
   const childTables = CHILD_TABLES[reportType];
 
   // Fetch current server-side parent
-  const { data: parent, error: parentErr } = await (supabase.from(parentTable as any) as any)
+  const { data: parent, error: parentErr } = await sb.from(parentTable)
     .select('*')
     .eq('id', reportId)
     .maybeSingle();
@@ -111,20 +139,20 @@ async function _doCapture(
   // Fetch all children in parallel
   const childResults = await Promise.all(
     childTables.map(async (table) => {
-      const { data } = await (supabase.from(table as any) as any)
+      const { data } = await sb.from(table)
         .select('*')
         .eq(fkColumn, reportId);
-      return [table, data ?? []] as [string, any[]];
+      return [table, data ?? []] as [string, Row[]];
     })
   );
 
-  const children: Record<string, any[]> = {};
+  const children: Record<string, Row[]> = {};
   for (const [table, rows] of childResults) {
     children[table] = rows;
   }
 
   // Insert snapshot
-  const { error: insertErr } = await (supabase.from('admin_edit_snapshots') as any)
+  const { error: insertErr } = await sb.from('admin_edit_snapshots')
     .insert({
       report_type: reportType,
       report_id: reportId,
@@ -157,7 +185,7 @@ export interface AdminEditSnapshotEntry {
  * Fetch all admin edit snapshots (super admin only, RLS enforced).
  */
 export async function fetchAdminEditSnapshots(): Promise<AdminEditSnapshotEntry[]> {
-  const { data, error } = await (supabase.from('admin_edit_snapshots') as any)
+  const { data, error } = await sb.from('admin_edit_snapshots')
     .select('id, report_type, report_id, original_owner_id, edited_by, created_at')
     .order('created_at', { ascending: false })
     .limit(100);
@@ -168,13 +196,22 @@ export async function fetchAdminEditSnapshots(): Promise<AdminEditSnapshotEntry[
   }
 
   if (!data || data.length === 0) return [];
+  const rows = data;
+
+  const pickString = (v: unknown): string | null => (typeof v === 'string' ? v : null);
 
   // Batch-resolve profile names
   const { getCachedProfile } = await import('@/lib/profile-cache');
-  const allIds = [...new Set([
-    ...(data as any[]).map((d: any) => d.edited_by),
-    ...(data as any[]).map((d: any) => d.original_owner_id),
-  ])] as string[];
+  const allIds = [
+    ...new Set(
+      rows
+        .flatMap((d) => [
+          pickString((d as { edited_by?: unknown }).edited_by),
+          pickString((d as { original_owner_id?: unknown }).original_owner_id),
+        ])
+        .filter((id): id is string => !!id),
+    ),
+  ];
 
   const nameMap = new Map<string, string>();
   await Promise.all(
@@ -187,11 +224,21 @@ export async function fetchAdminEditSnapshots(): Promise<AdminEditSnapshotEntry[
     })
   );
 
-  return (data as any[]).map((row: any) => ({
-    ...row,
-    editor_name: nameMap.get(row.edited_by) || 'Unknown',
-    owner_name: nameMap.get(row.original_owner_id) || 'Unknown',
-  }));
+  return rows.map((raw) => {
+    const row = raw as Record<string, unknown>;
+    const editedBy = pickString(row.edited_by) ?? '';
+    const ownerId = pickString(row.original_owner_id) ?? '';
+    return {
+      id: String(row.id ?? ''),
+      report_type: String(row.report_type ?? ''),
+      report_id: String(row.report_id ?? ''),
+      original_owner_id: ownerId,
+      edited_by: editedBy,
+      created_at: String(row.created_at ?? ''),
+      editor_name: nameMap.get(editedBy) || 'Unknown',
+      owner_name: nameMap.get(ownerId) || 'Unknown',
+    };
+  });
 }
 
 /**
@@ -199,7 +246,7 @@ export async function fetchAdminEditSnapshots(): Promise<AdminEditSnapshotEntry[
  */
 export async function restoreAdminEditSnapshot(snapshotId: string): Promise<boolean> {
   // Fetch full snapshot data
-  const { data: snapshot, error } = await (supabase.from('admin_edit_snapshots') as any)
+  const { data: snapshot, error } = await sb.from('admin_edit_snapshots')
     .select('*')
     .eq('id', snapshotId)
     .single();
@@ -209,11 +256,16 @@ export async function restoreAdminEditSnapshot(snapshotId: string): Promise<bool
     return false;
   }
 
-  const { parent, children } = snapshot.snapshot_data as {
-    parent: Record<string, any>;
-    children: Record<string, any[]>;
+  const snap = snapshot as Record<string, unknown>;
+  const snapshotData = (snap.snapshot_data ?? {}) as {
+    parent?: Record<string, unknown>;
+    children?: Record<string, Row[]>;
   };
-  const reportType = snapshot.report_type as ReportType;
+  const parent: Record<string, unknown> = snapshotData.parent ?? {};
+  const children: Record<string, Row[]> = snapshotData.children ?? {};
+  const reportType = snap.report_type as ReportType;
+  const reportId = String(snap.report_id ?? '');
+  const originalOwnerId = String(snap.original_owner_id ?? '');
   const parentTable = PARENT_TABLE[reportType];
   const fkColumn = PARENT_FK[reportType];
 
@@ -221,7 +273,7 @@ export async function restoreAdminEditSnapshot(snapshotId: string): Promise<bool
   try {
     const { data: { user } } = await supabase.auth.getUser();
     if (user) {
-      capturePreEditSnapshot(reportType, snapshot.report_id, snapshot.original_owner_id, user.id);
+      capturePreEditSnapshot(reportType, reportId, originalOwnerId, user.id);
     }
   } catch (e) {
     console.warn('[AdminEditSnapshot] pre_restore capture failed (non-blocking):', e);
@@ -230,13 +282,13 @@ export async function restoreAdminEditSnapshot(snapshotId: string): Promise<bool
   const { assertSafeToDeleteChildRows } = await import('./child-row-deletion-tripwire');
 
   // Server-side trigger opt-in (admin restore is intentional bulk replacement)
-  try { await (supabase as any).rpc('set_bulk_delete_opt_in'); } catch (e) {
+  try { await sb.rpc('set_bulk_delete_opt_in'); } catch (e) {
     console.warn('[AdminEditSnapshot] set_bulk_delete_opt_in rpc failed:', e);
   }
 
   try {
     // Upsert parent
-    const { error: parentErr } = await (supabase.from(parentTable as any) as any)
+    const { error: parentErr } = await sb.from(parentTable)
       .upsert(parent, { onConflict: 'id' });
     if (parentErr) {
       console.error('[AdminEditSnapshot] Parent restore failed:', parentErr.message);
@@ -253,16 +305,18 @@ export async function restoreAdminEditSnapshot(snapshotId: string): Promise<bool
       }
 
       // Fetch live child IDs to route through the tripwire
-      const { data: existingRows } = await (supabase.from(table as any) as any)
+      const { data: existingRows } = await sb.from(table)
         .select('id')
-        .eq(fkColumn, snapshot.report_id);
-      const existingIds = (existingRows || []).map((r: any) => r.id);
+        .eq(fkColumn, reportId);
+      const existingIds = (existingRows || [])
+        .map((r) => (r as { id?: unknown }).id)
+        .filter((id): id is string => typeof id === 'string');
 
       if (existingIds.length > 0) {
         const tripwire = await assertSafeToDeleteChildRows({
           table,
           parentFkColumn: fkColumn,
-          parentId: snapshot.report_id,
+          parentId: reportId,
           idsToDelete: existingIds,
           context: { source: 'admin_restore', bulk: true, reason: 'admin_snapshot_restore', reportType },
         });
@@ -271,15 +325,15 @@ export async function restoreAdminEditSnapshot(snapshotId: string): Promise<bool
           continue;
         }
 
-        const { error: delErr } = await (supabase.from(table as any) as any)
+        const { error: delErr } = await sb.from(table)
           .delete()
-          .eq(fkColumn, snapshot.report_id);
+          .eq(fkColumn, reportId);
         if (delErr) {
           console.warn(`[AdminEditSnapshot] Child delete ${table} failed:`, delErr.message);
         }
       }
 
-      const { error: childErr } = await (supabase.from(table as any) as any)
+      const { error: childErr } = await sb.from(table)
         .insert(rows);
       if (childErr) {
         console.warn(`[AdminEditSnapshot] Child insert ${table} failed:`, childErr.message);
