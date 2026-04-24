@@ -1829,7 +1829,7 @@ export async function saveInspectionOffline(
       // "has unshipped edits" signal; only cleared by safePostSyncSave after
       // a successful round-trip with no concurrent edit.
       inspection.dirty = true;
-      await db.put('inspections', inspection);
+      await db.put('inspections', inspection as never);
       if (import.meta.env.DEV) {
         console.log('[Offline Storage] Saved inspection:', inspection.id);
       }
@@ -3284,7 +3284,7 @@ export async function saveDailyAssessmentOffline(
       }
       // C3: stamp the dirty flag at every user-facing save.
       assessment.dirty = true;
-      await db.put('daily_assessments', assessment);
+      await db.put('daily_assessments', assessment as never);
       if (import.meta.env.DEV) {
         console.log('[Offline Storage] Saved daily assessment:', assessment.id);
       }
@@ -3640,7 +3640,7 @@ export async function saveTrainingOffline(
       }
       // C3: stamp the dirty flag at every user-facing save.
       training.dirty = true;
-      await db.put('trainings', training);
+      await db.put('trainings', training as never);
       if (import.meta.env.DEV) {
         console.log('[Offline Storage] Saved training:', training.id);
       }
@@ -4691,7 +4691,7 @@ export async function restoreQuarantinedAsNew(
       };
 
       // Write the new parent.
-      await db.put(table, clone);
+      await db.put(table, clone as never);
 
       type OSName = StoreNames<InspectionDB>;
       for (const store of childStores[table]) {
