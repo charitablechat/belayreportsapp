@@ -4,9 +4,12 @@ import { isUpdatedAheadOfSync } from './local-data-guards';
 import { safeSetItem } from './safe-local-storage';
 
 /** Opaque DB row — fields vary across tables and are read/written structurally.
- *  Common string-typed columns are declared so callers don't have to cast `unknown`. */
-export type DbRow = Record<string, unknown> & {
-  id?: string;
+ *  Uses an `any` index signature so callers can structurally read/write
+ *  table-specific columns without per-site casts. Known columns are kept
+ *  as required `string` for the few that the sync pipeline always relies on. */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export type DbRow = { [key: string]: any } & {
+  id: string;
   updated_at?: string;
   synced_at?: string;
   created_at?: string;

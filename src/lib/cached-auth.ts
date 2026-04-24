@@ -11,7 +11,8 @@ import { safeSetItem } from "@/lib/safe-local-storage";
 export interface CachedUser {
   id: string;
   email?: string;
-  [key: string]: unknown;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  [key: string]: any;
 }
 
 // Session-level cache for user data to avoid redundant API calls
