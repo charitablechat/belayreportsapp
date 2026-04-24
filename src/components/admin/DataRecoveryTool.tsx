@@ -246,7 +246,7 @@ export function LocalSnapshotsPanel({ allowDelete = true }: SnapshotsPanelProps)
     const a = document.createElement('a');
     a.href = url;
     const org = snapshot.parent?.organization;
-    a.download = formatReportFilename(org || undefined, reportType as any, 'json');
+    a.download = formatReportFilename((org as string | undefined) || undefined, reportType as any, 'json');
     a.click();
     URL.revokeObjectURL(url);
     toast.success("Snapshot exported as JSON");
