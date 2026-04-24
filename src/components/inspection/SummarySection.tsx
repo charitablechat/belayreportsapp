@@ -15,9 +15,10 @@ interface SummarySectionProps {
   onUpdate: (summary: any) => void;
   onImmediateSave?: () => void;
   onRegenerate?: () => void;
+  onNextDateUserEdit?: (cleared: boolean) => void;
 }
 
-export default function SummarySection({ summary, onUpdate, onImmediateSave, onRegenerate }: SummarySectionProps) {
+export default function SummarySection({ summary, onUpdate, onImmediateSave, onRegenerate, onNextDateUserEdit }: SummarySectionProps) {
   const updateField = (field: string, value: any) => {
     onUpdate({ ...summary, [field]: value });
   };
@@ -99,7 +100,9 @@ export default function SummarySection({ summary, onUpdate, onImmediateSave, onR
                 mode="single"
                 selected={parseLocalDate(summary.next_inspection_date)}
                 onSelect={(date) => {
-                  updateField("next_inspection_date", date ? format(date, "yyyy-MM-dd") : "");
+                  const formatted = date ? format(date, "yyyy-MM-dd") : "";
+                  updateField("next_inspection_date", formatted);
+                  onNextDateUserEdit?.(!date);
                   onImmediateSave?.();
                 }}
                 defaultMonth={parseLocalDate(summary.next_inspection_date) || new Date()}
