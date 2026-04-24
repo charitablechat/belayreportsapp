@@ -1735,12 +1735,15 @@ export async function getUnsyncedInspections(userId?: string) {
       // C9: Exclude quarantined records (remote was soft-deleted) from unsynced
       // candidates so we don't keep re-attempting to upload them.
       let unsynced = all.filter(record => !(record as any)._remote_deleted_at).filter(record => {
+        // C3: dirty flag is the authoritative "has unshipped edits" signal.
+        // Drift-tolerance check is the belt-and-braces secondary path.
+        if ((record as any).dirty === true) return true;
         if (!record.synced_at) return true; // never synced
         if (record.updated_at) {
           const drift = new Date(record.updated_at).getTime() - new Date(record.synced_at).getTime();
           const isUnsynced = isUpdatedAheadOfSync(new Date(record.updated_at).getTime(), new Date(record.synced_at).getTime());
           if (isUnsynced && import.meta.env.DEV) {
-            console.log('[Offline Storage] Inspection flagged unsynced:', {
+            console.log('[Offline Storage] Inspection flagged unsynced (drift):', {
               id: String(record.id).substring(0, 8),
               localUpdated: record.updated_at,
               localSynced: record.synced_at,
@@ -3020,6 +3023,8 @@ export async function getUnsyncedDailyAssessments(userId?: string) {
       const all = await db.getAll('daily_assessments');
       // C9: Exclude quarantined records.
       let unsynced = all.filter(record => !(record as any)._remote_deleted_at).filter(record => {
+        // C3: dirty flag = authoritative "has unshipped edits"; drift = secondary.
+        if ((record as any).dirty === true) return true;
         if (!record.synced_at) return true;
         if (record.updated_at) {
           return isUpdatedAheadOfSync(new Date(record.updated_at).getTime(), new Date(record.synced_at).getTime());
@@ -3365,6 +3370,8 @@ export async function getUnsyncedTrainings(userId?: string) {
       const all = await db.getAll('trainings');
       // C9: Exclude quarantined records.
       let unsynced = all.filter(record => !(record as any)._remote_deleted_at).filter(record => {
+        // C3: dirty flag = authoritative "has unshipped edits"; drift = secondary.
+        if ((record as any).dirty === true) return true;
         if (!record.synced_at) return true;
         if (record.updated_at) {
           return isUpdatedAheadOfSync(new Date(record.updated_at).getTime(), new Date(record.synced_at).getTime());
