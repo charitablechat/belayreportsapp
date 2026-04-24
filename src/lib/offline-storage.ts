@@ -2092,6 +2092,15 @@ export async function removeDeadLetterSoftDelete(id: string) {
 }
 
 
+/**
+ * C1: Coerce any caller-supplied `uploaded` value to the on-disk shape (0|1).
+ * IndexedDB silently drops boolean values from indexes — every write site
+ * MUST funnel through this helper so the `by-uploaded` index stays queryable.
+ */
+export function toUploadedFlag(v: unknown): 0 | 1 {
+  return v ? 1 : 0;
+}
+
 export async function savePhotoOffline(photo: {
   id: string;
   inspectionId: string;
