@@ -1805,6 +1805,23 @@ export default function TrainingForm() {
         </div>
       </header>
 
+      <SaveFailureBanner
+        saveError={saveError}
+        onRetry={() => saveTrainingRef.current?.() ?? Promise.resolve()}
+        onExportDraft={() => ({
+          training,
+          delivery_approaches: deliveryApproaches,
+          operating_systems: operatingSystems,
+          immediate_attention: immediateAttention,
+          verifiable_items: verifiableItems,
+          systems_in_place: systemsInPlace,
+          summary,
+          exported_at: new Date().toISOString(),
+        })}
+        reportType="training"
+        reportId={id}
+      />
+
       {/* Main Content */}
       <div onClickCapture={handleLockedFieldClick} onPointerDownCapture={handleLockedFieldClick} className={cn("container mx-auto px-4 py-8", isCompletionLocked && "completion-locked")}>
         {isCompletionLocked && (
