@@ -1114,12 +1114,29 @@ async function withIndexedDBSaveBoundary(
 async function withIndexedDBErrorBoundary<T>(
   operation: () => Promise<T>,
   fallbackValue: T,
-  operationName: string
+  operationName: string,
+  options?: {
+    /** Per-store breaker key. Defaults to 'global' for legacy callers. */
+    store?: BreakerStoreKey;
+    /**
+     * M5: User-critical reads (e.g. loading the report the user is actively
+     * editing) bypass the breaker's "open → return fallback immediately"
+     * short-circuit and attempt the read once. Failing to load the active
+     * edit surface is catastrophic for UX — it's worth eating one extra
+     * timeout per cooldown to give recovery a chance. Failure still
+     * records into the breaker so we don't loop forever.
+     */
+    criticalRead?: boolean;
+  }
 ): Promise<T> {
+  const store: BreakerStoreKey = options?.store ?? 'global';
+  const criticalRead = options?.criticalRead === true;
+
   // CIRCUIT BREAKER: If open, return fallback immediately without attempting operation
-  if (isCircuitBreakerOpen()) {
+  // — UNLESS this is a critical read (see option doc above).
+  if (isCircuitBreakerOpen(store) && !criticalRead) {
     if (import.meta.env.DEV) {
-      console.log(`[Offline Storage] Circuit breaker open, returning fallback for ${operationName}`);
+      console.log(`[Offline Storage] Circuit breaker (${store}) open, returning fallback for ${operationName}`);
     }
     const opLower = operationName.toLowerCase();
     const isWriteOp = opLower.includes('save') || opLower.includes('put') || 
@@ -1155,12 +1172,16 @@ async function withIndexedDBErrorBoundary<T>(
               });
             }
           }).catch(() => {});
-          const resetTime = getCircuitBreakerResetTime();
+          const resetTime = getCircuitBreakerResetTime(store);
           setTimeout(() => sessionStorage.removeItem(cbWarningKey), resetTime + 1000);
         }
       }
     }
     return fallbackValue;
+  }
+
+  if (criticalRead && isCircuitBreakerOpen(store) && import.meta.env.DEV) {
+    console.log(`[Offline Storage] Circuit breaker (${store}) open but ${operationName} is criticalRead — attempting anyway`);
   }
 
   const opLowerForTier = operationName.toLowerCase();
@@ -1192,7 +1213,7 @@ async function withIndexedDBErrorBoundary<T>(
           const isHealthy = await checkIndexedDBHealth();
           if (!isHealthy) {
             console.warn(`[Offline Storage] IndexedDB unhealthy, returning fallback for ${operationName}`);
-            recordIndexedDBFailure();
+            recordIndexedDBFailure(store);
             return fallbackValue;
           }
           // Mark as verified after successful health check
@@ -1208,7 +1229,7 @@ async function withIndexedDBErrorBoundary<T>(
     if (result === TIMEOUT_SENTINEL) {
       console.warn(`[Offline Storage] Timeout detected for ${operationName}, resetting DB connection`);
       dbConnectionVerified = false;
-      recordIndexedDBFailure();
+      recordIndexedDBFailure(store);
       // Close and discard the stale connection so the next operation opens a fresh one
       if (dbPromise) {
         dbPromise.then(db => db.close()).catch(() => {});
@@ -1217,7 +1238,7 @@ async function withIndexedDBErrorBoundary<T>(
       return fallbackValue;
     }
     
-    recordIndexedDBSuccess();
+    recordIndexedDBSuccess(store);
     return result;
   } catch (error: any) {
     console.error(`[Offline Storage] Error in ${operationName}:`, error);
@@ -1227,7 +1248,7 @@ async function withIndexedDBErrorBoundary<T>(
     // QuotaExceededError is NOT an IndexedDB health issue — don't count toward circuit breaker
     const isQuotaError = error?.name === 'QuotaExceededError' || error?.message?.includes('QuotaExceeded');
     if (!isQuotaError) {
-      recordIndexedDBFailure();
+      recordIndexedDBFailure(store);
     }
 
     // IMMEDIATE user notification for QuotaExceededError on FIRST occurrence
