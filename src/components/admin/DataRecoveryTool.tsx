@@ -622,6 +622,7 @@ export function CloudSnapshotsPanel({ allowDelete = true }: CloudSnapshotsPanelP
         const offline = await import('@/lib/offline-storage');
         const { saveInspectionOffline, saveRelatedDataOffline, saveTrainingOffline, saveTrainingDataOffline, saveDailyAssessmentOffline, saveAssessmentDataOffline } = offline;
         const { parent, children } = full.snapshot_data;
+        const parentArg = parent as Record<string, unknown> & { id: string };
         const reportType = full.report_type as ReportType;
         const reportId = full.report_id;
 
