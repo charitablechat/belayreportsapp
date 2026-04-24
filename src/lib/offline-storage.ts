@@ -1279,7 +1279,7 @@ export async function getDB() {
     // Version 8: Add report_versions store for append-only versioning
     // DB_NAME and DB_VERSION shared with public/db-config.js for SW consistency
     const DB_NAME = 'rope-works-inspections';
-    const DB_VERSION = 17;
+    const DB_VERSION = 18;
 
     // Phase 5 — Schema Migration Safety. Lazy-load to avoid circular imports
     // and to keep the boot path resilient if this module ever fails to parse.
@@ -1630,9 +1630,35 @@ export async function getDB() {
             backfillDirty('trainings');
             backfillDirty('daily_assessments');
           }
-        },
-      });
-    };
+
+          // === NEW in v18: re-coerce photos.uploaded boolean → 0|1 ===
+          // C1: The v16 migration used raw IDBObjectStore cursors which the
+          // `idb` wrapper does not await on transaction completion. Any rows
+          // that were boolean-typed at v15 may still carry boolean values
+          // through to v17. v18 redoes the rewrite using the wrapped
+          // IDBPObjectStore so `await` keeps the upgrade tx alive until every
+          // row is persisted. Idempotent — numeric rows are skipped.
+          if (oldVersion < 18 && db.objectStoreNames.contains('photos')) {
+            try {
+              const store = transaction.objectStore('photos');
+              let cursor = await store.openCursor();
+              let rewritten = 0;
+              while (cursor) {
+                const v: any = cursor.value;
+                if (typeof v.uploaded === 'boolean') {
+                  v.uploaded = v.uploaded ? 1 : 0;
+                  await cursor.update(v);
+                  rewritten++;
+                }
+                cursor = await cursor.continue();
+              }
+              if (import.meta.env.DEV) {
+                console.log(`[Offline Storage] v18: re-coerced photos.uploaded on ${rewritten} legacy row(s)`);
+              }
+            } catch (err) {
+              console.warn('[Offline Storage] v18 photos.uploaded re-coercion failed:', err);
+            }
+          }
 
     // Phase 5 — pre-flight snapshot when an actual version bump is coming.
     // We detect the existing version by opening with no upgrade hook first.
