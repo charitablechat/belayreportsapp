@@ -1835,38 +1835,19 @@ export async function syncTrainingAtomic(trainingId: string, preValidatedUser?: 
       }
     }
 
-    // Step 2: RECONCILE then UPSERT child data
-    // Delete server rows that were removed locally, then upsert current local data
-    let trainingReconciledDeletes: ReconciledTableDelete[] = [];
+    // Step 2: UPSERT child data first; reconcile (DELETE) is DEFERRED until
+    // after the transaction commits (H3).
+    let trainingReconcileSpec: import('./deferred-reconcile').DeferredReconcileSpec[] | null = null;
     if (recordStatus?.record_exists && !recordStatus?.is_deleted) {
       const pf = (arr: any[]) => (serverUnchangedSinceBaseline ? undefined : arr);
-      const reconcileResult = await reconcileAllChildTables(
-        [
-          { childTable: 'training_delivery_approaches', parentIdColumn: 'training_id', localItems: delivery_approaches, prefetchedServerRows: pf(existingApproaches), expectedNonEmpty: trainingIdbReadFlags.delivery_approaches },
-          { childTable: 'training_operating_systems', parentIdColumn: 'training_id', localItems: operating_systems, prefetchedServerRows: pf(existingSystems), expectedNonEmpty: trainingIdbReadFlags.operating_systems },
-          { childTable: 'training_immediate_attention', parentIdColumn: 'training_id', localItems: immediate_attention, prefetchedServerRows: pf(existingAttention), expectedNonEmpty: trainingIdbReadFlags.immediate_attention },
-          { childTable: 'training_verifiable_items', parentIdColumn: 'training_id', localItems: verifiable_items, prefetchedServerRows: pf(existingVerifiable), expectedNonEmpty: trainingIdbReadFlags.verifiable_items },
-          { childTable: 'training_systems_in_place', parentIdColumn: 'training_id', localItems: systems_in_place, prefetchedServerRows: pf(existingSystemsInPlace), expectedNonEmpty: trainingIdbReadFlags.systems_in_place },
-          { childTable: 'training_summary', parentIdColumn: 'training_id', localItems: summary ? [summary] : [], prefetchedServerRows: pf(existingSummary), expectedNonEmpty: trainingIdbReadFlags.summary },
-        ],
-        trainingId,
-        'training',
-        user.id,
-      );
-      // C4: capture per-table pre-images for restore-on-failure.
-      trainingReconciledDeletes = reconcileResult.deletedByTable;
-      if (reconcileResult.blocked) {
-        console.warn('[Atomic Sync] Training reconcile blocked — marking sync as failed so user can retry', {
-          trainingId: trainingId.substring(0, 8),
-          blockedTables: reconcileResult.blockedTables,
-        });
-        return {
-          success: false,
-          skipped: true,
-          reason: 'reconcile_blocked',
-          message: 'Some local deletions could not be confirmed against the server. Will retry on next sync.',
-        };
-      }
+      trainingReconcileSpec = [
+        { childTable: 'training_delivery_approaches', parentIdColumn: 'training_id', localItems: delivery_approaches, prefetchedServerRows: pf(existingApproaches), expectedNonEmpty: trainingIdbReadFlags.delivery_approaches },
+        { childTable: 'training_operating_systems', parentIdColumn: 'training_id', localItems: operating_systems, prefetchedServerRows: pf(existingSystems), expectedNonEmpty: trainingIdbReadFlags.operating_systems },
+        { childTable: 'training_immediate_attention', parentIdColumn: 'training_id', localItems: immediate_attention, prefetchedServerRows: pf(existingAttention), expectedNonEmpty: trainingIdbReadFlags.immediate_attention },
+        { childTable: 'training_verifiable_items', parentIdColumn: 'training_id', localItems: verifiable_items, prefetchedServerRows: pf(existingVerifiable), expectedNonEmpty: trainingIdbReadFlags.verifiable_items },
+        { childTable: 'training_systems_in_place', parentIdColumn: 'training_id', localItems: systems_in_place, prefetchedServerRows: pf(existingSystemsInPlace), expectedNonEmpty: trainingIdbReadFlags.systems_in_place },
+        { childTable: 'training_summary', parentIdColumn: 'training_id', localItems: summary ? [summary] : [], prefetchedServerRows: pf(existingSummary), expectedNonEmpty: trainingIdbReadFlags.summary },
+      ];
     }
 
     if (delivery_approaches.length > 0) {
