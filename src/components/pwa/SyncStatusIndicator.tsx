@@ -16,6 +16,7 @@ export const SyncStatusIndicator = () => {
     isSyncing,
     lastSyncTime,
     syncError,
+    syncErrorSeverity,
     isOnline,
     unsyncedPhotoCount
   } = usePWA();
@@ -23,6 +24,9 @@ export const SyncStatusIndicator = () => {
   const isIOSDevice = isIOS();
   const [justSynced, setJustSynced] = useState(false);
   const [previousSyncingState, setPreviousSyncingState] = useState(false);
+
+  // S42 (Fix F): only fatal-severity errors render as Sync Failed.
+  const isFatalError = syncError !== null && syncErrorSeverity === 'fatal';
 
   // Detect when sync completes
   useEffect(() => {
@@ -53,14 +57,14 @@ export const SyncStatusIndicator = () => {
 
   const getStatusColor = () => {
     if (!isOnline) return 'secondary';
-    if (syncError) return 'destructive';
+    if (isFatalError) return 'destructive';
     if (unsyncedCount > 0 || unsyncedPhotoCount > 0) return 'default';
     return 'outline';
   };
 
   const getStatusIcon = () => {
     if (isSyncing) return <RefreshCw className="w-4 h-4 animate-spin" />;
-    if (syncError) return <AlertCircle className="w-4 h-4" />;
+    if (isFatalError) return <AlertCircle className="w-4 h-4" />;
     if (unsyncedCount > 0 || unsyncedPhotoCount > 0) return <Cloud className="w-4 h-4" />;
     return <Check className="w-4 h-4" />;
   };
@@ -68,7 +72,7 @@ export const SyncStatusIndicator = () => {
   const getStatusText = () => {
     if (!isOnline) return 'Offline';
     if (isSyncing) return 'Syncing...';
-    if (syncError) return 'Sync Failed';
+    if (isFatalError) return 'Sync Failed';
     const totalUnsynced = unsyncedCount + unsyncedPhotoCount;
     if (totalUnsynced > 0) return `${totalUnsynced} Unsynced`;
     return 'Synced';
