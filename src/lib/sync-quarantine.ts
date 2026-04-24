@@ -84,13 +84,11 @@ export function recordSyncFailure(recordId: string, error: string): boolean {
 
   if (entry.failures >= FAILURE_THRESHOLD && !entry.quarantinedUntil) {
     entry.quarantinedUntil = endOfDayUtc(now);
-    if (import.meta.env.DEV) {
-      console.warn(
+          syncLog.warn(
         `[SyncQuarantine] Record ${recordId.substring(0, 12)} quarantined until ${new Date(
           entry.quarantinedUntil,
         ).toISOString()} after ${entry.failures} failures: ${error}`,
       );
-    }
   }
 
   map[recordId] = entry;

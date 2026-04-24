@@ -14,9 +14,7 @@ export const useBackgroundSync = () => {
   const handleSyncComplete = useCallback((data: any) => {
     if (data.success) {
       // Silent sync - no user notifications
-      if (import.meta.env.DEV) {
-        console.log('[Background Sync] Complete:', data.tag, 'count:', data.count);
-      }
+              syncLog.log('[Background Sync] Complete:', data.tag, 'count:', data.count);
       // Update sync status to reflect changes
       updateUnsyncedCounts();
     }
@@ -24,9 +22,7 @@ export const useBackgroundSync = () => {
   
   useEffect(() => {
     if (!isSupported) {
-      if (import.meta.env.DEV) {
-        console.log('[useBackgroundSync] Background Sync not supported');
-      }
+              syncLog.log('[useBackgroundSync] Background Sync not supported');
       return;
     }
     
@@ -36,9 +32,7 @@ export const useBackgroundSync = () => {
     // Register periodic sync for multi-device scenarios
     registerPeriodicSync();
     
-    if (import.meta.env.DEV) {
-      console.log('[useBackgroundSync] Background Sync initialized');
-    }
+          syncLog.log('[useBackgroundSync] Background Sync initialized');
   }, [isSupported, handleSyncComplete]);
   
   return { 
