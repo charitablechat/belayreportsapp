@@ -872,12 +872,12 @@ async function restoreEmptyLocalFromServer(entry: EmptyLocalConflictEntry): Prom
     fetched.map(({ section, rows }) => {
       if (rows.length === 0) return Promise.resolve();
       if (entry.reportType === 'inspection') {
-        return saveRelatedDataOffline(section as any, entry.id, rows);
+        return saveRelatedDataOffline(section as any, entry.id, rows as Record<string, unknown>[]);
       }
       if (entry.reportType === 'training') {
-        return saveTrainingDataOffline(section as any, entry.id, rows);
+        return saveTrainingDataOffline(section as any, entry.id, rows as Record<string, unknown>[]);
       }
-      return saveAssessmentDataOffline(section as any, entry.id, rows);
+      return saveAssessmentDataOffline(section as any, entry.id, rows as Record<string, unknown>[]);
     }),
   );
 
