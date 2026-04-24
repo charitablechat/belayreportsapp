@@ -406,9 +406,12 @@ export default function Dashboard() {
 
   useEffect(() => {
     setLoading(true);
-    setInspectionsValidated(false);
-    setTrainingsValidated(false);
-    setDailyValidated(false);
+    // Fix 2: only show skeletons if we truly have nothing cached. If cache
+    // hydrated non-empty arrays, treat them as "validated" immediately so
+    // the StatsBar shows numbers right away while the network refresh runs.
+    setInspectionsValidated(inspections.length > 0);
+    setTrainingsValidated(trainings.length > 0);
+    setDailyValidated(dailyAssessments.length > 0);
 
     const LOAD_TIMEOUT = 20000;
     let loadCompleted = false;
