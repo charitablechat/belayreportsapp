@@ -854,11 +854,14 @@ export type IdbReadTier = 'light' | 'batch' | 'write' | 'photo';
 async function withIndexedDBReadBoundary<T>(
   operation: () => Promise<T>,
   operationName: string,
-  options?: { tier?: IdbReadTier },
+  options?: { tier?: IdbReadTier; store?: BreakerStoreKey },
 ): Promise<T | IdbReadFailure> {
-  if (isCircuitBreakerOpen()) {
+  // M5: Per-store breaker. Default 'global' for legacy callers.
+  const store: BreakerStoreKey = options?.store ?? 'global';
+
+  if (isCircuitBreakerOpen(store)) {
     if (import.meta.env.DEV) {
-      console.log(`[Offline Storage] Circuit breaker open, returning IdbReadFailure for ${operationName}`);
+      console.log(`[Offline Storage] Circuit breaker (${store}) open, returning IdbReadFailure for ${operationName}`);
     }
     return makeIdbReadFailure(operationName, 'circuit_breaker_open');
   }
@@ -916,7 +919,7 @@ async function withIndexedDBReadBoundary<T>(
     if (result === TIMEOUT_SENTINEL) {
       console.warn(`[Offline Storage] Read timeout for ${operationName}, resetting DB connection`);
       dbConnectionVerified = false;
-      recordIndexedDBFailure();
+      recordIndexedDBFailure(store);
       if (dbPromise) {
         dbPromise.then(db => db.close()).catch(() => {});
         dbPromise = null;
@@ -924,11 +927,11 @@ async function withIndexedDBReadBoundary<T>(
       return makeIdbReadFailure(operationName, 'idb_read_timeout');
     }
 
-    recordIndexedDBSuccess();
+    recordIndexedDBSuccess(store);
     return result as T;
   } catch (err) {
     console.error(`[Offline Storage] Read failed for ${operationName}:`, err);
-    recordIndexedDBFailure();
+    recordIndexedDBFailure(store);
     return makeIdbReadFailure(operationName, err);
   }
 }
