@@ -1,48 +1,73 @@
 
 
-## Plan — fix `idb_read_timeout` in Sync Terminal
+## Why the badge is stuck at "1 pending"
 
-### Root cause (from console logs)
+**Not** a regression of fixes A/B/C. They worked. This is a separate, pre-existing logic bug that the cleaner logs now make obvious.
 
-Two compounding issues:
+### The actual bug
 
-1. **Drift-flagged stragglers in a loop.** 5 inspections (`13a244aa`, `5b8b5184`, `a010d727`, `c69984a6`, `da9de935`) are flagged as drift-unsynced on every cycle but filtered out before transmission (final `total: 0`). They never resolve, so every sync cycle re-scans and re-logs them. Drift ranges from 33 minutes to 18 days.
+There are **two different quarantine systems** for daily assessments, and they disagree:
 
-2. **5s IDB timeout too tight.** `[Offline Storage] Operation timed out after 5000ms (295 similar warnings suppressed)` — the store is heavy enough that individual reads blow the 5s budget. When `getUnsyncedInspections` itself times out, `IdbReadFailure` propagates and `useAutoSync` shows `idb_read_timeout` in the Sync Terminal even though the sync as a whole "completes" with `total: 0`.
+1. **IDB quarantine** (`_remote_deleted_at` flag) — set when the server has soft-deleted a row but the local copy has unsynced edits. `getUnsyncedDailyAssessments` correctly **excludes** these via `isNotQuarantined` (line 3205 of `offline-storage.ts`).
 
-### Confirmation reads (default mode, before any writes)
+2. **Session quarantine** (`sync-quarantine.ts`, `sessionStorage`) — set after 3 consecutive failed sync attempts. `atomic-sync-manager.ts:2958` calls `filterQuarantined(unsynced)` which **drops** the record from the sync batch but **does not** flag it in IDB.
 
-1. `src/lib/offline-storage.ts` — find the `withIDBTimeout` definition + the `'heavy'` budget constant, and the `getUnsyncedInspections` body to see what triggers the drift log.
-2. `src/hooks/useAutoSync.tsx` — find where `IdbReadFailure` from the unsynced-counts read becomes `syncError = 'idb_read_timeout'` (the string the terminal renders).
-3. Quick check: are these 5 inspections owned by the current user (`759e973e...`) or by someone else? The `total: 0` after filtering suggests they're filtered by `inspector_id !== currentUserId`. If so, the drift log is pure noise — they shouldn't be evaluated at all.
+Assessment `c24b6198-4a5...` is in **session quarantine, not IDB quarantine**. So the round-trip every cycle is:
 
-### Fixes (in priority order, all small)
+```
+getUnsyncedDailyAssessments      → returns [c24b6198]          (total: 1)
+filterQuarantined (in sync)      → drops c24b6198               (dropped: 1)
+sync proceeds with 0 records     → success
+getUnsyncedDailyAssessments      → still returns [c24b6198]    (total: 1)  ← badge stays "1 pending"
+```
 
-**Fix A — Stop re-evaluating drift on records the user doesn't own.**
-In `getUnsyncedInspections`, filter by `inspector_id === userId` *before* the drift check, not after. This eliminates the 5 phantom drift logs per cycle and the IDB load they cause. Same fix for `getUnsyncedTrainings` and `getUnsyncedDailyAssessments`. **Biggest win — drops the 295 timeouts/cycle dramatically.**
+The badge will stay at "1 pending" until either (a) end of UTC day when the session quarantine expires and the next sync attempt either succeeds or re-quarantines, or (b) the browser session ends. From the user's perspective: **permanent stuck badge, no way to act on it, no UI surface to tell them why.**
 
-**Fix B — Suppress noisy drift logs after first-seen.**
-Once a record has been logged as drift-unsynced, don't log it again for the same session unless the drift value changes. In-memory `Set<id>` keyed by `${id}:${drift_ms_bucket}`. Pure logging change, no behavior change.
+### What's wrong about it
 
-**Fix C — Promote the surfaced error message.**
-Right now any `IdbReadFailure` shows the raw string `idb_read_timeout`. Map it to a user-friendly variant:
-- If the underlying sync succeeded but counts read failed → `"Sync ran, but local stats are stale — refresh to recheck"` and **do not** flip the badge to "SYNC FAILED".
-- Only show "SYNC FAILED" when the sync pipeline itself failed.
+A user-visible "pending" count should mean "things the system will try to sync." A session-quarantined record is, by design, **not going to be synced this session**. Counting it lies to the user and triggers the "Keep the app open" banner forever for an item that the app has already given up on.
 
-**Fix D (optional, if A+B+C aren't enough) — Bump the `'heavy'` IDB timeout from 5s to 10s** *only* for the unsynced-counts reads, not for everything. Tight timeouts elsewhere are deliberate.
+### Fix — small and contained
+
+**Fix E — exclude session-quarantined records from the unsynced count.**
+
+Two parts:
+
+1. **`getUnsyncedDailyAssessments` / `getUnsyncedTrainings` / `getUnsyncedInspections`** (`src/lib/offline-storage.ts`): after the existing ownership + drift filter, drop any record whose `id` is currently quarantined per `sync-quarantine.isQuarantined(id)`. Keep the existing `isNotQuarantined(record)` IDB-flag check; this adds the session-flag check on top.
+
+2. **`sync-quarantine.ts`**: export a small `isQuarantined(id: string): boolean` helper that reads the session map and returns `true` only if `quarantinedUntil > Date.now()`. (Currently the file has `recordSyncFailure` / `filterQuarantined` but no single-id read.)
+
+That's it. Once Fix E ships:
+- The badge drops to 0 the moment the assessment hits its 3rd failure.
+- The "Keep the app open" banner disappears.
+- The session quarantine still works exactly the same way inside the sync pipeline — we're only changing what the *count* surfaces.
+
+### Surface the quarantined record somewhere
+
+The user still has an assessment that the system has given up on. Right now there's no UI that tells them. Two options, pick one:
+
+- **(i) Cheap**: add a `quarantinedAssessmentCount` field to `usePWA` and surface it in the existing Sync Terminal sheet under a new line: `QUARANTINED 1 — sync paused until tomorrow (tap to retry now)`. Tap clears the session entry for that id and forces a sync.
+- **(ii) Proper**: extend `SyncDiagnosticsSheet` (already exists) to list quarantined ids with a per-row "Retry now" button. More code, better UX.
+
+Recommend **(i)** — uses existing UI surface, ~30 lines.
+
+### Confirmation reads I want to do before writing code
+
+- `sync-quarantine.ts` lines 80–172 to confirm the cleanup/expiry semantics so `isQuarantined` matches them exactly.
+- `usePWA` / `useAutoSync` to see where `unsyncedCount` is composed for the badge.
+- `BackgroundSyncStatus.tsx` and `SyncPulse.tsx` for where to surface the quarantined count without crowding the layout.
 
 ### Out of scope this round
 
-- Resolving the 5 drift-flagged inspections themselves (they're owned by another user; not this user's problem to fix).
-- The 295-suppressed-timeouts pattern (separate quality-of-implementation issue; A reduces the count, B+C make it invisible).
-- Changing the C2 architecture (full-scan + filter) — that's working as designed.
+- Why assessment `c24b6198-4a5...` is failing in the first place (could be schema, RLS, network, or a stale FK). Worth a separate look — `[Atomic Sync]` would have logged the failure 3 cycles ago. But fixing the root cause and fixing the misleading badge are independent.
+- The 146-suppressed-timeouts pattern in the current logs — same hot store as before; Fix A reduced it, but it's still elevated. Not the badge issue, separate quality-of-implementation work (Fix D candidate).
 
-### Memory updates
+### Memory updates after the fix
 
-- Add `mem://constraints/sync-terminal-error-classification` distinguishing pipeline failure from counts-read failure.
-- Update `mem://architecture/unsynced-counts-coalescer` with the "filter by owner before drift check" rule.
+- New: `mem://constraints/quarantine-vs-pending-count` documenting that session-quarantined items must not appear in the user-facing pending count.
+- Update `mem://architecture/unsynced-counts-coalescer` to add the session-quarantine filter rule.
 
 ### Verdict
 
-Approve and I'll switch to default mode, do the three confirmation reads, then ship Fix A + B + C in one pass. Fix D held in reserve.
+Approve and I'll switch to default mode, do the three confirmation reads, ship Fix E + option (i) Sync Terminal surfacing, and leave the underlying assessment failure for a follow-up.
 
