@@ -1812,7 +1812,7 @@ export async function getDB() {
  * emergency fallback instead of IDB.
  */
 export async function saveInspectionOffline(
-  inspection: Record<string, unknown> & { id: string; child_count_hint?: number; dirty?: boolean },
+  inspection: Record<string, unknown> & { id?: string; child_count_hint?: number; dirty?: boolean },
   opts?: { childCountHint?: number }
 ): Promise<SaveResult> {
   return withIndexedDBSaveBoundary(
