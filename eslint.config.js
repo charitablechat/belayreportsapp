@@ -4,6 +4,29 @@ import reactHooks from "eslint-plugin-react-hooks";
 import reactRefresh from "eslint-plugin-react-refresh";
 import tseslint from "typescript-eslint";
 
+// H4 — Forbid creating ad-hoc Supabase clients outside the canonical
+// src/integrations/supabase/client.ts. Every outbound call must go through
+// the singleton so the synthetic-session-guard pre-flight
+// (assertRealSessionForSync in src/lib/atomic-sync-manager.ts) stays in the
+// request path. A new createClient call bypasses that guard and risks
+// leaking the offline placeholder token. See mem://constraints/sync-session-jwt-guard.
+const NO_AD_HOC_SUPABASE_CLIENT = {
+  selector:
+    "ImportDeclaration[source.value='@supabase/supabase-js'] > ImportSpecifier[imported.name='createClient']",
+  message:
+    "Do not import createClient from '@supabase/supabase-js'. Import the singleton from '@/integrations/supabase/client' so the synthetic-session-guard pre-flight stays in the request path. See mem://constraints/sync-session-jwt-guard.",
+};
+
+// Fix 2.C — Ban raw localStorage.setItem in src/lib/** and src/hooks/**.
+// All writes must go through safeSetItem so failures are classified, audit-
+// logged, and surfaced to the user. See mem://architecture/storage-pressure-eviction.
+const NO_RAW_LOCAL_STORAGE_SETITEM = {
+  selector:
+    "CallExpression[callee.object.name='localStorage'][callee.property.name='setItem']",
+  message:
+    "Use safeSetItem from '@/lib/safe-local-storage' instead of localStorage.setItem. See mem://architecture/storage-pressure-eviction.",
+};
+
 export default tseslint.config(
   { ignores: ["dist"] },
   {
@@ -23,26 +46,31 @@ export default tseslint.config(
       "@typescript-eslint/no-unused-vars": "off",
     },
   },
-  // Fix 2.C — Ban raw localStorage.setItem in src/lib/** and src/hooks/**.
-  // All writes must go through safeSetItem so failures are classified, audit-
-  // logged, and surfaced to the user. See mem://architecture/storage-pressure-eviction.
+  // H4 — Supabase singleton enforcement (project-wide).
+  {
+    files: ["src/**/*.{ts,tsx}"],
+    ignores: [
+      "src/integrations/supabase/client.ts",
+      "src/lib/__tests__/**/*.{ts,tsx}",
+    ],
+    rules: {
+      "no-restricted-syntax": ["error", NO_AD_HOC_SUPABASE_CLIENT],
+    },
+  },
+  // 2.C — safeSetItem enforcement in lib/hooks (combines with H4 selector
+  // because flat-config later blocks override the prior `no-restricted-syntax`
+  // value rather than merging).
   {
     files: ["src/lib/**/*.{ts,tsx}", "src/hooks/**/*.{ts,tsx}"],
     rules: {
       "no-restricted-syntax": [
         "error",
-        {
-          selector:
-            "CallExpression[callee.object.name='localStorage'][callee.property.name='setItem']",
-          message:
-            "Use safeSetItem from '@/lib/safe-local-storage' instead of localStorage.setItem. See mem://architecture/storage-pressure-eviction.",
-        },
+        NO_AD_HOC_SUPABASE_CLIENT,
+        NO_RAW_LOCAL_STORAGE_SETITEM,
       ],
     },
   },
-  // Allow-list — these files have purpose-built quota handling that would
-  // conflict with the generic helper (auth-key pinning, encryption keystore,
-  // migration-boot bypass, the helper itself, and tests).
+  // Allow-list — purpose-built quota handling and the helper itself.
   {
     files: [
       "src/lib/safe-local-storage.ts",
@@ -54,29 +82,5 @@ export default tseslint.config(
       "src/lib/__tests__/**/*.{ts,tsx}",
     ],
     rules: { "no-restricted-syntax": "off" },
-  },
-  // H4 — Forbid creating ad-hoc Supabase clients outside the canonical
-  // src/integrations/supabase/client.ts. Every outbound call must go through
-  // the singleton so the synthetic-session-guard pre-flight (assertRealSessionForSync
-  // in src/lib/atomic-sync-manager.ts) stays in the request path. New clients
-  // bypass that guard and risk leaking the offline placeholder token.
-  // See mem://constraints/sync-session-jwt-guard.
-  {
-    files: ["src/**/*.{ts,tsx}"],
-    ignores: [
-      "src/integrations/supabase/client.ts",
-      "src/lib/__tests__/**/*.{ts,tsx}",
-    ],
-    rules: {
-      "no-restricted-syntax": [
-        "error",
-        {
-          selector:
-            "CallExpression[callee.name='createClient']",
-          message:
-            "Do not construct a new Supabase client. Import the singleton from '@/integrations/supabase/client' so the synthetic-session-guard pre-flight (assertRealSessionForSync) stays in the request path. See mem://constraints/sync-session-jwt-guard.",
-        },
-      ],
-    },
   },
 );
