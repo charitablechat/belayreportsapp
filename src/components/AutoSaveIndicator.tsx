@@ -3,14 +3,26 @@ import { format } from "date-fns";
 import { cn } from "@/lib/utils";
 import { isLovablePreview } from "@/lib/environment";
 
+type SaveErrorLike =
+  | string
+  | { message: string; code?: string }
+  | null
+  | undefined;
+
 interface AutoSaveIndicatorProps {
   lastSaved: Date | null;
   isSaving?: boolean;
   hasUnsavedChanges?: boolean;
-  error?: string | null;
+  error?: SaveErrorLike;
   className?: string;
   showRelativeTime?: boolean;
   onRetry?: () => void;
+}
+
+function normalizeError(error: SaveErrorLike): string | null {
+  if (!error) return null;
+  if (typeof error === "string") return error;
+  return error.message ?? null;
 }
 
 export function AutoSaveIndicator({
