@@ -2643,38 +2643,19 @@ export async function syncDailyAssessmentAtomic(assessmentId: string, preValidat
       }
     }
 
-    // Step 2: RECONCILE then UPSERT child data
-    // Delete server rows that were removed locally, then upsert current local data
-    let assessmentReconciledDeletes: ReconciledTableDelete[] = [];
+    // Step 2: UPSERT child data first; reconcile (DELETE) is DEFERRED until
+    // after the transaction commits (H3).
+    let assessmentReconcileSpec: import('./deferred-reconcile').DeferredReconcileSpec[] | null = null;
     if (recordStatus?.record_exists && !recordStatus?.is_deleted) {
       const pf = (arr: any[]) => (serverUnchangedSinceBaseline ? undefined : arr);
-      const reconcileResult = await reconcileAllChildTables(
-        [
-          { childTable: 'daily_assessment_beginning_of_day', parentIdColumn: 'assessment_id', localItems: beginning_of_day, prefetchedServerRows: pf(existingBeginning), expectedNonEmpty: assessmentIdbReadFlags.beginning_of_day },
-          { childTable: 'daily_assessment_end_of_day', parentIdColumn: 'assessment_id', localItems: end_of_day, prefetchedServerRows: pf(existingEnd), expectedNonEmpty: assessmentIdbReadFlags.end_of_day },
-          { childTable: 'daily_assessment_operating_systems', parentIdColumn: 'assessment_id', localItems: operating_systems, prefetchedServerRows: pf(existingSystems), expectedNonEmpty: assessmentIdbReadFlags.operating_systems },
-          { childTable: 'daily_assessment_equipment_checks', parentIdColumn: 'assessment_id', localItems: equipment_checks, prefetchedServerRows: pf(existingEquipment), expectedNonEmpty: assessmentIdbReadFlags.equipment_checks },
-          { childTable: 'daily_assessment_structure_checks', parentIdColumn: 'assessment_id', localItems: structure_checks, prefetchedServerRows: pf(existingStructure), expectedNonEmpty: assessmentIdbReadFlags.structure_checks },
-          { childTable: 'daily_assessment_environment_checks', parentIdColumn: 'assessment_id', localItems: environment_checks, prefetchedServerRows: pf(existingEnvironment), expectedNonEmpty: assessmentIdbReadFlags.environment_checks },
-        ],
-        assessmentId,
-        'daily_assessment',
-        user.id,
-      );
-      // C4: capture per-table pre-images for restore-on-failure.
-      assessmentReconciledDeletes = reconcileResult.deletedByTable;
-      if (reconcileResult.blocked) {
-        console.warn('[Atomic Sync] Daily assessment reconcile blocked — marking sync as failed so user can retry', {
-          assessmentId: assessmentId.substring(0, 8),
-          blockedTables: reconcileResult.blockedTables,
-        });
-        return {
-          success: false,
-          skipped: true,
-          reason: 'reconcile_blocked',
-          message: 'Some local deletions could not be confirmed against the server. Will retry on next sync.',
-        };
-      }
+      assessmentReconcileSpec = [
+        { childTable: 'daily_assessment_beginning_of_day', parentIdColumn: 'assessment_id', localItems: beginning_of_day, prefetchedServerRows: pf(existingBeginning), expectedNonEmpty: assessmentIdbReadFlags.beginning_of_day },
+        { childTable: 'daily_assessment_end_of_day', parentIdColumn: 'assessment_id', localItems: end_of_day, prefetchedServerRows: pf(existingEnd), expectedNonEmpty: assessmentIdbReadFlags.end_of_day },
+        { childTable: 'daily_assessment_operating_systems', parentIdColumn: 'assessment_id', localItems: operating_systems, prefetchedServerRows: pf(existingSystems), expectedNonEmpty: assessmentIdbReadFlags.operating_systems },
+        { childTable: 'daily_assessment_equipment_checks', parentIdColumn: 'assessment_id', localItems: equipment_checks, prefetchedServerRows: pf(existingEquipment), expectedNonEmpty: assessmentIdbReadFlags.equipment_checks },
+        { childTable: 'daily_assessment_structure_checks', parentIdColumn: 'assessment_id', localItems: structure_checks, prefetchedServerRows: pf(existingStructure), expectedNonEmpty: assessmentIdbReadFlags.structure_checks },
+        { childTable: 'daily_assessment_environment_checks', parentIdColumn: 'assessment_id', localItems: environment_checks, prefetchedServerRows: pf(existingEnvironment), expectedNonEmpty: assessmentIdbReadFlags.environment_checks },
+      ];
     }
 
     if (beginning_of_day.length > 0) {
