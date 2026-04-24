@@ -55,7 +55,7 @@ describe('H6 — getUnsyncedInspections drift tolerance & dirty flag', () => {
     const db = await getDB();
     const live = await db.get('inspections', 'insp-29s');
     await db.put('inspections', { ...live, dirty: false });
-    db.close();
+    // singleton — do not close
 
     const result2 = await getUnsyncedInspections();
     const found = (result2 as any[]).find(r => r.id === 'insp-29s');
@@ -77,7 +77,7 @@ describe('H6 — getUnsyncedInspections drift tolerance & dirty flag', () => {
     const db = await getDB();
     const live = await db.get('inspections', 'insp-31s');
     await db.put('inspections', { ...live, dirty: false });
-    db.close();
+    // singleton — do not close
 
     const result = await getUnsyncedInspections();
     const found = (result as any[]).find(r => r.id === 'insp-31s');
@@ -167,7 +167,7 @@ describe('H6 — by-uploaded photos index uses 0|1 (C1 contract)', () => {
     const { getDB } = await import('../offline-storage');
     const db = await getDB();
     const unUploaded = await db.getAllFromIndex('photos', 'by-uploaded', IDBKeyRange.only(0));
-    db.close();
+    // singleton — do not close
     expect(unUploaded.length).toBe(1);
     expect(unUploaded[0].id).toBe('photo-a');
   });
