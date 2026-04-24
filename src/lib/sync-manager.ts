@@ -419,6 +419,12 @@ export async function syncPhotos(signal?: AbortSignal): Promise<{ remaining: num
         if (uploadError) {
           // S22: Classify upload errors instead of treating all as permanent.
           const cls = classifyPhotoError(uploadError);
+          // M3: An RLS-shaped denial is signal that the policy may have
+          // regressed mid-day. Re-run the storage probe immediately (rate-
+          // limited, debounced) to confirm "policy regression" vs
+          // "transient per-photo error". Fire-and-forget — never blocks the
+          // sync cycle.
+          triggerProbeOnPhotoFailure(uploadError);
           if (import.meta.env.DEV) {
             console.log(`[Sync Manager] Upload error classified as ${cls.kind} for ${photo.id}:`, cls.message);
           }
