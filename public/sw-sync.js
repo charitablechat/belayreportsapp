@@ -1,8 +1,34 @@
 // Background Sync API handler for offline data synchronization with atomic operations
 
-// Import shared DB config (set by db-config.js loaded before this script, or fallback)
-var DB_NAME = (typeof DB_CONFIG !== 'undefined' && DB_CONFIG.name) || 'rope-works-inspections';
-var DB_VERSION = (typeof DB_CONFIG !== 'undefined' && DB_CONFIG.version) || 9;
+// db-config.js MUST be loaded via importScripts BEFORE this script (see vite-pwa-config.ts).
+// If it isn't, refuse to open IndexedDB rather than guess a version — opening at a stale
+// version against a newer schema throws VersionError or, worse, can trigger downgrade attempts.
+var DB_CONFIG_OK = (typeof DB_CONFIG !== 'undefined' && DB_CONFIG && DB_CONFIG.name && typeof DB_CONFIG.version === 'number');
+var DB_NAME = DB_CONFIG_OK ? DB_CONFIG.name : null;
+var DB_VERSION = DB_CONFIG_OK ? DB_CONFIG.version : null;
+
+if (!DB_CONFIG_OK) {
+  console.error('[SW Sync] FATAL: db-config.js not loaded — sync handlers will no-op until next SW activation.');
+  // Fire-and-forget notify clients so the main thread can surface this in diagnostics.
+  try {
+    if (self.clients && self.clients.matchAll) {
+      self.clients.matchAll().then(function(clients) {
+        clients.forEach(function(c) {
+          try { c.postMessage({ type: 'SW_DB_CONFIG_MISSING' }); } catch (e) {}
+        });
+      }).catch(function() {});
+    }
+  } catch (e) {}
+}
+
+// Guard helper: every sync entry point calls this before touching IndexedDB.
+function dbConfigGuard(label) {
+  if (!DB_CONFIG_OK) {
+    console.warn('[SW Sync] Skipping ' + label + ' — db-config.js missing, refusing to open IDB at guessed version.');
+    return false;
+  }
+  return true;
+}
 
 // Supabase config constants
 var SUPABASE_URL = 'https://ssgzcgvygnsrqalisshx.supabase.co';
