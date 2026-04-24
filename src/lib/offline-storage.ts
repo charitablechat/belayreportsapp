@@ -573,7 +573,7 @@ async function ensureStorage(): Promise<void> {
  * sessionStorage survives the current tab session and lets diagnostics surface
  * "N records could not be saved this session." Cap at 20 entries (FIFO eviction).
  */
-type EmergencyFallbackFailure = {
+export type EmergencyFallbackFailure = {
   code: 'localstorage_quota' | 'localstorage_blocked' | 'localstorage_unknown';
   reportType: string;
   id: string;

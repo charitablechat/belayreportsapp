@@ -19,6 +19,8 @@ import {
   removePhotoUploadFailure,
   type DeadLetterSoftDelete,
   type PhotoUploadFailureEntry,
+  getEmergencyFallbackFailures,
+  type EmergencyFallbackFailure,
 } from '@/lib/offline-storage';
 import { retryDeadLetterSoftDelete } from '@/lib/queued-soft-delete-processor';
 import {
@@ -86,6 +88,8 @@ export const SyncDiagnosticsSheet = () => {
   const [busyConflictId, setBusyConflictId] = useState<string | null>(null);
   const [photoFailures, setPhotoFailures] = useState<PhotoUploadFailureEntry[]>([]);
   const [busyPhotoFailureId, setBusyPhotoFailureId] = useState<string | null>(null);
+  const [emergencyFailures, setEmergencyFailures] = useState<EmergencyFallbackFailure[]>([]);
+  const [copyingDiag, setCopyingDiag] = useState(false);
   const [diag, setDiag] = useState<DiagnosticsState>({
     swRegistered: false,
     swController: false,
@@ -118,6 +122,11 @@ export const SyncDiagnosticsSheet = () => {
     setEmptyLocalConflicts(conflicts);
     const failures = await listPhotoUploadFailures().catch(() => [] as PhotoUploadFailureEntry[]);
     setPhotoFailures(failures);
+    try {
+      setEmergencyFailures(getEmergencyFallbackFailures());
+    } catch {
+      setEmergencyFailures([]);
+    }
     setDiag({
       swRegistered,
       swController,
@@ -130,7 +139,16 @@ export const SyncDiagnosticsSheet = () => {
   };
 
   useEffect(() => {
-    if (open) void refresh();
+    if (!open) return;
+    void refresh();
+    const interval = setInterval(() => {
+      try {
+        setEmergencyFailures(getEmergencyFallbackFailures());
+      } catch {
+        /* ignore */
+      }
+    }, 5000);
+    return () => clearInterval(interval);
   }, [open]);
 
   // S39: best-effort resolve organization/title labels for held-back records.
@@ -305,6 +323,113 @@ export const SyncDiagnosticsSheet = () => {
                     }}
                   />
                 ))}
+              </div>
+            </div>
+          )}
+
+          {emergencyFailures.length > 0 && (
+            <div className="rounded-md border border-destructive/40 bg-destructive/10 backdrop-blur-xl p-3">
+              <h3 className="text-xs font-semibold uppercase tracking-wide text-destructive mb-1 flex items-center gap-1.5">
+                <AlertTriangle className="h-3.5 w-3.5" />
+                Records lost this session ({emergencyFailures.length})
+              </h3>
+              <p className="text-xs text-foreground/90 mb-3">
+                These records could not be saved to local storage. Reload may
+                clear them — copy/screenshot before reloading.
+              </p>
+              <div className="rounded-md border border-destructive/30 bg-background/40 divide-y divide-destructive/20 max-h-72 overflow-y-auto">
+                {emergencyFailures
+                  .slice()
+                  .reverse()
+                  .map((f, idx) => {
+                    const codeLabel =
+                      f.code === 'localstorage_quota'
+                        ? 'quota'
+                        : f.code === 'localstorage_blocked'
+                          ? 'blocked'
+                          : 'unknown';
+                    const badgeClass =
+                      f.code === 'localstorage_quota'
+                        ? 'bg-destructive/20 text-destructive border-destructive/40'
+                        : f.code === 'localstorage_blocked'
+                          ? 'bg-warning/20 text-warning-foreground border-warning/40'
+                          : 'bg-muted text-muted-foreground border-border';
+                    const kb = Math.max(1, Math.round(f.approxBytes / 1024));
+                    const idShort = (f.id || 'unknown').slice(0, 8);
+                    const ago = (() => {
+                      try {
+                        return formatDistanceToNow(new Date(f.ts), {
+                          addSuffix: true,
+                        });
+                      } catch {
+                        return '—';
+                      }
+                    })();
+                    return (
+                      <div
+                        key={`${f.ts}-${idx}`}
+                        className="px-2 py-1.5 text-xs flex items-center gap-2"
+                      >
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-1.5 flex-wrap">
+                            <span className="font-medium text-foreground truncate">
+                              {f.reportType} · {idShort}…
+                            </span>
+                            <span
+                              className={`inline-flex items-center rounded-full border px-1.5 py-0 text-[10px] font-semibold ${badgeClass}`}
+                            >
+                              {codeLabel}
+                            </span>
+                          </div>
+                          <div className="text-[10px] text-muted-foreground truncate">
+                            {f.operationName} · {ago}
+                          </div>
+                        </div>
+                        <div className="text-[10px] font-mono text-muted-foreground shrink-0">
+                          ~{kb} KB
+                        </div>
+                      </div>
+                    );
+                  })}
+              </div>
+              <div className="mt-2 flex justify-end">
+                <Button
+                  size="sm"
+                  variant="outline"
+                  disabled={copyingDiag}
+                  onClick={async () => {
+                    setCopyingDiag(true);
+                    const payload = JSON.stringify(emergencyFailures, null, 2);
+                    try {
+                      if (navigator.clipboard && window.isSecureContext) {
+                        await navigator.clipboard.writeText(payload);
+                        toast.success('Diagnostics copied to clipboard');
+                      } else {
+                        throw new Error('Clipboard API unavailable');
+                      }
+                    } catch {
+                      // Fallback: temporary textarea
+                      try {
+                        const ta = document.createElement('textarea');
+                        ta.value = payload;
+                        ta.style.position = 'fixed';
+                        ta.style.opacity = '0';
+                        document.body.appendChild(ta);
+                        ta.focus();
+                        ta.select();
+                        document.execCommand('copy');
+                        document.body.removeChild(ta);
+                        toast.success('Diagnostics copied to clipboard');
+                      } catch {
+                        toast.error('Could not copy — try a screenshot instead');
+                      }
+                    } finally {
+                      setTimeout(() => setCopyingDiag(false), 500);
+                    }
+                  }}
+                >
+                  Copy diagnostics
+                </Button>
               </div>
             </div>
           )}
