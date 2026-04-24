@@ -1645,6 +1645,10 @@ export async function saveInspectionOffline(
       if (opts?.childCountHint != null && opts.childCountHint >= 0) {
         inspection.child_count_hint = opts.childCountHint;
       }
+      // C3: stamp the dirty flag at every user-facing save. Authoritative
+      // "has unshipped edits" signal; only cleared by safePostSyncSave after
+      // a successful round-trip with no concurrent edit.
+      inspection.dirty = true;
       await db.put('inspections', inspection);
       if (import.meta.env.DEV) {
         console.log('[Offline Storage] Saved inspection:', inspection.id);
@@ -2936,6 +2940,8 @@ export async function saveDailyAssessmentOffline(
       if (opts?.childCountHint != null && opts.childCountHint >= 0) {
         assessment.child_count_hint = opts.childCountHint;
       }
+      // C3: stamp the dirty flag at every user-facing save.
+      assessment.dirty = true;
       await db.put('daily_assessments', assessment);
       if (import.meta.env.DEV) {
         console.log('[Offline Storage] Saved daily assessment:', assessment.id);
@@ -3279,6 +3285,8 @@ export async function saveTrainingOffline(
       if (opts?.childCountHint != null && opts.childCountHint >= 0) {
         training.child_count_hint = opts.childCountHint;
       }
+      // C3: stamp the dirty flag at every user-facing save.
+      training.dirty = true;
       await db.put('trainings', training);
       if (import.meta.env.DEV) {
         console.log('[Offline Storage] Saved training:', training.id);
