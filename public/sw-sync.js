@@ -371,6 +371,8 @@ async function syncInspectionWithTransaction(inspection, systems, ziplines, equi
 async function syncInspectionsAtomic() {
   console.log('[SW Atomic Sync] Starting atomic inspection sync...');
   
+  if (!dbConfigGuard('inspection sync')) return;
+  
   // Bug 7 fix: Skip sync if main thread clients are active (they handle sync better)
   const activeClients = await self.clients.matchAll({ type: 'window' });
   if (activeClients.length > 0) {
