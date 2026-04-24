@@ -661,13 +661,23 @@ export async function importReportBackup(input: string | File): Promise<{
         }
       }
     };
-    await verifyRestoreIntegrity(
-      reportType!,
-      reportId!,
-      snapshot!.parent,
-      reapplyAll,
-      { expectedChildren: snapshot!.children as Record<string, any[]> },
-    );
+    // N-C: verifier now throws on IDB read failure. The parent + children
+    // data was already written in steps 1-2, so a verify failure does NOT
+    // invalidate the restore — swallow it with a warning and keep going.
+    // Steps 3-5 (photo import, cloud upload, report-data-imported dispatch)
+    // MUST still run on verify failure; propagating the throw here would
+    // skip them and surface a misleading "Import failed" to the user.
+    try {
+      await verifyRestoreIntegrity(
+        reportType!,
+        reportId!,
+        snapshot!.parent,
+        reapplyAll,
+        { expectedChildren: snapshot!.children as Record<string, any[]> },
+      );
+    } catch (verifyErr) {
+      console.warn('[Backup Ledger] Post-import verification failed — data was restored but drift check could not complete:', verifyErr);
+    }
 
     // 3. Import photos from ZIP if present
     if (zipPhotoEntries.length > 0) {
