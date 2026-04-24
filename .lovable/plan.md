@@ -1,73 +1,57 @@
 
 
-## Why the badge is stuck at "1 pending"
+## Why "SYNC FAILED" still shows after Fix C
 
-**Not** a regression of fixes A/B/C. They worked. This is a separate, pre-existing logic bug that the cleaner logs now make obvious.
+### Root cause
 
-### The actual bug
+Fix C (last round) renamed the IDB-counts-read failure message to the soft string `"Stats refresh delayed — pending counts may be out of date"` in `useAutoSync.tsx:766`. **But it did not change the severity.** It writes to the same `syncError` field that `SyncPulse.tsx:72` treats as fatal:
 
-There are **two different quarantine systems** for daily assessments, and they disagree:
-
-1. **IDB quarantine** (`_remote_deleted_at` flag) — set when the server has soft-deleted a row but the local copy has unsynced edits. `getUnsyncedDailyAssessments` correctly **excludes** these via `isNotQuarantined` (line 3205 of `offline-storage.ts`).
-
-2. **Session quarantine** (`sync-quarantine.ts`, `sessionStorage`) — set after 3 consecutive failed sync attempts. `atomic-sync-manager.ts:2958` calls `filterQuarantined(unsynced)` which **drops** the record from the sync batch but **does not** flag it in IDB.
-
-Assessment `c24b6198-4a5...` is in **session quarantine, not IDB quarantine**. So the round-trip every cycle is:
-
-```
-getUnsyncedDailyAssessments      → returns [c24b6198]          (total: 1)
-filterQuarantined (in sync)      → drops c24b6198               (dropped: 1)
-sync proceeds with 0 records     → success
-getUnsyncedDailyAssessments      → still returns [c24b6198]    (total: 1)  ← badge stays "1 pending"
+```ts
+else if (syncError) phase = 'error';   // any truthy → SYNC FAILED
 ```
 
-The badge will stay at "1 pending" until either (a) end of UTC day when the session quarantine expires and the next sync attempt either succeeds or re-quarantines, or (b) the browser session ends. From the user's perspective: **permanent stuck badge, no way to act on it, no UI surface to tell them why.**
+So the soft message gets stamped with the hard red `SYNC FAILED` badge. The screenshot is the proof — soft message body, hard red header. The Fix C comment (`useAutoSync:760-762`) literally claims "the Sync Terminal still lights amber via the syncError truthy check" — but it actually lights red.
 
-### What's wrong about it
+Also, your task description asked me to ship Fix E + the SyncPulse Quarantined UI, but per the previous turn's summary and a confirmation read those **already shipped** (`src/lib/sync-quarantine.ts:115` exports `isQuarantined`; all three `getUnsynced*` import it; `SyncPulse.tsx:44-55` + `:212-235` render the Quarantined row + RETRY NOW). The two memory files are also already in place. Re-shipping would be duplicate work — what's left is the misclassification fix.
 
-A user-visible "pending" count should mean "things the system will try to sync." A session-quarantined record is, by design, **not going to be synced this session**. Counting it lies to the user and triggers the "Keep the app open" banner forever for an item that the app has already given up on.
+### Why this matters
 
-### Fix — small and contained
+- Users see **SYNC FAILED** + **LAST_SYNC: Never** for what is actually a successful sync with a delayed stats read.
+- Erodes trust in the sync indicator, same failure mode as the "stuck pending count" we fixed last round.
+- Defeats the purpose of Fix C (separating pipeline failure from stats hiccup).
 
-**Fix E — exclude session-quarantined records from the unsynced count.**
+### Fix F — separate severity from message
 
-Two parts:
+Two-field state instead of one:
 
-1. **`getUnsyncedDailyAssessments` / `getUnsyncedTrainings` / `getUnsyncedInspections`** (`src/lib/offline-storage.ts`): after the existing ownership + drift filter, drop any record whose `id` is currently quarantined per `sync-quarantine.isQuarantined(id)`. Keep the existing `isNotQuarantined(record)` IDB-flag check; this adds the session-flag check on top.
+1. **`useAutoSync.tsx`**: Add a `syncErrorSeverity: 'fatal' | 'soft' | null` to the state. Set `'soft'` when the counts read fails (current Fix C path). Set `'fatal'` in the existing error catch (`useAutoSync:670` etc.) where the actual sync pipeline blew up.
 
-2. **`sync-quarantine.ts`**: export a small `isQuarantined(id: string): boolean` helper that reads the session map and returns `true` only if `quarantinedUntil > Date.now()`. (Currently the file has `recordSyncFailure` / `filterQuarantined` but no single-id read.)
+2. **`PWAProvider` / `usePWA`**: Expose `syncErrorSeverity` alongside `syncError`. Existing consumers that only read `syncError` keep working.
 
-That's it. Once Fix E ships:
-- The badge drops to 0 the moment the assessment hits its 3rd failure.
-- The "Keep the app open" banner disappears.
-- The session quarantine still works exactly the same way inside the sync pipeline — we're only changing what the *count* surfaces.
+3. **`SyncPulse.tsx`**:
+   - Phase machine: `syncError && severity === 'fatal'` → `'error'` (red, SYNC FAILED). `syncError && severity === 'soft'` → keep current phase (synced/idle/unsynced) but render the message in the terminal in **amber**, not red.
+   - The terminal's `STATUS` row reflects phase. The `ERR:` row stays — but its color/styling moves from `text-red-400 bg-red-950/30` to `text-amber-400 bg-amber-950/20` when severity is soft.
+   - **`LAST_SYNC: Never`** is also wrong on this screen — it means `lastSyncTime` is null because no sync has succeeded *this session* in this account. Confirm: a soft stats hiccup must NOT clear `lastSyncTime`. Quick read confirms it doesn't get cleared anywhere in `useAutoSync` — `Never` is showing because the user genuinely hasn't completed a sync in this session yet (fresh load + counts read raced ahead). That's accurate, leave it.
 
-### Surface the quarantined record somewhere
-
-The user still has an assessment that the system has given up on. Right now there's no UI that tells them. Two options, pick one:
-
-- **(i) Cheap**: add a `quarantinedAssessmentCount` field to `usePWA` and surface it in the existing Sync Terminal sheet under a new line: `QUARANTINED 1 — sync paused until tomorrow (tap to retry now)`. Tap clears the session entry for that id and forces a sync.
-- **(ii) Proper**: extend `SyncDiagnosticsSheet` (already exists) to list quarantined ids with a per-row "Retry now" button. More code, better UX.
-
-Recommend **(i)** — uses existing UI surface, ~30 lines.
+4. **Other consumers** (`SyncStatusIndicator.tsx:71`): Same treatment — only show "Sync Failed" when `severity === 'fatal'`.
 
 ### Confirmation reads I want to do before writing code
 
-- `sync-quarantine.ts` lines 80–172 to confirm the cleanup/expiry semantics so `isQuarantined` matches them exactly.
-- `usePWA` / `useAutoSync` to see where `unsyncedCount` is composed for the badge.
-- `BackgroundSyncStatus.tsx` and `SyncPulse.tsx` for where to surface the quarantined count without crowding the layout.
+- `useAutoSync.tsx` lines 660-720 to find every site that sets `syncError` — each needs an explicit severity. (Stats-refresh = soft. Pipeline catch + per-batch failure aggregation = fatal. Per-record failures that already get retried = no syncError at all.)
+- `SyncStatusIndicator.tsx` line 71 + `BackgroundSyncStatus.tsx` to align the same severity rule across all surfaces.
+- `PWAProvider.tsx` to confirm the new field gets piped through and falls back safely (default `null`).
+
+### Memory updates
+
+- Update `mem://constraints/sync-terminal-error-classification`: replace "string-only fix" guidance with the two-field severity model. Pipeline failure = fatal red. Stats hiccup = soft amber. Quarantined records = neither (own surface).
 
 ### Out of scope this round
 
-- Why assessment `c24b6198-4a5...` is failing in the first place (could be schema, RLS, network, or a stale FK). Worth a separate look — `[Atomic Sync]` would have logged the failure 3 cycles ago. But fixing the root cause and fixing the misleading badge are independent.
-- The 146-suppressed-timeouts pattern in the current logs — same hot store as before; Fix A reduced it, but it's still elevated. Not the badge issue, separate quality-of-implementation work (Fix D candidate).
-
-### Memory updates after the fix
-
-- New: `mem://constraints/quarantine-vs-pending-count` documenting that session-quarantined items must not appear in the user-facing pending count.
-- Update `mem://architecture/unsynced-counts-coalescer` to add the session-quarantine filter rule.
+- Why the user lands on Dashboard with `LAST_SYNC: Never` — that's a fresh-load timing artifact, not a bug. The first sync hasn't completed yet when the terminal opens.
+- The 146-suppressed-timeouts pattern — same Fix D candidate as last round.
+- The underlying assessment failure (`c24b6198...`) — still tracked as a follow-up.
 
 ### Verdict
 
-Approve and I'll switch to default mode, do the three confirmation reads, ship Fix E + option (i) Sync Terminal surfacing, and leave the underlying assessment failure for a follow-up.
+Approve and I'll switch to default mode, do the three confirmation reads, then ship Fix F (severity field + amber soft styling in the two surfaces that read it). No work on Fix E or the Quarantined UI — already shipped.
 
