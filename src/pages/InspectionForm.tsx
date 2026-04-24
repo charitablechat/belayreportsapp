@@ -203,23 +203,54 @@ export default function InspectionForm() {
   const summaryRef = useRef(summary);
   useEffect(() => { summaryRef.current = summary; }, [summary]);
 
-  // Auto-populate next_inspection_date to one year after the inspection date
-  useEffect(() => {
-    if (!inspection?.inspection_date) return;
-    if (summary.next_inspection_date) return;
-    if (!summary.inspection_id && !summary.id) return;
-    
-    // Parse date components to avoid timezone shifts (YYYY-MM-DD)
-    const parts = inspection.inspection_date.split('-');
-    if (parts.length !== 3) return;
+  // Track whether the user has manually edited next_inspection_date this session.
+  // When true, inspection_date changes will NOT overwrite the user's choice.
+  const userTouchedNextDateRef = useRef(false);
+
+  // Helper: compute inspection_date + 1 year as a YYYY-MM-DD string (timezone-agnostic).
+  const computeNextInspectionDate = (inspectionDate: string | null | undefined): string | null => {
+    if (!inspectionDate) return null;
+    const parts = inspectionDate.split('-');
+    if (parts.length !== 3) return null;
     const year = parseInt(parts[0], 10);
     const month = parseInt(parts[1], 10) - 1;
     const day = parseInt(parts[2], 10);
+    if (isNaN(year) || isNaN(month) || isNaN(day)) return null;
     const nextDate = new Date(year + 1, month, day);
-    const nextDateStr = `${nextDate.getFullYear()}-${String(nextDate.getMonth() + 1).padStart(2, '0')}-${String(nextDate.getDate()).padStart(2, '0')}`;
-    
+    return `${nextDate.getFullYear()}-${String(nextDate.getMonth() + 1).padStart(2, '0')}-${String(nextDate.getDate()).padStart(2, '0')}`;
+  };
+
+  // On initial summary load: if the saved next_inspection_date doesn't match inspection_date + 1y,
+  // assume it was intentionally set (manual edit or imported value) — pin the flag so we don't overwrite.
+  const initialNextDateCheckedRef = useRef(false);
+  useEffect(() => {
+    if (initialNextDateCheckedRef.current) return;
+    if (!summary.inspection_id && !summary.id) return;
+    initialNextDateCheckedRef.current = true;
+    if (summary.next_inspection_date) {
+      const expected = computeNextInspectionDate(inspection?.inspection_date);
+      if (expected && summary.next_inspection_date !== expected) {
+        userTouchedNextDateRef.current = true;
+      }
+    }
+  }, [summary.inspection_id, summary.id, summary.next_inspection_date, inspection?.inspection_date]);
+
+  // Auto-track inspection_date + 1y unless the user has manually overridden the next-date field.
+  useEffect(() => {
+    if (!inspection?.inspection_date) return;
+    if (!summary.inspection_id && !summary.id) return;
+    if (userTouchedNextDateRef.current) return;
+    const nextDateStr = computeNextInspectionDate(inspection.inspection_date);
+    if (!nextDateStr) return;
+    if (summary.next_inspection_date === nextDateStr) return;
     setSummary(prev => ({ ...prev, next_inspection_date: nextDateStr }));
-  }, [inspection?.inspection_date, summary.next_inspection_date, summary.inspection_id, summary.id]);
+  }, [inspection?.inspection_date, summary.inspection_id, summary.id, summary.next_inspection_date]);
+
+  // Called by SummarySection when the user directly interacts with the next-date picker.
+  // `cleared` = true when the field was emptied (resume auto-tracking on next inspection_date change).
+  const handleNextDateUserEdit = useCallback((cleared: boolean) => {
+    userTouchedNextDateRef.current = !cleared;
+  }, []);
 
   // Completion lock derived values (after report state is declared)
   const isCompletionLocked = inspection?.status === 'completed' && !completionLockOverridden;
