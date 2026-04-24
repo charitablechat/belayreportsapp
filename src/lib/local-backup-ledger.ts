@@ -36,7 +36,7 @@ export interface ReportSnapshot {
   synced: boolean;
   device: 'mobile' | 'desktop';
   parent: Record<string, unknown>;
-  children: Record<string, unknown[]>;
+  children: Record<string, Record<string, unknown>[]>;
   photoMetadata?: PhotoMetadataEntry[];
 }
 
