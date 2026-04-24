@@ -28,8 +28,9 @@ export const SYNC_DRIFT_TOLERANCE_MS = 30_000;
  * Standardized on `>` (strictly greater than tolerance ⇒ outside tolerance) so
  * a record with drift exactly equal to the tolerance is treated as synced.
  * This matches the operator already used by the hottest path
- * (`getUnsyncedCounts` in `offline-storage.ts`) and prevents future call sites
- * from picking the opposite operator (`<=` vs `>`) and silently disagreeing.
+ * (the `getUnsynced{Inspections,Trainings,DailyAssessments}` readers in
+ * `offline-storage.ts`) and prevents future call sites from picking the
+ * opposite operator (`<=` vs `>`) and silently disagreeing.
  */
 export function exceedsDriftTolerance(aMs: number, bMs: number): boolean {
   return Math.abs(aMs - bMs) > SYNC_DRIFT_TOLERANCE_MS;
