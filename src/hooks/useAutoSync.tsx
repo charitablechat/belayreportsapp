@@ -403,7 +403,7 @@ export const useAutoSync = () => {
         }
         clearTimeout(safetyTimeoutHandle);
         // Always refresh counts so badge reflects reality (fixes stale badge after circuit breaker)
-        updateUnsyncedCounts().catch(() => {});
+        updateUnsyncedCounts({ force: true }).catch(() => {});
         // S34: No work happened — skip the photo-count broadcast. The 5-min
         // safety tick in useUnsyncedPhotos handles any out-of-band drift.
         setState(prev => ({ ...prev, isSyncing: false, lastSyncTime: new Date() }));
@@ -490,7 +490,7 @@ export const useAutoSync = () => {
         
         if (!allFetchesFailed) {
           // Refresh unsynced counts (non-blocking)
-          updateUnsyncedCounts().catch(() => {});
+          updateUnsyncedCounts({ force: true }).catch(() => {});
 
           // S34: Tally photo changes from this cycle. The photo result is the
           // 4th entry returned by the parallel pipeline above.
@@ -673,7 +673,7 @@ export const useAutoSync = () => {
       inFlightSyncRef.current = null;
       resolveInFlight();
       // Always refresh unsynced counts so the badge is accurate after every sync attempt
-      updateUnsyncedCounts().catch(() => {});
+      updateUnsyncedCounts({ force: true }).catch(() => {});
       // S34: Only broadcast if real photo state changed during this cycle.
       // The post-sync block above also dispatches on the success path; this
       // finally-block fallback covers error/timeout paths where some photo
@@ -688,19 +688,40 @@ export const useAutoSync = () => {
    * Update unsynced counts from IndexedDB.
    * S11: When the IDB read fails, preserve the last-known counts and surface
    * a syncError instead of silently zeroing the badge.
+   *
+   * H1: Coalesced + rate-limited. The underlying readers do `db.getAll()` +
+   * JS filter, which is O(N) and runs against iOS's 5s IDB timeout. Hot
+   * call sites (post-save, online, visibility, sync-complete, S33 resume)
+   * can easily fire 10-20x/min on busy super-admin devices with 500+ rows.
+   * Three layers of throttling:
+   *   1. In-flight dedup — concurrent callers share the same Promise.
+   *   2. Min-gap (1500ms) — back-to-back calls beyond the in-flight window
+   *      are debounced into a single trailing read.
+   *   3. Fresh-cache short-circuit (5s) — within the freshness window we
+   *      return immediately without touching IDB. State is already up to
+   *      date from the previous read.
+   * Callers that genuinely need a fresh read (e.g. post-sync) can pass
+   * `{ force: true }` to bypass the freshness window (still respects the
+   * in-flight dedup + min-gap).
    */
-  const updateUnsyncedCounts = useCallback(async () => {
+  const inFlightCountsRef = useRef<Promise<void> | null>(null);
+  const lastCountsRunRef = useRef<number>(0);
+  const pendingCountsTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const COUNTS_MIN_GAP_MS = 1500;
+  const COUNTS_FRESHNESS_MS = 5000;
+
+  const doUpdateUnsyncedCounts = useCallback(async (): Promise<void> => {
     try {
       const user = await getUserWithCache();
       if (!user) return;
-      
+
       const { isIdbReadFailure } = await import('@/lib/offline-storage');
       const [insp, train, assess] = await Promise.all([
         getUnsyncedInspections(user.id),
         getUnsyncedTrainings(user.id),
         getUnsyncedDailyAssessments(user.id),
       ]);
-      
+
       const anyFailed = isIdbReadFailure(insp) || isIdbReadFailure(train) || isIdbReadFailure(assess);
       if (anyFailed) {
         const failure = [insp, train, assess].find(isIdbReadFailure) as { error: string } | undefined;
@@ -711,12 +732,12 @@ export const useAutoSync = () => {
         }));
         return;
       }
-      
+
       const inspections = insp as any[];
       const trainings = train as any[];
       const assessments = assess as any[];
       const total = inspections.length + trainings.length + assessments.length;
-      
+
       setState(prev => ({
         ...prev,
         unsyncedCount: total,
@@ -725,7 +746,7 @@ export const useAutoSync = () => {
         unsyncedAssessments: assessments,
         syncError: null,
       }));
-      
+
       if (import.meta.env.DEV && total > 0) {
         console.log('[AutoSync] Unsynced count:', total);
       }
@@ -733,6 +754,41 @@ export const useAutoSync = () => {
       console.error('[AutoSync] Error updating unsynced counts:', error);
     }
   }, []);
+
+  const updateUnsyncedCounts = useCallback((opts?: { force?: boolean }): Promise<void> => {
+    // 1. Share any in-flight read.
+    if (inFlightCountsRef.current) return inFlightCountsRef.current;
+
+    const now = Date.now();
+    const sinceLast = now - lastCountsRunRef.current;
+
+    // 3. Fresh-cache short-circuit (skipped when force=true).
+    if (!opts?.force && sinceLast < COUNTS_FRESHNESS_MS) {
+      return Promise.resolve();
+    }
+
+    // 2. Min-gap rate limit. If a trailing-edge timer is already armed,
+    // a follow-up tick will pick up the latest state — no new timer needed.
+    if (pendingCountsTimerRef.current) {
+      return inFlightCountsRef.current ?? Promise.resolve();
+    }
+
+    const delay = Math.max(0, COUNTS_MIN_GAP_MS - sinceLast);
+    const promise = new Promise<void>((resolve) => {
+      pendingCountsTimerRef.current = setTimeout(async () => {
+        pendingCountsTimerRef.current = null;
+        try {
+          await doUpdateUnsyncedCounts();
+        } finally {
+          lastCountsRunRef.current = Date.now();
+          inFlightCountsRef.current = null;
+          resolve();
+        }
+      }, delay);
+    });
+    inFlightCountsRef.current = promise;
+    return promise;
+  }, [doUpdateUnsyncedCounts]);
   
   /**
    * Debounced sync trigger - call this after local data changes
@@ -1023,7 +1079,7 @@ export const useAutoSync = () => {
       if (navigator.onLine) {
         performSync(true);
       }
-      updateUnsyncedCounts();
+      updateUnsyncedCounts({ force: true });
     }, INITIAL_SYNC_DELAY);
     
     // Event listeners
