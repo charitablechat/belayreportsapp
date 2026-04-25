@@ -47,13 +47,31 @@ export function getReportDate(report: ReportLike, type: string): string {
 /**
  * Get the assignee/inspector/trainer display name for a report.
  */
-export function getAssigneeName(report: ReportLike, type: string): string {
-  if (type === 'training') {
-    const t = report.trainer;
-    return t ? `${t.first_name || ''} ${t.last_name || ''}`.trim() || 'Unknown' : 'Unknown';
+export interface ProfileLike {
+  first_name?: string | null;
+  last_name?: string | null;
+}
+
+export function getAssigneeName(
+  report: ReportLike,
+  type: string,
+  profilesById?: ReadonlyMap<string, ProfileLike> | null,
+): string {
+  const join = type === 'training' ? (report as any).trainer : (report as any).inspector;
+  const fromJoin = join
+    ? `${join.first_name || ''} ${join.last_name || ''}`.trim()
+    : '';
+  if (fromJoin) return fromJoin;
+
+  const inspectorId = (report as any).inspector_id as string | undefined;
+  if (profilesById && typeof inspectorId === 'string') {
+    const p = profilesById.get(inspectorId);
+    if (p) {
+      const name = `${p.first_name || ''} ${p.last_name || ''}`.trim();
+      if (name) return name;
+    }
   }
-  const i = report.inspector;
-  return i ? `${i.first_name || ''} ${i.last_name || ''}`.trim() || 'Unknown' : 'Unknown';
+  return 'Unknown';
 }
 
 /**

@@ -68,7 +68,8 @@ export function useDashboardFilters(
   reports: any[],
   type: string,
   currentUserId: string | null,
-  isSuperAdmin: boolean = false
+  isSuperAdmin: boolean = false,
+  profilesById?: ReadonlyMap<string, { first_name: string | null; last_name: string | null }> | null,
 ) {
   const [filters, setFilters] = useState<DashboardFilterState>({
     search: '',
@@ -155,7 +156,7 @@ export function useDashboardFilters(
       filtered = filtered.filter(r =>
         getOrganization(r).toLowerCase().includes(q) ||
         getLocation(r).toLowerCase().includes(q) ||
-        getAssigneeName(r, type).toLowerCase().includes(q)
+        getAssigneeName(r, type, profilesById ?? undefined).toLowerCase().includes(q)
       );
     }
 
@@ -266,7 +267,7 @@ export function useDashboardFilters(
         case 'title-az':
           return getOrganization(a).localeCompare(getOrganization(b));
         case 'assignee':
-          return getAssigneeName(a, type).localeCompare(getAssigneeName(b, type));
+          return getAssigneeName(a, type, profilesById ?? undefined).localeCompare(getAssigneeName(b, type, profilesById ?? undefined));
         default:
           return 0;
       }
@@ -347,7 +348,7 @@ export function useDashboardFilters(
             break;
           }
           case 'assignee':
-            key = getAssigneeName(r, type);
+            key = getAssigneeName(r, type, profilesById ?? undefined);
             break;
           case 'region':
             key = getRegion(r);
@@ -405,7 +406,7 @@ export function useDashboardFilters(
       criticalCount: criticalItems.length,
       warningCount: warningItems.length,
     };
-  }, [reports, filters, type, currentUserId, isSuperAdmin, completedCollapsed, collapsedGroups]);
+  }, [reports, filters, type, currentUserId, isSuperAdmin, completedCollapsed, collapsedGroups, profilesById]);
 
   return {
     filters,

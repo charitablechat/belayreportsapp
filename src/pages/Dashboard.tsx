@@ -23,6 +23,7 @@ import { format, differenceInDays } from "date-fns";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { ReportCard } from "@/components/dashboard/ReportCard";
+import { useProfileMap } from "@/hooks/useProfileMap";
 import { ReportCardSkeleton } from "@/components/dashboard/ReportCardSkeleton";
 /* TEMPORARY FEATURE: Known Issues */
 import { KnownIssuesCard } from "@/components/dashboard/KnownIssuesCard";
@@ -127,6 +128,15 @@ export default function Dashboard() {
   const [trainingsValidated, setTrainingsValidated] = useState(false);
   const [dailyValidated, setDailyValidated] = useState(false);
   const dataValidated = inspectionsValidated && trainingsValidated && dailyValidated;
+
+  // Build a unified inspector_id → profile map so cards can resolve names
+  // even when locally-saved IDB rows lost the `inspector` / `trainer` join.
+  const profilesById = useProfileMap(
+    useMemo(
+      () => [...inspections, ...trainings, ...dailyAssessments],
+      [inspections, trainings, dailyAssessments],
+    ),
+  );
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [inspectionToDelete, setInspectionToDelete] = useState<any>(null);
   const [reportToDelete, setReportToDelete] = useState<any>(null);
@@ -1802,6 +1812,7 @@ export default function Dashboard() {
                   setDeleteDialogOpen={setDeleteDialogOpen}
                   invoicedReportIds={invoicedReportIds}
                   onToggleInvoiced={handleToggleInvoiced}
+                  profilesById={profilesById}
                 />
               );
             })()}

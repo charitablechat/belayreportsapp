@@ -150,6 +150,7 @@ interface DashboardReportsSectionProps {
   invoicedReportIds?: Set<string>;
   onToggleInvoiced?: (report: any, type: DashboardReportType) => void;
   invoicedCount?: number;
+  profilesById?: ReadonlyMap<string, { first_name: string | null; last_name: string | null; avatar_url: string | null }>;
 }
 
 export function DashboardReportsSection({
@@ -182,6 +183,7 @@ export function DashboardReportsSection({
   invoicedReportIds,
   onToggleInvoiced,
   invoicedCount,
+  profilesById,
 }: DashboardReportsSectionProps) {
   const [showFilters, setShowFilters] = useState(false);
   const [compact, setCompact] = useState(false);
@@ -253,7 +255,7 @@ export function DashboardReportsSection({
     filteredCount,
     criticalCount,
     warningCount,
-  } = useDashboardFilters(currentReports, currentType, currentUserId, isSuperAdmin);
+  } = useDashboardFilters(currentReports, currentType, currentUserId, isSuperAdmin, profilesById);
 
   // Compute stats from full datasets (not sliced "Recent" arrays)
   const statsData = useMemo(() => {
@@ -520,6 +522,7 @@ export function DashboardReportsSection({
               onDelete={(r) => handleDeleteForType(r, 'inspection')}
               onClick={(r) => handleClick(r, 'inspection')}
               getStatusBadge={getStatusBadge}
+              profilesById={profilesById}
             />
           )}
 
@@ -533,6 +536,7 @@ export function DashboardReportsSection({
               viewMode={filters.viewMode}
               onDelete={(r) => handleDeleteForType(r, 'training')}
               onClick={(r) => handleClick(r, 'training')}
+              profilesById={profilesById}
             />
           )}
 
@@ -546,6 +550,7 @@ export function DashboardReportsSection({
               viewMode={filters.viewMode}
               onDelete={(r) => handleDeleteForType(r, 'daily')}
               onClick={(r) => handleClick(r, 'daily')}
+              profilesById={profilesById}
             />
           )}
         </div>
@@ -661,6 +666,7 @@ export function DashboardReportsSection({
                                         isAdmin={isSuperAdmin}
                                         isInvoiced={invoicedReportIds?.has(report.id)}
                                         onToggleInvoiced={onToggleInvoiced}
+                                        profilesById={profilesById}
                                       />
                                     );
                                   })}
@@ -694,6 +700,7 @@ export function DashboardReportsSection({
                                     isAdmin={isSuperAdmin}
                                     isInvoiced={invoicedReportIds?.has(report.id)}
                                     onToggleInvoiced={onToggleInvoiced}
+                                    profilesById={profilesById}
                                   />
                                 );
                               })}
@@ -731,9 +738,10 @@ interface CrossTabSectionProps {
   onDelete: (report: any) => void;
   onClick: (report: any) => void;
   getStatusBadge?: (report: any) => React.ReactNode;
+  profilesById?: ReadonlyMap<string, { first_name: string | null; last_name: string | null; avatar_url: string | null }>;
 }
 
-function CrossTabSection({ label, icon, reports, type, compact, viewMode, onDelete, onClick, getStatusBadge }: CrossTabSectionProps) {
+function CrossTabSection({ label, icon, reports, type, compact, viewMode, onDelete, onClick, getStatusBadge, profilesById }: CrossTabSectionProps) {
   const gridClass = cn(
     "grid md:grid-cols-2 lg:grid-cols-3",
     compact ? "gap-2" : "gap-4"
@@ -763,6 +771,7 @@ function CrossTabSection({ label, icon, reports, type, compact, viewMode, onDele
               onClick={onClick}
               getStatusBadge={type === 'inspection' ? getStatusBadge : undefined}
               compact={compact}
+              profilesById={profilesById}
             />
           ))}
         </div>

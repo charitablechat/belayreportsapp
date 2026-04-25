@@ -63,9 +63,10 @@ interface ReportCardProps {
   isAdmin?: boolean;
   isInvoiced?: boolean;
   onToggleInvoiced?: (report: any, type: 'inspection' | 'training' | 'daily') => void;
+  profilesById?: ReadonlyMap<string, { first_name: string | null; last_name: string | null; avatar_url: string | null }>;
 }
 
-export function ReportCard({ report, type, onDelete, onClick, getStatusBadge, compact, isAdmin, isInvoiced, onToggleInvoiced }: ReportCardProps) {
+export function ReportCard({ report, type, onDelete, onClick, getStatusBadge, compact, isAdmin, isInvoiced, onToggleInvoiced, profilesById }: ReportCardProps) {
   useMinuteTick(); // F2: re-render every 60s so "Edited X ago" stays current
   const { sparkles, triggerSparkles, handleMouseMove } = useClickAndHoverSparkles();
   const isInspection = type === 'inspection';
@@ -88,34 +89,42 @@ export function ReportCard({ report, type, onDelete, onClick, getStatusBadge, co
     return null;
   };
 
+  // Resolve from cached profile map when the row's join was stripped
+  // (e.g. after a local save / offline first paint).
+  const fallbackProfile = (() => {
+    const id = report?.inspector_id;
+    if (typeof id === 'string' && profilesById) return profilesById.get(id) || null;
+    return null;
+  })();
+
   const getInspectorName = () => {
-    // For training reports, try trainer profile first, then trainer_of_record field
+    // For training reports, try trainer profile first, then fallback map, then trainer_of_record
     if (type === 'training') {
-      const firstName = report.trainer?.first_name || '';
-      const lastName = report.trainer?.last_name || '';
+      const firstName = report.trainer?.first_name || fallbackProfile?.first_name || '';
+      const lastName = report.trainer?.last_name || fallbackProfile?.last_name || '';
       const trainerName = `${firstName} ${lastName}`.trim();
       return trainerName || report.trainer_of_record || 'Unknown';
     }
-    
-    // For daily assessments, try inspector profile first, then trainer_of_record field
+
+    // For daily assessments, try inspector profile first, then fallback, then trainer_of_record
     if (type === 'daily') {
-      const firstName = report.inspector?.first_name || '';
-      const lastName = report.inspector?.last_name || '';
+      const firstName = report.inspector?.first_name || fallbackProfile?.first_name || '';
+      const lastName = report.inspector?.last_name || fallbackProfile?.last_name || '';
       const inspectorName = `${firstName} ${lastName}`.trim();
       return inspectorName || report.trainer_of_record || 'Unknown';
     }
-    
-    // For inspections, use inspector profile
-    const firstName = report.inspector?.first_name || '';
-    const lastName = report.inspector?.last_name || '';
+
+    // For inspections
+    const firstName = report.inspector?.first_name || fallbackProfile?.first_name || '';
+    const lastName = report.inspector?.last_name || fallbackProfile?.last_name || '';
     return `${firstName} ${lastName}`.trim() || 'Unknown';
   };
 
   const getInspectorAvatar = () => {
     if (type === 'training') {
-      return report.trainer?.avatar_url || null;
+      return report.trainer?.avatar_url || fallbackProfile?.avatar_url || null;
     }
-    return report.inspector?.avatar_url || null;
+    return report.inspector?.avatar_url || fallbackProfile?.avatar_url || null;
   };
 
   const getInspectorInitials = () => {
