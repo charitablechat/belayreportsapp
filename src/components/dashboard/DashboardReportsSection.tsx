@@ -183,6 +183,7 @@ export function DashboardReportsSection({
   invoicedReportIds,
   onToggleInvoiced,
   invoicedCount,
+  profilesById,
 }: DashboardReportsSectionProps) {
   const [showFilters, setShowFilters] = useState(false);
   const [compact, setCompact] = useState(false);
