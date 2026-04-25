@@ -8,6 +8,12 @@ pnpm-debug.log*
 lerna-debug.log*
 
 node_modules
+
+# Playwright e2e artifacts (regenerated on every run)
+/test-results/
+/playwright-report/
+/blob-report/
+/playwright/.cache/
 dist
 dist-ssr
 *.local
