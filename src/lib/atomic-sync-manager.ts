@@ -109,6 +109,50 @@ import type { MergeableRecord } from "./field-merge";
 // ─── internal type aliases ──────────────────────────────────────────────────
 /** Opaque DB row (child tables prefetched for rollback; we only ever spread or length-check them). */
 type DbRow = Record<string, unknown>;
+
+/**
+ * IDB-only fields that must NEVER be sent to Supabase. PostgREST rejects any
+ * unknown column with `Could not find the 'X' column of 'Y' in the schema
+ * cache`, which surfaces here as a fatal `Step N failed:` error in
+ * `executeTransaction`, which then tears down the entire offline → online
+ * reconcile path with `Transaction failed after 0/N steps`.
+ *
+ * These fields are stamped onto the in-IDB row by `saveInspectionOffline` /
+ * `saveTrainingOffline` / `saveDailyAssessmentOffline` for sync-state
+ * tracking and are intentionally local-only (no corresponding column has
+ * ever shipped in `supabase/migrations/`).
+ *
+ * Add to this list whenever a new IDB-only field is introduced on parent
+ * records. Joined relation objects (`inspector`, `trainer`, etc.) keep
+ * being stripped via per-call destructure because they vary by table.
+ */
+const LOCAL_ONLY_REMOTE_UPSERT_FIELDS = [
+  'dirty',            // C3 (v17): "has unshipped edits" sync flag, IDB-only
+  'child_count_hint', // S25: child-count snapshot for empty-local guard, IDB-only
+] as const;
+
+type LocalOnlyKey = (typeof LOCAL_ONLY_REMOTE_UPSERT_FIELDS)[number];
+
+function stripLocalOnlyFields<T extends Record<string, unknown>>(
+  row: T,
+): Omit<T, LocalOnlyKey> {
+  const out: Record<string, unknown> = {};
+  for (const k of Object.keys(row)) {
+    if (!(LOCAL_ONLY_REMOTE_UPSERT_FIELDS as readonly string[]).includes(k)) {
+      out[k] = row[k];
+    }
+  }
+  return out as Omit<T, LocalOnlyKey>;
+}
+
+/**
+ * Test-only export so the unit suite in
+ * `__tests__/strip-local-only-upsert-fields.test.ts` can exercise the
+ * helper directly without spinning the full transaction manager.
+ * Production code must NOT import this — call sites use the in-module
+ * `stripLocalOnlyFields` reference.
+ */
+export const __test_only__stripLocalOnlyFields = stripLocalOnlyFields;
 /** Shape of the `align_synced_at` RPC response. Both branches are optional — the
  * call is advisory and can return either a normal `{ updated_at }` payload or
  * an `{ error }` envelope. */
@@ -860,14 +904,19 @@ export async function syncInspectionAtomic(inspectionId: string, preValidatedUse
       : null;
     
     // Step 1: Upsert inspection WITHOUT setting synced_at (defer to final step)
-    // This ensures synced_at is only set after ALL related data is committed
+    // This ensures synced_at is only set after ALL related data is committed.
+    // Strip IDB-only fields (`dirty`, `child_count_hint`) so PostgREST does
+    // not reject the upsert with a schema-cache miss — the entire transaction
+    // would otherwise fail with `Step 1 failed: Could not find the 'dirty'
+    // column of 'inspections' in the schema cache`, leaving every offline
+    // edit dead-lettered on the device.
     steps.push({
       table: 'inspections',
       operation: 'upsert',
-      data: {
+      data: stripLocalOnlyFields({
         ...inspectionWithoutJoin,
         // DO NOT set synced_at here - it will be set in the final step
-      },
+      }),
       rollbackData,
     });
     
@@ -1827,14 +1876,16 @@ export async function syncTrainingAtomic(trainingId: string, preValidatedUser?: 
       : null;
     
     // Step 1: Upsert training WITHOUT setting synced_at (defer to final step)
-    // This ensures synced_at is only set after ALL related data is committed
+    // This ensures synced_at is only set after ALL related data is committed.
+    // Strip IDB-only fields — see the inspections call site for the full
+    // rationale. Same schema-cache failure mode applies to `trainings`.
     steps.push({
       table: 'trainings',
       operation: 'upsert',
-      data: {
+      data: stripLocalOnlyFields({
         ...trainingWithoutJoin,
         // DO NOT set synced_at here - it will be set in the final step
-      },
+      }),
       rollbackData,
     });
     
@@ -2659,14 +2710,16 @@ export async function syncDailyAssessmentAtomic(assessmentId: string, preValidat
       : null;
     
     // Step 1: Upsert assessment WITHOUT setting synced_at (defer to final step)
-    // This ensures synced_at is only set after ALL related data is committed
+    // This ensures synced_at is only set after ALL related data is committed.
+    // Strip IDB-only fields — see the inspections call site for the full
+    // rationale. Same schema-cache failure mode applies to `daily_assessments`.
     steps.push({
       table: 'daily_assessments',
       operation: 'upsert',
-      data: {
+      data: stripLocalOnlyFields({
         ...assessmentWithoutJoin,
         // DO NOT set synced_at here - it will be set in the final step
-      },
+      }),
       rollbackData,
     });
     
