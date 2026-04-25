@@ -735,9 +735,10 @@ interface CrossTabSectionProps {
   onDelete: (report: any) => void;
   onClick: (report: any) => void;
   getStatusBadge?: (report: any) => React.ReactNode;
+  profilesById?: ReadonlyMap<string, { first_name: string | null; last_name: string | null; avatar_url: string | null }>;
 }
 
-function CrossTabSection({ label, icon, reports, type, compact, viewMode, onDelete, onClick, getStatusBadge }: CrossTabSectionProps) {
+function CrossTabSection({ label, icon, reports, type, compact, viewMode, onDelete, onClick, getStatusBadge, profilesById }: CrossTabSectionProps) {
   const gridClass = cn(
     "grid md:grid-cols-2 lg:grid-cols-3",
     compact ? "gap-2" : "gap-4"
@@ -767,6 +768,7 @@ function CrossTabSection({ label, icon, reports, type, compact, viewMode, onDele
               onClick={onClick}
               getStatusBadge={type === 'inspection' ? getStatusBadge : undefined}
               compact={compact}
+              profilesById={profilesById}
             />
           ))}
         </div>
