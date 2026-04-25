@@ -522,6 +522,7 @@ export function DashboardReportsSection({
               onDelete={(r) => handleDeleteForType(r, 'inspection')}
               onClick={(r) => handleClick(r, 'inspection')}
               getStatusBadge={getStatusBadge}
+              profilesById={profilesById}
             />
           )}
 
