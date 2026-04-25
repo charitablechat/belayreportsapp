@@ -406,7 +406,7 @@ export function useDashboardFilters(
       criticalCount: criticalItems.length,
       warningCount: warningItems.length,
     };
-  }, [reports, filters, type, currentUserId, isSuperAdmin, completedCollapsed, collapsedGroups]);
+  }, [reports, filters, type, currentUserId, isSuperAdmin, completedCollapsed, collapsedGroups, profilesById]);
 
   return {
     filters,
