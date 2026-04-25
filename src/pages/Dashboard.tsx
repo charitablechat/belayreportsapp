@@ -128,6 +128,15 @@ export default function Dashboard() {
   const [trainingsValidated, setTrainingsValidated] = useState(false);
   const [dailyValidated, setDailyValidated] = useState(false);
   const dataValidated = inspectionsValidated && trainingsValidated && dailyValidated;
+
+  // Build a unified inspector_id → profile map so cards can resolve names
+  // even when locally-saved IDB rows lost the `inspector` / `trainer` join.
+  const profilesById = useProfileMap(
+    useMemo(
+      () => [...inspections, ...trainings, ...dailyAssessments],
+      [inspections, trainings, dailyAssessments],
+    ),
+  );
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [inspectionToDelete, setInspectionToDelete] = useState<any>(null);
   const [reportToDelete, setReportToDelete] = useState<any>(null);
