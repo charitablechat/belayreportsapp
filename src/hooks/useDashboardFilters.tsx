@@ -156,7 +156,7 @@ export function useDashboardFilters(
       filtered = filtered.filter(r =>
         getOrganization(r).toLowerCase().includes(q) ||
         getLocation(r).toLowerCase().includes(q) ||
-        getAssigneeName(r, type).toLowerCase().includes(q)
+        getAssigneeName(r, type, profilesById ?? undefined).toLowerCase().includes(q)
       );
     }
 
