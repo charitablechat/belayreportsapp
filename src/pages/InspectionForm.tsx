@@ -1506,6 +1506,22 @@ export default function InspectionForm() {
       return;
     }
     anySaveInProgressRef.current = true;
+    // Deadlock recovery: if `performSave` hangs longer than this, force-release
+    // the mutex so subsequent saves can proceed. `performSave`'s own
+    // `try/finally` (line 2057) is the normal release path; this is the
+    // break-glass for hung awaits (e.g. a Supabase request on a half-open
+    // TCP connection that never resolves, or stalled IDB upgrades).
+    // Sized comfortably above the largest legitimate budget:
+    // - getDB Promise.race timeout: 5s
+    // - withOfflineTimeout local fallback: 2s
+    // - Supabase per-query timeout: 8s
+    // - syncWithRetry: 3 retries with 2s+4s backoff = ~14s including network
+    // 30s leaves headroom for the 14s sync path plus IDB writes; anything
+    // longer is a genuine deadlock.
+    const performSaveDeadlockTimer = setTimeout(() => {
+      console.error('[InspectionForm] performSave deadlock recovery: mutex held >30s, force-releasing');
+      anySaveInProgressRef.current = false;
+    }, 30000);
     try {
       // Best-effort user lookup for last_modified_by — never blocks save
       // Matches TrainingForm/DailyAssessmentForm pattern: local saves always succeed
@@ -2054,6 +2070,7 @@ export default function InspectionForm() {
       setSaveError({ message: error.message || 'Failed to save', code: error?.code });
       throw error;
     } finally {
+      clearTimeout(performSaveDeadlockTimer);
       anySaveInProgressRef.current = false;
     }
   };
