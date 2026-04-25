@@ -8,9 +8,21 @@ const SUPABASE_PUBLISHABLE_KEY = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY;
 // Import the supabase client like this:
 // import { supabase } from "@/integrations/supabase/client";
 
+// `localStorage` is referenced lazily so that this module can be imported
+// in non-browser execution contexts (vitest's vite-node module-graph
+// evaluation between jsdom test files; SSR; build-time analysis) without
+// triggering `ReferenceError: localStorage is not defined`. In the
+// browser, Supabase's auth module reads `auth.storage` synchronously
+// during the first session call, which always happens after the DOM
+// is ready, so the runtime behaviour is unchanged.
+const browserLocalStorage =
+  typeof globalThis !== 'undefined' && 'localStorage' in globalThis
+    ? (globalThis as { localStorage?: Storage }).localStorage
+    : undefined;
+
 export const supabase = createClient<Database>(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY, {
   auth: {
-    storage: localStorage,
+    storage: browserLocalStorage,
     persistSession: true,
     autoRefreshToken: true,
   }
