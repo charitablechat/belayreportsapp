@@ -1,80 +1,58 @@
-# Dashboard report count discrepancy (51 → 44)
+# Fix "Unknown" inspector names on dashboard cards (Option B)
 
-## 1. What the user is seeing
+## What's wrong (confirmed)
 
-- The Inspections card and tab label sometimes show **51**, sometimes **44**.
-- The number is not random — it reliably "drops" to 44 after the app talks to the server, and "rises" to 51 again later (e.g. after a refresh on a slower connection, or when offline).
+- The database **has** the names. Direct query returned `Luke Benton` for the pink draft cards and `Test Account` for the `[E2E DEVIN]` card.
+- `ReportCard.getInspectorName()` reads `report.inspector.first_name` / `report.inspector.last_name`. That `inspector` field only exists when the row was just fetched by `Dashboard.loadInspections` (which adds `inspector:profiles!...` to the select).
+- Every other writer to the inspections IDB store — `InspectionForm` (every save tick), `useAutoSync.safePostSyncSave`, `atomic-sync-manager`, `local-backup-ledger`, restore tools — passes the bare row with **no** `inspector` field, overwriting the join.
+- Dashboard renders stale-while-revalidate from IDB first, so during/after editing a draft the card sees `report.inspector === undefined` → falls through to `'Unknown'`.
 
-## 2. Which number is correct?
+## Fix (Option B — non-mutating, profile lookup map)
 
-**44 is the true count.** Direct query against the live database:
+A small `Map<inspector_id, ProfileData>` is built at the dashboard level, seeded from any rows that already carry the join, and lazily filled from the existing `getCachedProfile` for ids that don't. The map is passed down to the cards and to the assignee resolver so the display name no longer depends on whether the IDB row happens to carry the join.
 
-```
-active inspections (deleted_at IS NULL): 44
-soft-deleted (deleted_at IS NOT NULL):   22
-grand total rows:                        66
-```
+### Files changed
 
-The server holds 44 active inspections for the current view. The 51 shown locally is **stale cache** that includes 7 inspections which were soft-deleted on the server but never removed from this device's local copy.
+1. **`src/hooks/useProfileMap.tsx`** *(new)*
+   - `useProfileMap(reports)` returns `Map<inspector_id, ProfileData>`.
+   - Synchronous seed: walks `reports` and stores `{ first_name, last_name, avatar_url }` for every row that has `row.trainer` (trainings) or `row.inspector` (inspections / daily).
+   - Async fill: for any `inspector_id` still missing, calls `getCachedProfile(id)` (in-memory → localStorage → DB w/ 5s timeout — already implemented). Triggers a single re-render once all missing profiles are resolved.
 
-## 3. Why it fluctuates (mechanism)
+2. **`src/lib/report-utils.ts`**
+   - Extend `getAssigneeName(report, type, profilesById?: Map<string, { first_name?, last_name? }>)`.
+   - When `report.inspector` / `report.trainer` join is missing, fall back to `profilesById.get(report.inspector_id)`. Final fallback stays `'Unknown'`.
 
-The dashboard uses a "stale-while-revalidate" load:
+3. **`src/components/dashboard/ReportCard.tsx`**
+   - Add optional `profilesById?: Map<string, ProfileData>` prop.
+   - `getInspectorName`, `getInspectorAvatar`, `getInspectorInitials` look up `profilesById.get(report.inspector_id)` whenever the row's join is empty.
+   - No visual changes when the map is absent — still shows `'Unknown'` (backwards compatible).
 
-```text
-                ┌──────────────────────┐
-   open page →  │ 1. Read local cache  │ → render immediately (shows 51)
-                └──────────┬───────────┘
-                           │
-                           ▼
-                ┌──────────────────────┐
-                │ 2. Fetch from server │ → render again      (shows 44)
-                └──────────┬───────────┘
-                           │
-                           ▼
-                ┌──────────────────────┐
-                │ 3. Save server rows  │  ← BUG: only ADDS / UPDATES.
-                │    back into cache   │     Never REMOVES rows the
-                └──────────────────────┘     server no longer returns.
-```
+4. **`src/components/dashboard/DashboardReportsSection.tsx`**
+   - Add optional `profilesById` to props; thread it into the three `<ReportCard ... />` call sites (two in main list, one in `CrossTabSection`).
+   - Pass it into `useDashboardFilters` so sort-by-assignee uses the resolved name.
 
-Code path:
+5. **`src/hooks/useDashboardFilters.tsx`**
+   - Accept optional `profilesById` and pass it through to `getAssigneeName(...)` calls used in search and the `assignee` sort comparator.
 
-- `src/pages/Dashboard.tsx` → `loadInspections()` reads `getOfflineInspections()` first (cache → **51**), then fetches Supabase (server → **44**), then writes each server row back into IndexedDB.
-- `src/lib/offline-storage.ts` → `getOfflineInspections()` returns every IDB row whose `deleted_at` is null and is `isNotQuarantined`. Locally-soft-deleted rows are filtered, but **server-soft-deleted rows are not**, because nothing in this load path tells the cache "these 7 rows no longer exist remotely."
-- The "remote-deleted" quarantine flag (`_remote_deleted_at`) is only set during the active sync pipeline (`atomic-sync-manager`), not during the dashboard read. So if a row is deleted server-side from another device while sync isn't actively touching it, the local cache keeps it forever.
+6. **`src/pages/Dashboard.tsx`**
+   - Build one shared map: `const profilesById = useProfileMap(useMemo(() => [...inspections, ...trainings, ...dailyAssessments], [inspections, trainings, dailyAssessments]))`.
+   - Pass `profilesById` to `<DashboardReportsSection />`.
 
-Result: every page load briefly shows the cached 51, then snaps to the authoritative 44 once the network response lands. Offline, you stay at 51 indefinitely.
+## Why this works for every "Unknown" path
 
-## 4. Fix plan
+- **Locally edited draft after a save** — IDB row lost the join → map still has it from any prior server fetch; otherwise `getCachedProfile` resolves the user and updates the map.
+- **First paint from cold IDB cache (offline)** — `getCachedProfile` reads `localStorage` (`cached_profile_<id>`) which `useUserProfile` and prior network calls have already populated for the signed-in user.
+- **Other inspectors on a super-admin dashboard** — the join from any successful `loadInspections` round seeds those ids into the map; reloads keep them resolved across renders because `mapRef` is stable.
+- **No DB or schema changes.** No row mutation. No regressions for existing rows that already have the join — they continue to render exactly as today.
 
-Reconcile the local cache against the server response inside `loadInspections` (and the matching `loadTrainings` / `loadDailyAssessments`) so that rows the server no longer returns are quarantined locally instead of lingering.
+## Out of scope
 
-### Implementation
+- Changing the sync/save writers to preserve the `inspector` join (would be invasive across 8+ call sites and add stale-profile risk).
+- Backfilling old IDB rows with profile data.
 
-1. **`src/pages/Dashboard.tsx` — `loadInspections` (and the two siblings)**
-   After a successful server fetch, diff the server row IDs against the local IDB IDs *for the same owner scope* (current user, or all users for super-admin). For each local row that is missing from the server response and is **already synced** (`synced_at` set, `dirty !== true`, no `temp-` id), mark it as remote-deleted by setting `_remote_deleted_at` + `_quarantine_reason = 'missing_from_server'`. This reuses the existing `isNotQuarantined` filter, so the next render immediately drops them.
+## Verification after the fix
 
-2. **Safety guards (do not delete user work):**
-   - Skip rows with `dirty === true`, `synced_at` missing, or `id` starting with `temp-` — those are unsynced local edits and must stay visible until the sync pipeline resolves them (consistent with the existing ownership / session-quarantine rules in `useAutoSync`).
-   - Only run the diff when the network fetch actually succeeded and returned a non-null array (already gated on `networkData && networkData.length > 0`); never reconcile from an empty/failed response.
-   - Only consider local rows in the same scope the server query covered (super-admin → all; regular user → `inspector_id === userId`).
-
-3. **Existing GC keeps working:** `_remote_deleted_at` rows are already swept after 30 days by `maybeRunQuarantineGc` (see `mem://architecture/quarantine-gc`), so this does not grow IDB unbounded.
-
-4. **No schema or RLS change required** — server already authoritative; this is purely a client cache reconciliation fix.
-
-### Files to change
-
-- `src/pages/Dashboard.tsx` — add a `reconcileDeletedAgainstServer(localRows, serverRows, scope)` helper used inside `loadInspections`, `loadTrainings`, and `loadDailyAssessments` right after a successful network fetch, before the existing per-row `saveInspectionOffline` background write.
-- `src/lib/offline-storage.ts` — add a small `markRemoteDeleted(store, id, reason)` helper that stamps `_remote_deleted_at` + `_quarantine_reason` (parallel to the existing quarantine writes used by `atomic-sync-manager`).
-
-### Verification after the fix
-
-- Reload the dashboard online: count should immediately settle on **44** and stay there (no flash to 51).
-- Go offline, reload: still **44** (cache reconciled on previous online load).
-- Confirm no unsynced drafts disappear: any row with `dirty: true`, missing `synced_at`, or a `temp-` id remains visible.
-
-## Non-technical summary
-
-Your device keeps a local copy of reports so the dashboard is fast and works offline. When reports get deleted on the server from another device, your local copy was not being told to drop them — so it kept showing 51, then briefly corrected itself to 44 every time the server replied. The fix is to compare the server's list with the local copy on every successful load and quietly retire the leftovers (while protecting any unsynced work). After the fix, the count will be **44** consistently, online or offline.
+- Open dashboard online with drafts in IDB → cards show real names immediately (synchronous seed).
+- Hard-refresh offline → cards show real names (resolved from `localStorage` profile cache).
+- Edit a draft, return to dashboard → name stays correct (was previously the regression trigger).
+- Sort-by-assignee groups by resolved name, not by `'Unknown'`.
