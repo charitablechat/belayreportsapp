@@ -1419,6 +1419,24 @@ async function withIndexedDBErrorBoundary<T>(
 
 export async function getDB() {
   if (!dbPromise) {
+    // Race-safety: assign `dbPromise` SYNCHRONOUSLY before any `await` so
+    // that parallel callers in the same tick share one in-flight open
+    // instead of each starting their own openDB chain. Previously the
+    // body used `await ensureStorage()` (and `await detectExistingDBVersion`,
+    // `await createPreMigrationSnapshot`) before the `dbPromise = …`
+    // assignment, so 6 callers from
+    // `Promise.all([saveInspectionOffline, …5×saveRelatedDataOffline])`
+    // (InspectionForm.tsx:1633-1676 offline-save fan-out) each saw
+    // `dbPromise === null`, each entered the if-branch, each opened a
+    // separate connection at v18, and each fired its own 5s timeout —
+    // observed as 4-6 consecutive
+    // `[Offline Storage] IndexedDB open timed out after 5s` warnings
+    // during the scope-C offline-edit reproduction (blocker #3).
+    //
+    // Wrapping the whole body in an IIFE makes the assignment atomic
+    // with respect to other JS turns: subsequent callers see the
+    // in-flight promise via the truthy `dbPromise` check and await it.
+    dbPromise = (async () => {
     // Ensure storage is available before opening DB (non-blocking)
     await ensureStorage();
     
@@ -1835,56 +1853,18 @@ export async function getDB() {
 
     // RC-3: Use 8s timeout on mobile (Safari bfcache restore + iPad cold boot can take 5-6s)
     const DB_OPEN_TIMEOUT = isMobile() ? 8000 : 5000;
-    dbPromise = Promise.race([
-      openDBV8WithTimeout(),
-      new Promise<never>((_, reject) => 
-        setTimeout(() => {
-          console.warn(`[Offline Storage] IndexedDB open timed out after ${DB_OPEN_TIMEOUT / 1000}s`);
-          reject(new Error('IndexedDB open timed out'));
-        }, DB_OPEN_TIMEOUT)
-      )
-    ]).then(async (db) => {
-      // Phase 5 — post-upgrade fingerprint validation.
-      if (upgradeStartTs > 0 && migrationSafety) {
-        try {
-          const expected = [
-            { storeName: 'inspections', indexes: ['by-status', 'by-synced'] },
-            { storeName: 'operations' },
-            { storeName: 'photos', indexes: ['by-inspection', 'by-uploaded'] },
-            { storeName: 'inspection_systems', indexes: ['by-inspection'] },
-            { storeName: 'inspection_ziplines', indexes: ['by-inspection'] },
-            { storeName: 'inspection_equipment', indexes: ['by-inspection'] },
-            { storeName: 'inspection_standards', indexes: ['by-inspection'] },
-            { storeName: 'inspection_summary', indexes: ['by-inspection'] },
-            { storeName: 'daily_assessments', indexes: ['by-status', 'by-synced'] },
-            { storeName: 'trainings', indexes: ['by-status', 'by-synced'] },
-            { storeName: 'report_backups', indexes: ['by-report', 'by-timestamp'] },
-            { storeName: 'report_versions', indexes: ['by-report', 'by-timestamp', 'by-report-version'] },
-            { storeName: 'autocomplete_history', indexes: ['by-field-type', 'by-synced'] },
-            { storeName: 'equipment_type_cache', indexes: ['by-category'] },
-            { storeName: 'dead_letter_soft_deletes' },
-          ];
-          const fp = await migrationSafety.validateSchemaFingerprint(
-            db as unknown as IDBPDatabase,
-            expected,
-          );
-          await migrationSafety.recordMigrationOutcome({
-            dbName: DB_NAME,
-            fromVersion: upgradeFromVersion,
-            toVersion: DB_VERSION,
-            ok: true,
-            durationMs: Date.now() - upgradeStartTs,
-            fingerprintMissing: fp.ok ? undefined : fp.missing,
-          });
-          if (!fp.ok && import.meta.env.DEV) {
-            console.warn('[Offline Storage] Post-upgrade fingerprint mismatch:', fp.missing);
-          }
-        } catch (err) {
-          console.warn('[Offline Storage] post-upgrade validation failed:', err);
-        }
-      }
-      return db;
-    }).catch(error => {
+    let db: IDBPDatabase<InspectionDB>;
+    try {
+      db = await Promise.race([
+        openDBV8WithTimeout(),
+        new Promise<never>((_, reject) =>
+          setTimeout(() => {
+            console.warn(`[Offline Storage] IndexedDB open timed out after ${DB_OPEN_TIMEOUT / 1000}s`);
+            reject(new Error('IndexedDB open timed out'));
+          }, DB_OPEN_TIMEOUT)
+        ),
+      ]);
+    } catch (error) {
       console.error('[Offline Storage] Failed to open IndexedDB:', error);
       // Phase 5 — record the failure so the recovery UI can offer rollback.
       if (upgradeStartTs > 0 && migrationSafety) {
@@ -1905,7 +1885,50 @@ export async function getDB() {
       }
       dbPromise = null; // Reset so next attempt can retry
       throw error;
-    });
+    }
+
+    // Phase 5 — post-upgrade fingerprint validation.
+    if (upgradeStartTs > 0 && migrationSafety) {
+      try {
+        const expected = [
+          { storeName: 'inspections', indexes: ['by-status', 'by-synced'] },
+          { storeName: 'operations' },
+          { storeName: 'photos', indexes: ['by-inspection', 'by-uploaded'] },
+          { storeName: 'inspection_systems', indexes: ['by-inspection'] },
+          { storeName: 'inspection_ziplines', indexes: ['by-inspection'] },
+          { storeName: 'inspection_equipment', indexes: ['by-inspection'] },
+          { storeName: 'inspection_standards', indexes: ['by-inspection'] },
+          { storeName: 'inspection_summary', indexes: ['by-inspection'] },
+          { storeName: 'daily_assessments', indexes: ['by-status', 'by-synced'] },
+          { storeName: 'trainings', indexes: ['by-status', 'by-synced'] },
+          { storeName: 'report_backups', indexes: ['by-report', 'by-timestamp'] },
+          { storeName: 'report_versions', indexes: ['by-report', 'by-timestamp', 'by-report-version'] },
+          { storeName: 'autocomplete_history', indexes: ['by-field-type', 'by-synced'] },
+          { storeName: 'equipment_type_cache', indexes: ['by-category'] },
+          { storeName: 'dead_letter_soft_deletes' },
+        ];
+        const fp = await migrationSafety.validateSchemaFingerprint(
+          db as unknown as IDBPDatabase,
+          expected,
+        );
+        await migrationSafety.recordMigrationOutcome({
+          dbName: DB_NAME,
+          fromVersion: upgradeFromVersion,
+          toVersion: DB_VERSION,
+          ok: true,
+          durationMs: Date.now() - upgradeStartTs,
+          fingerprintMissing: fp.ok ? undefined : fp.missing,
+        });
+        if (!fp.ok && import.meta.env.DEV) {
+          console.warn('[Offline Storage] Post-upgrade fingerprint mismatch:', fp.missing);
+        }
+      } catch (err) {
+        console.warn('[Offline Storage] post-upgrade validation failed:', err);
+      }
+    }
+
+    return db;
+    })();
   }
   return dbPromise;
 }
