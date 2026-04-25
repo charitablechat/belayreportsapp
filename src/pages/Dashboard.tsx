@@ -23,6 +23,7 @@ import { format, differenceInDays } from "date-fns";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { ReportCard } from "@/components/dashboard/ReportCard";
+import { useProfileMap } from "@/hooks/useProfileMap";
 import { ReportCardSkeleton } from "@/components/dashboard/ReportCardSkeleton";
 /* TEMPORARY FEATURE: Known Issues */
 import { KnownIssuesCard } from "@/components/dashboard/KnownIssuesCard";
