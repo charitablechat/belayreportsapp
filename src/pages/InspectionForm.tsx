@@ -2076,7 +2076,9 @@ export default function InspectionForm() {
       saveDebounceTimerRef.current = null;
     }
     
-    anySaveInProgressRef.current = true;
+    // `anySaveInProgressRef` is owned exclusively by `performSave`
+    // (acquire on entry, release in `finally`). Wrapper-level race
+    // protection is provided by `autoSaving`/`saving`.
     setAutoSaving(true);
     
     // Safety timeout - NEVER get stuck in autoSaving state
@@ -2117,7 +2119,9 @@ export default function InspectionForm() {
   const autoSaveProgress = async () => {
     if (!hasUnsavedChanges || saving || autoSaving || anySaveInProgressRef.current) return;
     
-    anySaveInProgressRef.current = true;
+    // `anySaveInProgressRef` is owned exclusively by `performSave`
+    // (acquire on entry, release in `finally`). Wrapper-level race
+    // protection is provided by `autoSaving`/`saving`.
     setAutoSaving(true);
     
     // Safety timeout - NEVER get stuck in autoSaving state
