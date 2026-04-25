@@ -150,6 +150,7 @@ interface DashboardReportsSectionProps {
   invoicedReportIds?: Set<string>;
   onToggleInvoiced?: (report: any, type: DashboardReportType) => void;
   invoicedCount?: number;
+  profilesById?: ReadonlyMap<string, { first_name: string | null; last_name: string | null; avatar_url: string | null }>;
 }
 
 export function DashboardReportsSection({
