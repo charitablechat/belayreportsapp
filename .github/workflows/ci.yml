@@ -14,10 +14,16 @@ on:
   push:
     branches: [main]
 
-# Cancel previous runs on the same ref when a new commit lands.
+# Cancel previous runs on the same PR when a new commit lands (saves CI
+# minutes on rapid feature-branch pushes), but NEVER cancel an in-progress
+# run on `main`. If two main-push commits land back-to-back (e.g. a
+# Lovable regeneration plus a maintainer hotfix) we want both runs to
+# complete so the green/red signal on each commit is preserved — otherwise
+# a transient breaking commit can be silently masked by the cancelled
+# run's "cancelled" status, which is neither pass nor fail.
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   typecheck:
