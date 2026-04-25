@@ -33,7 +33,6 @@ export function viteDbVersionCheck(): Plugin {
         );
       }
 
-      // eslint-disable-next-line no-console
       console.log(`[db-version-check] ✓ DB version parity OK (v${dbConfigVersion})`);
     },
   };

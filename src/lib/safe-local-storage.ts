@@ -66,7 +66,6 @@ export function safeSetItem(
     const approxBytes = (key?.length ?? 0) * 2 + (value?.length ?? 0) * 2;
 
     // Always log — operational signal
-    // eslint-disable-next-line no-console
     console.error('[safeSetItem] FAILED', {
       key,
       scope: opts.scope,
