@@ -47,6 +47,7 @@ import { usePWA } from "@/hooks/usePWA";
 import { usePullToRefresh } from "@/hooks/usePullToRefresh";
 import { getOfflineInspections, deleteOfflineInspection, queueOperation, queueTrainingOperation, queueAssessmentOperation, saveInspectionOffline, getOfflineTrainings, saveTrainingOffline, deleteOfflineTraining, getOfflineDailyAssessments, saveDailyAssessmentOffline, deleteOfflineDailyAssessment, getOfflineInspection, getOfflineTraining, getOfflineDailyAssessment, clearRelatedDataOffline, clearTrainingDataOffline, clearAssessmentDataOffline } from "@/lib/offline-storage";
 import { shouldPreserveLocalRecord } from "@/lib/local-data-guards";
+import { reconcileServerDeletions } from "@/lib/reconcile-server-deletions";
 import { ContactDeveloperSheet } from "@/components/ContactDeveloperSheet";
 import { onSyncComplete, isSyncInProgress, consumePendingDashboardRefresh, consumeDashboardStaleTimestamp } from "@/lib/sync-events";
 import { InspectionsEmptyState, TrainingsEmptyState, DailyAssessmentsEmptyState } from "@/components/EmptyState";
@@ -787,7 +788,16 @@ export default function Dashboard() {
         if (networkData && networkData.length > 0) {
           setInspections(networkData);
           writeDashboardCache('dashboard-cache-inspections', networkData);
-          
+
+          // Reconcile: quarantine local rows the server no longer returns,
+          // so the cached count cannot drift above the authoritative count.
+          reconcileServerDeletions({
+            table: 'inspections',
+            localRows: offlineData,
+            serverRows: networkData,
+            userId,
+            isSuperAdmin,
+          }).catch(err => console.warn('[Dashboard] inspections reconcile failed:', err));
           // Background save to offline storage (fire-and-forget)
           // Stamp synced_at so localIsNewer guard knows this is server-sourced data
           const now = new Date().toISOString();
@@ -980,7 +990,14 @@ export default function Dashboard() {
         if (networkData && networkData.length > 0) {
           setTrainings(networkData);
           writeDashboardCache('dashboard-cache-trainings', networkData);
-          
+
+          reconcileServerDeletions({
+            table: 'trainings',
+            localRows: offlineData,
+            serverRows: networkData,
+            userId,
+            isSuperAdmin,
+          }).catch(err => console.warn('[Dashboard] trainings reconcile failed:', err));
           const nowT = new Date().toISOString();
           Promise.all(networkData.map(async (training) => {
             const localRecord = await getOfflineTraining(training.id);
@@ -1157,7 +1174,14 @@ export default function Dashboard() {
         if (networkData && networkData.length > 0) {
           setDailyAssessments(networkData);
           writeDashboardCache('dashboard-cache-daily', networkData);
-          
+
+          reconcileServerDeletions({
+            table: 'daily_assessments',
+            localRows: offlineData,
+            serverRows: networkData,
+            userId,
+            isSuperAdmin,
+          }).catch(err => console.warn('[Dashboard] assessments reconcile failed:', err));
           const nowA = new Date().toISOString();
           Promise.all(networkData.map(async (assessment) => {
             const localRecord = await getOfflineDailyAssessment(assessment.id);
