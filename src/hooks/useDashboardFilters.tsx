@@ -348,7 +348,7 @@ export function useDashboardFilters(
             break;
           }
           case 'assignee':
-            key = getAssigneeName(r, type);
+            key = getAssigneeName(r, type, profilesById ?? undefined);
             break;
           case 'region':
             key = getRegion(r);
