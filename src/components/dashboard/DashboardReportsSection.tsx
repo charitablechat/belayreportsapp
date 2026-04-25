@@ -536,6 +536,7 @@ export function DashboardReportsSection({
               viewMode={filters.viewMode}
               onDelete={(r) => handleDeleteForType(r, 'training')}
               onClick={(r) => handleClick(r, 'training')}
+              profilesById={profilesById}
             />
           )}
 
