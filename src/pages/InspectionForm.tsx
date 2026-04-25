@@ -2081,11 +2081,14 @@ export default function InspectionForm() {
     // protection is provided by `autoSaving`/`saving`.
     setAutoSaving(true);
     
-    // Safety timeout - NEVER get stuck in autoSaving state
+    // Safety timeout - NEVER get stuck in autoSaving UI state.
+    // Does NOT touch `anySaveInProgressRef` — that mutex is owned by
+    // `performSave`. Releasing it here would race with a concurrent
+    // wrapper whose `performSave` early-returned (mutex held by another
+    // run): its `finally` would prematurely clear the live mutex.
     const safetyTimeout = setTimeout(() => {
       console.warn('[InspectionForm] triggerImmediateSave safety timeout reached, forcing state reset');
       setAutoSaving(false);
-      anySaveInProgressRef.current = false;
     }, 8000);
     
     try {
@@ -2104,7 +2107,7 @@ export default function InspectionForm() {
     } finally {
       clearTimeout(safetyTimeout);
       setAutoSaving(false);
-      anySaveInProgressRef.current = false;
+      // `anySaveInProgressRef` is NOT cleared here — owned by `performSave`.
     }
   };
 
@@ -2124,11 +2127,11 @@ export default function InspectionForm() {
     // protection is provided by `autoSaving`/`saving`.
     setAutoSaving(true);
     
-    // Safety timeout - NEVER get stuck in autoSaving state
+    // Safety timeout - NEVER get stuck in autoSaving UI state.
+    // Does NOT touch `anySaveInProgressRef` — owned by `performSave`.
     const safetyTimeout = setTimeout(() => {
       console.warn('[InspectionForm] autoSaveProgress safety timeout reached, forcing state reset');
       setAutoSaving(false);
-      anySaveInProgressRef.current = false;
     }, 8000);
     
     try {
@@ -2145,7 +2148,7 @@ export default function InspectionForm() {
     } finally {
       clearTimeout(safetyTimeout);
       setAutoSaving(false);
-      anySaveInProgressRef.current = false;
+      // `anySaveInProgressRef` is NOT cleared here — owned by `performSave`.
     }
   };
 
@@ -2164,12 +2167,12 @@ export default function InspectionForm() {
     setSaving(true);
     setSaveError(null);
 
-    // Safety timeout - ensure saving state is cleared after max 8 seconds (reduced from 30)
+    // Safety timeout - ensure saving UI state is cleared after max 8 seconds.
+    // Does NOT touch `anySaveInProgressRef` — owned by `performSave`.
     const safetyTimeout = setTimeout(() => {
       console.warn('[InspectionForm] Safety timeout reached, forcing save state reset');
       setSaving(false);
       saveInProgressRef.current = false;
-      anySaveInProgressRef.current = false;
     }, 8000);
 
     try {
