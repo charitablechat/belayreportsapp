@@ -1446,7 +1446,20 @@ export async function getDB() {
     // Wrapping the whole body in an IIFE makes the assignment atomic
     // with respect to other JS turns: subsequent callers see the
     // in-flight promise via the truthy `dbPromise` check and await it.
+    //
+    // The outer try/catch is required because the IIFE is assigned to
+    // `dbPromise` synchronously: if any line BEFORE the inner
+    // `Promise.race` try/catch throws (e.g. `await ensureStorage()`
+    // raising `SecurityError` from `localStorage.getItem(...)` on Safari
+    // private browsing or sandboxed iframes), the IIFE rejects but
+    // `dbPromise` would otherwise stay set to the rejected promise
+    // forever — a rejected `Promise` is truthy, so every subsequent
+    // `getDB()` call would skip the `if (!dbPromise)` guard and return
+    // the same stale rejection. Resetting `dbPromise = null` in the
+    // outer catch before re-throwing restores the pre-IIFE recovery
+    // contract: a transient open failure does not poison the cache.
     dbPromise = (async () => {
+    try {
     // Ensure storage is available before opening DB (non-blocking)
     await ensureStorage();
     
@@ -1888,7 +1901,11 @@ export async function getDB() {
           localStorage.setItem('idb-migration-rollback-available', '1');
         } catch { /* ignore */ }
       }
-      dbPromise = null; // Reset so next attempt can retry
+      // dbPromise reset handled by the outer catch around the IIFE so the
+      // reset and re-throw are synchronous within the same async function;
+      // resetting here as well risks racing with a fresh `dbPromise` that a
+      // parallel caller may have just installed during the microtask gap
+      // between this re-throw and the outer catch.
       throw error;
     }
 
@@ -1933,6 +1950,17 @@ export async function getDB() {
     }
 
     return db;
+    } catch (error) {
+      // Reset the cache before re-throwing so the next `getDB()` caller
+      // can retry. Without this, transient pre-`Promise.race` failures
+      // (e.g. `ensureStorage()` raising `SecurityError` on Safari
+      // private browsing or in sandboxed iframes) would leave
+      // `dbPromise` set to a rejected promise — truthy on the
+      // `if (!dbPromise)` check, returned as-is on every subsequent
+      // call, permanently breaking offline storage for the session.
+      dbPromise = null;
+      throw error;
+    }
     })();
   }
   return dbPromise;
