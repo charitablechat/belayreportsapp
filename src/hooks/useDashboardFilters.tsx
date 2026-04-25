@@ -267,7 +267,7 @@ export function useDashboardFilters(
         case 'title-az':
           return getOrganization(a).localeCompare(getOrganization(b));
         case 'assignee':
-          return getAssigneeName(a, type).localeCompare(getAssigneeName(b, type));
+          return getAssigneeName(a, type, profilesById ?? undefined).localeCompare(getAssigneeName(b, type, profilesById ?? undefined));
         default:
           return 0;
       }
