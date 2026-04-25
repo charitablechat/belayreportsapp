@@ -11,7 +11,7 @@ Defined in `.github/workflows/ci.yml`. Runs on:
 - every `pull_request` (cancels previous runs on the same PR)
 - every `push` to `main` (does **not** cancel previous runs — see below)
 
-Jobs:
+Jobs currently defined on `main`:
 
 | Job | Purpose |
 |---|---|
@@ -19,7 +19,10 @@ Jobs:
 | `lint:any-budget gate` | Enforces the per-file `any` budget (see `scripts/lint-any-budget.mjs` and `.eslint-any-budget`) |
 | `vitest` | Unit + integration tests in jsdom |
 | `vite build (incl. db-version parity check)` | Production build; vite plugin fails if `public/db-config.js` and `src/lib/offline-storage.ts` disagree on the IDB version number |
-| `playwright e2e (smoke + auth + offline-edit-reconcile)` | All Playwright scopes in one run; auth-gated specs `test.skip` at runtime when the secrets below are missing |
+
+A `playwright e2e (smoke + auth + offline-edit-reconcile)` job is queued
+to land via PR #23. Once that PR merges and the job appears in a real
+CI run, it should be added to the required-status-checks list below.
 
 A second workflow, `.github/workflows/main-broken-alert.yml`, listens
 for the CI workflow's completion via `workflow_run` and opens a labelled
@@ -70,13 +73,17 @@ Recommended rules for `main`:
 - **Require a pull request before merging.** Disables direct pushes from
   any non-admin contributor (including bots like `gpt-engineer-app`,
   i.e. Lovable). All changes flow through a PR with CI as a gate.
-- **Require status checks to pass before merging.** Mark the following
-  as required:
-  - `tsc --noEmit`
-  - `vitest`
-  - `lint:any-budget gate`
-  - `vite build (incl. db-version parity check)`
-  - `playwright e2e (smoke + auth + offline-edit-reconcile)`
+- **Require status checks to pass before merging.** Add every job
+  defined in `.github/workflows/ci.yml` that has actually reported a
+  status on at least one prior PR/push (currently `tsc --noEmit`,
+  `vitest`, `lint:any-budget gate`, and `vite build (incl. db-version
+  parity check)`; once PR #23 merges, also `playwright e2e (smoke +
+  auth + offline-edit-reconcile)`). 
+
+  > Important: GitHub treats a required status check that has never
+  > reported as perpetually "pending" and blocks every PR from
+  > merging. Only add a check name to this list **after** you've seen
+  > it appear in at least one CI run on the repo.
 - **Require branches to be up to date before merging.** Forces a rebase
   if main has moved since the PR was opened, so the merge commit's CI
   reflects the actual main + PR diff.
