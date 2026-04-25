@@ -302,6 +302,19 @@ export default function SuperAdminDashboard() {
     enabled: !loading,
   });
 
+  // Build a unified inspector_id → profile map across all three report types so
+  // table cells can resolve a name even when the joined `inspector` / `trainer`
+  // blob was stripped on a local IDB write. Hook handles synchronous seed from
+  // available joins plus lazy fill via getCachedProfile.
+  const allReportsForProfileMap = useMemo(
+    () => [
+      ...((allInspections as any[]) || []),
+      ...((allTrainings as any[]) || []),
+      ...((allDailyAssessments as any[]) || []),
+    ],
+    [allInspections, allTrainings, allDailyAssessments],
+  );
+  const profilesById = useProfileMap(allReportsForProfileMap);
 
   // Push subscriptions query
   const { data: subscriptions } = useQuery({
