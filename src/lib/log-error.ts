@@ -30,6 +30,19 @@ export function logError(err: unknown, ctx: LogContext = {}): void {
   // eslint-disable-next-line no-console
   console.error("[logError]", payload);
 
+  // Forward to Sentry (best-effort; production-only inside the helper).
+  try {
+    void import("@/lib/sentry").then(({ captureException }) => {
+      captureException(err, {
+        scope: ctx.scope,
+        userId: ctx.userId,
+        ...(ctx.extra ?? {}),
+      });
+    });
+  } catch {
+    /* swallow — logging must never throw */
+  }
+
   // Forward to backend audit_logs (best-effort; never block caller)
   try {
     void import("@/integrations/supabase/client").then(({ supabase }) => {

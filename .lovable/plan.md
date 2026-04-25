@@ -1,71 +1,43 @@
-## Root cause
+# Add Sentry Error Monitoring
 
-When a regular user (inspector or trainer) deletes their own report, the app performs a "soft delete" by `UPDATE`-ing the row with `deleted_at`, `deleted_by`, and `retention_until`. Two database-level problems combine to break this for non-admins:
+Integrate `@sentry/react` for production error tracking using the provided DSN.
 
-### Problem 1 — `is_super_admin()` is wrong
+## What gets added
 
-```sql
-CREATE FUNCTION public.is_super_admin() ...
-  SELECT EXISTS (
-    SELECT 1 FROM public.user_roles
-    WHERE user_id = auth.uid() AND role = 'admin'   -- ← bug
-  )
-```
+**1. Dependency**
+- `@sentry/react`
 
-It checks for role `'admin'` but the enum has both `'admin'` and `'super_admin'`. This means:
+**2. New file: `src/lib/sentry.ts`**
+- Exports `initSentry()` that calls `Sentry.init({ ... })` with:
+  - DSN: `https://0432eff5c29b88a4c841c4560f7f3072@o4511277693927424.ingest.us.sentry.io/4511277721190400` (publishable, safe to commit)
+  - `enabled: import.meta.env.PROD` — skip dev/preview noise
+  - `release` set to the auto-generated `APP_VERSION` (already exposed via `vite-auto-version.ts`)
+  - `environment` derived from hostname (production vs preview)
+  - `sendDefaultPii: true` (matches Sentry's suggested snippet)
+  - No tracing, no replay, no logs, no metrics — error monitoring only
+- Also exports a small helper `captureException(err, ctx?)` so other modules can report without importing Sentry directly.
 
-- True super-admins (`role = 'super_admin'`) are NOT recognized and lose access to several policies that rely on `is_super_admin()`.
-- Regular admins are silently elevated to super-admin everywhere `is_super_admin()` is used.
+**3. Wire into bootstrap: `src/main.tsx`**
+- Call `initSentry()` before `createRoot(...).render(<App />)`.
 
-### Problem 2 — Soft-delete UPDATE returns no visible row to the user
+**4. ErrorBoundary: `src/App.tsx`**
+- Wrap `<RouterProvider router={router} />` in `<Sentry.ErrorBoundary fallback={...}>` so unhandled render errors are reported and the user sees a graceful message instead of a blank screen.
 
-The user-level UPDATE policies on `inspections` and `trainings` are:
+**5. Hook into existing logger: `src/lib/log-error.ts`**
+- After the existing `console.error` + audit-log forwarding, also call `Sentry.captureException(err, { extra: ctx })`.
+- This means every existing `logError()` call site (sync manager, sign-out, photo upload, completion lock, attestation, etc.) automatically reports to Sentry — no other files need to change.
+- Keep it best-effort (try/catch swallow) so logging never throws.
 
-```
-USING       (inspector_id = auth.uid())
-WITH CHECK  (inspector_id = auth.uid())
-```
+## What is intentionally NOT included
 
-The user-level SELECT policy is:
+- Session Replay, Tracing, Logs, Metrics (only Error Monitoring was checked in your screenshot)
+- Source-map upload (requires a Sentry auth token + CI step — happy to add later if you want readable stack traces)
+- No edge-function changes — Sentry runs client-side only
 
-```
-USING (inspector_id = auth.uid() AND deleted_at IS NULL)
-```
+## Files touched
 
-After the `UPDATE` sets `deleted_at`, the row instantly stops matching the SELECT policy. The PostgREST `UPDATE … RETURNING` step returns **0 rows** to the client. Combined with `inspection_summary` / child-row child-row read paths, the request looks like a failure to the UI, leaving the report visible.
-
-`daily_assessments` also has the same SELECT-after-UPDATE pattern and is at risk; the symptom there can be inconsistent UI updates rather than an outright error, depending on the client code path.
-
-## Fix
-
-### 1. Database migration
-
-- Rewrite `public.is_super_admin()` to check `role = 'super_admin'`.
-- Add a tightening clause `(deleted_at IS NULL)` to the **USING** side of the user UPDATE policies on `inspections`, `trainings`, and `daily_assessments` so a user can only soft-delete a row that is currently visible to them. (The `daily_assessments` policy already has this — apply the same pattern uniformly.)
-- Add a small SECURITY DEFINER RPC `soft_delete_report(table_name, record_id)` that performs the UPDATE on behalf of the owner and returns `{ success boolean, id uuid }`. Bypassing the RETURNING/RLS visibility gap with a definer function gives the client an unambiguous success/failure signal without weakening any read policies.
-  - The RPC verifies `auth.uid() = inspections.inspector_id` (or matching column) before writing and rejects otherwise.
-  - It writes `deleted_at = now()`, `deleted_by = auth.uid()`, `retention_until = now() + interval '60 days'`.
-
-### 2. Client changes
-
-- `src/hooks/useSoftDelete.tsx`
-  - Replace the inline `.update().eq('id', …)` with a call to the new `soft_delete_report` RPC.
-  - Surface the RPC's structured error to the toast.
-- `src/pages/Dashboard.tsx` (`handleDeleteConfirm`)
-  - Replace each of the three branches' `.update(softDeleteData)` calls with the same RPC call.
-  - Keep the existing offline queue behaviour (`queueOperation`/`queueAssessmentOperation`/`queueTrainingOperation`) unchanged for the offline path.
-
-### 3. Verification
-
-After deploy:
-- Sign in as `allison.hickey93@gmail.com` (trainer) and delete a training they own — should succeed and disappear from the dashboard.
-- Sign in as an inspector and delete an inspection and a daily assessment they own — both should succeed.
-- Confirm a regular admin can still delete any report (relies on the `is_admin_or_above()` policies which are unchanged).
-- Confirm the deleted record appears in the super-admin Recovery panel (super-admin SELECT policy now correctly recognizes role `super_admin`).
-- Confirm restoring from the Recovery panel still works.
-- Confirm offline soft-delete still queues and replays via `queued-soft-delete-processor`.
-
-## Out of scope
-
-- The 60-day cleanup job, recovery UI, and child-row/photo cascade behaviour are unchanged.
-- No change to `is_admin_or_above()` — that function is already correct.
+- `package.json` / `bun.lock` (add `@sentry/react`)
+- `src/lib/sentry.ts` (new)
+- `src/main.tsx` (call `initSentry`)
+- `src/App.tsx` (wrap in `Sentry.ErrorBoundary`)
+- `src/lib/log-error.ts` (forward to Sentry)

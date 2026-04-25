@@ -2,6 +2,10 @@ import { createRoot } from "react-dom/client";
 import App from "./App.tsx";
 import "./index.css";
 import { isPreviewOrIframeEnvironment, isServiceWorkerAllowed } from "@/lib/environment";
+import { initSentry } from "@/lib/sentry";
+
+// Initialize error monitoring as early as possible (production-only).
+initSentry();
 
 // Guard: unregister stale service workers in preview/iframe contexts
 if (isPreviewOrIframeEnvironment()) {
