@@ -1812,6 +1812,7 @@ export default function Dashboard() {
                   setDeleteDialogOpen={setDeleteDialogOpen}
                   invoicedReportIds={invoicedReportIds}
                   onToggleInvoiced={handleToggleInvoiced}
+                  profilesById={profilesById}
                 />
               );
             })()}
