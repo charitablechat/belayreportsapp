@@ -12,7 +12,9 @@ import { Building2, Users, FileText, Bell, UserPlus, Pencil, Trash2, ClipboardLi
 import { format } from "date-fns";
 import { useNavigate } from "react-router-dom";
 import { goBack } from "@/lib/navigation";
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
+import { useProfileMap } from "@/hooks/useProfileMap";
+import { resolveProfileName } from "@/lib/report-utils";
 import { AdminTabsSection } from "@/components/admin/AdminTabsSection";
 import { UserManagementDialog } from "@/components/admin/UserManagementDialog";
 
@@ -300,6 +302,19 @@ export default function SuperAdminDashboard() {
     enabled: !loading,
   });
 
+  // Build a unified inspector_id → profile map across all three report types so
+  // table cells can resolve a name even when the joined `inspector` / `trainer`
+  // blob was stripped on a local IDB write. Hook handles synchronous seed from
+  // available joins plus lazy fill via getCachedProfile.
+  const allReportsForProfileMap = useMemo(
+    () => [
+      ...((allInspections as any[]) || []),
+      ...((allTrainings as any[]) || []),
+      ...((allDailyAssessments as any[]) || []),
+    ],
+    [allInspections, allTrainings, allDailyAssessments],
+  );
+  const profilesById = useProfileMap(allReportsForProfileMap);
 
   // Push subscriptions query
   const { data: subscriptions } = useQuery({
@@ -1188,9 +1203,7 @@ export default function SuperAdminDashboard() {
                   <TableCell>{parseLocalDate(inspection.inspection_date) ? format(parseLocalDate(inspection.inspection_date)!, "PP") : '-'}</TableCell>
                   <TableCell>{format(new Date(inspection.created_at), "PP")}</TableCell>
                   <TableCell>
-                    {(inspection as any).inspector?.first_name && (inspection as any).inspector?.last_name
-                      ? `${(inspection as any).inspector.first_name} ${(inspection as any).inspector.last_name}`
-                      : 'Unknown'}
+                    {resolveProfileName((inspection as any).inspector, (inspection as any).inspector_id, profilesById)}
                   </TableCell>
                 </TableRow>
               ))}
@@ -1213,9 +1226,7 @@ export default function SuperAdminDashboard() {
                     {inspection.status}
                   </Badge>
                   <span className="text-xs text-muted-foreground">
-                    {(inspection as any).inspector?.first_name && (inspection as any).inspector?.last_name
-                      ? `${(inspection as any).inspector.first_name} ${(inspection as any).inspector.last_name}`
-                      : 'Unknown'}
+                    {resolveProfileName((inspection as any).inspector, (inspection as any).inspector_id, profilesById)}
                   </span>
                 </div>
                 <div className="flex justify-between text-xs text-muted-foreground">
@@ -1250,9 +1261,7 @@ export default function SuperAdminDashboard() {
                 >
                   <TableCell>{training.organizations?.name || training.organization}</TableCell>
                   <TableCell>
-                    {(training as any).trainer?.first_name && (training as any).trainer?.last_name
-                      ? `${(training as any).trainer.first_name} ${(training as any).trainer.last_name}`
-                      : training.trainer_of_record || 'Unknown'}
+                    {resolveProfileName((training as any).trainer, (training as any).inspector_id, profilesById, (training as any).trainer_of_record)}
                   </TableCell>
                   <TableCell>
                     <Badge className={
@@ -1278,9 +1287,7 @@ export default function SuperAdminDashboard() {
               <div key={training.id} className="rounded-lg border bg-card p-4 space-y-2 cursor-pointer active:bg-muted/50" onClick={() => navigate(`/training/${training.id}`)}>
                 <div className="font-medium text-sm">{training.organizations?.name || training.organization}</div>
                 <div className="text-sm text-muted-foreground">
-                  {(training as any).trainer?.first_name && (training as any).trainer?.last_name
-                    ? `${(training as any).trainer.first_name} ${(training as any).trainer.last_name}`
-                    : training.trainer_of_record || 'Unknown'}
+                  {resolveProfileName((training as any).trainer, (training as any).inspector_id, profilesById, (training as any).trainer_of_record)}
                 </div>
                 <Badge className={
                   training.status === "completed" ? "bg-emerald-400/15 text-emerald-400 border-emerald-400/30" :
@@ -1322,9 +1329,7 @@ export default function SuperAdminDashboard() {
                   <TableCell>{assessment.organizations?.name || assessment.organization}</TableCell>
                   <TableCell>{assessment.site || '-'}</TableCell>
                   <TableCell>
-                    {(assessment as any).inspector?.first_name && (assessment as any).inspector?.last_name
-                      ? `${(assessment as any).inspector.first_name} ${(assessment as any).inspector.last_name}`
-                      : assessment.trainer_of_record || 'Unknown'}
+                    {resolveProfileName((assessment as any).inspector, (assessment as any).inspector_id, profilesById, (assessment as any).trainer_of_record)}
                   </TableCell>
                   <TableCell>
                     <Badge className={
@@ -1358,9 +1363,7 @@ export default function SuperAdminDashboard() {
                     {assessment.status}
                   </Badge>
                   <span className="text-xs text-muted-foreground">
-                    {(assessment as any).inspector?.first_name && (assessment as any).inspector?.last_name
-                      ? `${(assessment as any).inspector.first_name} ${(assessment as any).inspector.last_name}`
-                      : assessment.trainer_of_record || 'Unknown'}
+                    {resolveProfileName((assessment as any).inspector, (assessment as any).inspector_id, profilesById, (assessment as any).trainer_of_record)}
                   </span>
                 </div>
                 <div className="flex justify-between text-xs text-muted-foreground">
@@ -1702,9 +1705,7 @@ export default function SuperAdminDashboard() {
                 <TableRow key={training.id} className="cursor-pointer hover:bg-muted/50" onClick={() => { setIsTrainingsListOpen(false); navigate(`/training/${training.id}`); }}>
                   <TableCell className="font-medium">{training.organizations?.name || training.organization}</TableCell>
                   <TableCell>
-                    {(training as any).trainer?.first_name && (training as any).trainer?.last_name
-                      ? `${(training as any).trainer.first_name} ${(training as any).trainer.last_name}`
-                      : training.trainer_of_record || 'Unknown'}
+                    {resolveProfileName((training as any).trainer, (training as any).inspector_id, profilesById, (training as any).trainer_of_record)}
                   </TableCell>
                   <TableCell>
                     <Badge variant={training.status === 'completed' ? 'default' : 'secondary'}>
@@ -1722,9 +1723,7 @@ export default function SuperAdminDashboard() {
               <div key={training.id} className="rounded-lg border bg-card p-3 space-y-1 cursor-pointer active:bg-muted/50" onClick={() => { setIsTrainingsListOpen(false); navigate(`/training/${training.id}`); }}>
                 <div className="font-medium text-sm">{training.organizations?.name || training.organization}</div>
                 <div className="text-sm text-muted-foreground">
-                  {(training as any).trainer?.first_name && (training as any).trainer?.last_name
-                    ? `${(training as any).trainer.first_name} ${(training as any).trainer.last_name}`
-                    : training.trainer_of_record || 'Unknown'}
+                  {resolveProfileName((training as any).trainer, (training as any).inspector_id, profilesById, (training as any).trainer_of_record)}
                 </div>
                 <div className="flex items-center justify-between">
                   <Badge variant={training.status === 'completed' ? 'default' : 'secondary'} className="text-xs">{training.status}</Badge>

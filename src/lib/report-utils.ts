@@ -52,26 +52,45 @@ export interface ProfileLike {
   last_name?: string | null;
 }
 
-export function getAssigneeName(
-  report: ReportLike,
-  type: string,
-  profilesById?: ReadonlyMap<string, ProfileLike> | null,
+/**
+ * Resolve a display name for a profile, checking three sources in order:
+ *   1. The joined profile object (e.g. `row.inspector` / `row.trainer`)
+ *   2. A `profilesById` lookup map keyed by inspector_id (covers cached
+ *      / locally-edited rows where the join was stripped)
+ *   3. An optional plain-text fallback (e.g. `trainer_of_record`)
+ * Returns 'Unknown' if none of the above produced a non-empty trimmed name.
+ */
+export function resolveProfileName(
+  joined: ProfileLike | null | undefined,
+  inspectorId: string | null | undefined,
+  profilesById: ReadonlyMap<string, ProfileLike> | null | undefined,
+  fallback?: string | null,
 ): string {
-  const join = type === 'training' ? (report as any).trainer : (report as any).inspector;
-  const fromJoin = join
-    ? `${join.first_name || ''} ${join.last_name || ''}`.trim()
+  const fromJoin = joined
+    ? `${joined.first_name || ''} ${joined.last_name || ''}`.trim()
     : '';
   if (fromJoin) return fromJoin;
 
-  const inspectorId = (report as any).inspector_id as string | undefined;
-  if (profilesById && typeof inspectorId === 'string') {
+  if (profilesById && typeof inspectorId === 'string' && inspectorId) {
     const p = profilesById.get(inspectorId);
     if (p) {
       const name = `${p.first_name || ''} ${p.last_name || ''}`.trim();
       if (name) return name;
     }
   }
+
+  if (typeof fallback === 'string' && fallback.trim()) return fallback.trim();
   return 'Unknown';
+}
+
+export function getAssigneeName(
+  report: ReportLike,
+  type: string,
+  profilesById?: ReadonlyMap<string, ProfileLike> | null,
+): string {
+  const joined = type === 'training' ? (report as any).trainer : (report as any).inspector;
+  const inspectorId = (report as any).inspector_id as string | undefined;
+  return resolveProfileName(joined, inspectorId, profilesById ?? undefined);
 }
 
 /**
