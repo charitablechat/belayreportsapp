@@ -5,6 +5,20 @@ import {
   shouldNotifyForEmptyLocalConflict,
   type EmptyLocalReportType,
 } from "./empty-local-conflict-store";
+// Import deferred-reconcile statically so the module is bundled into the
+// main JS chunk rather than split into a lazy chunk that gets fetched on
+// first use. The original `await import('./deferred-reconcile')` calls
+// below caused `[Atomic Sync] Failed to sync inspection: TypeError: Failed
+// to fetch dynamically imported module: .../deferred-reconcile-XXX.js`
+// whenever sync ran while offline (or on a flaky network) — the lazy
+// chunk has no SW precache entry, so its first fetch happens lazily and
+// fails the moment the network is gone, killing the sync transaction
+// after the upsert succeeded but before the children were reconciled.
+// The module is ~1KB; bundling it costs nothing meaningful.
+import {
+  runDeferredReconcile,
+  type DeferredReconcileSpec,
+} from "./deferred-reconcile";
 
 /**
  * Build a user-facing label from a list of parts, skipping empty/nullish values.
@@ -987,7 +1001,7 @@ export async function syncInspectionAtomic(inspectionId: string, preValidatedUse
     // Step 2: UPSERT child data first; reconcile (DELETE) is DEFERRED until
     // after the transaction commits (H3). The reconcile spec is captured here
     // so we can use the same prefetched server snapshots and IDB read flags.
-    let inspectionReconcileSpec: import('./deferred-reconcile').DeferredReconcileSpec[] | null = null;
+    let inspectionReconcileSpec: DeferredReconcileSpec[] | null = null;
     if (recordStatus?.record_exists && !recordStatus?.is_deleted) {
       // S25: when prefetch was skipped, pass `undefined` (not `[]`) so
       // reconcileChildTable falls back to its own live fetch when needed.
@@ -1077,7 +1091,6 @@ export async function syncInspectionAtomic(inspectionId: string, preValidatedUse
     // locally and the next sync cycle retries — no destructive server side-effect.
     let inspectionReconcileBlocked = false;
     if (inspectionReconcileSpec) {
-      const { runDeferredReconcile } = await import('./deferred-reconcile');
       const outcome = await runDeferredReconcile(
         inspectionReconcileSpec,
         inspectionId,
@@ -1944,7 +1957,7 @@ export async function syncTrainingAtomic(trainingId: string, preValidatedUser?: 
 
     // Step 2: UPSERT child data first; reconcile (DELETE) is DEFERRED until
     // after the transaction commits (H3).
-    let trainingReconcileSpec: import('./deferred-reconcile').DeferredReconcileSpec[] | null = null;
+    let trainingReconcileSpec: DeferredReconcileSpec[] | null = null;
     if (recordStatus?.record_exists && !recordStatus?.is_deleted) {
       const pf = (arr: DbRow[]) => (serverUnchangedSinceBaseline ? undefined : arr);
       trainingReconcileSpec = [
@@ -2040,7 +2053,6 @@ export async function syncTrainingAtomic(trainingId: string, preValidatedUser?: 
     // H3: parent + children are committed; run deferred reconcile now.
     let trainingReconcileBlocked = false;
     if (trainingReconcileSpec) {
-      const { runDeferredReconcile } = await import('./deferred-reconcile');
       const outcome = await runDeferredReconcile(
         trainingReconcileSpec,
         trainingId,
@@ -2779,7 +2791,7 @@ export async function syncDailyAssessmentAtomic(assessmentId: string, preValidat
 
     // Step 2: UPSERT child data first; reconcile (DELETE) is DEFERRED until
     // after the transaction commits (H3).
-    let assessmentReconcileSpec: import('./deferred-reconcile').DeferredReconcileSpec[] | null = null;
+    let assessmentReconcileSpec: DeferredReconcileSpec[] | null = null;
     if (recordStatus?.record_exists && !recordStatus?.is_deleted) {
       const pf = (arr: DbRow[]) => (serverUnchangedSinceBaseline ? undefined : arr);
       assessmentReconcileSpec = [
@@ -2869,7 +2881,6 @@ export async function syncDailyAssessmentAtomic(assessmentId: string, preValidat
     // H3: parent + children are committed; run deferred reconcile now.
     let assessmentReconcileBlocked = false;
     if (assessmentReconcileSpec) {
-      const { runDeferredReconcile } = await import('./deferred-reconcile');
       const outcome = await runDeferredReconcile(
         assessmentReconcileSpec,
         assessmentId,
