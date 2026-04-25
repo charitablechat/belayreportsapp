@@ -1851,30 +1851,6 @@ export default function SuperAdminDashboard() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
-      {/* Reset Metric Confirmation Dialog */}
-      <AlertDialog open={resetMetricDialogOpen} onOpenChange={setResetMetricDialogOpen}>
-        <AlertDialogContent className="bg-[#0a0a0a] border-[#00ff41]/30 text-[#00ff41] font-mono">
-          <AlertDialogHeader>
-            <AlertDialogTitle className="text-[#00ff41] font-mono">
-              &gt; RESET_METRIC_CONFIRM
-            </AlertDialogTitle>
-            <AlertDialogDescription className="text-[#00ff41]/70 font-mono text-sm">
-              This will reset the Avg Completion Time metric to 0h. All future calculations will start from this timestamp. No data will be deleted — legacy records are preserved but excluded from the metric.
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel className="font-mono border-[#00ff41]/30 text-[#00ff41] hover:bg-[#00ff41]/10 hover:text-[#00ff41] bg-transparent">
-              ABORT
-            </AlertDialogCancel>
-            <AlertDialogAction
-              onClick={handleResetCompletionTime}
-              className="font-mono bg-[#00ff41] text-[#0a0a0a] hover:bg-[#00ff41]/80"
-            >
-              EXECUTE RESET
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
     </div>
     </div>
     </div>
