@@ -1,0 +1,67 @@
+name: CI
+
+# Runs the same gates the maintainers ran by hand on PRs #1-#10:
+#   tsc --noEmit, lint:any-budget, vitest, vite-db-version-check (via build).
+# Required because previously nothing ran on PRs and the any-budget gate
+# silently drifted ~46 over budget across 30+ commits.
+#
+# Uses bun (matches the repo's `bun.lock` and Lovable's package manager).
+# `package-lock.json` is present but stale relative to package.json; bun
+# is the canonical install path.
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+# Cancel previous runs on the same ref when a new commit lands.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  typecheck:
+    name: tsc --noEmit
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+      - run: bun install --frozen-lockfile
+      - run: bunx tsc --noEmit
+
+  any-budget:
+    name: lint:any-budget gate
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+      - run: bun install --frozen-lockfile
+      - run: bun run lint:any-budget
+
+  test:
+    name: vitest
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+      - run: bun install --frozen-lockfile
+      - run: bunx vitest run --reporter=default
+
+  build:
+    name: vite build (incl. db-version parity check)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+      - run: bun install --frozen-lockfile
+      # The vite-db-version-check plugin (vite.config.ts) fails the build if
+      # public/db-config.js and offline-storage.ts disagree on DB_VERSION.
+      - run: bun run build
