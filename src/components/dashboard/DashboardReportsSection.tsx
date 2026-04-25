@@ -663,6 +663,7 @@ export function DashboardReportsSection({
                                         isAdmin={isSuperAdmin}
                                         isInvoiced={invoicedReportIds?.has(report.id)}
                                         onToggleInvoiced={onToggleInvoiced}
+                                        profilesById={profilesById}
                                       />
                                     );
                                   })}
