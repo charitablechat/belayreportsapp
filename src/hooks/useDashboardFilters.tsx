@@ -68,7 +68,8 @@ export function useDashboardFilters(
   reports: any[],
   type: string,
   currentUserId: string | null,
-  isSuperAdmin: boolean = false
+  isSuperAdmin: boolean = false,
+  profilesById?: ReadonlyMap<string, { first_name: string | null; last_name: string | null }> | null,
 ) {
   const [filters, setFilters] = useState<DashboardFilterState>({
     search: '',
