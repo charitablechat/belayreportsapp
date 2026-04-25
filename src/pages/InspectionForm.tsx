@@ -1506,6 +1506,28 @@ export default function InspectionForm() {
       return;
     }
     anySaveInProgressRef.current = true;
+    // Deadlock recovery: if this `performSave` hangs longer than 30s, force-
+    // release the mutex so a subsequent invocation can proceed. The `finally`
+    // (below) is the normal release path; this break-glass exists for hung
+    // awaits (e.g. a Supabase request on a half-open TCP connection that
+    // never resolves, stalled IDB upgrades).
+    //
+    // `deadlockTimerFired` makes ownership safe across the recovery boundary:
+    // once the timer fires, the mutex no longer belongs to this invocation
+    // (a newer `performSave` may have acquired it). The `finally` therefore
+    // skips its release in that case, otherwise it would silently clear a
+    // newer invocation's mutex and allow concurrent saves.
+    //
+    // Sizing: well above the worst legitimate budget (getDB Promise.race 5s,
+    // withOfflineTimeout local fallback 2s, Supabase per-query timeout 8s,
+    // syncWithRetry 3 attempts with 2s+4s backoff = ~14s plus network),
+    // well below "permanently stuck".
+    let deadlockTimerFired = false;
+    const performSaveDeadlockTimer = setTimeout(() => {
+      deadlockTimerFired = true;
+      console.error('[InspectionForm] performSave deadlock recovery: mutex held >30s, force-releasing');
+      anySaveInProgressRef.current = false;
+    }, 30000);
     try {
       // Best-effort user lookup for last_modified_by — never blocks save
       // Matches TrainingForm/DailyAssessmentForm pattern: local saves always succeed
@@ -2054,7 +2076,13 @@ export default function InspectionForm() {
       setSaveError({ message: error.message || 'Failed to save', code: error?.code });
       throw error;
     } finally {
-      anySaveInProgressRef.current = false;
+      clearTimeout(performSaveDeadlockTimer);
+      // Only release if we still own the mutex. If the deadlock timer fired,
+      // a later `performSave` may have already acquired it; clearing here
+      // would let a third invocation run concurrently.
+      if (!deadlockTimerFired) {
+        anySaveInProgressRef.current = false;
+      }
     }
   };
 
@@ -2076,14 +2104,19 @@ export default function InspectionForm() {
       saveDebounceTimerRef.current = null;
     }
     
-    anySaveInProgressRef.current = true;
+    // `anySaveInProgressRef` is owned exclusively by `performSave`
+    // (acquire on entry, release in `finally`). Wrapper-level race
+    // protection is provided by `autoSaving`/`saving`.
     setAutoSaving(true);
     
-    // Safety timeout - NEVER get stuck in autoSaving state
+    // Safety timeout - NEVER get stuck in autoSaving UI state.
+    // Does NOT touch `anySaveInProgressRef` — that mutex is owned by
+    // `performSave`. Releasing it here would race with a concurrent
+    // wrapper whose `performSave` early-returned (mutex held by another
+    // run): its `finally` would prematurely clear the live mutex.
     const safetyTimeout = setTimeout(() => {
       console.warn('[InspectionForm] triggerImmediateSave safety timeout reached, forcing state reset');
       setAutoSaving(false);
-      anySaveInProgressRef.current = false;
     }, 8000);
     
     try {
@@ -2102,7 +2135,7 @@ export default function InspectionForm() {
     } finally {
       clearTimeout(safetyTimeout);
       setAutoSaving(false);
-      anySaveInProgressRef.current = false;
+      // `anySaveInProgressRef` is NOT cleared here — owned by `performSave`.
     }
   };
 
@@ -2117,14 +2150,16 @@ export default function InspectionForm() {
   const autoSaveProgress = async () => {
     if (!hasUnsavedChanges || saving || autoSaving || anySaveInProgressRef.current) return;
     
-    anySaveInProgressRef.current = true;
+    // `anySaveInProgressRef` is owned exclusively by `performSave`
+    // (acquire on entry, release in `finally`). Wrapper-level race
+    // protection is provided by `autoSaving`/`saving`.
     setAutoSaving(true);
     
-    // Safety timeout - NEVER get stuck in autoSaving state
+    // Safety timeout - NEVER get stuck in autoSaving UI state.
+    // Does NOT touch `anySaveInProgressRef` — owned by `performSave`.
     const safetyTimeout = setTimeout(() => {
       console.warn('[InspectionForm] autoSaveProgress safety timeout reached, forcing state reset');
       setAutoSaving(false);
-      anySaveInProgressRef.current = false;
     }, 8000);
     
     try {
@@ -2141,7 +2176,7 @@ export default function InspectionForm() {
     } finally {
       clearTimeout(safetyTimeout);
       setAutoSaving(false);
-      anySaveInProgressRef.current = false;
+      // `anySaveInProgressRef` is NOT cleared here — owned by `performSave`.
     }
   };
 
@@ -2160,12 +2195,12 @@ export default function InspectionForm() {
     setSaving(true);
     setSaveError(null);
 
-    // Safety timeout - ensure saving state is cleared after max 8 seconds (reduced from 30)
+    // Safety timeout - ensure saving UI state is cleared after max 8 seconds.
+    // Does NOT touch `anySaveInProgressRef` — owned by `performSave`.
     const safetyTimeout = setTimeout(() => {
       console.warn('[InspectionForm] Safety timeout reached, forcing save state reset');
       setSaving(false);
       saveInProgressRef.current = false;
-      anySaveInProgressRef.current = false;
     }, 8000);
 
     try {
