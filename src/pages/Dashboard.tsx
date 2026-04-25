@@ -788,7 +788,16 @@ export default function Dashboard() {
         if (networkData && networkData.length > 0) {
           setInspections(networkData);
           writeDashboardCache('dashboard-cache-inspections', networkData);
-          
+
+          // Reconcile: quarantine local rows the server no longer returns,
+          // so the cached count cannot drift above the authoritative count.
+          reconcileServerDeletions({
+            table: 'inspections',
+            localRows: offlineData,
+            serverRows: networkData,
+            userId,
+            isSuperAdmin,
+          }).catch(err => console.warn('[Dashboard] inspections reconcile failed:', err));
           // Background save to offline storage (fire-and-forget)
           // Stamp synced_at so localIsNewer guard knows this is server-sourced data
           const now = new Date().toISOString();
