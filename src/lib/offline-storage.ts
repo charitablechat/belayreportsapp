@@ -2,6 +2,16 @@ import { openDB, DBSchema, IDBPDatabase, StoreNames } from 'idb';
 import { checkStorageQuota, requestPersistentStorage, isMobile } from './mobile-detection';
 import { isUpdatedAheadOfSync } from './local-data-guards';
 import { safeSetItem } from './safe-local-storage';
+// Imported statically (rather than `await import('./idb-migration-safety')`
+// inside getDB) so the 5s IDB-open budget cannot be consumed by a network
+// fetch when the lazy chunk has no SW precache entry. When offline, that
+// fetch hangs/fails, which manifested as four consecutive
+// `[Offline Storage] IndexedDB open timed out after 5s` warnings and a
+// degraded offline-save path. The module is ~6KB; bundling it costs
+// nothing on the critical IDB hot path. Confirmed no circular dependency:
+// `idb-migration-safety.ts` only imports from `idb`, never back from
+// `offline-storage.ts`.
+import * as migrationSafety from './idb-migration-safety';
 
 /** Opaque DB row — fields vary across tables and are read/written structurally.
  *  Uses an `any` index signature so callers can structurally read/write
@@ -1430,15 +1440,10 @@ export async function getDB() {
     const DB_NAME = 'rope-works-inspections';
     const DB_VERSION = 18;
 
-    // Phase 5 — Schema Migration Safety. Lazy-load to avoid circular imports
-    // and to keep the boot path resilient if this module ever fails to parse.
-    let migrationSafety: typeof import('./idb-migration-safety') | null = null;
-    try {
-      migrationSafety = await import('./idb-migration-safety');
-    } catch (err) {
-      console.warn('[Offline Storage] migration-safety unavailable:', err);
-    }
-
+    // Phase 5 — Schema Migration Safety. Now imported statically at the top
+    // of this module (see comment there). Previously this was `await
+    // import('./idb-migration-safety')` here, which consumed the 5s IDB-open
+    // budget when offline because the lazy chunk has no SW precache entry.
     let upgradeStartTs = 0;
     let upgradeFromVersion = 0;
     let upgradeError: string | undefined;
