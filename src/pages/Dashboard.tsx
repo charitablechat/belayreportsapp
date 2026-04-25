@@ -1174,7 +1174,14 @@ export default function Dashboard() {
         if (networkData && networkData.length > 0) {
           setDailyAssessments(networkData);
           writeDashboardCache('dashboard-cache-daily', networkData);
-          
+
+          reconcileServerDeletions({
+            table: 'daily_assessments',
+            localRows: offlineData,
+            serverRows: networkData,
+            userId,
+            isSuperAdmin,
+          }).catch(err => console.warn('[Dashboard] assessments reconcile failed:', err));
           const nowA = new Date().toISOString();
           Promise.all(networkData.map(async (assessment) => {
             const localRecord = await getOfflineDailyAssessment(assessment.id);
