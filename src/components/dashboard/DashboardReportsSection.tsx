@@ -550,6 +550,7 @@ export function DashboardReportsSection({
               viewMode={filters.viewMode}
               onDelete={(r) => handleDeleteForType(r, 'daily')}
               onClick={(r) => handleClick(r, 'daily')}
+              profilesById={profilesById}
             />
           )}
         </div>
