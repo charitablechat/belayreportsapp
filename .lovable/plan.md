@@ -1,58 +1,54 @@
-# Fix "Unknown" inspector names on dashboard cards (Option B)
+# Fix "Unknown" Inspector names in admin dashboard tables
 
-## What's wrong (confirmed)
+## What's actually broken
 
-- The database **has** the names. Direct query returned `Luke Benton` for the pink draft cards and `Test Account` for the `[E2E DEVIN]` card.
-- `ReportCard.getInspectorName()` reads `report.inspector.first_name` / `report.inspector.last_name`. That `inspector` field only exists when the row was just fetched by `Dashboard.loadInspections` (which adds `inspector:profiles!...` to the select).
-- Every other writer to the inspections IDB store — `InspectionForm` (every save tick), `useAutoSync.safePostSyncSave`, `atomic-sync-manager`, `local-backup-ledger`, restore tools — passes the bare row with **no** `inspector` field, overwriting the join.
-- Dashboard renders stale-while-revalidate from IDB first, so during/after editing a draft the card sees `report.inspector === undefined` → falls through to `'Unknown'`.
+Your screenshot is the **admin dashboard's Inspections table** (Status / Date / Created / Inspector columns), rendered by `src/pages/SuperAdminDashboard.tsx` — not the `ReportCard` grid that the previous Option B fix patched.
 
-## Fix (Option B — non-mutating, profile lookup map)
+That table reads `(inspection as any).inspector?.first_name` directly with no fallback. When a row was last written through the local-first save path (IndexedDB), the joined `inspector` object gets stripped, so every cached row collapses to `'Unknown'` even though `inspector_id` is still on the row.
 
-A small `Map<inspector_id, ProfileData>` is built at the dashboard level, seeded from any rows that already carry the join, and lazily filled from the existing `getCachedProfile` for ids that don't. The map is passed down to the cards and to the assignee resolver so the display name no longer depends on whether the IDB row happens to carry the join.
+Important clarification on "creator vs editor": in this schema **`inspector_id` IS the creator** (the FK is literally named `inspections_inspector_id_profiles_fkey`). There is no separate "last editor" column being shown — the column has just lost its join. Resolving `inspector_id` correctly gives you the creator, which is what you want.
 
-### Files changed
+## The fix
 
-1. **`src/hooks/useProfileMap.tsx`** *(new)*
-   - `useProfileMap(reports)` returns `Map<inspector_id, ProfileData>`.
-   - Synchronous seed: walks `reports` and stores `{ first_name, last_name, avatar_url }` for every row that has `row.trainer` (trainings) or `row.inspector` (inspections / daily).
-   - Async fill: for any `inspector_id` still missing, calls `getCachedProfile(id)` (in-memory → localStorage → DB w/ 5s timeout — already implemented). Triggers a single re-render once all missing profiles are resolved.
+Reuse the existing `useProfileMap` hook (already built for `ReportCard`) inside `SuperAdminDashboard`, and route every Inspector / Trainer cell through a single name-resolver helper that falls back to the map when the join is missing.
 
-2. **`src/lib/report-utils.ts`**
-   - Extend `getAssigneeName(report, type, profilesById?: Map<string, { first_name?, last_name? }>)`.
-   - When `report.inspector` / `report.trainer` join is missing, fall back to `profilesById.get(report.inspector_id)`. Final fallback stays `'Unknown'`.
+### Files to change
 
-3. **`src/components/dashboard/ReportCard.tsx`**
-   - Add optional `profilesById?: Map<string, ProfileData>` prop.
-   - `getInspectorName`, `getInspectorAvatar`, `getInspectorInitials` look up `profilesById.get(report.inspector_id)` whenever the row's join is empty.
-   - No visual changes when the map is absent — still shows `'Unknown'` (backwards compatible).
+**1. `src/lib/report-utils.ts`** — add a small pure helper:
+```ts
+export function resolveProfileName(
+  joined: { first_name?: string|null; last_name?: string|null } | null | undefined,
+  inspectorId: string | null | undefined,
+  profilesById: ReadonlyMap<string, { first_name: string|null; last_name: string|null }> | undefined,
+  fallback?: string | null,
+): string
+```
+Order: joined → profilesById.get(inspectorId) → fallback (e.g. `trainer_of_record`) → `'Unknown'`.
 
-4. **`src/components/dashboard/DashboardReportsSection.tsx`**
-   - Add optional `profilesById` to props; thread it into the three `<ReportCard ... />` call sites (two in main list, one in `CrossTabSection`).
-   - Pass it into `useDashboardFilters` so sort-by-assignee uses the resolved name.
+**2. `src/pages/SuperAdminDashboard.tsx`**
+- Import `useProfileMap` and `resolveProfileName`.
+- Build one combined array `[...allInspections, ...allTrainings, ...allDailyAssessments]` and feed it into `useProfileMap` once.
+- Replace the four duplicated inline name expressions (inspections desktop+mobile lines 1191/1216, daily-assessments desktop+mobile lines 1325/1361, trainings desktop+mobile lines 1253/1281) with `resolveProfileName(...)` calls.
+- Trainings keep `trainer_of_record` as the explicit fallback string they already use.
 
-5. **`src/hooks/useDashboardFilters.tsx`**
-   - Accept optional `profilesById` and pass it through to `getAssigneeName(...)` calls used in search and the `assignee` sort comparator.
+**3. (Optional polish) `src/components/dashboard/ReportCard.tsx` and `src/lib/report-utils.ts`** — migrate the existing `getInspectorName` / `getAssigneeName` to call the new shared `resolveProfileName` so there's one code path for every surface. No behavior change, just dedup.
 
-6. **`src/pages/Dashboard.tsx`**
-   - Build one shared map: `const profilesById = useProfileMap(useMemo(() => [...inspections, ...trainings, ...dailyAssessments], [inspections, trainings, dailyAssessments]))`.
-   - Pass `profilesById` to `<DashboardReportsSection />`.
+### Why this is the same root cause and the same cure
 
-## Why this works for every "Unknown" path
+`useProfileMap` already handles both halves of the problem:
+1. **Online / fresh fetch path** — rows arrive with the join, the hook seeds the map synchronously, names render on first paint.
+2. **Offline / cache / locally-edited path** — rows arrive without the join, the hook lazy-loads each missing `inspector_id` through `getCachedProfile` (in-memory → localStorage → DB-with-timeout → persisted last-known-good), then triggers a re-render once names land.
 
-- **Locally edited draft after a save** — IDB row lost the join → map still has it from any prior server fetch; otherwise `getCachedProfile` resolves the user and updates the map.
-- **First paint from cold IDB cache (offline)** — `getCachedProfile` reads `localStorage` (`cached_profile_<id>`) which `useUserProfile` and prior network calls have already populated for the signed-in user.
-- **Other inspectors on a super-admin dashboard** — the join from any successful `loadInspections` round seeds those ids into the map; reloads keep them resolved across renders because `mapRef` is stable.
-- **No DB or schema changes.** No row mutation. No regressions for existing rows that already have the join — they continue to render exactly as today.
+So the Inspector column will resolve in both scenarios, including offline where only the persisted localStorage profile cache is available.
 
-## Out of scope
+### Out of scope
 
-- Changing the sync/save writers to preserve the `inspector` join (would be invasive across 8+ call sites and add stale-profile risk).
-- Backfilling old IDB rows with profile data.
+- No DB schema changes, no new query columns — `inspector_id` already encodes "creator".
+- No changes to how reports are written / synced.
+- No changes to the report cards (already fixed previously).
 
-## Verification after the fix
+### Verification after build
 
-- Open dashboard online with drafts in IDB → cards show real names immediately (synchronous seed).
-- Hard-refresh offline → cards show real names (resolved from `localStorage` profile cache).
-- Edit a draft, return to dashboard → name stays correct (was previously the regression trigger).
-- Sort-by-assignee groups by resolved name, not by `'Unknown'`.
+- Online refresh: column shows real names immediately.
+- Throttle to offline, hard reload `/dashboard`: column initially blank-or-Unknown for unknown ids, then fills in within a tick from `getCachedProfile` localStorage tier.
+- Edit a report locally (which strips the join in IDB), return to admin dashboard: name still resolves via the map instead of falling back to "Unknown".
