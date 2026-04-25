@@ -1,43 +1,21 @@
-# Add Sentry Error Monitoring
+# Add temporary Sentry verification button
 
-Integrate `@sentry/react` for production error tracking using the provided DSN.
+Add a one-shot "Break the world" button so we can confirm errors land in Sentry, then remove it.
 
-## What gets added
+## Important caveat
 
-**1. Dependency**
-- `@sentry/react`
+Sentry is **production-only** (`enabled: import.meta.env.PROD` in `src/lib/sentry.ts`). The button will throw in the editor preview but **will not send anything to Sentry from dev**. To verify end-to-end you must:
 
-**2. New file: `src/lib/sentry.ts`**
-- Exports `initSentry()` that calls `Sentry.init({ ... })` with:
-  - DSN: `https://0432eff5c29b88a4c841c4560f7f3072@o4511277693927424.ingest.us.sentry.io/4511277721190400` (publishable, safe to commit)
-  - `enabled: import.meta.env.PROD` — skip dev/preview noise
-  - `release` set to the auto-generated `APP_VERSION` (already exposed via `vite-auto-version.ts`)
-  - `environment` derived from hostname (production vs preview)
-  - `sendDefaultPii: true` (matches Sentry's suggested snippet)
-  - No tracing, no replay, no logs, no metrics — error monitoring only
-- Also exports a small helper `captureException(err, ctx?)` so other modules can report without importing Sentry directly.
+1. Approve this plan
+2. **Publish** the project
+3. Open the published site (`ropeworks.lovable.app` or `rwreports.com`)
+4. Click "Break the world" in the bottom-right corner
+5. Check your Sentry dashboard — the event should appear within a few seconds
 
-**3. Wire into bootstrap: `src/main.tsx`**
-- Call `initSentry()` before `createRoot(...).render(<App />)`.
+## Change
 
-**4. ErrorBoundary: `src/App.tsx`**
-- Wrap `<RouterProvider router={router} />` in `<Sentry.ErrorBoundary fallback={...}>` so unhandled render errors are reported and the user sees a graceful message instead of a blank screen.
+Add a fixed-position red button in the bottom-right corner of `src/pages/Dashboard.tsx` that throws `new Error("This is your first error!")` on click. Visible only on `/dashboard`.
 
-**5. Hook into existing logger: `src/lib/log-error.ts`**
-- After the existing `console.error` + audit-log forwarding, also call `Sentry.captureException(err, { extra: ctx })`.
-- This means every existing `logError()` call site (sync manager, sign-out, photo upload, completion lock, attestation, etc.) automatically reports to Sentry — no other files need to change.
-- Keep it best-effort (try/catch swallow) so logging never throws.
+## After verification
 
-## What is intentionally NOT included
-
-- Session Replay, Tracing, Logs, Metrics (only Error Monitoring was checked in your screenshot)
-- Source-map upload (requires a Sentry auth token + CI step — happy to add later if you want readable stack traces)
-- No edge-function changes — Sentry runs client-side only
-
-## Files touched
-
-- `package.json` / `bun.lock` (add `@sentry/react`)
-- `src/lib/sentry.ts` (new)
-- `src/main.tsx` (call `initSentry`)
-- `src/App.tsx` (wrap in `Sentry.ErrorBoundary`)
-- `src/lib/log-error.ts` (forward to Sentry)
+Tell me once you see the event in Sentry and I'll remove the button in a follow-up message. (Or if you'd prefer, I can add it behind a `?sentry-test=1` query param so it's hidden by default — let me know.)

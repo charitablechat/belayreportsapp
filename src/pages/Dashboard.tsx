@@ -1532,6 +1532,27 @@ export default function Dashboard() {
       <div className="relative z-10 min-h-screen">
         
         
+        {/* TEMP: Sentry verification button — remove after confirming events arrive in Sentry. */}
+        <button
+          onClick={() => {
+            throw new Error("This is your first error!");
+          }}
+          style={{
+            position: "fixed",
+            bottom: 16,
+            right: 16,
+            zIndex: 9999,
+            padding: "8px 12px",
+            background: "#dc2626",
+            color: "white",
+            borderRadius: 6,
+            fontSize: 12,
+            fontWeight: 600,
+            boxShadow: "0 2px 8px rgba(0,0,0,0.2)",
+          }}
+        >
+          Break the world
+        </button>
         <header className="border-b border-white/20 bg-white/10 dark:bg-black/20 backdrop-blur-[12px] shadow-md shadow-black/5">
         <div className="container mx-auto px-1 md:px-4 py-3 md:py-4">
           {/* Top row - Logos, status indicators, and user dropdown */}
