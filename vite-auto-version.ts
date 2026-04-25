@@ -54,7 +54,6 @@ function getCommitCount(): number {
   } catch {
     if (!warnedAboutGitFallback) {
       warnedAboutGitFallback = true;
-      // eslint-disable-next-line no-console
       console.warn(
         '[vite-auto-version] WARNING: git unavailable, using time-based fallback. ' +
           'Version numbers across builds may diverge unpredictably.'

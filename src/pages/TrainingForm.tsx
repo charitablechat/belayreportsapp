@@ -630,7 +630,6 @@ export default function TrainingForm() {
       )
       .subscribe();
     return () => { supabase.removeChannel(channel); };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [id, loadTraining]);
 
   // H3: Register this record as actively edited so the global Realtime IDB

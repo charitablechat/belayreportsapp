@@ -27,7 +27,6 @@ export function logError(err: unknown, ctx: LogContext = {}): void {
   };
 
   // Always log locally first
-  // eslint-disable-next-line no-console
   console.error("[logError]", payload);
 
   // Forward to backend audit_logs (best-effort; never block caller)

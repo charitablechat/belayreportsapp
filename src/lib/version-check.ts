@@ -80,7 +80,6 @@ if (import.meta.env?.DEV) {
     assert(isVersionNewer('4.7.9', '4.8.1') === true, 'minor bump must be newer');
     assert(isVersionNewer('5.0.1', '4.9.99') === false, 'lower major must not be newer');
   } catch (err) {
-    // eslint-disable-next-line no-console
     console.error(err);
   }
 }
