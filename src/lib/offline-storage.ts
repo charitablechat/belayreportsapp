@@ -338,17 +338,122 @@ function getCircuitBreakerResetTime(store: BreakerStoreKey = 'global'): number {
 }
 
 /**
+ * Detect the existing IndexedDB version for `dbName` WITHOUT accidentally
+ * creating an empty v1 database as a side effect.
+ *
+ * Background: `idb`'s `openDB(name)` (no version) opens at the current version
+ * if the DB exists, but silently creates a fresh v1 DB if it does not. On a
+ * cold-start profile this leaves an empty v1 alive when our caller actually
+ * wants v18 — a subsequent `openDB(name, 18)` then has to perform a v1→v18
+ * upgrade, can race against the dangling connection, and emits the
+ * `[Offline Storage] DB upgrade blocked` warning seen in field reports.
+ *
+ * Strategy:
+ *   1. Prefer `indexedDB.databases()` (Chromium / Safari / Firefox 126+). It
+ *      returns metadata without opening a connection.
+ *   2. Fall back to native `indexedDB.open(name)`. If we discover we just
+ *      auto-created an empty v1 (no object stores), delete it before
+ *      resolving so the next caller can perform a clean fresh-install upgrade.
+ *
+ * Returns 0 when the DB does not exist (or cannot be probed in <3s).
+ *
+ * Exported for unit-testing only.
+ */
+export async function detectExistingDBVersion(dbName: string): Promise<number> {
+  if (typeof indexedDB === 'undefined') return 0;
+
+  // Preferred path — non-creating enumeration.
+  if (typeof indexedDB.databases === 'function') {
+    try {
+      const dbs = await indexedDB.databases();
+      const existing = dbs.find((d) => d.name === dbName);
+      return existing?.version ?? 0;
+    } catch {
+      /* fall through to native fallback */
+    }
+  }
+
+  // Native fallback — clean up any accidental empty v1 we just created.
+  return new Promise<number>((resolve) => {
+    let resolved = false;
+    const finish = (v: number) => {
+      if (resolved) return;
+      resolved = true;
+      resolve(v);
+    };
+    let req: IDBOpenDBRequest;
+    try {
+      req = indexedDB.open(dbName);
+    } catch {
+      finish(0);
+      return;
+    }
+    let createdEmpty = false;
+    req.onupgradeneeded = () => {
+      // We supplied no version, so this only fires when the DB did not
+      // previously exist and the browser is auto-creating it at v1.
+      createdEmpty = true;
+    };
+    req.onsuccess = () => {
+      try {
+        const db = req.result;
+        const v = db.version;
+        const isEmptyAccidental =
+          createdEmpty || (v === 1 && db.objectStoreNames.length === 0);
+        try { db.close(); } catch { /* ignore */ }
+        if (isEmptyAccidental) {
+          // Await the deletion before resolving — otherwise the empty v1
+          // we just accidentally created is still alive when our caller
+          // runs `openDB(name, DB_VERSION)`, which is exactly the race we
+          // are trying to prevent.
+          let deleteReq: IDBOpenDBRequest;
+          try {
+            deleteReq = indexedDB.deleteDatabase(dbName) as unknown as IDBOpenDBRequest;
+          } catch {
+            finish(0);
+            return;
+          }
+          (deleteReq as unknown as IDBRequest).onsuccess = () => finish(0);
+          (deleteReq as unknown as IDBRequest).onerror = () => finish(0);
+          (deleteReq as unknown as { onblocked?: (() => void) | null }).onblocked = () => finish(0);
+        } else {
+          finish(v);
+        }
+      } catch {
+        finish(0);
+      }
+    };
+    req.onerror = () => finish(0);
+    req.onblocked = () => finish(0);
+    // Bound the wait — a hung probe must not block circuit-breaker recovery
+    // or main-DB initialisation indefinitely.
+    setTimeout(() => finish(0), 3000);
+  });
+}
+
+/**
  * Run a lightweight IndexedDB probe to verify the connection is actually healthy
  * before re-enabling operations after a circuit breaker cooldown.
+ *
+ * Note: this previously called `openDB(name, undefined)`, which would
+ * accidentally create an empty v1 database on cold-start profiles where the
+ * circuit breaker fires before the main DB has been initialised. We now probe
+ * via `detectExistingDBVersion` first and only open a real connection at the
+ * version the DB is actually at — never causing an unintended upgrade.
  */
 async function probeIndexedDB(): Promise<boolean> {
   if (circuitBreakerProbing) return false;
   circuitBreakerProbing = true;
   try {
+    const existingVersion = await detectExistingDBVersion('rope-works-inspections');
+    if (existingVersion <= 0) {
+      // No DB yet — nothing to probe; the next real getDB() call will create it.
+      return false;
+    }
     const { data: db } = await withIDBTimeout(
       'probeIndexedDB:open',
       'light',
-      () => openDB('rope-works-inspections', undefined),
+      () => openDB('rope-works-inspections', existingVersion),
       null,
     );
     if (!db) return false;
@@ -1708,15 +1813,15 @@ export async function getDB() {
     };
 
 
-    // We detect the existing version by opening with no upgrade hook first.
+    // Detect the existing version WITHOUT creating an empty v1 as a side
+    // effect. The previous implementation called `openDB(DB_NAME)` (no
+    // version), which silently auto-creates v1 on cold-start profiles and
+    // races against the subsequent `openDB(DB_NAME, DB_VERSION)` upgrade —
+    // surfacing as `[Offline Storage] DB upgrade blocked` warnings followed
+    // by 5s open timeouts.
     try {
       if (migrationSafety) {
-        let existingVersion = 0;
-        try {
-          const probe = await openDB(DB_NAME);
-          existingVersion = probe.version;
-          probe.close();
-        } catch { /* fresh install */ }
+        const existingVersion = await detectExistingDBVersion(DB_NAME);
         if (existingVersion > 0 && existingVersion < DB_VERSION) {
           const snap = await migrationSafety.createPreMigrationSnapshot(DB_NAME, existingVersion, DB_VERSION);
           snapshotCreated = !!snap.ok;
