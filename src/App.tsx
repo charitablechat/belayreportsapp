@@ -6,6 +6,7 @@ import { createBrowserRouter, RouterProvider, useNavigate, Outlet, useLocation }
 import { lazy, Suspense, useEffect, useRef } from "react";
 import { trackNavigation, getNavigationDepth, decrementNavigation, isOverlayActive, isReportTabActive } from "@/lib/navigation";
 import Index from "./pages/Index";
+import { Sentry } from "@/lib/sentry";
 
 // Lazy-loaded routes for code splitting
 const Dashboard = lazy(() => import("./pages/Dashboard"));
@@ -220,7 +221,18 @@ const router = createBrowserRouter([
 ]);
 
 const App = () => (
-  <RouterProvider router={router} />
+  <Sentry.ErrorBoundary
+    fallback={
+      <div style={{ padding: 24, fontFamily: "system-ui, sans-serif" }}>
+        <h1 style={{ fontSize: 18, fontWeight: 600 }}>Something went wrong.</h1>
+        <p style={{ marginTop: 8, color: "#555" }}>
+          The error has been reported. Please refresh the page to continue.
+        </p>
+      </div>
+    }
+  >
+    <RouterProvider router={router} />
+  </Sentry.ErrorBoundary>
 );
 
 export default App;
