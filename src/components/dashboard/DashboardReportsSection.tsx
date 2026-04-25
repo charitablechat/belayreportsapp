@@ -255,7 +255,7 @@ export function DashboardReportsSection({
     filteredCount,
     criticalCount,
     warningCount,
-  } = useDashboardFilters(currentReports, currentType, currentUserId, isSuperAdmin);
+  } = useDashboardFilters(currentReports, currentType, currentUserId, isSuperAdmin, profilesById);
 
   // Compute stats from full datasets (not sliced "Recent" arrays)
   const statsData = useMemo(() => {
