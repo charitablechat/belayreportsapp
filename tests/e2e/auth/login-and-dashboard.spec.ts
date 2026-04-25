@@ -1,4 +1,5 @@
 import { expect, test } from '@playwright/test';
+import { signIn } from '../_fixtures/auth';
 
 /**
  * Scope "B" — auth-gated golden path.
@@ -32,20 +33,8 @@ test.describe('auth: signed-in golden path', () => {
     const uncaught: Error[] = [];
     page.on('pageerror', (err) => uncaught.push(err));
 
-    // 1. Land on the sign-in surface.
-    await page.goto('/');
-    await expect(page.locator('input#email')).toBeVisible({ timeout: 15_000 });
-
-    // 2. Submit credentials.
-    await page.locator('input#email').fill(EMAIL!);
-    await page.locator('input#password').fill(PASSWORD!);
-    await page.getByRole('button', { name: /^sign in$/i }).click();
-
-    // 3. Wait for the dashboard. Successful sign-in routes to /dashboard.
-    // Onboarding-first flows (new accounts) would land on /onboarding —
-    // the test account should already be onboarded, so /dashboard is the
-    // expected URL.
-    await page.waitForURL(/\/dashboard/, { timeout: 20_000 });
+    // 1–3. Sign in via the shared fixture. Resolves once /dashboard loads.
+    await signIn(page);
     await expect(page.locator('#root')).not.toBeEmpty();
 
     // 4. From the dashboard, the "Inspection Report" card has a

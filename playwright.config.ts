@@ -1,4 +1,13 @@
 import { defineConfig, devices } from '@playwright/test';
+import { loadEnv } from 'vite';
+
+// Surface VITE_* values from .env into process.env so the test files (running
+// in Node, not in the browser bundle) can talk to Supabase directly for
+// pre-flight cleanup and post-flight verification.
+const viteEnv = loadEnv('production', process.cwd(), 'VITE_');
+for (const [k, v] of Object.entries(viteEnv)) {
+  if (process.env[k] === undefined) process.env[k] = v;
+}
 
 /**
  * Playwright configuration for the Ropeworks PWA.
