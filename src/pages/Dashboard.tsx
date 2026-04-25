@@ -990,7 +990,14 @@ export default function Dashboard() {
         if (networkData && networkData.length > 0) {
           setTrainings(networkData);
           writeDashboardCache('dashboard-cache-trainings', networkData);
-          
+
+          reconcileServerDeletions({
+            table: 'trainings',
+            localRows: offlineData,
+            serverRows: networkData,
+            userId,
+            isSuperAdmin,
+          }).catch(err => console.warn('[Dashboard] trainings reconcile failed:', err));
           const nowT = new Date().toISOString();
           Promise.all(networkData.map(async (training) => {
             const localRecord = await getOfflineTraining(training.id);
