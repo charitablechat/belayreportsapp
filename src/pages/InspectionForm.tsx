@@ -1506,19 +1506,25 @@ export default function InspectionForm() {
       return;
     }
     anySaveInProgressRef.current = true;
-    // Deadlock recovery: if `performSave` hangs longer than this, force-release
-    // the mutex so subsequent saves can proceed. `performSave`'s own
-    // `try/finally` (line 2057) is the normal release path; this is the
-    // break-glass for hung awaits (e.g. a Supabase request on a half-open
-    // TCP connection that never resolves, or stalled IDB upgrades).
-    // Sized comfortably above the largest legitimate budget:
-    // - getDB Promise.race timeout: 5s
-    // - withOfflineTimeout local fallback: 2s
-    // - Supabase per-query timeout: 8s
-    // - syncWithRetry: 3 retries with 2s+4s backoff = ~14s including network
-    // 30s leaves headroom for the 14s sync path plus IDB writes; anything
-    // longer is a genuine deadlock.
+    // Deadlock recovery: if this `performSave` hangs longer than 30s, force-
+    // release the mutex so a subsequent invocation can proceed. The `finally`
+    // (below) is the normal release path; this break-glass exists for hung
+    // awaits (e.g. a Supabase request on a half-open TCP connection that
+    // never resolves, stalled IDB upgrades).
+    //
+    // `deadlockTimerFired` makes ownership safe across the recovery boundary:
+    // once the timer fires, the mutex no longer belongs to this invocation
+    // (a newer `performSave` may have acquired it). The `finally` therefore
+    // skips its release in that case, otherwise it would silently clear a
+    // newer invocation's mutex and allow concurrent saves.
+    //
+    // Sizing: well above the worst legitimate budget (getDB Promise.race 5s,
+    // withOfflineTimeout local fallback 2s, Supabase per-query timeout 8s,
+    // syncWithRetry 3 attempts with 2s+4s backoff = ~14s plus network),
+    // well below "permanently stuck".
+    let deadlockTimerFired = false;
     const performSaveDeadlockTimer = setTimeout(() => {
+      deadlockTimerFired = true;
       console.error('[InspectionForm] performSave deadlock recovery: mutex held >30s, force-releasing');
       anySaveInProgressRef.current = false;
     }, 30000);
@@ -2071,7 +2077,12 @@ export default function InspectionForm() {
       throw error;
     } finally {
       clearTimeout(performSaveDeadlockTimer);
-      anySaveInProgressRef.current = false;
+      // Only release if we still own the mutex. If the deadlock timer fired,
+      // a later `performSave` may have already acquired it; clearing here
+      // would let a third invocation run concurrently.
+      if (!deadlockTimerFired) {
+        anySaveInProgressRef.current = false;
+      }
     }
   };
 
