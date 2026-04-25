@@ -8,7 +8,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { Building2, Users, FileText, Bell, UserPlus, Pencil, Trash2, ClipboardList, ArrowLeft, Merge, Calendar, Shield, ShieldOff, GraduationCap, ClipboardCheck, Check, Settings, UserCog, AlertTriangle, UserX, UserCheck } from "lucide-react";
+import { Building2, Users, FileText, Bell, UserPlus, Pencil, Trash2, ClipboardList, ArrowLeft, Merge, Clock, Calendar, Shield, ShieldOff, GraduationCap, ClipboardCheck, Check, Settings, RotateCcw, UserCog, AlertTriangle, UserX, UserCheck } from "lucide-react";
 import { format } from "date-fns";
 import { useNavigate } from "react-router-dom";
 import { goBack } from "@/lib/navigation";
@@ -67,7 +67,7 @@ export default function SuperAdminDashboard() {
   const [isTrainingsListOpen, setIsTrainingsListOpen] = useState(false);
   const [isDailyListOpen, setIsDailyListOpen] = useState(false);
   
-  
+  const [resetMetricDialogOpen, setResetMetricDialogOpen] = useState(false);
   
   // Organization edit/delete states
   const [editOrgDialogOpen, setEditOrgDialogOpen] = useState(false);
@@ -330,6 +330,74 @@ export default function SuperAdminDashboard() {
     },
     enabled: !loading,
   });
+
+  // Fetch reset timestamp from admin_settings
+  const { data: resetTimestamp } = useQuery({
+    queryKey: ["admin-settings", "avg_completion_time_reset_at"],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("admin_settings" as any)
+        .select("value, updated_at")
+        .eq("key", "avg_completion_time_reset_at")
+        .single() as any;
+      
+      if (error) return { value: '1970-01-01T00:00:00Z', updated_at: null };
+      return data as { value: string; updated_at: string | null };
+    },
+    enabled: !loading,
+  });
+
+  // Average completion time query (respects reset timestamp)
+  const { data: avgCompletionTimeData } = useQuery({
+    queryKey: ["avg-completion-time", resetTimestamp?.value],
+    queryFn: async () => {
+      const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
+      const resetAt = resetTimestamp?.value || '1970-01-01T00:00:00Z';
+      const lowerBound = resetAt > thirtyDaysAgo ? resetAt : thirtyDaysAgo;
+      
+      const { data, error } = await supabase
+        .from("inspections")
+        .select("created_at, started_at, updated_at, active_duration_seconds")
+        .eq("status", "completed")
+        .not("updated_at", "is", null)
+        .gte("updated_at", lowerBound);
+      
+      if (error) throw error;
+      
+      if (!data || data.length === 0) return { avg: 0, count: 0, min: 0, max: 0, activeCount: 0 };
+      
+      let activeCount = 0;
+      const durations = data
+        .filter(i => i.created_at)
+        .map((inspection) => {
+          // Prefer active_duration_seconds when available
+          if (inspection.active_duration_seconds && inspection.active_duration_seconds > 0) {
+            activeCount++;
+            return inspection.active_duration_seconds / 3600;
+          }
+          // Fall back to wall-clock calculation
+          const startTime = inspection.started_at 
+            ? new Date(inspection.started_at).getTime()
+            : new Date(inspection.created_at!).getTime();
+          const endTime = new Date(inspection.updated_at!).getTime();
+          return (endTime - startTime) / (1000 * 60 * 60);
+        }).filter(h => h > 0 && h < 8760);
+      
+      if (durations.length === 0) return { avg: 0, count: 0, min: 0, max: 0, activeCount: 0 };
+      
+      const total = durations.reduce((s, h) => s + h, 0);
+      return {
+        avg: total / durations.length,
+        count: durations.length,
+        min: Math.min(...durations),
+        max: Math.max(...durations),
+        activeCount,
+      };
+    },
+    enabled: !loading && resetTimestamp !== undefined,
+  });
+  const avgCompletionTime = avgCompletionTimeData?.avg ?? 0;
+
   // Inspections this month query
   const { data: inspectionsThisMonth } = useQuery({
     queryKey: ["inspections-this-month"],
@@ -513,6 +581,26 @@ export default function SuperAdminDashboard() {
     } catch (error: any) {
       console.error('Error toggling user activation:', error);
       toast.error(error?.message || 'Failed to update user status');
+    }
+  };
+
+  // Reset avg completion time metric
+  const handleResetCompletionTime = async () => {
+    try {
+      const { error } = await (supabase
+        .from("admin_settings" as any)
+        .update({ value: new Date().toISOString(), updated_at: new Date().toISOString() } as any)
+        .eq("key", "avg_completion_time_reset_at") as any);
+      
+      if (error) throw error;
+      
+      toast.success("Metric reset — tracking starts from now");
+      setResetMetricDialogOpen(false);
+      queryClient.invalidateQueries({ queryKey: ["admin-settings"] });
+      queryClient.invalidateQueries({ queryKey: ["avg-completion-time"] });
+    } catch (error: any) {
+      console.error("Error resetting metric:", error);
+      toast.error(error?.message || "Failed to reset metric");
     }
   };
 
@@ -720,6 +808,66 @@ export default function SuperAdminDashboard() {
 
       {/* Overview Stats - Row 3 */}
       <div className="grid gap-5 md:grid-cols-2 lg:grid-cols-3">
+        {/* DISABLED: Avg Completion Time — greyed out until timer accuracy is resolved */}
+        <div className="opacity-40 pointer-events-none select-none">
+        <StatCard
+          title="Avg Completion Time"
+          value={avgCompletionTime ? `${avgCompletionTime.toFixed(1)}h` : "0h"}
+          icon={Clock}
+          description="Average time to complete"
+          hoverContent={{
+            title: "Inspection Duration",
+            description: avgCompletionTimeData?.activeCount 
+              ? `Uses active editing time for ${avgCompletionTimeData.activeCount} report(s); wall-clock for the rest.`
+              : "Average time from inspection creation to completion.",
+            details: [
+              { label: "Average", value: avgCompletionTime ? `${avgCompletionTime.toFixed(1)} hours` : "N/A" },
+              { label: "Fastest", value: avgCompletionTimeData?.min ? `${avgCompletionTimeData.min.toFixed(1)} hours` : "N/A" },
+              { label: "Slowest", value: avgCompletionTimeData?.max ? `${avgCompletionTimeData.max.toFixed(1)} hours` : "N/A" },
+              { label: "Sample size", value: avgCompletionTimeData?.count ?? 0 },
+              { label: "Active-tracked", value: avgCompletionTimeData?.activeCount ?? 0 },
+            ],
+            tip: "Active time tracks only when users are editing. Older reports use wall-clock time as fallback."
+          }}
+          actions={
+            <div className="flex items-center gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                className="h-7 px-2 text-xs font-mono bg-background/50 text-emerald-400 border-emerald-500/30 hover:bg-emerald-500/10 hover:text-emerald-300 transition-colors"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setResetMetricDialogOpen(true);
+                }}
+              >
+                <RotateCcw className="h-3 w-3 mr-1" />
+                RESET
+              </Button>
+              {resetTimestamp?.updated_at && resetTimestamp.value !== '1970-01-01T00:00:00Z' && (
+                <Badge className="h-5 text-[10px] font-mono bg-background/50 text-emerald-400 border-emerald-500/30 hover:bg-background/50">
+                  RST {format(new Date(resetTimestamp.updated_at), "MM/dd HH:mm")}
+                </Badge>
+              )}
+            </div>
+          }
+        />
+        </div>
+        <StatCard
+          title="This Month"
+          value={inspectionsThisMonth || 0}
+          icon={Calendar}
+          description="Inspections created"
+          hoverContent={{
+            title: "Monthly Activity",
+            description: "Inspections created in the current calendar month.",
+            details: [
+              { label: "This month", value: inspectionsThisMonth || 0 },
+            ],
+            tip: "Track monthly trends over time"
+          }}
+        />
+      </div>
+
       {/* Tabs for different sections */}
       <Tabs defaultValue="organizations" className="space-y-6">
         <AdminTabsSection showBackupTab={isBackupAdmin} />
@@ -1847,6 +1995,31 @@ export default function SuperAdminDashboard() {
               className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
             >
               Delete Organization
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* Reset Metric Confirmation Dialog */}
+      <AlertDialog open={resetMetricDialogOpen} onOpenChange={setResetMetricDialogOpen}>
+        <AlertDialogContent className="bg-[#0a0a0a] border-[#00ff41]/30 text-[#00ff41] font-mono">
+          <AlertDialogHeader>
+            <AlertDialogTitle className="text-[#00ff41] font-mono">
+              &gt; RESET_METRIC_CONFIRM
+            </AlertDialogTitle>
+            <AlertDialogDescription className="text-[#00ff41]/70 font-mono text-sm">
+              This will reset the Avg Completion Time metric to 0h. All future calculations will start from this timestamp. No data will be deleted — legacy records are preserved but excluded from the metric.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel className="font-mono border-[#00ff41]/30 text-[#00ff41] hover:bg-[#00ff41]/10 hover:text-[#00ff41] bg-transparent">
+              ABORT
+            </AlertDialogCancel>
+            <AlertDialogAction
+              onClick={handleResetCompletionTime}
+              className="font-mono bg-[#00ff41] text-[#0a0a0a] hover:bg-[#00ff41]/80"
+            >
+              EXECUTE RESET
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
