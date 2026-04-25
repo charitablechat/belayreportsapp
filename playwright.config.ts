@@ -41,12 +41,20 @@ export default defineConfig({
   ],
   // Auto-start the app for local + CI runs. Skipped if E2E_BASE_URL is set
   // (so we can also point Playwright at a deployed preview URL).
+  //
+  // `vite preview` serves from `dist/`, which means it crashes on a fresh
+  // checkout with no prior build. Run `vite build` first so the command
+  // succeeds regardless of the current state of `dist/`. On an already-built
+  // tree this is a no-op rebuild (~20s on CI).
   webServer: process.env.E2E_BASE_URL
     ? undefined
     : {
-        command: 'bun run preview -- --port 4173 --strictPort',
+        command:
+          'bun run build && bun run preview -- --port 4173 --strictPort',
         url: 'http://127.0.0.1:4173',
         reuseExistingServer: !process.env.CI,
-        timeout: 120_000,
+        // 180s covers cold-cache build (~100s on a small runner) + preview
+        // server boot. 120s was tight after adding the build step.
+        timeout: 180_000,
       },
 });
