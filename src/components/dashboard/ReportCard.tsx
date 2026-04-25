@@ -63,9 +63,10 @@ interface ReportCardProps {
   isAdmin?: boolean;
   isInvoiced?: boolean;
   onToggleInvoiced?: (report: any, type: 'inspection' | 'training' | 'daily') => void;
+  profilesById?: ReadonlyMap<string, { first_name: string | null; last_name: string | null; avatar_url: string | null }>;
 }
 
-export function ReportCard({ report, type, onDelete, onClick, getStatusBadge, compact, isAdmin, isInvoiced, onToggleInvoiced }: ReportCardProps) {
+export function ReportCard({ report, type, onDelete, onClick, getStatusBadge, compact, isAdmin, isInvoiced, onToggleInvoiced, profilesById }: ReportCardProps) {
   useMinuteTick(); // F2: re-render every 60s so "Edited X ago" stays current
   const { sparkles, triggerSparkles, handleMouseMove } = useClickAndHoverSparkles();
   const isInspection = type === 'inspection';
