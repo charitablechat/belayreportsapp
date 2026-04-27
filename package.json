@@ -9,6 +9,7 @@
     "build:dev": "vite build --mode development",
     "lint": "eslint .",
     "lint:any-budget": "node scripts/lint-any-budget.mjs",
+    "bundle-size:budget": "node scripts/bundle-size-budget.mjs",
     "preview": "vite preview",
     "test": "vitest run",
     "test:e2e": "playwright test",
