@@ -21,19 +21,24 @@ import {
  *      inspections for this user (older specs left them behind).
  *   3. Create an inspection ONLINE with a `[E2E DEVIN] <ts>` org marker.
  *   4. Wait for the inspection itself to reach Supabase (existing oracle).
- *   5. Wait for `report_cloud_backups` to contain a row for this
- *      (`report_type`, `report_id`) — the auto-upload oracle. Each save
- *      in the form path fires `local-backup-ledger::saveReportSnapshot`,
- *      which fire-and-forget calls
+ *   5. Open `/inspection/<id>` and trigger a first edit + save. The
+ *      "Create Inspection" button bypasses
+ *      `local-backup-ledger::saveReportSnapshot` — only `performSave`
+ *      (the form save path) fires it. So we need a real edit-then-save
+ *      to produce the FIRST cloud-backup row.
+ *   6. Wait for the post-edit value to land in Supabase (proves the
+ *      form actually saved).
+ *   7. Wait for `report_cloud_backups` to contain a row for this
+ *      (`report_type`, `report_id`) — the auto-upload oracle.
+ *      `saveReportSnapshot` fire-and-forget calls
  *      `cloud-backup::uploadSnapshotToCloud`.
- *   6. Edit the inspection's `location`, blur to fire autosave.
- *   7. Wait for the post-edit value to land in Supabase (proves the form
- *      actually saved).
- *   8. Wait for the cloud-backup row's `snapshot_ts` to advance past the
- *      first one — proves the second upload after edit landed (the
- *      upsert hits `(user_id, report_type, report_id)`, so the row's
- *      identity is stable; only the timestamp changes).
- *   9. Post-flight: delete the cloud-backup rows + the inspection.
+ *   8. Trigger a SECOND edit + save (different marker).
+ *   9. Wait for the second value to land in Supabase.
+ *  10. Wait for the cloud-backup row's `snapshot_ts` to advance past
+ *      the first one — proves the second upload landed. The upsert
+ *      hits `(user_id, report_type, report_id)`, so the row's identity
+ *      is stable across the two writes; only the timestamp changes.
+ *  11. Post-flight: delete the cloud-backup rows + the inspection.
  *
  * What this spec deliberately does NOT cover:
  *   - The **restore** half of the round-trip. `restoreSnapshotToServer`
@@ -111,7 +116,8 @@ test.describe('cloud-backup: snapshot auto-upload and ratchet on edit', () => {
     ).toBeVisible({ timeout: 15_000 });
 
     const marker = `${MARKER_PREFIX} ${Date.now()}`;
-    const editedMarker = `${marker} edited`;
+    const markerV1 = `${marker} v1`;
+    const markerV2 = `${marker} v2`;
 
     // The org combobox value flows into `snapshot.parent.organization`,
     // which `cloud-backup::_doUpload` writes to the row's `facility`
@@ -136,11 +142,46 @@ test.describe('cloud-backup: snapshot auto-upload and ratchet on edit', () => {
     const serverId = createdRow.id as string;
     expect(serverId, 'created row should have a server id').toBeTruthy();
 
-    // ── 5. Wait for the FIRST cloud-backup auto-upload ───────────────────
-    // `local-backup-ledger::saveReportSnapshot` fires
-    // `cloud-backup::uploadSnapshotToCloud` after every save. The upload
-    // is fire-and-forget, so it can race the inspection insert; polling
-    // is the cleanest oracle.
+    // ── 5. Open the inspection form ──────────────────────────────────────
+    await page.goto(`/inspection/${serverId}`);
+    const locationInput = page.getByPlaceholder(/enter location/i);
+    await expect(locationInput).toBeVisible({ timeout: 30_000 });
+    await expect(locationInput).toHaveValue(marker, { timeout: 30_000 });
+
+    // Helper: drive a controlled-input value through React's
+    // `__valueTracker` and blur to fire the form's debounced autosave.
+    // Same escape hatch the scope-C spec uses; survives focus/keyboard
+    // timing flakiness on CI.
+    const editLocationAndSave = async (value: string) => {
+      await locationInput.click();
+      await locationInput.evaluate((el, v) => {
+        const input = el as HTMLInputElement;
+        const setter = Object.getOwnPropertyDescriptor(
+          HTMLInputElement.prototype,
+          'value'
+        )?.set;
+        setter?.call(input, v);
+        input.dispatchEvent(new Event('input', { bubbles: true }));
+      }, value);
+      await expect(locationInput).toHaveValue(value, { timeout: 5_000 });
+      // Blur runs `performSave`, which fires `saveReportSnapshot` →
+      // `uploadSnapshotToCloud` (fire-and-forget cloud upload).
+      await locationInput.blur();
+    };
+
+    // ── 6. First edit → save → verify Supabase ───────────────────────────
+    // The "Create Inspection" button at /inspection/new bypasses
+    // `saveReportSnapshot`; only `performSave` (the form save path)
+    // fires it. So a real edit-then-save is what produces the FIRST
+    // cloud-backup row.
+    await editLocationAndSave(markerV1);
+    await waitForInspectionLocationInCloud(session, {
+      id: serverId,
+      expectedLocation: markerV1,
+      timeoutMs: 120_000,
+    });
+
+    // ── 7. Wait for the FIRST cloud-backup auto-upload ───────────────────
     const firstBackup = await waitForCloudBackup(session, {
       reportType: 'inspection',
       reportId: serverId,
@@ -150,37 +191,15 @@ test.describe('cloud-backup: snapshot auto-upload and ratchet on edit', () => {
     expect(firstBackup.user_id).toBe(session.userId);
     expect(firstBackup.facility).toBe(marker);
 
-    // ── 6. Open the inspection form and edit the location ────────────────
-    await page.goto(`/inspection/${serverId}`);
-    const locationInput = page.getByPlaceholder(/enter location/i);
-    await expect(locationInput).toBeVisible({ timeout: 30_000 });
-    await expect(locationInput).toHaveValue(marker, { timeout: 30_000 });
-
-    // Drive the value through React's `__valueTracker` (same escape
-    // hatch the scope-C spec uses) so the controlled-input update lands
-    // even if focus/keyboard timing is off.
-    await locationInput.click();
-    await locationInput.evaluate((el, value) => {
-      const input = el as HTMLInputElement;
-      const setter = Object.getOwnPropertyDescriptor(
-        HTMLInputElement.prototype,
-        'value'
-      )?.set;
-      setter?.call(input, value);
-      input.dispatchEvent(new Event('input', { bubbles: true }));
-    }, editedMarker);
-    await expect(locationInput).toHaveValue(editedMarker, { timeout: 5_000 });
-    // Blur fires the form's debounced autosave path.
-    await locationInput.blur();
-
-    // ── 7. Wait for the edit to reach Supabase ───────────────────────────
+    // ── 8. Second edit → save → verify Supabase ──────────────────────────
+    await editLocationAndSave(markerV2);
     await waitForInspectionLocationInCloud(session, {
       id: serverId,
-      expectedLocation: editedMarker,
+      expectedLocation: markerV2,
       timeoutMs: 120_000,
     });
 
-    // ── 8. Wait for the cloud-backup snapshot_ts to advance ──────────────
+    // ── 9. Wait for the cloud-backup snapshot_ts to advance ──────────────
     // The row identity is stable across the upsert
     // (`onConflict: 'user_id,report_type,report_id'`) so we're polling
     // for the timestamp to ratchet, not for a new row.
@@ -195,7 +214,7 @@ test.describe('cloud-backup: snapshot auto-upload and ratchet on edit', () => {
     // ratchet, not a duplicate row created by a constraint mismatch.
     expect(secondBackup.id).toBe(firstBackup.id);
 
-    // ── 9. Post-flight cleanup ───────────────────────────────────────────
+    // ── 10. Post-flight cleanup ──────────────────────────────────────────
     const purgedAfterBackups = await purgeMarkedCloudBackups(session);
     const purgedAfterInspections = await purgeMarkedInspections(session);
     // eslint-disable-next-line no-console
