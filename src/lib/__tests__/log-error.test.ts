@@ -73,4 +73,25 @@ describe("logError", () => {
     // a `catch` block must not mask the original failure.
     expect(() => logError(new Error("boom"))).not.toThrow();
   });
+
+  it("swallows rejections from both forward paths so the global unhandledrejection handler cannot recurse", async () => {
+    // Critical contract: if either dynamic-import / forward chain leaks
+    // an unhandled rejection, the new global handler in main.tsx will
+    // call logError → trigger the same import → leak again → infinite
+    // loop. Both `.then` chains in log-error.ts must end in `.catch`.
+    const onUnhandled = vi.fn();
+    if (typeof process !== "undefined" && process.on) {
+      process.on("unhandledRejection", onUnhandled);
+    }
+
+    logError(new Error("boom"), { scope: "recursion-guard" });
+    // Flush microtasks so any leaked rejection would have surfaced.
+    await new Promise((resolve) => setTimeout(resolve, 50));
+
+    expect(onUnhandled).not.toHaveBeenCalled();
+
+    if (typeof process !== "undefined" && process.off) {
+      process.off("unhandledRejection", onUnhandled);
+    }
+  });
 });
