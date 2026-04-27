@@ -77,6 +77,7 @@ import { reconcileAllChildTables, restoreReconciledDeletions, type ReconciledTab
 import { useEmergencySave } from "@/hooks/useEmergencySave";
 import { saveReportSnapshot, getReportSnapshot, markSnapshotSynced, downloadReportBackup } from "@/lib/local-backup-ledger";
 import { capturePreEditSnapshot } from "@/lib/admin-edit-snapshot";
+import { logError } from "@/lib/log-error";
 import { onCloudBackupError } from "@/lib/cloud-backup";
 import { appendVersion } from "@/lib/report-version-manager";
 import { showHardSavedToast } from "@/lib/toast-helpers";
@@ -1104,6 +1105,7 @@ export default function DailyAssessmentForm() {
       setSaveError(null);
     } catch (error: any) {
       console.error('[Save] Error saving progress:', error);
+      logError(error, { scope: 'DailyAssessmentForm.handleSaveProgress' });
       const { isIdbSaveError } = await import('@/lib/offline-storage');
       if (isIdbSaveError(error)) {
         setSaveError({ message: error.message || 'Save failed', code: error.code });

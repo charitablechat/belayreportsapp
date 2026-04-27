@@ -74,6 +74,7 @@ import { UnsavedChangesDialog } from "@/components/UnsavedChangesDialog";
 import { useEmergencySave } from "@/hooks/useEmergencySave";
 import { saveReportSnapshot, getReportSnapshot, markSnapshotSynced, downloadReportBackup } from "@/lib/local-backup-ledger";
 import { capturePreEditSnapshot } from "@/lib/admin-edit-snapshot";
+import { logError } from "@/lib/log-error";
 import { onCloudBackupError } from "@/lib/cloud-backup";
 import { useSaveShortcut } from "@/hooks/useKeyboardShortcuts";
 import { useReportEditPermission } from "@/hooks/useReportEditPermission";
@@ -2073,6 +2074,7 @@ export default function InspectionForm() {
       }
     } catch (error: any) {
       console.error('[InspectionForm] Save error:', error);
+      logError(error, { scope: 'InspectionForm.performSave' });
       setSaveError({ message: error.message || 'Failed to save', code: error?.code });
       throw error;
     } finally {

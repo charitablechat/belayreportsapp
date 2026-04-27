@@ -30,38 +30,53 @@ export function logError(err: unknown, ctx: LogContext = {}): void {
   console.error("[logError]", payload);
 
   // Forward to Sentry (best-effort; production-only inside the helper).
+  // Both `.then` and `.catch` swallow so a synchronous throw inside
+  // `captureException` (or a rejected import) cannot surface as an
+  // unhandled rejection. Logging must NEVER mask the original error.
   try {
-    void import("@/lib/sentry").then(({ captureException }) => {
-      captureException(err, {
-        scope: ctx.scope,
-        userId: ctx.userId,
-        ...(ctx.extra ?? {}),
-      });
-    });
+    void import("@/lib/sentry")
+      .then(({ captureException }) => {
+        try {
+          captureException(err, {
+            scope: ctx.scope,
+            userId: ctx.userId,
+            ...(ctx.extra ?? {}),
+          });
+        } catch {
+          /* swallow */
+        }
+      })
+      .catch(() => { /* swallow */ });
   } catch {
     /* swallow — logging must never throw */
   }
 
-  // Forward to backend audit_logs (best-effort; never block caller)
+  // Forward to backend audit_logs (best-effort; never block caller).
+  // Both `.then` and `.catch` swallow — a rejected import (e.g. supabase
+  // chunk fails to load during a deploy rollover) would otherwise surface
+  // as an unhandled rejection and, with the new global handler in
+  // main.tsx, recurse back into logError indefinitely.
   try {
-    void import("@/integrations/supabase/client").then(({ supabase }) => {
-      try {
-        const p: any = supabase.rpc("create_audit_log", {
-          p_user_id: (ctx.userId as any) ?? null,
-          p_action_type: "client.error",
-          p_table_name: "client",
-          p_record_id: null,
-          p_old_values: null,
-          p_new_values: null,
-          p_metadata: payload as any,
-        } as any);
-        if (p && typeof p.then === "function") {
-          p.then(() => {}, () => {});
+    void import("@/integrations/supabase/client")
+      .then(({ supabase }) => {
+        try {
+          const p: any = supabase.rpc("create_audit_log", {
+            p_user_id: (ctx.userId as any) ?? null,
+            p_action_type: "client.error",
+            p_table_name: "client",
+            p_record_id: null,
+            p_old_values: null,
+            p_new_values: null,
+            p_metadata: payload as any,
+          } as any);
+          if (p && typeof p.then === "function") {
+            p.then(() => {}, () => {});
+          }
+        } catch {
+          /* swallow — logging must never throw */
         }
-      } catch {
-        /* swallow — logging must never throw */
-      }
-    });
+      })
+      .catch(() => { /* swallow */ });
   } catch {
     /* ignore */
   }
