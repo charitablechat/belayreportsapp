@@ -74,7 +74,10 @@ describe("transaction upsert payloads — IDB-only field strip", () => {
  * child_count_hint never leave atomic-sync") gets a unit test that
  * doesn't depend on the larger transaction integration mock.
  */
-import { __test_only__stripLocalOnlyFields } from "../atomic-sync-manager";
+import {
+  __test_only__stripLocalOnlyFields,
+  __test_only__stripLocalOnlyFieldsArray,
+} from "../atomic-sync-manager";
 
 describe("stripLocalOnlyFields", () => {
   it("removes dirty and child_count_hint, preserves everything else", () => {
@@ -120,5 +123,39 @@ describe("stripLocalOnlyFields", () => {
     const input = { id: "abc", child_count_hint: 0, location: "Site A" };
     const out = __test_only__stripLocalOnlyFields(input);
     expect(out).toEqual({ id: "abc", location: "Site A" });
+  });
+});
+
+/**
+ * Array variant: child upserts route through this helper today as
+ * future-proofing. Children currently have no IDB-only fields, but if a
+ * future migration adds one to LOCAL_ONLY_REMOTE_UPSERT_FIELDS the strip
+ * must propagate to every child path — otherwise we re-create the same
+ * silent dead-letter on the children that PR #16 fixed on the parents.
+ */
+describe("stripLocalOnlyFieldsArray", () => {
+  it("strips local-only fields from every row", () => {
+    const input = [
+      { id: "a", system_name: "S1", dirty: true },
+      { id: "b", system_name: "S2", child_count_hint: 3 },
+      { id: "c", system_name: "S3" },
+    ];
+    const out = __test_only__stripLocalOnlyFieldsArray(input);
+    expect(out).toEqual([
+      { id: "a", system_name: "S1" },
+      { id: "b", system_name: "S2" },
+      { id: "c", system_name: "S3" },
+    ]);
+  });
+
+  it("returns an empty array unchanged", () => {
+    expect(__test_only__stripLocalOnlyFieldsArray([])).toEqual([]);
+  });
+
+  it("does not mutate input rows", () => {
+    const input = [{ id: "a", dirty: true, child_count_hint: 5 }];
+    __test_only__stripLocalOnlyFieldsArray(input);
+    expect(input[0].dirty).toBe(true);
+    expect(input[0].child_count_hint).toBe(5);
   });
 });

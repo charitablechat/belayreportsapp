@@ -1,6 +1,7 @@
 import { useEffect, useCallback, useRef, useState } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { syncAllInspectionsAtomic, syncAllTrainingsAtomic, syncAllDailyAssessmentsAtomic, noteBatchOutcome, refetchInspectionPackage, refetchTrainingPackage, refetchAssessmentPackage } from '@/lib/atomic-sync-manager';
+import { flushAdminEditQueue } from '@/lib/admin-edit-snapshot-queue';
 import { syncPhotos } from '@/lib/sync-manager';
 import { saveInspectionOffline, saveTrainingOffline, saveDailyAssessmentOffline } from '@/lib/offline-storage';
 import { shouldPreserveLocalRecord } from '@/lib/local-data-guards';
@@ -277,7 +278,6 @@ export const useAutoSync = () => {
       // local edits to the server, so the snapshot reflects the server's
       // pre-edit state rather than the admin's overwrite.
       try {
-        const { flushAdminEditQueue } = await import('@/lib/admin-edit-snapshot-queue');
         await flushAdminEditQueue();
       } catch (flushErr) {
         console.warn('[AutoSync] admin-edit-snapshot flush failed (non-blocking):', flushErr);

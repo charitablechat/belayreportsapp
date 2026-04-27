@@ -8,6 +8,7 @@
 
 import { supabase } from '@/integrations/supabase/client';
 import { getUserWithCache } from '@/lib/cached-auth';
+import { capturePreEditSnapshot } from './admin-edit-snapshot';
 import type { ReportType, ReportSnapshot } from './local-backup-ledger';
 
 /** Opaque structural row type shared across report tables. */
@@ -386,7 +387,6 @@ export async function restoreSnapshotToServer(snapshotId: string): Promise<boole
 
     // V7-style safety: capture pre_restore snapshot of CURRENT server state so this restore is reversible
     try {
-      const { capturePreEditSnapshot } = await import('./admin-edit-snapshot');
       const { data: { user } } = await supabase.auth.getUser();
       const parentRec = (parent ?? {}) as Record<string, unknown>;
       const parentInspectorId =

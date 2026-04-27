@@ -176,6 +176,21 @@ function stripLocalOnlyFields<T extends Record<string, unknown>>(
 }
 
 /**
+ * Array variant of `stripLocalOnlyFields` for child-table upserts. Children
+ * currently do not carry any IDB-only fields, but routing every upsert
+ * through this helper means a future migration that adds an IDB-only field
+ * to `LOCAL_ONLY_REMOTE_UPSERT_FIELDS` is automatically respected by all
+ * sync paths — without that, only the parent upserts are protected and a
+ * silent "Could not find the 'X' column of 'Y' in the schema cache"
+ * dead-letter would re-emerge on the child path.
+ */
+function stripLocalOnlyFieldsArray<T extends Record<string, unknown>>(
+  rows: T[],
+): Omit<T, LocalOnlyKey>[] {
+  return rows.map(stripLocalOnlyFields);
+}
+
+/**
  * Test-only export so the unit suite in
  * `__tests__/strip-local-only-upsert-fields.test.ts` can exercise the
  * helper directly without spinning the full transaction manager.
@@ -183,6 +198,7 @@ function stripLocalOnlyFields<T extends Record<string, unknown>>(
  * `stripLocalOnlyFields` reference.
  */
 export const __test_only__stripLocalOnlyFields = stripLocalOnlyFields;
+export const __test_only__stripLocalOnlyFieldsArray = stripLocalOnlyFieldsArray;
 /** Shape of the `align_synced_at` RPC response. Both branches are optional — the
  * call is advisory and can return either a normal `{ updated_at }` payload or
  * an `{ error }` envelope. */
@@ -1084,7 +1100,7 @@ export async function syncInspectionAtomic(inspectionId: string, preValidatedUse
       steps.push({
         table: 'inspection_systems',
         operation: 'upsert',
-        data: systems,
+        data: stripLocalOnlyFieldsArray(systems),
         rollbackData: existingSystems,
       });
     }
@@ -1093,7 +1109,7 @@ export async function syncInspectionAtomic(inspectionId: string, preValidatedUse
       steps.push({
         table: 'inspection_ziplines',
         operation: 'upsert',
-        data: ziplines,
+        data: stripLocalOnlyFieldsArray(ziplines),
         rollbackData: existingZiplines,
       });
     }
@@ -1102,7 +1118,7 @@ export async function syncInspectionAtomic(inspectionId: string, preValidatedUse
       steps.push({
         table: 'inspection_equipment',
         operation: 'upsert',
-        data: equipment,
+        data: stripLocalOnlyFieldsArray(equipment),
         rollbackData: existingEquipment,
       });
     }
@@ -1111,7 +1127,7 @@ export async function syncInspectionAtomic(inspectionId: string, preValidatedUse
       steps.push({
         table: 'inspection_standards',
         operation: 'upsert',
-        data: standards,
+        data: stripLocalOnlyFieldsArray(standards),
         rollbackData: existingStandards,
       });
     }
@@ -1126,7 +1142,7 @@ export async function syncInspectionAtomic(inspectionId: string, preValidatedUse
       steps.push({
         table: 'inspection_summary',
         operation: 'upsert',
-        data: [sanitizedSummary],
+        data: stripLocalOnlyFieldsArray([sanitizedSummary]),
         rollbackData: existingSummary,
       });
     }
@@ -2040,7 +2056,7 @@ export async function syncTrainingAtomic(trainingId: string, preValidatedUser?: 
       steps.push({
         table: 'training_delivery_approaches',
         operation: 'upsert',
-        data: delivery_approaches,
+        data: stripLocalOnlyFieldsArray(delivery_approaches),
         rollbackData: existingApproaches,
       });
     }
@@ -2049,7 +2065,7 @@ export async function syncTrainingAtomic(trainingId: string, preValidatedUser?: 
       steps.push({
         table: 'training_operating_systems',
         operation: 'upsert',
-        data: operating_systems,
+        data: stripLocalOnlyFieldsArray(operating_systems),
         rollbackData: existingSystems,
       });
     }
@@ -2058,7 +2074,7 @@ export async function syncTrainingAtomic(trainingId: string, preValidatedUser?: 
       steps.push({
         table: 'training_immediate_attention',
         operation: 'upsert',
-        data: immediate_attention,
+        data: stripLocalOnlyFieldsArray(immediate_attention),
         rollbackData: existingAttention,
       });
     }
@@ -2067,7 +2083,7 @@ export async function syncTrainingAtomic(trainingId: string, preValidatedUser?: 
       steps.push({
         table: 'training_verifiable_items',
         operation: 'upsert',
-        data: verifiable_items,
+        data: stripLocalOnlyFieldsArray(verifiable_items),
         rollbackData: existingVerifiable,
       });
     }
@@ -2076,7 +2092,7 @@ export async function syncTrainingAtomic(trainingId: string, preValidatedUser?: 
       steps.push({
         table: 'training_systems_in_place',
         operation: 'upsert',
-        data: systems_in_place,
+        data: stripLocalOnlyFieldsArray(systems_in_place),
         rollbackData: existingSystemsInPlace,
       });
     }
@@ -2091,7 +2107,7 @@ export async function syncTrainingAtomic(trainingId: string, preValidatedUser?: 
       steps.push({
         table: 'training_summary',
         operation: 'upsert',
-        data: [sanitizedSummary],
+        data: stripLocalOnlyFieldsArray([sanitizedSummary]),
         rollbackData: existingSummary,
       });
     }
@@ -2875,7 +2891,7 @@ export async function syncDailyAssessmentAtomic(assessmentId: string, preValidat
       steps.push({
         table: 'daily_assessment_beginning_of_day',
         operation: 'upsert',
-        data: beginning_of_day,
+        data: stripLocalOnlyFieldsArray(beginning_of_day),
         rollbackData: existingBeginning,
       });
     }
@@ -2884,7 +2900,7 @@ export async function syncDailyAssessmentAtomic(assessmentId: string, preValidat
       steps.push({
         table: 'daily_assessment_end_of_day',
         operation: 'upsert',
-        data: end_of_day,
+        data: stripLocalOnlyFieldsArray(end_of_day),
         rollbackData: existingEnd,
       });
     }
@@ -2893,7 +2909,7 @@ export async function syncDailyAssessmentAtomic(assessmentId: string, preValidat
       steps.push({
         table: 'daily_assessment_operating_systems',
         operation: 'upsert',
-        data: operating_systems,
+        data: stripLocalOnlyFieldsArray(operating_systems),
         rollbackData: existingSystems,
       });
     }
@@ -2902,7 +2918,7 @@ export async function syncDailyAssessmentAtomic(assessmentId: string, preValidat
       steps.push({
         table: 'daily_assessment_equipment_checks',
         operation: 'upsert',
-        data: equipment_checks,
+        data: stripLocalOnlyFieldsArray(equipment_checks),
         rollbackData: existingEquipment,
       });
     }
@@ -2911,7 +2927,7 @@ export async function syncDailyAssessmentAtomic(assessmentId: string, preValidat
       steps.push({
         table: 'daily_assessment_structure_checks',
         operation: 'upsert',
-        data: structure_checks,
+        data: stripLocalOnlyFieldsArray(structure_checks),
         rollbackData: existingStructure,
       });
     }
@@ -2920,7 +2936,7 @@ export async function syncDailyAssessmentAtomic(assessmentId: string, preValidat
       steps.push({
         table: 'daily_assessment_environment_checks',
         operation: 'upsert',
-        data: environment_checks,
+        data: stripLocalOnlyFieldsArray(environment_checks),
         rollbackData: existingEnvironment,
       });
     }
