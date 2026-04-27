@@ -1,0 +1,123 @@
+name: Main broken alert
+
+# Loud, persistent notification when CI fails on a push to main.
+#
+# Why this exists: prior to PR #11 the repo had no CI at all. PR #11 added
+# `pull_request` + `push: branches: [main]` triggers, so direct pushes to
+# main (most often Lovable-bot regenerations) DO run the same CI gates as
+# PRs. But a CI failure on a main-push commit only surfaces as a red
+# Actions-status badge on the commit itself, which is easy to miss for
+# hours — exactly what happened with `06763d6a` (Lovable removed a
+# dashboard card and left unbalanced JSX, breaking every PR's build until
+# it was reverted manually 30 min later via PR #19).
+#
+# This workflow listens for the CI workflow's completion via the
+# `workflow_run` trigger and opens a GitHub issue whenever CI fails on a
+# main push. The issue:
+#   - has a deterministic label (`ci-main-broken`) that can be subscribed
+#     to / used as a saved-search;
+#   - pings the actor of the breaking commit so they get an email;
+#   - links the failing run + the commit + the authoring identity so a
+#     responder can roll-forward or revert in one click.
+#
+# Design choices:
+#   - `workflow_run` (not `needs:` inside ci.yml) keeps this decoupled
+#     from CI's job topology — adding/removing CI jobs doesn't break the
+#     alert.
+#   - Issues (not commit comments) because issues surface in the repo's
+#     issue list, contributor email digests, and any subscribed
+#     integrations.
+#   - One issue per breaking commit so each failure has its own ticket.
+#     If main breaks repeatedly (rare; should be the exception, not the
+#     rule), the responder can `gh issue list -l ci-main-broken` and
+#     close-via-comment in batch.
+#
+# Permissions: `issues: write` is the minimum; `contents: read` is the
+# default-deny pattern for `actions/github-script`.
+#
+# Branch protection (must be configured in repo settings, not workflow):
+#   See `DEVELOPING.md` "Branch protection setup" for the
+#   complementary steps that prevent direct pushes to main from landing
+#   broken commits in the first place.
+
+on:
+  workflow_run:
+    workflows: [CI]
+    types: [completed]
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  alert:
+    name: open issue if main CI failed
+    runs-on: ubuntu-latest
+    if: ${{ github.event.workflow_run.conclusion == 'failure' }}
+    permissions:
+      contents: read
+      issues: write
+    steps:
+      - name: Open tracking issue for failing main commit
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const run = context.payload.workflow_run;
+            const sha = run.head_sha;
+            const shortSha = sha.substring(0, 7);
+            const actor = run.actor?.login ?? run.head_commit?.author?.username ?? 'unknown';
+            const headCommit = run.head_commit ?? {};
+            const runUrl = run.html_url;
+            const commitUrl = `${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/commit/${sha}`;
+            const message = (headCommit.message ?? '').split('\n')[0];
+
+            const title = `CI failed on main @ ${shortSha}`;
+            const body = [
+              `**Failing run:** ${runUrl}`,
+              `**Commit:** ${commitUrl}`,
+              `**Author:** @${actor}`,
+              `**Subject:** ${message || '(no subject)'}`,
+              ``,
+              `## Required actions`,
+              ``,
+              `1. Open the failing run above and identify which job(s) failed.`,
+              `2. Either:`,
+              `   - **Roll forward**: push a fixing commit (preferred for typos / quick fixes); or`,
+              `   - **Revert**: \`git revert ${shortSha}\` and push the revert commit (preferred when the breaking commit was mass-regenerated and the responder doesn't own its intent).`,
+              `3. Wait for the next main-push CI to land green.`,
+              `4. Close this issue.`,
+              ``,
+              `> If main breaks repeatedly: search \`label:ci-main-broken is:open\` and close-comment in batch once the underlying cause is addressed.`,
+            ].join('\n');
+
+            // Idempotency: if an open issue already exists for this exact
+            // SHA (e.g. CI re-run after a transient flake), update its
+            // body instead of opening a duplicate. We match on
+            // `[ci-main-broken:<sha>]` in the body.
+            const marker = `[ci-main-broken:${sha}]`;
+            const existing = await github.rest.search.issuesAndPullRequests({
+              q: `repo:${context.repo.owner}/${context.repo.repo} is:issue is:open in:body "${marker}"`,
+            });
+
+            const augmentedBody = `${body}\n\n${marker}`;
+
+            if (existing.data.total_count > 0) {
+              const issueNumber = existing.data.items[0].number;
+              await github.rest.issues.update({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: issueNumber,
+                body: augmentedBody,
+              });
+              core.notice(`Updated existing issue #${issueNumber} for ${shortSha}`);
+              return;
+            }
+
+            const created = await github.rest.issues.create({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              title,
+              body: augmentedBody,
+              labels: ['ci-main-broken'],
+            });
+            core.notice(`Opened issue #${created.data.number} for ${shortSha}`);
