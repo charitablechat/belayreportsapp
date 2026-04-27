@@ -687,9 +687,21 @@ export default function DailyAssessmentForm() {
 
       if (navigator.onLine) {
         const syncTimestamp = new Date().toISOString();
+        // PR-A: include `field_timestamps` so the per-field merger on the
+        // server side and on the next pulling device sees the explicit stamp.
+        // Without this, the immediate sync path strips `field_timestamps`
+        // even though the local write populated it via applyTrackedFieldWrite.
+        const updatePayload: Record<string, unknown> = {
+          [field]: value,
+          updated_at: updatedAssessment.updated_at,
+          synced_at: syncTimestamp,
+        };
+        if (updatedAssessment.field_timestamps) {
+          updatePayload.field_timestamps = updatedAssessment.field_timestamps;
+        }
         const { error } = await supabase
           .from('daily_assessments')
-          .update({ [field]: value, updated_at: updatedAssessment.updated_at, synced_at: syncTimestamp })
+          .update(updatePayload)
           .eq('id', id);
 
         if (error) throw error;
