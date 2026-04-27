@@ -7,6 +7,7 @@ import {
   AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { isLocalDataNewer } from "@/lib/local-data-guards";
+import { applyTrackedFieldWrite } from "@/lib/field-merge";
 import { useParams, useNavigate } from "react-router-dom";
 import { goBack } from "@/lib/navigation";
 import { markPendingDashboardRefresh, markDashboardStaleTimestamp, registerActiveFormRecord, unregisterActiveFormRecord, onPendingRemoteUpdate } from "@/lib/sync-events";
@@ -1502,7 +1503,9 @@ export default function TrainingForm() {
   }, [training, id, deliveryApproaches, operatingSystems, immediateAttention, verifiableItems, systemsInPlace, summary, isOnline]);
 
   const updateTrainingField = (field: string, value: any) => {
-    setTraining({ ...training, [field]: value });
+    // PR-A: route every header-field write through `applyTrackedFieldWrite`
+    // so tracked fields populate `field_timestamps` for cross-device merge.
+    setTraining(applyTrackedFieldWrite(training, 'training', field, value));
   };
 
   const updateSummaryField = (field: string, value: any) => {

@@ -12,6 +12,7 @@ import { onSyncComplete, markPendingDashboardRefresh, markDashboardStaleTimestam
 import { useNavigate, useParams } from "react-router-dom";
 import { goBack } from "@/lib/navigation";
 import { isLocalDataNewer } from "@/lib/local-data-guards";
+import { applyTrackedFieldWrite } from "@/lib/field-merge";
 import { hasTextContent } from "@/lib/html-content-cleaner";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
@@ -984,11 +985,16 @@ export default function InspectionForm() {
         });
       }
 
-      const updatedInspection = {
-        ...inspection,
-        [field]: value,
-        updated_at: new Date().toISOString(),
-      };
+      // PR-A: route every header-field write through `applyTrackedFieldWrite`
+      // so tracked fields populate `field_timestamps`. Without this the
+      // cross-device merger (atomic-sync-manager S16/H4 → mergeRecordFields)
+      // falls back to row-level last-writer-wins for every field.
+      const updatedInspection = applyTrackedFieldWrite(
+        inspection,
+        'inspection',
+        field,
+        value,
+      );
 
       setInspection(updatedInspection);
       setHasUnsavedChanges(true);
