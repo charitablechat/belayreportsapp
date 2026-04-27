@@ -1298,9 +1298,11 @@ export async function syncInspectionAtomic(inspectionId: string, preValidatedUse
     
   } catch (error: unknown) {
     console.error('[Atomic Sync] Failed to sync inspection:', inspectionId, error);
-    void import('@/lib/log-error').then(({ logError }) =>
-      logError(error, { scope: 'atomic-sync.syncInspection', extra: { inspectionId } }),
-    );
+    void import('@/lib/log-error')
+      .then(({ logError }) =>
+        logError(error, { scope: 'atomic-sync.syncInspection', extra: { inspectionId } }),
+      )
+      .catch(() => { /* swallow — logging must never throw */ });
     throw error;
   }
 }
@@ -2263,9 +2265,11 @@ export async function syncTrainingAtomic(trainingId: string, preValidatedUser?: 
     
   } catch (error: unknown) {
     console.error('[Atomic Sync] Failed to sync training:', trainingId, error);
-    void import('@/lib/log-error').then(({ logError }) =>
-      logError(error, { scope: 'atomic-sync.syncTraining', extra: { trainingId } }),
-    );
+    void import('@/lib/log-error')
+      .then(({ logError }) =>
+        logError(error, { scope: 'atomic-sync.syncTraining', extra: { trainingId } }),
+      )
+      .catch(() => { /* swallow — logging must never throw */ });
     throw error;
   }
 }
@@ -3094,9 +3098,11 @@ export async function syncDailyAssessmentAtomic(assessmentId: string, preValidat
     
   } catch (error: unknown) {
     console.error('[Atomic Sync] Failed to sync daily assessment:', assessmentId, error);
-    void import('@/lib/log-error').then(({ logError }) =>
-      logError(error, { scope: 'atomic-sync.syncDailyAssessment', extra: { assessmentId } }),
-    );
+    void import('@/lib/log-error')
+      .then(({ logError }) =>
+        logError(error, { scope: 'atomic-sync.syncDailyAssessment', extra: { assessmentId } }),
+      )
+      .catch(() => { /* swallow — logging must never throw */ });
     throw error;
   }
 }
