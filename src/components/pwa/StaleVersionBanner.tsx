@@ -20,16 +20,47 @@ export const StaleVersionBanner = () => {
   const [result, setResult] = useState<VersionCheckResult | null>(null);
   const [dismissed, setDismissed] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
-  const [showIOSFallbackHint, setShowIOSFallbackHint] = useState(false);
 
   // Resolve once on mount; the platform doesn't change mid-session.
   const [isIOSPWA] = useState(() => isIOSStandalonePWA());
+
+  // sessionStorage key set right before tap-Refresh triggers a reload on iOS.
+  // Read once on mount; if the flag was set on a previous page-load AND we
+  // still see a stale version after that reload, surface the "fully close the
+  // app" hint immediately (the cache-clear-then-reload path didn't actually
+  // pick up the new bundle, which is exactly when iOS users need the hint).
+  //
+  // Why sessionStorage and not state: window.location.reload() destroys all
+  // React state and pending timers. Persisting across the reload is the only
+  // way to honour the "show after reload didn't help" intent.
+  const IOS_RELOAD_FLAG = 'stale-version-ios-reload-attempted';
+  const [showIOSFallbackHint] = useState(() => {
+    if (typeof sessionStorage === 'undefined') return false;
+    try {
+      return sessionStorage.getItem(IOS_RELOAD_FLAG) !== null;
+    } catch {
+      return false;
+    }
+  });
 
   useEffect(() => {
     if (isPreviewOrIframeEnvironment()) return;
     const unsub = subscribeVersionCheck((r) => setResult(r));
     return unsub;
   }, []);
+
+  // If the version check ever reports non-stale (i.e. the reload picked up
+  // the new build), retire the iOS fallback hint flag so it doesn't fire on
+  // a subsequent unrelated stale-version event.
+  useEffect(() => {
+    if (result && !result.isStale && typeof sessionStorage !== 'undefined') {
+      try {
+        sessionStorage.removeItem(IOS_RELOAD_FLAG);
+      } catch {
+        // ignore — best-effort cleanup
+      }
+    }
+  }, [result]);
 
   if (!result?.isStale || dismissed) return null;
 
@@ -45,11 +76,19 @@ export const StaleVersionBanner = () => {
         }
       }
     } finally {
-      // On iOS, expose the "fully close the app" hint after a short delay so
-      // the user sees it if the reload-with-cache-clear path doesn't actually
-      // pick up the new bundle. Audit MEDIUM-1.
-      if (isIOSPWA) {
-        setTimeout(() => setShowIOSFallbackHint(true), 4000);
+      // On iOS only, persist a flag across the imminent reload. After the
+      // page comes back: if the version check is still stale (banner re-
+      // appears), the mount-time hydration above will surface the fallback
+      // hint immediately, telling the user to fully close + reopen the app.
+      // If the reload succeeded, the flag is cleared by the result effect
+      // above and the hint never appears. Audit MEDIUM-1.
+      if (isIOSPWA && typeof sessionStorage !== 'undefined') {
+        try {
+          sessionStorage.setItem(IOS_RELOAD_FLAG, String(Date.now()));
+        } catch {
+          // ignore — quota / private mode; the inline subtitle copy still
+          // tells iOS users a restart may be needed.
+        }
       }
       window.location.reload();
     }
@@ -93,7 +132,7 @@ export const StaleVersionBanner = () => {
           className="mt-2 pt-2 border-t border-border text-xs text-muted-foreground"
           data-testid="stale-version-ios-fallback-hint"
         >
-          Still on the old version? Swipe up to fully close the app, then reopen it from the Home Screen.
+          Still on the old version after refreshing? Swipe up to fully close the app, then reopen it from the Home Screen.
         </div>
       )}
     </div>
