@@ -51,7 +51,7 @@ import { HtmlReportViewer } from "@/components/HtmlReportViewer";
 import { AttestationDialog } from "@/components/AttestationDialog";
 import { useUserProfile } from "@/hooks/useUserProfile";
 import type { AttestationPayload } from "@/lib/attestation";
-import { APP_VERSION } from "@/lib/attestation";
+import { APP_VERSION_FULL } from "@/lib/attestation";
 
 import { triggerCompletionConfetti } from "@/lib/confetti";
 import { triggerHaptic } from "@/lib/haptics";
@@ -1367,7 +1367,7 @@ export default function TrainingForm() {
         ...training,
         status: 'completed',
         updated_at: new Date().toISOString(),
-        app_version_at_completion: APP_VERSION,
+        app_version_at_completion: APP_VERSION_FULL,
         ...(attestation || {}),
       };
 
@@ -1389,7 +1389,7 @@ export default function TrainingForm() {
           const trainingUpdate: Record<string, any> = {
             status: 'completed',
             updated_at: completedTraining.updated_at,
-            app_version_at_completion: APP_VERSION,
+            app_version_at_completion: APP_VERSION_FULL,
           };
           if (attestation) Object.assign(trainingUpdate, attestation);
           const { error: trainingError } = await supabase

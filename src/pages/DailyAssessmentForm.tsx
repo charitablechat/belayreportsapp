@@ -45,7 +45,7 @@ import { HtmlReportViewer } from "@/components/HtmlReportViewer";
 import { AttestationDialog } from "@/components/AttestationDialog";
 import { useUserProfile } from "@/hooks/useUserProfile";
 import type { AttestationPayload } from "@/lib/attestation";
-import { APP_VERSION } from "@/lib/attestation";
+import { APP_VERSION_FULL } from "@/lib/attestation";
 
 import { triggerCompletionConfetti } from "@/lib/confetti";
 import { triggerHaptic } from "@/lib/haptics";
@@ -1204,7 +1204,7 @@ export default function DailyAssessmentForm() {
         ...assessment,
         status: 'completed',
         updated_at: new Date().toISOString(),
-        app_version_at_completion: APP_VERSION,
+        app_version_at_completion: APP_VERSION_FULL,
         ...(attestation || {}),
       };
       
@@ -1308,7 +1308,7 @@ export default function DailyAssessmentForm() {
             status: 'completed',
             updated_at: completedAssessment.updated_at,
             synced_at: submitSyncTimestamp,
-            app_version_at_completion: APP_VERSION,
+            app_version_at_completion: APP_VERSION_FULL,
           };
           if (attestation) Object.assign(assessmentUpdate, attestation);
           await supabase
