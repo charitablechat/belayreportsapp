@@ -192,6 +192,16 @@ test.describe('cloud-backup: snapshot auto-upload and ratchet on edit', () => {
     expect(firstBackup.facility).toBe(marker);
 
     // ── 8. Second edit → save → verify Supabase ──────────────────────────
+    // Reload between edits before driving the value tracker again. The
+    // first edit ran on a freshly-hydrated form; immediately after the
+    // first save, React state and an in-flight Supabase refetch race
+    // any subsequent value-tracker write — observed in CI as the input
+    // visibly snapping back to `markerV1` 9 polls in a row over 5
+    // seconds. Reloading forces a clean hydration cycle (state ←
+    // server's `markerV1`) so the second edit behaves like the first.
+    await page.reload();
+    await expect(locationInput).toBeVisible({ timeout: 30_000 });
+    await expect(locationInput).toHaveValue(markerV1, { timeout: 30_000 });
     await editLocationAndSave(markerV2);
     await waitForInspectionLocationInCloud(session, {
       id: serverId,
