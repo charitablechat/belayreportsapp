@@ -26,20 +26,56 @@ export const pwaConfig = VitePWA({
   },
   includeAssets: ['favicon.ico', 'db-config.js', 'sw-push.js', 'sw-sync.js'],
   manifest: {
+    id: '/',
     name: 'Rope Works Inspection',
     short_name: 'RW Inspect',
     description: 'Professional digital inspection platform for aerial adventure programs',
     theme_color: '#1e40af',
-    background_color: '#ffffff',
+    background_color: '#0b0f17',
     display: 'standalone',
-    orientation: 'portrait',
+    // PR-B: richer install metadata previously stranded in the orphan
+    // public/manifest.json. VitePWA's generated manifest.webmanifest is the
+    // only manifest the SW serves; the static public/manifest.json was never
+    // referenced from index.html so its contents never reached users.
+    display_override: ['window-controls-overlay', 'standalone'],
+    orientation: 'any',
     scope: '/',
     start_url: '/',
+    categories: ['business', 'productivity', 'utilities'],
+    prefer_related_applications: false,
+    handle_links: 'preferred',
     icons: [
-      { src: 'icons/app-icon.png', sizes: '192x192', type: 'image/png', purpose: 'any' },
-      { src: 'icons/app-icon.png', sizes: '512x512', type: 'image/png', purpose: 'any' },
-      { src: 'icons/app-icon.png', sizes: '192x192', type: 'image/png', purpose: 'maskable' },
-      { src: 'icons/app-icon.png', sizes: '512x512', type: 'image/png', purpose: 'maskable' }
+      { src: 'icons/icon-192.png', sizes: '192x192', type: 'image/png', purpose: 'any' },
+      { src: 'icons/icon-512.png', sizes: '512x512', type: 'image/png', purpose: 'any' },
+      { src: 'icons/icon-192-maskable.png', sizes: '192x192', type: 'image/png', purpose: 'maskable' },
+      { src: 'icons/icon-512-maskable.png', sizes: '512x512', type: 'image/png', purpose: 'maskable' }
+    ],
+    // Shortcut URLs MUST match the routes registered in src/App.tsx.
+    // The orphan public/manifest.json had wrong paths (/new-inspection,
+    // /new-training) that would have broken every long-press shortcut had
+    // anything actually served that file. Fixed here on the way in.
+    shortcuts: [
+      {
+        name: 'New Inspection',
+        short_name: 'Inspection',
+        description: 'Start a new inspection report',
+        url: '/inspection/new',
+        icons: [{ src: 'icons/icon-192.png', sizes: '192x192' }]
+      },
+      {
+        name: 'New Training',
+        short_name: 'Training',
+        description: 'Start a new training report',
+        url: '/training/new',
+        icons: [{ src: 'icons/icon-192.png', sizes: '192x192' }]
+      },
+      {
+        name: 'Dashboard',
+        short_name: 'Dashboard',
+        description: 'View all reports',
+        url: '/dashboard',
+        icons: [{ src: 'icons/icon-192.png', sizes: '192x192' }]
+      }
     ]
   },
   workbox: {
