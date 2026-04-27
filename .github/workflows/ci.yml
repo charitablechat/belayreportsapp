@@ -117,10 +117,19 @@ jobs:
       # repo secrets for the auth-gated specs to actually run; without
       # them those specs `test.skip` at runtime (the smoke scope still
       # runs unconditionally).
+      #
+      # E2E_ADMIN_EMAIL / E2E_ADMIN_PASSWORD are required by the
+      # `admin-pre-edit-override` spec (Tier-2 #5c). The admin user must
+      # have the `admin` role assigned in `public.user_roles` (NOT
+      # super_admin — super-admins are strictly read-only and don't trigger
+      # the snapshot capture path). Spec test.skip's at runtime when these
+      # are unset.
       - run: bunx playwright test --reporter=list
         env:
           E2E_TEST_EMAIL: ${{ secrets.E2E_TEST_EMAIL }}
           E2E_TEST_PASSWORD: ${{ secrets.E2E_TEST_PASSWORD }}
+          E2E_ADMIN_EMAIL: ${{ secrets.E2E_ADMIN_EMAIL }}
+          E2E_ADMIN_PASSWORD: ${{ secrets.E2E_ADMIN_PASSWORD }}
           CI: 'true'
       # Always upload the Playwright HTML report + trace zips on failure
       # so we can diff a CI-only flake against a green local run.

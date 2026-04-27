@@ -383,3 +383,115 @@ export async function waitForInspectionLocationInCloud(
       (lastErr ? ` (last response: ${lastErr.status} ${lastErr.body})` : '')
   );
 }
+
+interface AdminEditSnapshotRow {
+  id: string;
+  report_type: string;
+  report_id: string;
+  original_owner_id: string;
+  edited_by: string;
+  snapshot_data: unknown;
+  created_at: string;
+}
+
+/**
+ * Hard-delete every `admin_edit_snapshots` row for the given (`reportType`,
+ * `reportId`). Best-effort — never throws on a 4xx, since cleanup is
+ * opportunistic.
+ *
+ * IMPORTANT: caller must use a **super_admin** session. The only
+ * DELETE-granting policy on `admin_edit_snapshots` is the original
+ * "Super admins can manage" `FOR ALL` policy gated on `is_super_admin()`.
+ * The admin-role policies added in migration 20260427131652 cover only
+ * INSERT and SELECT — NOT DELETE — to preserve audit-trail integrity.
+ * Calling this with an admin or owner session will get RLS-rejected,
+ * log a warning, and return 0.
+ *
+ * In practice the e2e suite has no super_admin test session, so this
+ * helper is a no-op in CI and is provided only for local repro / future
+ * use if a super-admin fixture is added.
+ */
+export async function purgeAdminEditSnapshotsForReport(
+  superAdminSession: SupabaseTestSession,
+  opts: { reportType: string; reportId: string }
+): Promise<number> {
+  const url =
+    `/rest/v1/admin_edit_snapshots` +
+    `?report_type=eq.${encodeURIComponent(opts.reportType)}` +
+    `&report_id=eq.${encodeURIComponent(opts.reportId)}`;
+  try {
+    const res = await superAdminSession.apiClient.delete(url, {
+      headers: { Prefer: 'return=representation' },
+    });
+    if (!res.ok()) {
+      // eslint-disable-next-line no-console
+      console.warn(
+        `[e2e cleanup] admin-edit-snapshot purge returned ${res.status()} ${res.statusText()}`
+      );
+      return 0;
+    }
+    const body = (await res.json().catch(() => [])) as unknown[];
+    return Array.isArray(body) ? body.length : 0;
+  } catch (err) {
+    // eslint-disable-next-line no-console
+    console.warn('[e2e cleanup] admin-edit-snapshot purge threw:', err);
+    return 0;
+  }
+}
+
+/**
+ * Wait until `admin_edit_snapshots` contains a row matching the given
+ * (`reportType`, `reportId`, `editedBy`). Returns the matching row.
+ * Throws if the timeout elapses.
+ *
+ * Used as the "admin pre-edit snapshot was captured" oracle: when an
+ * admin saves a report owned by another user, `InspectionForm.performSave`
+ * fires `capturePreEditSnapshot` → `_doCapture` → INSERT here.
+ *
+ * Caller can use either an admin session (SELECT policy added in migration
+ * 20260427131652 grants admin-role read) or an owner session
+ * (`original_owner_id = auth.uid()` SELECT policy from the original table
+ * migration).
+ */
+export async function waitForAdminEditSnapshot(
+  session: SupabaseTestSession,
+  opts: {
+    reportType: string;
+    reportId: string;
+    editedBy: string;
+    originalOwnerId?: string;
+    timeoutMs?: number;
+    pollIntervalMs?: number;
+  }
+): Promise<AdminEditSnapshotRow> {
+  const timeoutMs = opts.timeoutMs ?? 60_000;
+  const pollIntervalMs = opts.pollIntervalMs ?? 1000;
+  const params =
+    `report_type=eq.${encodeURIComponent(opts.reportType)}` +
+    `&report_id=eq.${encodeURIComponent(opts.reportId)}` +
+    `&edited_by=eq.${encodeURIComponent(opts.editedBy)}` +
+    (opts.originalOwnerId
+      ? `&original_owner_id=eq.${encodeURIComponent(opts.originalOwnerId)}`
+      : '') +
+    `&select=id,report_type,report_id,original_owner_id,edited_by,snapshot_data,created_at` +
+    `&order=created_at.desc&limit=1`;
+  const url = `/rest/v1/admin_edit_snapshots?${params}`;
+  const deadline = Date.now() + timeoutMs;
+  let last: { status: number; body: string } | null = null;
+  while (Date.now() < deadline) {
+    const res = await session.apiClient.get(url);
+    if (res.ok()) {
+      const rows = (await res.json()) as AdminEditSnapshotRow[];
+      if (Array.isArray(rows) && rows.length > 0) return rows[0];
+    } else {
+      last = { status: res.status(), body: await res.text() };
+    }
+    await new Promise((r) => setTimeout(r, pollIntervalMs));
+  }
+  throw new Error(
+    `Timed out after ${timeoutMs}ms waiting for admin_edit_snapshots row ` +
+      `(report_type=${opts.reportType}, report_id=${opts.reportId}, ` +
+      `edited_by=${opts.editedBy})` +
+      (last ? ` (last response: ${last.status} ${last.body})` : '')
+  );
+}
