@@ -14,6 +14,7 @@
  */
 
 import { openDB, type IDBPDatabase } from 'idb';
+import { detectExistingDBVersion } from './offline-storage';
 
 const DB_NAME = 'rope-works-inspections';
 const STORE_NAME = 'sync_regression_counters';
@@ -42,10 +43,24 @@ async function getDB(): Promise<IDBPDatabase | null> {
   if (!dbHandlePromise) {
     dbHandlePromise = (async () => {
       try {
-        // Open without specifying a version — adopt whatever version
-        // offline-storage.ts has already negotiated. The store is created
-        // there in the v11 upgrade handler.
-        const db = await openDB(DB_NAME);
+        // Probe the existing version FIRST instead of calling
+        // `openDB(DB_NAME)` (no version). The bare-`openDB` form
+        // silently auto-creates an empty v1 database when the DB does
+        // not yet exist, which then races the main `getDB()` open at
+        // v18 in offline-storage.ts and emits the
+        // `[Offline Storage] DB upgrade blocked` warning seen in
+        // field reports. This is the same antipattern PR #15 fixed in
+        // `probeIndexedDB`. The store is created in the v11 upgrade
+        // handler, so we degrade to a no-op when (a) the main DB has
+        // never been opened (existingVersion <= 0) or (b) the store
+        // was not added yet for the negotiated version. The first
+        // user-driven save will trigger offline-storage's getDB(),
+        // which performs the real fresh-install upgrade chain.
+        const existingVersion = await detectExistingDBVersion(DB_NAME);
+        if (existingVersion <= 0) {
+          return null;
+        }
+        const db = await openDB(DB_NAME, existingVersion);
         if (!db.objectStoreNames.contains(STORE_NAME)) {
           db.close();
           return null;

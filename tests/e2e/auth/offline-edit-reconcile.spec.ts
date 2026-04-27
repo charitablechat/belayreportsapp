@@ -133,8 +133,13 @@ test.describe('sync: offline edit reconciles to cloud', () => {
     // Creation can go two ways depending on autoSync timing: either the
     // row is POSTed directly to Supabase, or it's queued and drained on
     // the next cycle. Either way, the REST poll is the definitive oracle.
+    // CI runners on GitHub Actions consistently see ~3-5x the Supabase
+    // round-trip latency compared to local dev, so the default 60s
+    // budget on this poll is too tight (CI run on PR #25 surfaced this
+    // as `Timed out after 60000ms waiting for inspection with
+    // location=...`). 120s gives headroom without masking a true hang.
     const createdRow = await waitForInspectionInCloud(session, marker, {
-      timeoutMs: 60_000,
+      timeoutMs: 120_000,
     });
     const serverId = createdRow.id as string;
     expect(serverId, 'created row should have a server id').toBeTruthy();
@@ -204,7 +209,8 @@ test.describe('sync: offline edit reconciles to cloud', () => {
     const edited = await waitForInspectionLocationInCloud(session, {
       id: serverId,
       expectedLocation: editedMarker,
-      timeoutMs: 90_000,
+      // Same CI-latency rationale as the create-side wait above.
+      timeoutMs: 120_000,
     });
     expect(edited.location).toBe(editedMarker);
 

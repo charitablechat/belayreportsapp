@@ -19,6 +19,22 @@ import {
   runDeferredReconcile,
   type DeferredReconcileSpec,
 } from "./deferred-reconcile";
+// Import sync-quarantine statically for the same reason as
+// deferred-reconcile above. Each `syncAllPending*` entry point used to
+// `await import('./sync-quarantine')` at the top of the function — the
+// build emitted `dist/assets/sync-quarantine-*.js` as a separate chunk
+// without an SW precache entry, so the very first sync attempt after a
+// network flap could trip a `TypeError: Failed to fetch dynamically
+// imported module` and abort before the quarantine filter even ran.
+// The module is ~5KB; bundling it costs nothing on the sync hot path,
+// and the static reference matches the runtime requirement (every
+// sync-all entry point unconditionally needs all four exports).
+import {
+  filterQuarantined,
+  recordSyncFailure,
+  recordSyncSuccess,
+  jitteredBackoffMs,
+} from "./sync-quarantine";
 
 /**
  * Build a user-facing label from a list of parts, skipping empty/nullish values.
@@ -1359,8 +1375,7 @@ export async function syncAllInspectionsAtomic(preValidatedUser?: CachedUser, si
   // H5: Drop quarantined records before slicing the batch — they had ≥3
   // consecutive failed cycles and are skipped until end-of-day to free up
   // wall-clock for items that can actually sync.
-  const { filterQuarantined, recordSyncFailure, recordSyncSuccess, jitteredBackoffMs } =
-    await import('./sync-quarantine');
+  // sync-quarantine helpers are imported statically (see top-of-file).
   const filtered = filterQuarantined(unsynced);
   if (filtered.dropped > 0) {
     syncLog.log('[Atomic Sync] Skipping quarantined inspections', {
@@ -2315,8 +2330,7 @@ export async function syncAllTrainingsAtomic(preValidatedUser?: CachedUser, sign
   }
   
   // H5: drop quarantined records before batching.
-  const { filterQuarantined, recordSyncFailure, recordSyncSuccess, jitteredBackoffMs } =
-    await import('./sync-quarantine');
+  // sync-quarantine helpers are imported statically (see top-of-file).
   const filtered = filterQuarantined(unsynced);
   if (filtered.dropped > 0) {
     syncLog.log('[Atomic Sync] Skipping quarantined trainings', {
@@ -3143,8 +3157,7 @@ export async function syncAllDailyAssessmentsAtomic(preValidatedUser?: CachedUse
   }
   
   // H5: drop quarantined records before batching.
-  const { filterQuarantined, recordSyncFailure, recordSyncSuccess, jitteredBackoffMs } =
-    await import('./sync-quarantine');
+  // sync-quarantine helpers are imported statically (see top-of-file).
   const filtered = filterQuarantined(unsynced);
   if (filtered.dropped > 0) {
     syncLog.log('[Atomic Sync] Skipping quarantined assessments', {
