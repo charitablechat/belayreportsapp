@@ -143,6 +143,77 @@ export function setFieldWithTimestamp<T extends MergeableRecord>(
   return next as T;
 }
 
+/**
+ * Form-side write helper: applies a single field write and stamps an
+ * explicit `field_timestamps[field]` entry IFF the field is tracked for
+ * this report kind. Always bumps `updated_at` so the unsynced-counts
+ * detector sees the row as dirty.
+ *
+ * Why this exists: form pages used to manually `{ ...record, [field]: value,
+ * updated_at: now }`, which never populated `field_timestamps`. The
+ * cross-device merger in `mergeRecordFields` then degraded to row-level
+ * last-writer-wins for every tracked field. Routing every tracked-field
+ * write through this helper restores the per-field merge invariant
+ * (`atomic-sync-manager.ts` S16/H4) without forcing each call site to
+ * memorise the tracked-fields list.
+ *
+ * Untracked fields (e.g. `status`, `inspector_id`, `latest_report_html`)
+ * pass through unchanged — only their value + `updated_at` are written.
+ */
+export function applyTrackedFieldWrite<T extends MergeableRecord>(
+  record: T,
+  reportKind: 'inspection' | 'training' | 'daily_assessment',
+  field: string,
+  value: unknown,
+): T {
+  const isTracked = TRACKED_FIELDS[reportKind].includes(field);
+  const nowIso = new Date().toISOString();
+  const next: MergeableRecord = {
+    ...record,
+    [field]: value,
+    updated_at: nowIso,
+  };
+  if (isTracked) {
+    next.field_timestamps = {
+      ...(record.field_timestamps ?? {}),
+      [field]: nowIso,
+    };
+  }
+  return next as T;
+}
+
+/**
+ * Batch variant of `applyTrackedFieldWrite` for callers that update
+ * multiple fields at once (e.g. completion handlers writing several
+ * tracked fields in a single transaction). All tracked fields share
+ * the same timestamp so they merge as a single edit on the remote side.
+ */
+export function applyTrackedFieldsWrite<T extends MergeableRecord>(
+  record: T,
+  reportKind: 'inspection' | 'training' | 'daily_assessment',
+  patch: Record<string, unknown>,
+): T {
+  const tracked = TRACKED_FIELDS[reportKind];
+  const nowIso = new Date().toISOString();
+  const nextTimestamps: FieldTimestamps = { ...(record.field_timestamps ?? {}) };
+  let stamped = false;
+  for (const key of Object.keys(patch)) {
+    if (tracked.includes(key)) {
+      nextTimestamps[key] = nowIso;
+      stamped = true;
+    }
+  }
+  const next: MergeableRecord = {
+    ...record,
+    ...patch,
+    updated_at: nowIso,
+  };
+  if (stamped) {
+    next.field_timestamps = nextTimestamps;
+  }
+  return next as T;
+}
+
 /** Tombstone-vs-edit guard for child rows. */
 export function shouldKeepEditedChild(
   child: { updated_at?: string | null },

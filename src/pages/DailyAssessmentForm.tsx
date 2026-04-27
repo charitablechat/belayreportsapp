@@ -2,6 +2,7 @@ import { useEffect, useState, useRef, useCallback } from "react";
 import { formatReportFilename, formatReportTitle } from "@/lib/report-naming";
 import { useReportTabHistory } from "@/hooks/useReportTabHistory";
 import { isLocalDataNewer } from "@/lib/local-data-guards";
+import { applyTrackedFieldWrite } from "@/lib/field-merge";
 import { useParams, useNavigate } from "react-router-dom";
 import { goBack } from "@/lib/navigation";
 import { markPendingDashboardRefresh, markDashboardStaleTimestamp, registerActiveFormRecord, unregisterActiveFormRecord, onPendingRemoteUpdate } from "@/lib/sync-events";
@@ -675,7 +676,9 @@ export default function DailyAssessmentForm() {
   };
 
   const handleUpdateAssessment = async (field: string, value: any) => {
-    const updatedAssessment = { ...assessment, [field]: value, updated_at: new Date().toISOString() };
+    // PR-A: route every header-field write through `applyTrackedFieldWrite`
+    // so tracked fields populate `field_timestamps` for cross-device merge.
+    const updatedAssessment = applyTrackedFieldWrite(assessment, 'daily_assessment', field, value);
     setAssessment(updatedAssessment);
     try {
       // Save offline first
@@ -684,9 +687,21 @@ export default function DailyAssessmentForm() {
 
       if (navigator.onLine) {
         const syncTimestamp = new Date().toISOString();
+        // PR-A: include `field_timestamps` so the per-field merger on the
+        // server side and on the next pulling device sees the explicit stamp.
+        // Without this, the immediate sync path strips `field_timestamps`
+        // even though the local write populated it via applyTrackedFieldWrite.
+        const updatePayload: Record<string, unknown> = {
+          [field]: value,
+          updated_at: updatedAssessment.updated_at,
+          synced_at: syncTimestamp,
+        };
+        if (updatedAssessment.field_timestamps) {
+          updatePayload.field_timestamps = updatedAssessment.field_timestamps;
+        }
         const { error } = await supabase
           .from('daily_assessments')
-          .update({ [field]: value, updated_at: updatedAssessment.updated_at, synced_at: syncTimestamp })
+          .update(updatePayload)
           .eq('id', id);
 
         if (error) throw error;
