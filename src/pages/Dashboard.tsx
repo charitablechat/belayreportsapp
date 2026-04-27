@@ -587,9 +587,45 @@ export default function Dashboard() {
     const handleDashboardStale = () => refreshReports(true);
     window.addEventListener('dashboard-stale', handleDashboardStale);
 
-    // F1: Realtime subscription — merge remote UPDATE/INSERT/DELETE events directly into
-    // local list state so the "Edited X ago" pill (and any other server-derived field)
-    // refreshes within ~1s on every connected device, not just on tab refocus.
+    return () => {
+      window.removeEventListener('online', handleOnline);
+      window.removeEventListener('offline', handleOffline);
+      window.removeEventListener('focus', handleWindowFocus);
+      window.removeEventListener('pageshow', handlePageShow);
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+      window.removeEventListener('dashboard-stale', handleDashboardStale);
+      subscription.unsubscribe();
+      unsubscribeSyncComplete();
+    };
+  }, []);
+
+  // PR-D: Realtime subscription, scoped by user role.
+  //
+  // Pre-PR-D the channel listened to every row event on inspections/trainings/
+  // daily_assessments with no user filter. Every device received every other
+  // tenant's writes — useless bandwidth on the wire and more importantly an
+  // unnecessary leak vector if a misconfigured RLS policy ever broadcast a
+  // row to clients that shouldn't see it. (RLS does protect the initial fetch,
+  // but Realtime broadcasts are a separate channel; relying on RLS alone for
+  // tenant isolation is brittle.)
+  //
+  // For non-admin users: filter `inspector_id=eq.${currentUser.id}` so the
+  //   server only sends them their own row events. This matches how the same
+  //   page's REST fetches scope themselves (see refreshReports inspection /
+  //   training / daily-assessment branches).
+  // For admin / super-admin: keep listening unfiltered — admins legitimately
+  //   manage all tenants' reports and the dashboard counts depend on it.
+  //
+  // Effect deps: re-subscribe whenever the user signs in/out or their admin
+  // role flag flips, so a freshly-promoted admin doesn't keep their narrow
+  // filter and a freshly-demoted user doesn't keep their broad subscription.
+  useEffect(() => {
+    // Wait until we know the user's id and admin status before subscribing.
+    // `isSuperAdmin` is `undefined` while React Query is loading; treat that
+    // as "not yet known" and skip subscription.
+    const userId = currentUser?.id;
+    if (!userId || typeof isSuperAdmin !== 'boolean') return;
+
     const mergeRow = (prev: any[], row: any) => {
       const exists = prev.some((r) => r.id === row.id);
       if (exists) {
@@ -603,10 +639,16 @@ export default function Dashboard() {
     };
     const removeRow = (prev: any[], id: string) => prev.filter((r) => r.id !== id);
 
+    // For non-admins, restrict each table subscription to rows they own.
+    const filter = isSuperAdmin ? undefined : `inspector_id=eq.${userId}`;
+    const baseConfig = (table: string) =>
+      filter
+        ? { event: '*' as const, schema: 'public', table, filter }
+        : { event: '*' as const, schema: 'public', table };
+
     const dashboardChannel = supabase
-      .channel('dashboard-realtime')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'inspections' }, (payload: any) => {
-        // Fix 5: any incoming row guarantees we have data — un-skeletonize.
+      .channel(`dashboard-realtime:${userId}:${isSuperAdmin ? 'admin' : 'self'}`)
+      .on('postgres_changes', baseConfig('inspections'), (payload: any) => {
         setInspectionsValidated(true);
         if (payload.eventType === 'DELETE') {
           const id = payload.old?.id;
@@ -621,7 +663,7 @@ export default function Dashboard() {
         }
         setInspections((prev) => mergeRow(prev, row));
       })
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'trainings' }, (payload: any) => {
+      .on('postgres_changes', baseConfig('trainings'), (payload: any) => {
         setTrainingsValidated(true);
         if (payload.eventType === 'DELETE') {
           const id = payload.old?.id;
@@ -636,7 +678,7 @@ export default function Dashboard() {
         }
         setTrainings((prev) => mergeRow(prev, row));
       })
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'daily_assessments' }, (payload: any) => {
+      .on('postgres_changes', baseConfig('daily_assessments'), (payload: any) => {
         setDailyValidated(true);
         if (payload.eventType === 'DELETE') {
           const id = payload.old?.id;
@@ -651,11 +693,15 @@ export default function Dashboard() {
         }
         setDailyAssessments((prev) => mergeRow(prev, row));
       })
-      // Fix 4: realtime health check. If the channel errors or times out we
-      // log it and trigger a one-shot refetch so the dashboard counts don't
-      // silently drift from server reality.
+      // Realtime health check. If the channel errors or times out we log it
+      // and trigger a one-shot refetch so the dashboard counts don't silently
+      // drift from server reality. Pre-PR-D this was the only fallback when
+      // Supabase Realtime chunked or failed; PR-D's user filter doesn't change
+      // the recovery semantics, just the subscription scope.
       .subscribe((status) => {
-        if (import.meta.env.DEV) console.log('[Dashboard] realtime status:', status);
+        if (import.meta.env.DEV) {
+          console.log('[Dashboard] realtime status:', status, 'filter:', filter ?? 'none');
+        }
         if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT' || status === 'CLOSED') {
           console.warn('[Dashboard] realtime channel degraded:', status, '— scheduling fallback refetch');
           setTimeout(() => refreshReports(true), 1500);
@@ -663,17 +709,9 @@ export default function Dashboard() {
       });
 
     return () => {
-      window.removeEventListener('online', handleOnline);
-      window.removeEventListener('offline', handleOffline);
-      window.removeEventListener('focus', handleWindowFocus);
-      window.removeEventListener('pageshow', handlePageShow);
-      document.removeEventListener('visibilitychange', handleVisibilityChange);
-      window.removeEventListener('dashboard-stale', handleDashboardStale);
       supabase.removeChannel(dashboardChannel);
-      subscription.unsubscribe();
-      unsubscribeSyncComplete();
     };
-  }, []);
+  }, [currentUser?.id, isSuperAdmin]);
 
   // Helper function to add timeout to network queries
   const withNetworkTimeout = async <T,>(
