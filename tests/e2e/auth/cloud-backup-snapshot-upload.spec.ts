@@ -205,5 +205,11 @@ test.describe('cloud-backup: snapshot auto-upload and ratchet on edit', () => {
 
     // No uncaught page errors should have leaked (filtered above).
     expect(uncaught, `uncaught page errors: ${uncaught.map((e) => e.message).join('; ')}`).toEqual([]);
+
+    // Dispose the APIRequestContext that captureSupabaseSession() opened
+    // via `request.newContext()`. Playwright doesn't auto-clean these —
+    // they hold connections + stored responses until explicitly disposed.
+    // Mirrors the cleanup pattern in `offline-edit-reconcile.spec.ts`.
+    await session.apiClient.dispose();
   });
 });
