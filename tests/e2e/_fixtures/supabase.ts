@@ -399,12 +399,20 @@ interface AdminEditSnapshotRow {
  * `reportId`). Best-effort — never throws on a 4xx, since cleanup is
  * opportunistic.
  *
- * Caller must use an admin session: the new INSERT/SELECT policies (added
- * in migration 20260427131652) gate writes/reads on `is_admin_or_above()`.
- * The fallback "owner can SELECT their own" policy doesn't grant DELETE.
+ * IMPORTANT: caller must use a **super_admin** session. The only
+ * DELETE-granting policy on `admin_edit_snapshots` is the original
+ * "Super admins can manage" `FOR ALL` policy gated on `is_super_admin()`.
+ * The admin-role policies added in migration 20260427131652 cover only
+ * INSERT and SELECT — NOT DELETE — to preserve audit-trail integrity.
+ * Calling this with an admin or owner session will get RLS-rejected,
+ * log a warning, and return 0.
+ *
+ * In practice the e2e suite has no super_admin test session, so this
+ * helper is a no-op in CI and is provided only for local repro / future
+ * use if a super-admin fixture is added.
  */
 export async function purgeAdminEditSnapshotsForReport(
-  adminSession: SupabaseTestSession,
+  superAdminSession: SupabaseTestSession,
   opts: { reportType: string; reportId: string }
 ): Promise<number> {
   const url =
@@ -412,7 +420,7 @@ export async function purgeAdminEditSnapshotsForReport(
     `?report_type=eq.${encodeURIComponent(opts.reportType)}` +
     `&report_id=eq.${encodeURIComponent(opts.reportId)}`;
   try {
-    const res = await adminSession.apiClient.delete(url, {
+    const res = await superAdminSession.apiClient.delete(url, {
       headers: { Prefer: 'return=representation' },
     });
     if (!res.ok()) {
