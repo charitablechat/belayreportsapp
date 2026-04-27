@@ -15,6 +15,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { listAllSnapshots, getReportSnapshot, deleteReportSnapshot, getBackupStorageInfo, importReportBackup, sanitizeFilename, type ReportType } from "@/lib/local-backup-ledger";
 import { withRestoreLock } from "@/lib/restore-lock";
 import { verifyRestoreIntegrity } from "@/lib/restore-integrity";
+import { fetchAdminEditSnapshots, restoreAdminEditSnapshot } from "@/lib/admin-edit-snapshot";
 import { formatReportFilename } from "@/lib/report-naming";
 import {
   getOfflineTrainings,
@@ -1113,10 +1114,7 @@ function AdminEditHistoryPanel() {
     setLoading(true);
     try {
       const result = await Promise.race([
-        (async () => {
-          const { fetchAdminEditSnapshots } = await import('@/lib/admin-edit-snapshot');
-          return await fetchAdminEditSnapshots();
-        })(),
+        fetchAdminEditSnapshots(),
         new Promise<'timeout'>((resolve) => setTimeout(() => resolve('timeout'), 15000)),
       ]);
       if (result === 'timeout') {
@@ -1142,7 +1140,6 @@ function AdminEditHistoryPanel() {
     // we're about to write back to the server.
     await withRestoreLock(async () => {
       try {
-        const { restoreAdminEditSnapshot } = await import('@/lib/admin-edit-snapshot');
         const ok = await restoreAdminEditSnapshot(snapshotId);
         if (ok) {
           toast.success("Original data restored to database");

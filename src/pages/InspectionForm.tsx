@@ -73,6 +73,7 @@ import { useUnsavedChanges } from "@/hooks/useUnsavedChanges";
 import { UnsavedChangesDialog } from "@/components/UnsavedChangesDialog";
 import { useEmergencySave } from "@/hooks/useEmergencySave";
 import { saveReportSnapshot, getReportSnapshot, markSnapshotSynced, downloadReportBackup } from "@/lib/local-backup-ledger";
+import { capturePreEditSnapshot } from "@/lib/admin-edit-snapshot";
 import { onCloudBackupError } from "@/lib/cloud-backup";
 import { useSaveShortcut } from "@/hooks/useKeyboardShortcuts";
 import { useReportEditPermission } from "@/hooks/useReportEditPermission";
@@ -1746,7 +1747,6 @@ export default function InspectionForm() {
       // routes to a local queue (admin_edit_snapshot_queue) when offline so the
       // audit trail is never lost.
       if (currentUser?.id && inspection?.inspector_id && currentUser.id !== inspection.inspector_id) {
-        const { capturePreEditSnapshot } = await import('@/lib/admin-edit-snapshot');
         capturePreEditSnapshot('inspection', id!, inspection.inspector_id, currentUser.id);
       }
 

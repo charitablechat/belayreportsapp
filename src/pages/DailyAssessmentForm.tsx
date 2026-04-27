@@ -76,6 +76,7 @@ import { cn } from "@/lib/utils";
 import { reconcileAllChildTables, restoreReconciledDeletions, type ReconciledTableDelete } from "@/lib/sync-reconciliation";
 import { useEmergencySave } from "@/hooks/useEmergencySave";
 import { saveReportSnapshot, getReportSnapshot, markSnapshotSynced, downloadReportBackup } from "@/lib/local-backup-ledger";
+import { capturePreEditSnapshot } from "@/lib/admin-edit-snapshot";
 import { onCloudBackupError } from "@/lib/cloud-backup";
 import { appendVersion } from "@/lib/report-version-manager";
 import { showHardSavedToast } from "@/lib/toast-helpers";
@@ -912,7 +913,6 @@ export default function DailyAssessmentForm() {
       // Fires regardless of online state — capturePreEditSnapshot internally
       // routes to a local queue when offline so the audit trail is never lost.
       if (localSaveSucceeded && currentUser?.id && assessment?.inspector_id && currentUser.id !== assessment.inspector_id) {
-        const { capturePreEditSnapshot } = await import('@/lib/admin-edit-snapshot');
         capturePreEditSnapshot('daily_assessment', id!, assessment.inspector_id, currentUser.id);
       }
 
