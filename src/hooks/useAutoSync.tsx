@@ -2,6 +2,7 @@ import { useEffect, useCallback, useRef, useState } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { syncAllInspectionsAtomic, syncAllTrainingsAtomic, syncAllDailyAssessmentsAtomic, noteBatchOutcome, refetchInspectionPackage, refetchTrainingPackage, refetchAssessmentPackage } from '@/lib/atomic-sync-manager';
 import { flushAdminEditQueue } from '@/lib/admin-edit-snapshot-queue';
+import { logError } from '@/lib/log-error';
 import { syncPhotos } from '@/lib/sync-manager';
 import { saveInspectionOffline, saveTrainingOffline, saveDailyAssessmentOffline } from '@/lib/offline-storage';
 import { shouldPreserveLocalRecord } from '@/lib/local-data-guards';
@@ -665,6 +666,7 @@ export const useAutoSync = () => {
       }
     } catch (error: any) {
       console.error('[AutoSync] Sync failed:', error);
+      logError(error, { scope: 'useAutoSync.performSync' });
       clearTimeout(safetyTimeoutHandle);
       
       // Surface sync failures on every platform. toastError pushes to the

@@ -30,14 +30,23 @@ export function logError(err: unknown, ctx: LogContext = {}): void {
   console.error("[logError]", payload);
 
   // Forward to Sentry (best-effort; production-only inside the helper).
+  // Both `.then` and `.catch` swallow so a synchronous throw inside
+  // `captureException` (or a rejected import) cannot surface as an
+  // unhandled rejection. Logging must NEVER mask the original error.
   try {
-    void import("@/lib/sentry").then(({ captureException }) => {
-      captureException(err, {
-        scope: ctx.scope,
-        userId: ctx.userId,
-        ...(ctx.extra ?? {}),
-      });
-    });
+    void import("@/lib/sentry")
+      .then(({ captureException }) => {
+        try {
+          captureException(err, {
+            scope: ctx.scope,
+            userId: ctx.userId,
+            ...(ctx.extra ?? {}),
+          });
+        } catch {
+          /* swallow */
+        }
+      })
+      .catch(() => { /* swallow */ });
   } catch {
     /* swallow — logging must never throw */
   }

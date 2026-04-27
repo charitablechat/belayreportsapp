@@ -453,6 +453,9 @@ export async function restoreSnapshotToServer(snapshotId: string): Promise<boole
     return true;
   } catch (error) {
     console.error('[Cloud Backup] Server restore failed:', error);
+    void import('@/lib/log-error').then(({ logError }) =>
+      logError(error, { scope: 'cloud-backup.serverRestore' }),
+    );
     return false;
   }
 }

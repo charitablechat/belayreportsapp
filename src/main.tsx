@@ -3,9 +3,33 @@ import App from "./App.tsx";
 import "./index.css";
 import { isPreviewOrIframeEnvironment, isServiceWorkerAllowed } from "@/lib/environment";
 import { initSentry } from "@/lib/sentry";
+import { logError } from "@/lib/log-error";
 
 // Initialize error monitoring as early as possible (production-only, lazy-loaded).
 void initSentry();
+
+// Global handlers — surface async failures that never reach a `try/catch`
+// (e.g. orphaned promises, uncaught render errors below the React tree).
+// Without these, `unhandledrejection` and `error` events are invisible to
+// Sentry; the campaign hot paths (sync, IDB, save) all fire in async
+// contexts where a missed `await` would otherwise be lost.
+if (typeof window !== "undefined") {
+  window.addEventListener("unhandledrejection", (event) => {
+    logError(event.reason ?? new Error("unhandledrejection (no reason)"), {
+      scope: "global.unhandledrejection",
+    });
+  });
+  window.addEventListener("error", (event) => {
+    logError(event.error ?? new Error(event.message || "window.error"), {
+      scope: "global.error",
+      extra: {
+        filename: event.filename,
+        lineno: event.lineno,
+        colno: event.colno,
+      },
+    });
+  });
+}
 
 // Guard: unregister stale service workers in preview/iframe contexts
 if (isPreviewOrIframeEnvironment()) {
