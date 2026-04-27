@@ -148,10 +148,20 @@ test.describe('cloud-backup: snapshot auto-upload and ratchet on edit', () => {
     await expect(locationInput).toBeVisible({ timeout: 30_000 });
     await expect(locationInput).toHaveValue(marker, { timeout: 30_000 });
 
-    // Helper: drive a controlled-input value through React's
-    // `__valueTracker` and blur to fire the form's debounced autosave.
-    // Same escape hatch the scope-C spec uses; survives focus/keyboard
-    // timing flakiness on CI.
+    // Save Progress button = explicit `saveProgress()` invocation, which
+    // routes through `performSave` → `saveReportSnapshot` →
+    // `uploadSnapshotToCloud`. We use it instead of relying on
+    // blur-triggered autosave because (a) autosave is debounced and was
+    // observed in CI to silently no-op when the form is mid-hydration,
+    // and (b) explicit save is a more deterministic oracle for the
+    // first cloud-backup row.
+    const saveButton = page.getByRole('button', {
+      name: /^(save progress|save locally|save)\.{0,3}$/i,
+    });
+
+    // Helper: edit the location via React's `__valueTracker` (same
+    // escape hatch as scope-C; survives focus/keyboard timing on CI),
+    // then click Save Progress and wait for the saving state to clear.
     const editLocationAndSave = async (value: string) => {
       await locationInput.click();
       await locationInput.evaluate((el, v) => {
@@ -164,9 +174,14 @@ test.describe('cloud-backup: snapshot auto-upload and ratchet on edit', () => {
         input.dispatchEvent(new Event('input', { bubbles: true }));
       }, value);
       await expect(locationInput).toHaveValue(value, { timeout: 5_000 });
-      // Blur runs `performSave`, which fires `saveReportSnapshot` →
-      // `uploadSnapshotToCloud` (fire-and-forget cloud upload).
-      await locationInput.blur();
+      // Wait until the Save button is enabled (saving/autoSaving idle)
+      // before clicking; clicking a disabled button is a silent no-op
+      // in Playwright with no warning.
+      await expect(saveButton.first()).toBeEnabled({ timeout: 15_000 });
+      await saveButton.first().click();
+      // Wait for the saving spinner to clear — proves performSave's
+      // promise resolved (and saveReportSnapshot fired).
+      await expect(saveButton.first()).toBeEnabled({ timeout: 30_000 });
     };
 
     // ── 6. First edit → save → verify Supabase ───────────────────────────
