@@ -72,6 +72,21 @@ jobs:
       # public/db-config.js and offline-storage.ts disagree on DB_VERSION.
       - run: bun run build
 
+  bundle-size:
+    name: bundle-size budget gate
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+      - run: bun install --frozen-lockfile
+      # Build produces dist/assets/*.{js,css}; the budget script then
+      # totals their bytes and compares to .bundle-size-budget. Mirrors
+      # the lint:any-budget pattern (ratchet down on cleanup, gate up).
+      - run: bun run build
+      - run: bun run bundle-size:budget
+
   e2e-offline:
     name: playwright e2e (smoke + auth + offline-edit-reconcile)
     runs-on: ubuntu-latest

@@ -17,6 +17,7 @@ Jobs currently defined on `main`:
 |---|---|
 | `tsc --noEmit` | TypeScript type-checking, no emit |
 | `lint:any-budget gate` | Enforces the per-file `any` budget (see `scripts/lint-any-budget.mjs` and `.eslint-any-budget`) |
+| `bundle-size budget gate` | Enforces the total bytes ceiling on `dist/assets/*.{js,css}` (see `scripts/bundle-size-budget.mjs` and `.bundle-size-budget`) |
 | `vitest` | Unit + integration tests in jsdom |
 | `vite build (incl. db-version parity check)` | Production build; vite plugin fails if `public/db-config.js` and `src/lib/offline-storage.ts` disagree on the IDB version number |
 
@@ -76,9 +77,9 @@ Recommended rules for `main`:
 - **Require status checks to pass before merging.** Add every job
   defined in `.github/workflows/ci.yml` that has actually reported a
   status on at least one prior PR/push (currently `tsc --noEmit`,
-  `vitest`, `lint:any-budget gate`, and `vite build (incl. db-version
-  parity check)`; once PR #23 merges, also `playwright e2e (smoke +
-  auth + offline-edit-reconcile)`). 
+  `vitest`, `lint:any-budget gate`, `bundle-size budget gate`,
+  `vite build (incl. db-version parity check)`, and `playwright e2e
+  (smoke + auth + offline-edit-reconcile)`).
 
   > Important: GitHub treats a required status check that has never
   > reported as perpetually "pending" and blocks every PR from
@@ -115,7 +116,8 @@ bun run dev          # http://localhost:8080 (Vite dev server)
 bun run build        # production build to dist/
 bun run test         # vitest
 bun run lint         # ESLint (informational; not gated)
-bun run lint:any-budget   # the gated `any` budget check
+bun run lint:any-budget       # the gated `any` budget check
+bun run build && bun run bundle-size:budget   # the gated bundle-size check
 bunx tsc --noEmit    # TypeScript type-check
 bunx playwright test # all e2e scopes (auth-gated specs need .env values)
 ```
@@ -132,6 +134,11 @@ locally, so a clean checkout works end-to-end with no extra setup.
 - The `any` budget (`.eslint-any-budget`) is a ratchet. Drift is
   allowed but each PR should either match the prior budget or
   explicitly bump it (with a comment explaining the tradeoff).
+- The bundle-size budget (`.bundle-size-budget`) is the same shape:
+  total bytes of `dist/assets/*.{js,css}`. The script logs the
+  top-5 chunks and a ratchet hint when the bundle drops below the
+  ceiling. Bumping the budget upward should be justified in the PR
+  description (e.g. “new vendored chunk for X feature”).
 - The Playwright scope-C spec (`offline-edit-reconcile.spec.ts`) is the
   canonical regression test for the offline-edit-reconcile path. Don't
   re-quarantine it without a corresponding production-hardening PR.
@@ -146,4 +153,6 @@ locally, so a clean checkout works end-to-end with no extra setup.
 | `vite.config.ts` | Build config + the `vite-db-version-check` plugin |
 | `scripts/lint-any-budget.mjs` | The `any` budget enforcement script |
 | `.eslint-any-budget` | Per-file budget JSON consumed by the script |
+| `scripts/bundle-size-budget.mjs` | Total-bytes bundle-size enforcement script |
+| `.bundle-size-budget` | Single-integer total-bytes ceiling consumed by the script |
 | `tests/e2e/_fixtures/` | Reusable Playwright fixtures (auth, Supabase REST helpers) |
