@@ -61,6 +61,14 @@ if (!existsSync(assetsDir)) {
   process.exit(2);
 }
 
+// Small tolerance to absorb deterministic-ish noise from build-time
+// constants embedded in the bundle: APP_VERSION (vite-auto-version.ts
+// injects the git SHA), source-map filename hashes, etc. A CI build
+// from a different commit than local produces ~10–100 B of variance
+// even with no source changes. 4 KiB is well below any meaningful
+// regression but absorbs the noise floor.
+const TOLERANCE_BYTES = 4 * 1024;
+
 const TRACKED_EXT = new Set([".js", ".css"]);
 const entries = readdirSync(assetsDir);
 let total = 0;
@@ -79,16 +87,19 @@ top.sort((a, b) => b.size - a.size);
 const fmt = (n) => `${n.toLocaleString()} B (${(n / 1024).toFixed(1)} KiB)`;
 
 console.log(`[bundle-size-budget] tracked-files: ${top.length}`);
-console.log(`[bundle-size-budget] total: ${fmt(total)}  budget: ${fmt(budget)}`);
+console.log(
+  `[bundle-size-budget] total: ${fmt(total)}  budget: ${fmt(budget)}  tolerance: ${fmt(TOLERANCE_BYTES)}`,
+);
 console.log(`[bundle-size-budget] top 5:`);
 for (const { name, size } of top.slice(0, 5)) {
   console.log(`  ${fmt(size).padStart(28)}  ${name}`);
 }
 
-if (total > budget) {
+const ceiling = budget + TOLERANCE_BYTES;
+if (total > ceiling) {
   const over = total - budget;
   console.error(
-    `\n[bundle-size-budget] FAIL — bundle is ${fmt(over)} over budget.`,
+    `\n[bundle-size-budget] FAIL — bundle is ${fmt(over)} over budget (${fmt(TOLERANCE_BYTES)} tolerance allowed).`,
   );
   console.error(
     "If this is intentional (e.g. you added a new feature with vendored",
@@ -108,7 +119,9 @@ if (total > budget) {
   process.exit(1);
 }
 
-if (total < budget) {
+// Ratchet hint only when we're meaningfully below the budget (i.e. a
+// real cleanup, not just CI/local noise within the tolerance band).
+if (total < budget - TOLERANCE_BYTES) {
   console.log(
     `[bundle-size-budget] \u{1F389} bundle dropped below budget. Lower .bundle-size-budget to ${total} to ratchet the gate.`,
   );
