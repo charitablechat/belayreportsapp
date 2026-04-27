@@ -52,31 +52,27 @@ test.describe('sync: offline edit reconciles to cloud', () => {
   // round-trip + cleanup. 3min is generous but safer than a flaky 90s.
   test.setTimeout(180_000);
 
-  // STATUS: quarantined via test.fixme(). The flow exercises real production
-  // code paths correctly, but headlessly it hits four app-side issues that
-  // aren't part of the test-infra scope and aren't fixed in this PR:
+  // STATUS: ACTIVE. Originally quarantined under `.fixme()` while four
+  // app-side blockers were investigated and fixed across PRs #15-#22:
+  //   - PR #15 fixed `probeIndexedDB` cold-start v1 auto-create race.
+  //   - PR #16 stripped IDB-only fields (`dirty`, `child_count_hint`)
+  //     from atomic-sync upserts that were being rejected by the
+  //     PostgREST schema cache.
+  //   - PR #17 static-imported `deferred-reconcile` so atomic sync no
+  //     longer trips on a lazy-chunk fetch while offline.
+  //   - PR #18 static-imported `idb-migration-safety` so `getDB()` is
+  //     no longer racing an offline lazy-chunk fetch on the open path.
+  //   - PR #20 + #21 fixed the `getDB()` IIFE race + outer try/catch so
+  //     parallel callers share a single open and transient failures
+  //     don't permanently poison `dbPromise`.
+  //   - PR #22 fixed the re-entrant `anySaveInProgressRef` mutex bug
+  //     in `InspectionForm` that was silently no-op-ing every blur and
+  //     timer-driven auto-save in production (manual save still worked,
+  //     which is why the bug went unnoticed).
   //
-  //   1. InspectionForm route's lazy chunk isn't SW-precached; first
-  //      offline access to /inspection/<id> falls back to React Router's
-  //      root-level default error UI (which unmounts PWAProvider and
-  //      useAutoSync, breaking any follow-up drain).
-  //   2. A v1→v18 IndexedDB upgrade-blocked race fires on cold-start
-  //      browser profiles (`[Offline Storage] DB upgrade blocked: open
-  //      at v1, want v18`), occasionally followed by 5s timeouts on
-  //      subsequent opens.
-  //   3. InspectionForm's offline save path emits
-  //      `[InspectionForm] Offline operation timed out, proceeding with`
-  //      and the IDB write never lands, so there's nothing for autoSync
-  //      to drain when we reconnect.
-  //   4. `executeTransaction` then logs `Step 1 failed: TypeError: Failed
-  //      to fetch` while still offline, poisoning the sync state for the
-  //      rest of the session.
-  //
-  // Scope A + B cover the golden path confidence we need right now. The
-  // fixtures + marker-based cleanup helpers in _fixtures/ are reusable as
-  // soon as the four blockers above are addressed — flip `.fixme` back
-  // to a plain `.` and re-run.
-  test.fixme('online create → offline edit → reconnect → cloud reconcile', async ({
+  // Headless run is currently green in ~52s. CI gates the spec via
+  // the `e2e-offline` job in `.github/workflows/ci.yml`.
+  test('online create → offline edit → reconnect → cloud reconcile', async ({
     page,
     context,
   }) => {
@@ -162,8 +158,28 @@ test.describe('sync: offline edit reconciles to cloud', () => {
     await page.waitForTimeout(500);
 
     // ── 7. Edit the location field ───────────────────────────────────────
+    // `locator.fill()` and `keyboard.press('Control+A')` both race React's
+    // controlled-input rerender after the offline transition: the field's
+    // existing value (the marker we set during online create) survives the
+    // clear, and the new text gets appended → a duplicated string.
+    //
+    // The React-native escape hatch is to drive the value through React's
+    // `__valueTracker` by calling the *prototype* setter and dispatching
+    // an `input` event manually. This is the same pattern testing-library
+    // and react-testing-library use internally (`fireEvent.change`) to set
+    // controlled-input values without depending on focus or keyboard
+    // timing. Survives the offline flap.
     await locationInput.click();
-    await locationInput.fill(editedMarker);
+    await locationInput.evaluate((el, value) => {
+      const input = el as HTMLInputElement;
+      const setter = Object.getOwnPropertyDescriptor(
+        HTMLInputElement.prototype,
+        'value'
+      )?.set;
+      setter?.call(input, value);
+      input.dispatchEvent(new Event('input', { bubbles: true }));
+    }, editedMarker);
+    await expect(locationInput).toHaveValue(editedMarker, { timeout: 5_000 });
     // Blur so the form's debounced autosave fires even if the underlying
     // onChange didn't already trigger one.
     await locationInput.blur();
