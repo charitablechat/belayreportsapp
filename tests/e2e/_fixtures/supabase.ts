@@ -182,6 +182,160 @@ export async function waitForInspectionInCloud(
 }
 
 /**
+ * Hard-delete every `report_cloud_backups` row whose `facility` starts with
+ * the marker prefix and belongs to the current test user. Best-effort —
+ * never throws even on a 4xx, since cleanup is opportunistic.
+ *
+ * `facility` is set from `snapshot.parent.organization` at upload time
+ * (see `cloud-backup.ts::_doUpload`), so any inspection created with the
+ * `[E2E DEVIN] …` org marker will produce backup rows that match.
+ *
+ * RLS allows users to delete their own backups; no service-role key is
+ * needed.
+ */
+export async function purgeMarkedCloudBackups(
+  session: SupabaseTestSession
+): Promise<number> {
+  const url = `/rest/v1/report_cloud_backups?facility=ilike.${encodeURIComponent(
+    MARKER_PREFIX + '%'
+  )}&user_id=eq.${session.userId}`;
+  try {
+    const res = await session.apiClient.delete(url, {
+      headers: { Prefer: 'return=representation' },
+    });
+    if (!res.ok()) {
+      // eslint-disable-next-line no-console
+      console.warn(
+        `[e2e cleanup] cloud-backup purge returned ${res.status()} ${res.statusText()}`
+      );
+      return 0;
+    }
+    const body = (await res.json().catch(() => [])) as unknown[];
+    return Array.isArray(body) ? body.length : 0;
+  } catch (err) {
+    // eslint-disable-next-line no-console
+    console.warn('[e2e cleanup] cloud-backup purge threw:', err);
+    return 0;
+  }
+}
+
+interface CloudBackupRow {
+  id: string;
+  user_id: string;
+  report_type: string;
+  report_id: string;
+  device: string;
+  synced: boolean;
+  snapshot_ts: number;
+  facility: string | null;
+  created_at: string;
+}
+
+/**
+ * Wait until `report_cloud_backups` contains a row for the given
+ * (`reportType`, `reportId`) belonging to the current test user. Returns
+ * the matching row. Throws if the timeout elapses.
+ *
+ * Used as the "cloud-backup auto-upload completed" oracle: every save in
+ * the form path fires `local-backup-ledger::saveReportSnapshot`, which
+ * fire-and-forget calls `cloud-backup::uploadSnapshotToCloud`. This poll
+ * is the cleanest signal that the upload landed.
+ */
+export async function waitForCloudBackup(
+  session: SupabaseTestSession,
+  opts: {
+    reportType: string;
+    reportId: string;
+    timeoutMs?: number;
+    pollIntervalMs?: number;
+  }
+): Promise<CloudBackupRow> {
+  const timeoutMs = opts.timeoutMs ?? 120_000;
+  const pollIntervalMs = opts.pollIntervalMs ?? 1000;
+  const url =
+    `/rest/v1/report_cloud_backups` +
+    `?report_type=eq.${encodeURIComponent(opts.reportType)}` +
+    `&report_id=eq.${encodeURIComponent(opts.reportId)}` +
+    `&user_id=eq.${session.userId}` +
+    `&select=id,user_id,report_type,report_id,device,synced,snapshot_ts,facility,created_at` +
+    `&limit=1`;
+  const deadline = Date.now() + timeoutMs;
+  let last: { status: number; body: string } | null = null;
+  while (Date.now() < deadline) {
+    const res = await session.apiClient.get(url);
+    if (res.ok()) {
+      const rows = (await res.json()) as CloudBackupRow[];
+      if (Array.isArray(rows) && rows.length > 0) return rows[0];
+    } else {
+      last = { status: res.status(), body: await res.text() };
+    }
+    await new Promise((r) => setTimeout(r, pollIntervalMs));
+  }
+  throw new Error(
+    `Timed out after ${timeoutMs}ms waiting for cloud-backup row ` +
+      `(report_type=${opts.reportType}, report_id=${opts.reportId})` +
+      (last ? ` (last response: ${last.status} ${last.body})` : '')
+  );
+}
+
+/**
+ * Wait until the cloud-backup row for (`reportType`, `reportId`) has a
+ * `snapshot_ts` strictly greater than `afterTs`. Returns the matching row.
+ * Throws if the timeout elapses.
+ *
+ * Used as the "second auto-upload after edit" oracle: after editing the
+ * inspection, the next save fires another upload which upserts onto the
+ * same `(user_id, report_type, report_id)` row — only `snapshot_ts`
+ * changes. Polling for the timestamp ratchet is the cleanest signal that
+ * the post-edit upload landed (vs. e.g. polling the facility field, which
+ * doesn't change unless org changes).
+ */
+export async function waitForCloudBackupTsAdvance(
+  session: SupabaseTestSession,
+  opts: {
+    reportType: string;
+    reportId: string;
+    afterTs: number;
+    timeoutMs?: number;
+    pollIntervalMs?: number;
+  }
+): Promise<CloudBackupRow> {
+  const timeoutMs = opts.timeoutMs ?? 120_000;
+  const pollIntervalMs = opts.pollIntervalMs ?? 1000;
+  const url =
+    `/rest/v1/report_cloud_backups` +
+    `?report_type=eq.${encodeURIComponent(opts.reportType)}` +
+    `&report_id=eq.${encodeURIComponent(opts.reportId)}` +
+    `&user_id=eq.${session.userId}` +
+    `&select=id,user_id,report_type,report_id,device,synced,snapshot_ts,facility,created_at` +
+    `&limit=1`;
+  const deadline = Date.now() + timeoutMs;
+  let lastRow: CloudBackupRow | null = null;
+  let lastErr: { status: number; body: string } | null = null;
+  while (Date.now() < deadline) {
+    const res = await session.apiClient.get(url);
+    if (res.ok()) {
+      const rows = (await res.json()) as CloudBackupRow[];
+      if (Array.isArray(rows) && rows.length > 0) {
+        lastRow = rows[0];
+        if (lastRow.snapshot_ts > opts.afterTs) return lastRow;
+      }
+    } else {
+      lastErr = { status: res.status(), body: await res.text() };
+    }
+    await new Promise((r) => setTimeout(r, pollIntervalMs));
+  }
+  throw new Error(
+    `Timed out after ${timeoutMs}ms waiting for cloud-backup snapshot_ts to advance ` +
+      `past ${opts.afterTs} (report_type=${opts.reportType}, report_id=${opts.reportId})` +
+      (lastRow
+        ? ` (last observed snapshot_ts=${lastRow.snapshot_ts})`
+        : '') +
+      (lastErr ? ` (last response: ${lastErr.status} ${lastErr.body})` : '')
+  );
+}
+
+/**
  * Wait until the server sees a specific inspection (`id`) whose `location`
  * equals `expectedLocation`. Returns the matching row. Throws if the
  * timeout elapses.
