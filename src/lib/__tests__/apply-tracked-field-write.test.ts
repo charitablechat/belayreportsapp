@@ -46,7 +46,7 @@ describe('applyTrackedFieldWrite', () => {
   });
 
   it('does NOT stamp field_timestamps for untracked fields (e.g. status)', () => {
-    const before = {
+    const before: MergeableRecord = {
       id: 'insp-1',
       status: 'draft',
       updated_at: '2025-04-01T10:00:00.000Z',
