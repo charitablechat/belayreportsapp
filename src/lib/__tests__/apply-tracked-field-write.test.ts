@@ -84,7 +84,7 @@ describe('applyTrackedFieldWrite', () => {
   });
 
   it('TRACKED_FIELDS coverage matches helper behaviour for daily_assessment', () => {
-    const before = { id: 'a-1', updated_at: '2025-04-01T10:00:00.000Z' };
+    const before: MergeableRecord = { id: 'a-1', updated_at: '2025-04-01T10:00:00.000Z' };
     for (const field of TRACKED_FIELDS.daily_assessment) {
       const after = applyTrackedFieldWrite(before, 'daily_assessment', field, 'value');
       expect(after.field_timestamps?.[field]).toBeDefined();
