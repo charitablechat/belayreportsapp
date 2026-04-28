@@ -229,15 +229,16 @@ test.describe('inspection photo: upload + sync golden path', () => {
       expect(photoRowAfterReload.id).toBe(photoRow.id);
 
       // ── 9. Gallery should render the photo after reload ──────────────────
-      // PhotoGallery for `section="systems"` is mounted at
-      // `InspectionForm.tsx:3213`. We don't try to verify the actual
-      // pixels (signed-URL roundtrip is non-trivial in a Playwright
-      // context); we only assert that at least one `<img>` element
-      // appears in the rendered gallery. The gallery hits IDB first, so
-      // even if the signed-URL fetch is in flight we still expect a
-      // synthetic preview.
-      const gallery = page.locator('img').filter({ hasText: '' }).first();
-      await expect(gallery).toBeVisible({ timeout: 30_000 });
+      // PhotoGallery (`InspectionForm.tsx:3213`) renders one `<img>` per
+      // row in `inspection_photos`. The signed-URL `src` always embeds
+      // the storage path, which is shaped `{userId}/{inspectionId}/…`
+      // (`PhotoCapture.tsx:174`). Matching `img[src*=<serverId>]`
+      // therefore selects ONLY photos belonging to this inspection —
+      // unrelated app images (logo, avatars, icons) are excluded, which
+      // is the failure mode a generic `img.first()` would silently pass
+      // through.
+      const galleryImg = page.locator(`img[src*="${serverId}"]`).first();
+      await expect(galleryImg).toBeVisible({ timeout: 30_000 });
 
       // ── 10. Post-flight cleanup ──────────────────────────────────────────
       // Collect this inspection's storage paths BEFORE the inspection

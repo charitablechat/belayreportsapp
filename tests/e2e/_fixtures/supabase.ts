@@ -635,7 +635,7 @@ export async function waitForInspectionPhotoInCloud(
     : '';
   const url =
     `/rest/v1/inspection_photos` +
-    `?inspection_id=eq.${opts.inspectionId}` +
+    `?inspection_id=eq.${encodeURIComponent(opts.inspectionId)}` +
     `&deleted_at=is.null` +
     sectionFilter +
     `&select=*&order=created_at.desc&limit=1`;
@@ -675,7 +675,7 @@ export async function getInspectionPhotoStoragePaths(
   inspectionId: string
 ): Promise<string[]> {
   const url =
-    `/rest/v1/inspection_photos?inspection_id=eq.${inspectionId}` +
+    `/rest/v1/inspection_photos?inspection_id=eq.${encodeURIComponent(inspectionId)}` +
     `&select=photo_url`;
   try {
     const res = await session.apiClient.get(url);
