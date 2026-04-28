@@ -128,7 +128,7 @@ describe('applyTrackedFieldsWrite (batch)', () => {
 describe('PR-A end-to-end: form helper + merger preserves concurrent edits', () => {
   it('Device A edits organization, Device B edits location — both survive merge', async () => {
     // Both devices start from the same baseline.
-    const baseline = {
+    const baseline: MergeableRecord = {
       id: 'insp-1',
       organization: 'BaselineOrg',
       location: 'BaselineLoc',
