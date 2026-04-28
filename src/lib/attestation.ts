@@ -11,6 +11,46 @@
 export const APP_VERSION: string =
   (import.meta as any).env?.APP_VERSION || 'unknown';
 
+/**
+ * Build commit short-hash, injected by vite-auto-version. Empty / 'dev' in
+ * dev/preview environments where no commit is available.
+ */
+const BUILD_COMMIT: string =
+  ((import.meta as any).env?.BUILD_COMMIT as string | undefined) ?? '';
+
+/**
+ * Compose the canonical version identifier from a SemVer + build-commit pair.
+ *
+ * Format: `${appVersion}+${buildCommit}` when a real commit is available
+ * (non-empty after trim, and not the literal `'dev'` placeholder), else just
+ * `appVersion`. The `+suffix` shape matches SemVer's build-metadata convention
+ * so existing comparator logic that strips `+suffix` (see `version-check.ts:84`,
+ * `version-telemetry.ts:43`) keeps working.
+ *
+ * Exported so unit tests can drive the formatting logic directly without
+ * trying to stub `import.meta.env.*` (which is statically replaced by Vite's
+ * `define` plugin and therefore unreachable from runtime stubs).
+ */
+export function buildVersionFull(appVersion: string, buildCommit: string | undefined | null): string {
+  const trimmed = (buildCommit ?? '').trim();
+  if (trimmed && trimmed !== 'dev') {
+    return `${appVersion}+${trimmed}`;
+  }
+  return appVersion;
+}
+
+/**
+ * Canonical version identifier for any audit / observability stamp.
+ *
+ * Why this exists: prior to PR-C every attestation record and Sentry release
+ * tag stamped only the bare SemVer (e.g. `4.7.2`). When two distinct deploys
+ * shared the same SemVer (e.g. a hotfix re-built from the same tag, or a
+ * Lovable rebuild), their audit records and error groupings became
+ * indistinguishable. Including the commit hash makes every deploy uniquely
+ * identifiable while remaining human-readable.
+ */
+export const APP_VERSION_FULL: string = buildVersionFull(APP_VERSION, BUILD_COMMIT);
+
 if (APP_VERSION === 'unknown' && typeof console !== 'undefined') {
   console.warn(
     '[attestation] APP_VERSION is "unknown" — vite-auto-version plugin may have failed to inject define values. ' +
@@ -65,7 +105,9 @@ export function buildAttestationPayload(
     attestation_ip: null, // edge function fills from request header on first sync
     attestation_user_agent: typeof navigator !== 'undefined' ? navigator.userAgent : '',
     attestation_text: buildAttestationText(ctx),
-    app_version_at_completion: APP_VERSION,
+    // PR-C: use APP_VERSION_FULL so distinct deploys with the same SemVer
+    // produce distinct attestation stamps. Audit HIGH-3.
+    app_version_at_completion: APP_VERSION_FULL,
   };
 }
 

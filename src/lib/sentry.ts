@@ -33,9 +33,15 @@ export async function initSentry(): Promise<void> {
 
   try {
     const Sentry = await import("@sentry/react");
+    // Lazy import to avoid pulling APP_VERSION_FULL into the static graph
+    // before Sentry's chunk loads (this whole module is dynamic-imported).
+    const { APP_VERSION_FULL } = await import("./attestation");
     Sentry.init({
       dsn: DSN,
-      release: (import.meta as any).env?.APP_VERSION,
+      // PR-C: include build commit so distinct deploys sharing a SemVer
+      // (e.g. a Lovable rebuild) produce distinct release groups in Sentry.
+      // Audit HIGH-3.
+      release: APP_VERSION_FULL,
       environment: deriveEnvironment(),
       sendDefaultPii: true,
       tracesSampleRate: 0,

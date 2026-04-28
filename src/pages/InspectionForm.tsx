@@ -46,7 +46,7 @@ import { validateInspectionPackage } from "@/lib/validation-schemas";
 import { AttestationDialog } from "@/components/AttestationDialog";
 import { useUserProfile } from "@/hooks/useUserProfile";
 import type { AttestationPayload } from "@/lib/attestation";
-import { APP_VERSION } from "@/lib/attestation";
+import { APP_VERSION_FULL } from "@/lib/attestation";
 import { reconcileAllChildTables, restoreReconciledDeletions, type ReconciledTableDelete } from "@/lib/sync-reconciliation";
 import { cn } from "@/lib/utils";
 import { useNetworkStatus } from "@/hooks/useNetworkStatus";
@@ -2271,7 +2271,7 @@ export default function InspectionForm() {
       // and always stamp the app version at completion time.
       const updatePayload: Record<string, any> = {
         status: "completed",
-        app_version_at_completion: APP_VERSION,
+        app_version_at_completion: APP_VERSION_FULL,
       };
       if (attestation) {
         Object.assign(updatePayload, attestation);
