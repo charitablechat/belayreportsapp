@@ -61,7 +61,7 @@ describe('applyTrackedFieldWrite', () => {
   });
 
   it('preserves earlier per-field timestamps when stamping a different field', () => {
-    const before = {
+    const before: MergeableRecord = {
       id: 'insp-1',
       organization: 'OrgA',
       location: 'LocA',
