@@ -125,7 +125,10 @@ jobs:
         run: |
           set +e
           bun audit --audit-level=high | tee audit-high.txt
-          echo "audit_exit=$?" >> "$GITHUB_OUTPUT"
+          # `$?` after a pipeline is the LAST command's exit code (`tee`,
+          # which is always 0). Use `${PIPESTATUS[0]}` so the surfaced
+          # exit code reflects `bun audit` itself (1 = advisories, 0 = clean).
+          echo "audit_exit=${PIPESTATUS[0]}" >> "$GITHUB_OUTPUT"
       - name: Append audit summary
         if: always()
         run: |
