@@ -1,0 +1,108 @@
+{
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "extends": [
+    "config:recommended",
+    ":semanticCommits",
+    ":semanticCommitTypeAll(chore)",
+    ":dependencyDashboard",
+    "group:allNonMajor",
+    "schedule:weekly"
+  ],
+  "labels": ["dependencies", "renovate"],
+  "lockFileMaintenance": {
+    "enabled": true,
+    "schedule": ["before 4am on Monday"]
+  },
+  "rangeStrategy": "bump",
+  "rebaseWhen": "conflicted",
+  "prHourlyLimit": 4,
+  "prConcurrentLimit": 6,
+  "vulnerabilityAlerts": {
+    "labels": ["security"],
+    "schedule": [],
+    "minimumReleaseAge": null
+  },
+  "packageRules": [
+    {
+      "description": "Group all React-ecosystem deps so peer-version skew can't sneak in.",
+      "matchPackageNames": [
+        "react",
+        "react-dom",
+        "/^@types/react/",
+        "/^react-/"
+      ],
+      "groupName": "react ecosystem"
+    },
+    {
+      "description": "Group Supabase client + auth helpers together (peer-version coupling).",
+      "matchPackageNames": ["/^@supabase//"],
+      "groupName": "supabase"
+    },
+    {
+      "description": "Group Vite + plugin ecosystem together (build-tool peer coupling).",
+      "matchPackageNames": [
+        "vite",
+        "/^@vitejs//",
+        "vite-plugin-pwa",
+        "workbox-build",
+        "rollup",
+        "/^@rollup//"
+      ],
+      "groupName": "vite & rollup ecosystem"
+    },
+    {
+      "description": "Group all Radix UI primitives together (peer-version coupling).",
+      "matchPackageNames": ["/^@radix-ui//"],
+      "groupName": "radix-ui"
+    },
+    {
+      "description": "Group all Sentry packages together (cross-package version coupling).",
+      "matchPackageNames": ["/^@sentry//"],
+      "groupName": "sentry"
+    },
+    {
+      "description": "Group ESLint + plugins + parsers (config compatibility).",
+      "matchPackageNames": [
+        "eslint",
+        "/^eslint-/",
+        "/^@typescript-eslint//",
+        "typescript-eslint"
+      ],
+      "groupName": "eslint"
+    },
+    {
+      "description": "Group Playwright runner + browsers — version skew between @playwright/test and the bundled chromium causes obscure failures.",
+      "matchPackageNames": ["/^@playwright//", "playwright", "playwright-core"],
+      "groupName": "playwright"
+    },
+    {
+      "description": "Group Tailwind + PostCSS pipeline together.",
+      "matchPackageNames": [
+        "tailwindcss",
+        "/^@tailwindcss//",
+        "postcss",
+        "autoprefixer",
+        "tailwindcss-animate"
+      ],
+      "groupName": "tailwind & postcss"
+    },
+    {
+      "description": "Hold major bumps for review (avoid silent breaking changes).",
+      "matchUpdateTypes": ["major"],
+      "dependencyDashboardApproval": true
+    },
+    {
+      "description": "TypeScript major bumps need manual review (compiler diagnostic shifts).",
+      "matchPackageNames": ["typescript"],
+      "matchUpdateTypes": ["major"],
+      "dependencyDashboardApproval": true
+    },
+    {
+      "description": "Auto-merge dev-deps patch + minor (vitest, eslint, types, etc.) once CI is green. Disabled by default; flip enabled:true once you're comfortable.",
+      "matchDepTypes": ["devDependencies"],
+      "matchUpdateTypes": ["patch", "minor"],
+      "automerge": false
+    }
+  ],
+  "ignorePaths": ["**/node_modules/**", "**/dist/**", "**/build/**"]
+}
