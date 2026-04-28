@@ -19,6 +19,7 @@ import {
   applyTrackedFieldsWrite,
   mergeRecordFields,
   TRACKED_FIELDS,
+  type MergeableRecord,
 } from '@/lib/field-merge';
 
 const advanceClockMs = async (ms: number) => {
