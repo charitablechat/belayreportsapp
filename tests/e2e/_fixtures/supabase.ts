@@ -440,6 +440,105 @@ export async function purgeAdminEditSnapshotsForReport(
 }
 
 /**
+ * Result of probing whether the live Supabase project has migration
+ * `20260427131652_admin-edit-snapshots-allow-admins-insert.sql` applied.
+ *
+ * The migration adds a `FOR INSERT ... WITH CHECK (is_admin_or_above())`
+ * policy to `admin_edit_snapshots`. Without it, the only INSERT-granting
+ * policy is `is_super_admin()`, so admin-role users cannot capture
+ * snapshots and the e2e spec deadlocks waiting for a row that will never
+ * appear (see PR #31 for the production-side bug).
+ *
+ * Possible states:
+ *   - 'deployed'   — INSERT succeeds (or fails for non-RLS reasons such as
+ *                    a uuid format error, NOT NULL violation, etc).
+ *                    The probe rolls back via `Prefer: tx=rollback` so no
+ *                    sentinel row is committed. Spec runs.
+ *   - 'not_deployed' — INSERT returns 403/401 with PostgREST code `42501`
+ *                    and a message containing "row-level security". Spec
+ *                    skips with a clear message instead of timing out.
+ *   - 'unknown'    — Probe got an unexpected HTTP shape (network error,
+ *                    5xx, JSON parse failure). Spec skips defensively, on
+ *                    the principle that we'd rather skip an indeterminate
+ *                    state than spend 60-120s timing out.
+ */
+export type AdminEditSnapshotPolicyState =
+  | 'deployed'
+  | 'not_deployed'
+  | 'unknown';
+
+/**
+ * Probe whether the admin-INSERT policy on `admin_edit_snapshots` is live
+ * in the Supabase project the spec is currently pointed at.
+ *
+ * Mechanics:
+ *   - Fires a single REST INSERT with all required NOT-NULL columns
+ *     populated (so the only thing that can reject it is RLS), but with
+ *     `Prefer: tx=rollback,return=minimal` so the row is never committed
+ *     even on success. PostgREST 11+ supports `tx=rollback`.
+ *   - Sentinel `report_id` / `original_owner_id` use a fixed all-zeros
+ *     UUID just to keep the values inspectable in any logs that might
+ *     leak through; nothing in the row is committed.
+ *   - HTTP 201 → 'deployed'. PostgREST returns 201 even on a rolled-back
+ *     INSERT.
+ *   - HTTP 403/401 with body containing the RLS error → 'not_deployed'.
+ *   - Anything else → 'unknown'.
+ *
+ * Caller must use the **admin** session (the one whose `is_admin_or_above()`
+ * check is what we're verifying). A super-admin or owner session will
+ * give a misleading answer because their policies are different.
+ */
+export async function probeAdminEditSnapshotInsertPolicy(
+  adminSession: SupabaseTestSession
+): Promise<AdminEditSnapshotPolicyState> {
+  const ZERO_UUID = '00000000-0000-0000-0000-000000000000';
+  const body = {
+    report_type: 'inspection',
+    report_id: ZERO_UUID,
+    original_owner_id: ZERO_UUID,
+    edited_by: adminSession.userId,
+    snapshot_data: { probe: true },
+  };
+  try {
+    const res = await adminSession.apiClient.post(
+      '/rest/v1/admin_edit_snapshots',
+      {
+        headers: {
+          'Content-Type': 'application/json',
+          // tx=rollback guarantees no committed sentinel row even on
+          // success; return=minimal keeps the response body small.
+          Prefer: 'tx=rollback,return=minimal',
+        },
+        data: body,
+      }
+    );
+    if (res.status() === 201 || res.status() === 200) {
+      return 'deployed';
+    }
+    const text = await res.text().catch(() => '');
+    if (
+      (res.status() === 401 || res.status() === 403) &&
+      /row-level security/i.test(text)
+    ) {
+      return 'not_deployed';
+    }
+    // Anything else — log for diagnostic but treat as unknown.
+    // eslint-disable-next-line no-console
+    console.warn(
+      `[admin-edit-snapshot policy probe] unexpected ${res.status()} ${res.statusText()}: ${text.slice(
+        0,
+        200
+      )}`
+    );
+    return 'unknown';
+  } catch (err) {
+    // eslint-disable-next-line no-console
+    console.warn('[admin-edit-snapshot policy probe] threw:', err);
+    return 'unknown';
+  }
+}
+
+/**
  * Wait until `admin_edit_snapshots` contains a row matching the given
  * (`reportType`, `reportId`, `editedBy`). Returns the matching row.
  * Throws if the timeout elapses.

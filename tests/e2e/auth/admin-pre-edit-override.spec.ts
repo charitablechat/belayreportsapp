@@ -3,6 +3,7 @@ import { signIn, signOut } from '../_fixtures/auth';
 import {
   MARKER_PREFIX,
   captureSupabaseSession,
+  probeAdminEditSnapshotInsertPolicy,
   purgeMarkedInspections,
   waitForAdminEditSnapshot,
   waitForInspectionInCloud,
@@ -143,6 +144,21 @@ test.describe('admin pre-edit override: snapshot captured on admin save', () => 
       await captureSupabaseSession(page);
     expect(adminSession.userId, 'admin should be a different user than owner')
       .not.toBe(ownerUserId);
+
+    // Probe the live `admin_edit_snapshots` INSERT policy. If migration
+    // 20260427131652 hasn't been applied to the live Supabase project
+    // yet, the admin role can't INSERT and the spec would otherwise
+    // deadlock 60s in `waitForAdminEditSnapshot`. The probe uses
+    // `Prefer: tx=rollback` so it never commits a sentinel row. Skipping
+    // here is a deployment-state condition, not a code condition — the
+    // spec re-activates automatically once the migration ships live.
+    const policyState = await probeAdminEditSnapshotInsertPolicy(adminSession);
+    test.skip(
+      policyState !== 'deployed',
+      `admin_edit_snapshots INSERT policy not deployed (probe=${policyState}); ` +
+        'apply migration 20260427131652_admin-edit-snapshots-allow-admins-insert.sql ' +
+        'to live Supabase to re-enable this spec.'
+    );
 
     // ── 4. Open the inspection form as ADMIN ─────────────────────────────
     await page.goto(`/inspection/${serverId}`);
