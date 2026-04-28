@@ -19,6 +19,7 @@ import {
   applyTrackedFieldsWrite,
   mergeRecordFields,
   TRACKED_FIELDS,
+  type MergeableRecord,
 } from '@/lib/field-merge';
 
 const advanceClockMs = async (ms: number) => {
@@ -27,7 +28,7 @@ const advanceClockMs = async (ms: number) => {
 
 describe('applyTrackedFieldWrite', () => {
   it('stamps field_timestamps[field] for tracked inspection fields', () => {
-    const before = {
+    const before: MergeableRecord = {
       id: 'insp-1',
       organization: 'old',
       updated_at: '2025-04-01T10:00:00.000Z',
@@ -45,7 +46,7 @@ describe('applyTrackedFieldWrite', () => {
   });
 
   it('does NOT stamp field_timestamps for untracked fields (e.g. status)', () => {
-    const before = {
+    const before: MergeableRecord = {
       id: 'insp-1',
       status: 'draft',
       updated_at: '2025-04-01T10:00:00.000Z',
@@ -60,7 +61,7 @@ describe('applyTrackedFieldWrite', () => {
   });
 
   it('preserves earlier per-field timestamps when stamping a different field', () => {
-    const before = {
+    const before: MergeableRecord = {
       id: 'insp-1',
       organization: 'OrgA',
       location: 'LocA',
@@ -75,7 +76,7 @@ describe('applyTrackedFieldWrite', () => {
   });
 
   it('TRACKED_FIELDS coverage matches helper behaviour for training', () => {
-    const before = { id: 't-1', updated_at: '2025-04-01T10:00:00.000Z' };
+    const before: MergeableRecord = { id: 't-1', updated_at: '2025-04-01T10:00:00.000Z' };
     for (const field of TRACKED_FIELDS.training) {
       const after = applyTrackedFieldWrite(before, 'training', field, 'value');
       expect(after.field_timestamps?.[field]).toBeDefined();
@@ -83,7 +84,7 @@ describe('applyTrackedFieldWrite', () => {
   });
 
   it('TRACKED_FIELDS coverage matches helper behaviour for daily_assessment', () => {
-    const before = { id: 'a-1', updated_at: '2025-04-01T10:00:00.000Z' };
+    const before: MergeableRecord = { id: 'a-1', updated_at: '2025-04-01T10:00:00.000Z' };
     for (const field of TRACKED_FIELDS.daily_assessment) {
       const after = applyTrackedFieldWrite(before, 'daily_assessment', field, 'value');
       expect(after.field_timestamps?.[field]).toBeDefined();
@@ -93,7 +94,7 @@ describe('applyTrackedFieldWrite', () => {
 
 describe('applyTrackedFieldsWrite (batch)', () => {
   it('stamps every tracked key in the patch with a single shared timestamp', () => {
-    const before = {
+    const before: MergeableRecord = {
       id: 'insp-1',
       updated_at: '2025-04-01T10:00:00.000Z',
     };
@@ -127,7 +128,7 @@ describe('applyTrackedFieldsWrite (batch)', () => {
 describe('PR-A end-to-end: form helper + merger preserves concurrent edits', () => {
   it('Device A edits organization, Device B edits location — both survive merge', async () => {
     // Both devices start from the same baseline.
-    const baseline = {
+    const baseline: MergeableRecord = {
       id: 'insp-1',
       organization: 'BaselineOrg',
       location: 'BaselineLoc',
