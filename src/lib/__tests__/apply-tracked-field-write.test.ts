@@ -28,7 +28,7 @@ const advanceClockMs = async (ms: number) => {
 
 describe('applyTrackedFieldWrite', () => {
   it('stamps field_timestamps[field] for tracked inspection fields', () => {
-    const before = {
+    const before: MergeableRecord = {
       id: 'insp-1',
       organization: 'old',
       updated_at: '2025-04-01T10:00:00.000Z',
