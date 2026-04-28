@@ -116,6 +116,23 @@ test.describe('admin pre-edit override: snapshot captured on admin save', () => 
       );
     }
 
+    // ── 1b. Warmup: dashboard + first autosync settle ────────────────────
+    // The very first navigation on a cold browser context eats SW install,
+    // first JWT mint, and the first autosync tick all at once. Visiting
+    // /dashboard before /inspection/new lets that cold-start cost amortise
+    // outside the cloud-poll budget below. We wait for the dashboard list
+    // to render rather than just `goto`, so the autosync hook has actually
+    // had a chance to fire its first cycle. Best-effort — if the dashboard
+    // copy changes we don't want to fail the spec, just lose the warmup.
+    await page.goto('/dashboard');
+    await page
+      .getByText(/inspections|trainings|daily assessments|no reports/i)
+      .first()
+      .waitFor({ timeout: 30_000 })
+      .catch(() => {
+        /* best-effort warmup */
+      });
+
     // ── 2. Create inspection ONLINE as OWNER ─────────────────────────────
     await page.goto('/inspection/new');
     await expect(
@@ -136,9 +153,15 @@ test.describe('admin pre-edit override: snapshot captured on admin save', () => 
 
     await page.getByRole('button', { name: /^create inspection$/i }).click();
 
-    // Wait for the inspection itself to reach Supabase.
+    // Wait for the inspection itself to reach Supabase. Budget bumped
+    // 120s → 180s to match the same CI-only autosync-latency flake that
+    // bit `offline-edit-reconcile` (see PR #25 raise from 60s → 120s on
+    // that spec). The admin spec is more sensitive because it runs the
+    // create step on a cold context; even with the /dashboard warmup
+    // above we keep the extra 60s headroom so transient GH Actions
+    // Supabase RTT spikes don't surface as a false RLS-policy bug.
     const createdRow = await waitForInspectionInCloud(ownerSession, marker, {
-      timeoutMs: 120_000,
+      timeoutMs: 180_000,
     });
     const serverId = createdRow.id as string;
     expect(serverId, 'created row should have a server id').toBeTruthy();
