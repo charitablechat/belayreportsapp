@@ -94,7 +94,7 @@ describe('applyTrackedFieldWrite', () => {
 
 describe('applyTrackedFieldsWrite (batch)', () => {
   it('stamps every tracked key in the patch with a single shared timestamp', () => {
-    const before = {
+    const before: MergeableRecord = {
       id: 'insp-1',
       updated_at: '2025-04-01T10:00:00.000Z',
     };
