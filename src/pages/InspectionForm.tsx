@@ -2205,8 +2205,20 @@ export default function InspectionForm() {
 
     // Safety timeout - ensure saving UI state is cleared after max 8 seconds.
     // Does NOT touch `anySaveInProgressRef` — owned by `performSave`.
+    //
+    // The `safetyTimerFired` flag is captured per-invocation so the finally
+    // block can tell whether THIS invocation still owns `saveInProgressRef`
+    // when it cleans up. Without it, an 8s+ save would have its mutex
+    // released by the timer, a concurrent caller would acquire it, then the
+    // original save's `finally` would stomp the new owner's mutex back to
+    // false — letting yet another caller race in. Same pattern as PR #26's
+    // fix in TrainingForm/DailyAssessmentForm; the underlying lesson is the
+    // deadlock-timer ownership race PR #22 fixed in
+    // `InspectionForm.performSave` (`deadlockTimerFired`).
+    let safetyTimerFired = false;
     const safetyTimeout = setTimeout(() => {
       console.warn('[InspectionForm] Safety timeout reached, forcing save state reset');
+      safetyTimerFired = true;
       setSaving(false);
       saveInProgressRef.current = false;
     }, 8000);
@@ -2228,7 +2240,12 @@ export default function InspectionForm() {
       clearTimeout(safetyTimeout);
       console.log('[InspectionForm] Completed, setting saving to false');
       setSaving(false);
-      saveInProgressRef.current = false;
+      // Only release the mutex if the safety timer hasn't already done so. If
+      // the safety timer already fired, a concurrent caller has acquired the
+      // mutex and we must not stomp on it.
+      if (!safetyTimerFired) {
+        saveInProgressRef.current = false;
+      }
     }
   };
 
