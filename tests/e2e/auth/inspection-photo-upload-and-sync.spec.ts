@@ -229,15 +229,16 @@ test.describe('inspection photo: upload + sync golden path', () => {
       expect(photoRowAfterReload.id).toBe(photoRow.id);
 
       // ── 9. Gallery should render the photo after reload ──────────────────
-      // PhotoGallery (`InspectionForm.tsx:3213`) renders one `<img>` per
-      // row in `inspection_photos`. The signed-URL `src` always embeds
-      // the storage path, which is shaped `{userId}/{inspectionId}/…`
-      // (`PhotoCapture.tsx:174`). Matching `img[src*=<serverId>]`
-      // therefore selects ONLY photos belonging to this inspection —
-      // unrelated app images (logo, avatars, icons) are excluded, which
-      // is the failure mode a generic `img.first()` would silently pass
-      // through.
-      const galleryImg = page.locator(`img[src*="${serverId}"]`).first();
+      // PhotoGallery wraps each cell in `<div data-lightbox-trigger>`
+      // (`PhotoGallery.tsx:769`) and only PhotoGallery uses that
+      // attribute, so `[data-lightbox-trigger] img` is both
+      // gallery-specific AND URL-agnostic. We can't filter on
+      // `src*=<inspectionId>` because, after reload, the gallery
+      // re-hydrates from the IDB blob cache (`PhotoGallery.tsx:212`,
+      // `getOfflinePhotos`) — `photo.photoUrl` becomes a `blob:` URL
+      // that does NOT contain the inspection id. The wrapper attribute
+      // survives both code paths.
+      const galleryImg = page.locator('[data-lightbox-trigger] img').first();
       await expect(galleryImg).toBeVisible({ timeout: 30_000 });
 
       // ── 10. Post-flight cleanup ──────────────────────────────────────────
