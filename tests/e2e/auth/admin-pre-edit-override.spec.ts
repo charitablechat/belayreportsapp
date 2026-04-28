@@ -94,10 +94,17 @@ test.describe('admin pre-edit override: snapshot captured on admin save', () => 
       }
     });
 
+    // Resources that may need explicit cleanup even when test.skip()
+    // throws mid-body. Declared with `let` so the `finally` block below
+    // can dispose them conditionally regardless of which step aborted.
+    let ownerSession: SupabaseTestSession | undefined;
+    let adminSession: SupabaseTestSession | undefined;
+    let ownerCleanupSession: SupabaseTestSession | undefined;
+
+    try {
     // ── 1. Sign in as OWNER ──────────────────────────────────────────────
     await signIn(page, { email: OWNER_EMAIL, password: OWNER_PASSWORD });
-    const ownerSession: SupabaseTestSession =
-      await captureSupabaseSession(page);
+    ownerSession = await captureSupabaseSession(page);
 
     // Pre-flight cleanup of any `[E2E DEVIN]` inspections left over from
     // a previously-failed run — RLS allows the owner to delete their own.
@@ -140,8 +147,7 @@ test.describe('admin pre-edit override: snapshot captured on admin save', () => 
     // ── 3. Sign out, sign in as ADMIN ────────────────────────────────────
     await signOut(page);
     await signIn(page, { email: ADMIN_EMAIL, password: ADMIN_PASSWORD });
-    const adminSession: SupabaseTestSession =
-      await captureSupabaseSession(page);
+    adminSession = await captureSupabaseSession(page);
     expect(adminSession.userId, 'admin should be a different user than owner')
       .not.toBe(ownerUserId);
 
@@ -242,7 +248,7 @@ test.describe('admin pre-edit override: snapshot captured on admin save', () => 
     // grants DELETE to the owner or super_admin, not generic admin role).
     await signOut(page);
     await signIn(page, { email: OWNER_EMAIL, password: OWNER_PASSWORD });
-    const ownerCleanupSession = await captureSupabaseSession(page);
+    ownerCleanupSession = await captureSupabaseSession(page);
     const purgedAfter = await purgeMarkedInspections(ownerCleanupSession);
     // eslint-disable-next-line no-console
     console.log(
@@ -254,10 +260,16 @@ test.describe('admin pre-edit override: snapshot captured on admin save', () => 
       uncaught,
       `uncaught page errors: ${uncaught.map((e) => e.message).join('; ')}`
     ).toEqual([]);
-
-    // Dispose the APIRequestContexts opened via `request.newContext()`.
-    await ownerSession.apiClient.dispose();
-    await adminSession.apiClient.dispose();
-    await ownerCleanupSession.apiClient.dispose();
+    } finally {
+      // Always dispose APIRequestContexts opened via `request.newContext()`,
+      // including when `test.skip()` aborts the test mid-body. Without
+      // this, the deployment-state skip path leaks file descriptors /
+      // sockets for the remainder of the worker process. The orphaned
+      // inspection (if any) is collected by the next run's pre-flight
+      // `purgeMarkedInspections` call.
+      await ownerSession?.apiClient.dispose();
+      await adminSession?.apiClient.dispose();
+      await ownerCleanupSession?.apiClient.dispose();
+    }
   });
 });
