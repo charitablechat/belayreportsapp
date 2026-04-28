@@ -67,11 +67,11 @@ test.describe('admin pre-edit override: snapshot captured on admin save', () => 
       'E2E_ADMIN_EMAIL/PASSWORD to run.'
   );
 
-  // Two full sign-in flows + create + cloud round-trip + form load + edit
-  // + cloud round-trip + admin_edit_snapshots oracle + cleanup. CI runners
-  // see ~3-5x the Supabase round-trip latency seen locally; mirrors the
-  // budget that scope-C and the cloud-backup spec converged on.
-  test.setTimeout(240_000);
+  // Two full sign-in flows + warmup + create + cloud round-trip + form load
+  // + edit + cloud round-trip + admin_edit_snapshots oracle + cleanup. CI
+  // runners see ~3-5x the Supabase round-trip latency seen locally; budget
+  // raised to 300s when create-wait was bumped to 180s.
+  test.setTimeout(300_000);
 
   test('owner creates inspection → admin edits → admin_edit_snapshots row exists', async ({
     page,
