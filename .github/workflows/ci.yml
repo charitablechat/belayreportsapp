@@ -87,6 +87,61 @@ jobs:
       - run: bun run build
       - run: bun run bundle-size:budget
 
+  audit-critical:
+    name: bun audit (critical gate)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+      - run: bun install --frozen-lockfile
+      # Hard gate: ANY critical-severity advisory in the dep tree fails the
+      # build. We deliberately stop short of `--audit-level=high` because
+      # the baseline currently carries ~20 high-severity advisories deep in
+      # transitive build-tooling (vite > rollup, vite-plugin-pwa >
+      # workbox-build, eslint > flat-cache > flatted) that we can't fix
+      # without ecosystem-wide upgrades — the `audit-high` non-blocking job
+      # below surfaces them in the job summary so we have visibility, but
+      # they don't gate the main CI lane until those upstream releases ship.
+      - run: bun audit --audit-level=critical
+
+  audit-high:
+    name: bun audit (high — advisory only)
+    runs-on: ubuntu-latest
+    # Non-blocking: this job runs and reports findings to the PR's checks tab
+    # so high-severity transitive advisories are visible, but it does NOT fail
+    # the build. Renovate's `vulnerabilityAlerts` block (renovate.json) opens
+    # PRs for fixable advisories automatically.
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+      - run: bun install --frozen-lockfile
+      - name: Run bun audit
+        id: audit
+        run: |
+          set +e
+          bun audit --audit-level=high | tee audit-high.txt
+          # `$?` after a pipeline is the LAST command's exit code (`tee`,
+          # which is always 0). Use `${PIPESTATUS[0]}` so the surfaced
+          # exit code reflects `bun audit` itself (1 = advisories, 0 = clean).
+          echo "audit_exit=${PIPESTATUS[0]}" >> "$GITHUB_OUTPUT"
+      - name: Append audit summary
+        if: always()
+        run: |
+          {
+            echo "## bun audit — high severity"
+            echo ""
+            echo "Exit code: ${{ steps.audit.outputs.audit_exit }} (1 = advisories present, 0 = clean)"
+            echo ""
+            echo '```'
+            cat audit-high.txt || echo "(no audit output)"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
   e2e-offline:
     name: playwright e2e (smoke + auth + offline-edit-reconcile)
     runs-on: ubuntu-latest
