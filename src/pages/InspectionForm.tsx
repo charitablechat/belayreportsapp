@@ -2238,12 +2238,15 @@ export default function InspectionForm() {
       setSaveError({ message: errorMsg, code: error?.code });
     } finally {
       clearTimeout(safetyTimeout);
-      console.log('[InspectionForm] Completed, setting saving to false');
-      setSaving(false);
-      // Only release the mutex if the safety timer hasn't already done so. If
-      // the safety timer already fired, a concurrent caller has acquired the
-      // mutex and we must not stomp on it.
+      // Only flip UI state + release the mutex if the safety timer hasn't
+      // already done so. If the safety timer already fired, a concurrent
+      // caller may have acquired the mutex AND called `setSaving(true)`
+      // — the stale invocation must not stomp either piece of their state.
+      // Both guards together keep the `saving` flag and the mutex coherent
+      // for the new owner.
       if (!safetyTimerFired) {
+        console.log('[InspectionForm] Completed, setting saving to false');
+        setSaving(false);
         saveInProgressRef.current = false;
       }
     }
