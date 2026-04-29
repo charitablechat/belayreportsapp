@@ -70,11 +70,8 @@ test.describe('admin pre-edit override: snapshot captured on admin save', () => 
   // Two full sign-in flows + warmup + create + cloud round-trip + form load
   // + edit + cloud round-trip + admin_edit_snapshots oracle + cleanup. CI
   // runners see ~3-5x the Supabase round-trip latency seen locally; budget
-  // raised to 300s when create-wait was bumped to 180s, then to 480s when
-  // the snapshot-row wait was bumped to 180s (line ~250) to accommodate
-  // the same upstream fetch flake. With three serial 120-180s waits plus
-  // setup/save/cleanup, 300s could clip a slow-but-passing run.
-  test.setTimeout(480_000);
+  // raised to 300s when create-wait was bumped to 180s.
+  test.setTimeout(300_000);
 
   test('owner creates inspection → admin edits → admin_edit_snapshots row exists', async ({
     page,
@@ -244,18 +241,12 @@ test.describe('admin pre-edit override: snapshot captured on admin save', () => 
     });
 
     // ── 6. Wait for the admin_edit_snapshots row ─────────────────────────
-    // 180s mirrors the location-wait budget bumped at fa86a322 — same
-    // upstream Supabase fetch flake on GH Actions runners. The snapshot
-    // capture is fire-and-forget at the production-code layer; if its
-    // parent fetch hits the flake it falls back to a local IDB queue
-    // that drains on the next `useAutoSync` cycle, so the row can take
-    // longer than the form's spinner-clear time to land in the cloud.
     const snapshot = await waitForAdminEditSnapshot(adminSession, {
       reportType: 'inspection',
       reportId: serverId,
       editedBy: adminSession.userId,
       originalOwnerId: ownerUserId,
-      timeoutMs: 180_000,
+      timeoutMs: 60_000,
     });
     expect(snapshot.report_type).toBe('inspection');
     expect(snapshot.report_id).toBe(serverId);
