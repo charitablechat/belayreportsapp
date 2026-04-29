@@ -1767,8 +1767,24 @@ export default function InspectionForm() {
             // local clock value. The temp→real-UUID dedup key relies on
             // (inspector_id, organization, created_at), so drift here can produce
             // duplicate rows on the next sync.
+            //
+            // Strip IDB-only fields (`child_count_hint`, `dirty`) — the local-save
+            // helper `saveInspectionOffline` MUTATES the inspection object in
+            // place to stamp these (S30 / C3), so by the time we reach the
+            // remote write `inspectionToSave` carries them. Sending them to
+            // Supabase fails with PGRST204 ("Could not find the
+            // 'child_count_hint' column …"). Mirrors the strip list in
+            // `atomic-sync-manager.ts:LOCAL_ONLY_REMOTE_UPSERT_FIELDS` —
+            // keep both lists in sync when adding new IDB-only flags.
             const sanitizeInspection = (insp: any) => {
-              const { id, inspector, created_at, ...rest } = insp; // Remove id, joined inspector, and created_at
+              const {
+                id,
+                inspector,
+                created_at,
+                child_count_hint,
+                dirty,
+                ...rest
+              } = insp;
               return {
                 ...rest,
                 previous_inspection_date: rest.previous_inspection_date === "" ? null : rest.previous_inspection_date,
