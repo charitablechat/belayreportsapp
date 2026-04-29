@@ -241,7 +241,19 @@ test.describe('admin pre-edit override: snapshot captured on admin save', () => 
     });
 
     // ── 6. Wait for the admin_edit_snapshots row ─────────────────────────
-    const snapshot = await waitForAdminEditSnapshot(adminSession, {
+    // Poll using the OWNER's session, not the admin's. The
+    // `Admins can view admin edit snapshots` SELECT policy from
+    // migration 20260427131652 was never confirmed deployed live (the
+    // pg_policy verification query only checked the INSERT policy, see
+    // migration 20260429083000). The owner's existing SELECT policy
+    // (`original_owner_id = auth.uid()` from the original
+    // 20260226134608 table migration) is definitively live, so polling
+    // with the owner session works regardless of admin SELECT state.
+    // The admin session signed in at step 3 is only used as the *writer*
+    // (capturePreEditSnapshot's `edited_by`); reads happen through the
+    // owner whose JWT is still valid (signOut on the browser doesn't
+    // revoke the captured access token in ownerSession.apiClient).
+    const snapshot = await waitForAdminEditSnapshot(ownerSession, {
       reportType: 'inspection',
       reportId: serverId,
       editedBy: adminSession.userId,
