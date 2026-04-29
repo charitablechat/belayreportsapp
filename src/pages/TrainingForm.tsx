@@ -874,10 +874,34 @@ export default function TrainingForm() {
       // If online AND local save succeeded, try to sync to Supabase
       if (isOnline && localSaveSucceeded) {
         try {
+          // Strip IDB-only fields (`child_count_hint`, `dirty`) — `saveTrainingOffline`
+          // MUTATES the training object in place to stamp these (S30 / C3), so by
+          // the time we reach the remote write `updatedTraining` carries them.
+          // Sending them to Supabase fails with PGRST204 ("Could not find the
+          // 'child_count_hint' column …") which silently no-ops the cloud write.
+          // Also drop `id` and `created_at`: the upsert fallback supplies its own
+          // `id` and we never want to overwrite the server's original creation
+          // timestamp with a (possibly skewed) local clock value. Mirrors the
+          // strip list in `atomic-sync-manager.ts:LOCAL_ONLY_REMOTE_UPSERT_FIELDS`
+          // and the equivalent helper in `InspectionForm.performSave` — keep all
+          // three lists in sync when adding new IDB-only flags.
+          const sanitizeTraining = (t: Record<string, unknown>) => {
+            const {
+              id: _id,
+              created_at: _created_at,
+              child_count_hint: _child_count_hint,
+              dirty: _dirty,
+              ...rest
+            } = t as Record<string, unknown>;
+            void _id; void _created_at; void _child_count_hint; void _dirty;
+            return rest;
+          };
+          const sanitizedTraining = sanitizeTraining(updatedTraining as Record<string, unknown>);
+
           // Update main training record WITHOUT synced_at (deferred pattern)
           const { data: updateResult, error: trainingError } = await supabase
             .from('trainings')
-            .update(updatedTraining)
+            .update(sanitizedTraining)
             .eq('id', id)
             .select('id');
 
@@ -888,7 +912,7 @@ export default function TrainingForm() {
             console.warn('[Training Save] Update returned 0 rows — falling back to upsert');
             const { error: upsertError } = await supabase
               .from('trainings')
-              .upsert({ id, ...updatedTraining });
+              .upsert({ id, ...sanitizedTraining });
             if (upsertError) throw upsertError;
           }
 
