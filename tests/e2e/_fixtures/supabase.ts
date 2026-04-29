@@ -594,3 +594,174 @@ export async function waitForAdminEditSnapshot(
       (last ? ` (last response: ${last.status} ${last.body})` : '')
   );
 }
+
+interface InspectionPhotoRow {
+  id: string;
+  inspection_id: string;
+  photo_url: string;
+  photo_section: string | null;
+  caption: string | null;
+  display_order: number | null;
+  created_at: string | null;
+  deleted_at: string | null;
+}
+
+/**
+ * Wait until `inspection_photos` contains at least one row for the given
+ * inspection. Returns the matching row. Throws on timeout.
+ *
+ * Used as the "photo upload completed" oracle for `PhotoCapture`'s
+ * fire-and-forget background sync (`uploadPhotoInBackground` in
+ * `src/components/PhotoCapture.tsx`). Once the upload succeeds the row is
+ * inserted with `inspection_id`, `photo_url` (storage path), and
+ * `photo_section` populated.
+ *
+ * Filters out soft-deleted rows so the same inspection can be re-used
+ * across spec iterations without false positives.
+ */
+export async function waitForInspectionPhotoInCloud(
+  session: SupabaseTestSession,
+  opts: {
+    inspectionId: string;
+    timeoutMs?: number;
+    pollIntervalMs?: number;
+    section?: string;
+  }
+): Promise<InspectionPhotoRow> {
+  const timeoutMs = opts.timeoutMs ?? 60_000;
+  const pollIntervalMs = opts.pollIntervalMs ?? 1000;
+  const sectionFilter = opts.section
+    ? `&photo_section=eq.${encodeURIComponent(opts.section)}`
+    : '';
+  const url =
+    `/rest/v1/inspection_photos` +
+    `?inspection_id=eq.${encodeURIComponent(opts.inspectionId)}` +
+    `&deleted_at=is.null` +
+    sectionFilter +
+    `&select=*&order=created_at.desc&limit=1`;
+  const deadline = Date.now() + timeoutMs;
+  let last: { status: number; body: string } | null = null;
+  while (Date.now() < deadline) {
+    const res = await session.apiClient.get(url);
+    if (res.ok()) {
+      const rows = (await res.json()) as InspectionPhotoRow[];
+      if (Array.isArray(rows) && rows.length > 0) return rows[0];
+    } else {
+      last = { status: res.status(), body: await res.text() };
+    }
+    await new Promise((r) => setTimeout(r, pollIntervalMs));
+  }
+  throw new Error(
+    `Timed out after ${timeoutMs}ms waiting for inspection_photos row ` +
+      `(inspection_id=${opts.inspectionId}` +
+      (opts.section ? `, photo_section=${opts.section}` : '') +
+      `)` +
+      (last ? ` (last response: ${last.status} ${last.body})` : '')
+  );
+}
+
+/**
+ * Best-effort fetch of storage paths (`photo_url`) for every
+ * `inspection_photos` row tied to the given inspection. Used to drive
+ * storage-object cleanup BEFORE the parent inspection is deleted (the
+ * `inspection_photos` row is FK-cascaded away on inspection delete, but
+ * the underlying object in the `inspection-photos` storage bucket is NOT
+ * cascaded — it has to be removed via the storage API).
+ *
+ * Returns `[]` on any failure so cleanup never blocks a test run.
+ */
+export async function getInspectionPhotoStoragePaths(
+  session: SupabaseTestSession,
+  inspectionId: string
+): Promise<string[]> {
+  const url =
+    `/rest/v1/inspection_photos?inspection_id=eq.${encodeURIComponent(inspectionId)}` +
+    `&select=photo_url`;
+  try {
+    const res = await session.apiClient.get(url);
+    if (!res.ok()) return [];
+    const rows = (await res.json()) as { photo_url: string }[];
+    return rows.map((r) => r.photo_url).filter(Boolean);
+  } catch {
+    return [];
+  }
+}
+
+/**
+ * Best-effort delete of objects from the `inspection-photos` storage
+ * bucket. Mirrors what `supabase.storage.from('inspection-photos').remove(paths)`
+ * does: a single `DELETE /storage/v1/object/inspection-photos` with body
+ * `{ prefixes: [...] }`. RLS on `storage.objects` allows the test user to
+ * delete their own captures (the storage path begins with their userId,
+ * see `PhotoCapture.tsx:174`).
+ *
+ * Returns the number of objects the server reports as deleted; `0` on
+ * any failure so cleanup never blocks a test run.
+ */
+export async function purgeInspectionPhotoStorageObjects(
+  session: SupabaseTestSession,
+  paths: string[],
+  bucket: string = 'inspection-photos'
+): Promise<number> {
+  if (paths.length === 0) return 0;
+  try {
+    const res = await session.apiClient.delete(
+      `/storage/v1/object/${bucket}`,
+      {
+        headers: { 'Content-Type': 'application/json' },
+        data: { prefixes: paths },
+      }
+    );
+    if (!res.ok()) {
+      // eslint-disable-next-line no-console
+      console.warn(
+        `[e2e cleanup] storage purge returned ${res.status()} ${res.statusText()} ` +
+          `for ${paths.length} path(s)`
+      );
+      return 0;
+    }
+    const body = (await res.json().catch(() => [])) as unknown[];
+    return Array.isArray(body) ? body.length : 0;
+  } catch (err) {
+    // eslint-disable-next-line no-console
+    console.warn('[e2e cleanup] storage purge threw:', err);
+    return 0;
+  }
+}
+
+/**
+ * Combined cleanup helper: walk every `[E2E DEVIN]`-marked inspection
+ * still owned by the test user, collect their `inspection_photos` storage
+ * paths, and DELETE those objects from the bucket. Does NOT delete the
+ * `inspection_photos` rows themselves (those FK-cascade away when
+ * `purgeMarkedInspections` removes the parent).
+ *
+ * Best-effort — never throws. Returns the number of storage objects
+ * removed so callers can log progress.
+ */
+export async function purgeMarkedInspectionPhotoStorageObjects(
+  session: SupabaseTestSession
+): Promise<number> {
+  const markedUrl =
+    `/rest/v1/inspections?location=ilike.${encodeURIComponent(
+      MARKER_PREFIX + '%'
+    )}&inspector_id=eq.${session.userId}&select=id`;
+  let inspectionIds: string[] = [];
+  try {
+    const res = await session.apiClient.get(markedUrl);
+    if (!res.ok()) return 0;
+    const rows = (await res.json()) as { id: string }[];
+    inspectionIds = rows.map((r) => r.id).filter(Boolean);
+  } catch {
+    return 0;
+  }
+  if (inspectionIds.length === 0) return 0;
+
+  const allPaths: string[] = [];
+  for (const id of inspectionIds) {
+    const paths = await getInspectionPhotoStoragePaths(session, id);
+    allPaths.push(...paths);
+  }
+  if (allPaths.length === 0) return 0;
+  return purgeInspectionPhotoStorageObjects(session, allPaths);
+}
