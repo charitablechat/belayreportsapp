@@ -241,20 +241,30 @@ test.describe('admin pre-edit override: snapshot captured on admin save', () => 
     });
 
     // ── 6. Wait for the admin_edit_snapshots row ─────────────────────────
+    // Poll using the OWNER's session, not the admin's. The
+    // `Admins can view admin edit snapshots` SELECT policy from
+    // migration 20260427131652 was never confirmed deployed live (the
+    // pg_policy verification query only checked the INSERT policy; see
+    // migration 20260429083000 for the redeploy). The owner's existing
+    // SELECT policy (`original_owner_id = auth.uid()` from the original
+    // 20260226134608 table migration) is definitively live, so polling
+    // with the owner session works regardless of admin SELECT state.
+    // The admin session signed in at step 3 is still the *writer*
+    // (capturePreEditSnapshot's `edited_by`); reads happen through the
+    // owner whose JWT remains valid (signOut on the browser doesn't
+    // revoke the captured access token in ownerSession.apiClient).
+    //
     // 180s budget (matches the location-wait above). `capturePreEditSnapshot`
     // is fire-and-forget: on a network blip its inline insert fails and the
     // intent falls into a local IDB queue that drains on the next
-    // `useAutoSync` tick (~5s interval). On heavily-loaded GH Actions runners
-    // the cumulative path of `auth.getUser` → `inspections SELECT` →
-    // `*_summary SELECT` → `*_photos SELECT` → … → `admin_edit_snapshots
-    // INSERT` can easily eat 30–60s before the row lands; a 60s test budget
-    // was producing run-to-run flakes even after the location-prop fix in
-    // PR #49 stabilised the upstream layer. The fetch-level retry from PR
-    // #50 helps the read legs but deliberately does not retry the POST
-    // mutation, so the local-queue fallback is the actual durability path
-    // here. 180s gives that fallback a realistic chance to drain on a
-    // congested runner without papering over a real production-code bug.
-    const snapshot = await waitForAdminEditSnapshot(adminSession, {
+    // `useAutoSync` tick. On heavily-loaded GH Actions runners the cumulative
+    // path of `auth.getUser` → `inspections SELECT` → `*_summary SELECT` →
+    // `*_photos SELECT` → … → `admin_edit_snapshots INSERT` can easily eat
+    // 30–60s before the row lands; the fetch-level retry from PR #50 helps
+    // the read legs but deliberately does not retry the POST mutation, so
+    // the local-queue fallback is the actual durability path here. 180s
+    // gives that fallback realistic headroom on a congested runner.
+    const snapshot = await waitForAdminEditSnapshot(ownerSession, {
       reportType: 'inspection',
       reportId: serverId,
       editedBy: adminSession.userId,

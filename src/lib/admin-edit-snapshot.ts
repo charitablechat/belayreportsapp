@@ -84,11 +84,22 @@ export function capturePreEditSnapshot(
   // a local IDB queue that will be flushed on the next online sync cycle.
   const online = typeof navigator !== 'undefined' ? navigator.onLine : true;
 
+  // Diagnostic entry log — fires regardless of import.meta.env.DEV so CI
+  // logs reveal whether this function was even invoked. Without this we
+  // cannot distinguish 'never called' from 'called and silently succeeded'
+  // from 'called and silently failed' when the e2e admin-pre-edit spec
+  // times out waiting for the snapshot row.
+  console.warn(
+    '[AdminEditSnapshot] capturePreEditSnapshot called',
+    { reportType, reportId, ownerId, editorId, online },
+  );
+
   const enqueueFallback = (reason: string, err?: unknown) => {
-    if (err) console.warn(`[AdminEditSnapshot] ${reason}, queuing locally:`, err);
+    console.warn(`[AdminEditSnapshot] ${reason}, queuing locally:`, err ?? '(no error)');
     import('./admin-edit-snapshot-queue')
       .then(({ enqueueAdminEditIntent }) =>
         enqueueAdminEditIntent(reportType, reportId, ownerId, editorId))
+      .then(() => console.warn('[AdminEditSnapshot] enqueued for later drain'))
       .catch((qErr) => console.warn('[AdminEditSnapshot] enqueue failed:', qErr));
   };
 
@@ -97,9 +108,11 @@ export function capturePreEditSnapshot(
     return;
   }
 
-  _doCapture(reportType, reportId, ownerId, editorId).catch((err) => {
-    enqueueFallback('Capture failed (will retry from queue)', err);
-  });
+  _doCapture(reportType, reportId, ownerId, editorId)
+    .then(() => console.warn('[AdminEditSnapshot] inline capture succeeded for', reportType, reportId))
+    .catch((err) => {
+      enqueueFallback('Capture failed (will retry from queue)', err);
+    });
 }
 
 /**
@@ -125,23 +138,40 @@ async function _doCapture(
   const fkColumn = PARENT_FK[reportType];
   const childTables = CHILD_TABLES[reportType];
 
-  // Fetch current server-side parent
+  // Fetch current server-side parent. A transport / RLS / PostgREST error must
+  // propagate so `capturePreEditSnapshot`'s `.catch` queues the intent for a
+  // later `flushAdminEditQueue` cycle. A clean "row not found" (no error, null
+  // data) is treated as a no-op — there is nothing to snapshot and retrying
+  // would loop forever.
+  console.warn(`[AdminEditSnapshot] _doCapture: fetching parent ${parentTable} id=${reportId}`);
   const { data: parent, error: parentErr } = await sb.from(parentTable)
     .select('*')
     .eq('id', reportId)
     .maybeSingle();
 
-  if (parentErr || !parent) {
-    console.warn('[AdminEditSnapshot] Could not fetch parent:', parentErr?.message);
+  if (parentErr) {
+    throw new Error(
+      `[AdminEditSnapshot] parent fetch failed (${parentTable} id=${reportId}): ${parentErr.message ?? 'unknown error'}`,
+    );
+  }
+  if (!parent) {
+    console.warn(`[AdminEditSnapshot] parent ${parentTable} id=${reportId} not found — skipping snapshot.`);
     return;
   }
+  console.warn(`[AdminEditSnapshot] _doCapture: parent fetched, now fetching ${childTables.length} child tables`);
 
-  // Fetch all children in parallel
+  // Fetch all children in parallel. If any child read errors, propagate so we
+  // re-queue rather than capture a snapshot with a partial/empty children map.
   const childResults = await Promise.all(
     childTables.map(async (table) => {
-      const { data } = await sb.from(table)
+      const { data, error } = await sb.from(table)
         .select('*')
         .eq(fkColumn, reportId);
+      if (error) {
+        throw new Error(
+          `[AdminEditSnapshot] child fetch failed (${table} ${fkColumn}=${reportId}): ${error.message ?? 'unknown error'}`,
+        );
+      }
       return [table, data ?? []] as [string, Row[]];
     })
   );
@@ -151,7 +181,14 @@ async function _doCapture(
     children[table] = rows;
   }
 
-  // Insert snapshot
+  // Insert snapshot. Errors here MUST throw so the queue fallback re-attempts
+  // on the next sync cycle; otherwise transient INSERT failures (RLS, network,
+  // PostgREST schema cache) silently lose the snapshot — both inline AND from
+  // the queue, since the queue is only filled when this function rejects.
+  console.warn('[AdminEditSnapshot] _doCapture: inserting snapshot row', {
+    reportType, reportId, original_owner_id: ownerId, edited_by: editorId,
+    childTablesCount: Object.keys(children).length,
+  });
   const { error: insertErr } = await sb.from('admin_edit_snapshots')
     .insert({
       report_type: reportType,
@@ -162,10 +199,12 @@ async function _doCapture(
     });
 
   if (insertErr) {
-    console.warn('[AdminEditSnapshot] Insert failed:', insertErr.message);
-  } else if (import.meta.env.DEV) {
-    console.log('[AdminEditSnapshot] Pre-edit snapshot captured for', reportType, reportId);
+    throw new Error(
+      `[AdminEditSnapshot] insert failed: ${insertErr.message ?? 'unknown error'}`,
+    );
   }
+
+  console.warn('[AdminEditSnapshot] _doCapture: insert succeeded for', reportType, reportId);
 }
 
 // ── Query & Restore (Admin Recovery UI) ──────────────────────────
