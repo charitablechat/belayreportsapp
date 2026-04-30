@@ -1176,6 +1176,16 @@ export const useAutoSync = () => {
     const handleSyncPhotosUpdated = () => scheduleNextSync();
     window.addEventListener('sync-photos-updated', handleSyncPhotosUpdated);
 
+    // Audit M3: also reschedule when an inspection / training / daily-assessment
+    // is saved offline (or otherwise becomes dirty). saveInspectionOffline,
+    // saveTrainingOffline, saveDailyAssessmentOffline all dispatch this event.
+    // Without it the periodic interval would stay at idleSyncInterval (long)
+    // until the next photo upload kicked it down to activeSyncInterval — so
+    // a freshly-saved-offline form record could sit in IDB for 60s+ before
+    // the next sync attempt.
+    const handleSyncRecordsUpdated = () => scheduleNextSync();
+    window.addEventListener('sync-records-updated', handleSyncRecordsUpdated);
+
     // H2: When the restore lock releases, kick off a fresh sync so the
     // restored records get pushed to the server promptly (sync was paused
     // while restore was in flight to avoid clobbering the snapshot).
@@ -1260,6 +1270,7 @@ export const useAutoSync = () => {
       clearTimeout(initialSyncTimer);
       window.removeEventListener('online', handleOnline);
       window.removeEventListener('sync-photos-updated', handleSyncPhotosUpdated);
+      window.removeEventListener('sync-records-updated', handleSyncRecordsUpdated);
       unsubscribeRestoreLock();
       document.removeEventListener('visibilitychange', handleVisibilityChange);
       
