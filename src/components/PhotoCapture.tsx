@@ -127,10 +127,17 @@ export default function PhotoCapture({
       }
     }
 
-    // Compress image (has internal timeout protection)
+    // Compress image (has internal timeout protection).
+    // Audit M2 follow-up: validateFile now accepts iOS share-sheet uploads
+    // with empty `file.type` if the extension is image-shaped, so the
+    // compression gate must mirror that — otherwise a 20MB JPEG with an
+    // empty type would skip compression and balloon IndexedDB / storage.
     let processedFile = workingFile;
+    const isImageByTypeOrName =
+      workingFile.type.startsWith('image/') ||
+      (!workingFile.type && /\.(jpe?g|png|webp|heic|heif)$/i.test(workingFile.name));
     try {
-      if (workingFile.type.startsWith('image/')) {
+      if (isImageByTypeOrName) {
         processedFile = await compressImage(workingFile, {
           maxWidth: 1920,
           maxHeight: 1920,
