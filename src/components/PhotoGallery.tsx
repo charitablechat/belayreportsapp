@@ -427,17 +427,27 @@ export default function PhotoGallery({
     }
   }, [photos, batchMode]);
 
-  // Background progressive HEIC conversion — runs after initial render
+  // Audit L1: per-photo dedup of background HEIC inspection.
+  //
+  // Previously the effect re-fetched + magic-byte-probed *every* photo on
+  // every length change. With 30 photos, scrolling that adds 5 new ones
+  // re-fetches 35 blobs end-to-end (the original 30 + the 5 new) for
+  // network photos, even though the original 30 had already been confirmed
+  // non-HEIC. The ref below records ids we've already inspected so each
+  // photo is fetched + probed at most once per gallery instance.
+  const inspectedHeicIdsRef = useRef<Set<string>>(new Set());
+
   useEffect(() => {
     if (loading || photos.length === 0) return;
-    
+
     const abortController = new AbortController();
-    
+
     const convertInBackground = async () => {
       for (const photo of photos) {
         if (abortController.signal.aborted) return;
         if (!photo.uploaded) continue; // skip pending local uploads
-        
+        if (inspectedHeicIdsRef.current.has(photo.id)) continue; // already inspected
+
         try {
           // Get the blob to check magic bytes
           let blob: Blob | null = null;
@@ -455,6 +465,9 @@ export default function PhotoGallery({
           if (abortController.signal.aborted) return;
           
           const actuallyHeic = await isHeicBlob(blob);
+          // Mark this photo as inspected regardless of the result so we
+          // don't re-fetch its blob on subsequent length changes.
+          inspectedHeicIdsRef.current.add(photo.id);
           if (!actuallyHeic) continue;
           
           if (import.meta.env.DEV) {
