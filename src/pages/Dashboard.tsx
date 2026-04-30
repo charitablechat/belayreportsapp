@@ -46,7 +46,10 @@ import { SyncPulse } from "@/components/pwa/SyncPulse";
 import { useConflicts } from "@/hooks/useConflicts";
 import { usePWA } from "@/hooks/usePWA";
 import { usePullToRefresh } from "@/hooks/usePullToRefresh";
-import { getOfflineInspections, deleteOfflineInspection, queueOperation, queueTrainingOperation, queueAssessmentOperation, saveInspectionOffline, getOfflineTrainings, saveTrainingOffline, deleteOfflineTraining, getOfflineDailyAssessments, saveDailyAssessmentOffline, deleteOfflineDailyAssessment, getOfflineInspection, getOfflineTraining, getOfflineDailyAssessment, clearRelatedDataOffline, clearTrainingDataOffline, clearAssessmentDataOffline } from "@/lib/offline-storage";
+import { getOfflineInspections, deleteOfflineInspection, queueOperation, queueTrainingOperation, queueAssessmentOperation, saveInspectionOffline, getOfflineTrainings, saveTrainingOffline, deleteOfflineTraining, getOfflineDailyAssessments, saveDailyAssessmentOffline, deleteOfflineDailyAssessment, getOfflineInspection, getOfflineTraining, getOfflineDailyAssessment, clearRelatedDataOffline, clearTrainingDataOffline, clearAssessmentDataOffline, type DbRow } from "@/lib/offline-storage";
+import type { PostgrestError } from "@supabase/supabase-js";
+import type { RealtimePostgresChangesPayload } from "@supabase/supabase-js";
+import type { CachedUser } from "@/lib/cached-auth";
 import { shouldPreserveLocalRecord } from "@/lib/local-data-guards";
 import { reconcileServerDeletions } from "@/lib/reconcile-server-deletions";
 import { ContactDeveloperSheet } from "@/components/ContactDeveloperSheet";
@@ -88,7 +91,7 @@ import {
 const DASHBOARD_CACHE_TTL = 30 * 60 * 1000;
 const LS_CACHE_PREFIX = 'dashboard-ls-';
 
-function readDashboardCache(key: string): any[] {
+function readDashboardCache(key: string): DbRow[] {
   try {
     // Try sessionStorage first (fast, session-scoped)
     const raw = sessionStorage.getItem(key);
@@ -106,7 +109,7 @@ function readDashboardCache(key: string): any[] {
   return [];
 }
 
-function writeDashboardCache(key: string, data: any[]) {
+function writeDashboardCache(key: string, data: DbRow[]) {
   try {
     const payload = JSON.stringify({ data, ts: Date.now() });
     sessionStorage.setItem(key, payload);
@@ -118,9 +121,9 @@ function writeDashboardCache(key: string, data: any[]) {
 export default function Dashboard() {
   const navigate = useNavigate();
   const location = useLocation();
-  const [inspections, setInspections] = useState<any[]>(() => readDashboardCache('dashboard-cache-inspections'));
-  const [trainings, setTrainings] = useState<any[]>(() => readDashboardCache('dashboard-cache-trainings'));
-  const [dailyAssessments, setDailyAssessments] = useState<any[]>(() => readDashboardCache('dashboard-cache-daily'));
+  const [inspections, setInspections] = useState<DbRow[]>(() => readDashboardCache('dashboard-cache-inspections'));
+  const [trainings, setTrainings] = useState<DbRow[]>(() => readDashboardCache('dashboard-cache-trainings'));
+  const [dailyAssessments, setDailyAssessments] = useState<DbRow[]>(() => readDashboardCache('dashboard-cache-daily'));
   const [loading, setLoading] = useState(true);
   // Track whether we've received at least one definitive result per category
   // Per-dataset validation: tracks whether each dataset has received a definitive result
@@ -138,13 +141,13 @@ export default function Dashboard() {
     ),
   );
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
-  const [inspectionToDelete, setInspectionToDelete] = useState<any>(null);
-  const [reportToDelete, setReportToDelete] = useState<any>(null);
+  const [inspectionToDelete, setInspectionToDelete] = useState<DbRow | null>(null);
+  const [reportToDelete, setReportToDelete] = useState<DbRow | null>(null);
   const [activeReportTab, setActiveReportTab] = useState("inspections");
   const [reportSection, setReportSection] = useState<"recent" | "all">("recent");
   const [isOnline, setIsOnline] = useState(navigator.onLine);
-  const [currentUser, setCurrentUser] = useState<any>(null);
-  const [userProfile, setUserProfile] = useState<any>(null);
+  const [currentUser, setCurrentUser] = useState<CachedUser | null>(null);
+  const [userProfile, setUserProfile] = useState<DbRow | null>(null);
   const [inspectorFilter, setInspectorFilter] = useState<string>("all");
 
   // Deduplication & throttle refs for refreshReports
@@ -257,7 +260,7 @@ export default function Dashboard() {
         console.warn('[Dashboard] Error fetching invoiced reports:', error);
         return new Set<string>();
       }
-      return new Set((data || []).map((r: any) => r.report_id));
+      return new Set((data || []).map((r: { report_id: string }) => r.report_id));
     },
     enabled: !!isSuperAdmin,
     staleTime: 30_000,
@@ -265,7 +268,7 @@ export default function Dashboard() {
 
   const invoicedReportIds = invoicedQuery.data ?? new Set<string>();
 
-  const handleToggleInvoiced = React.useCallback(async (report: any, type: 'inspection' | 'training' | 'daily') => {
+  const handleToggleInvoiced = React.useCallback(async (report: DbRow, type: 'inspection' | 'training' | 'daily') => {
     const isCurrentlyInvoiced = invoicedReportIds.has(report.id);
     
     if (isCurrentlyInvoiced) {
@@ -451,7 +454,7 @@ export default function Dashboard() {
       const user = await getUserWithCache();
       setCurrentUser(user);
       if (user && navigator.onLine) {
-        const { data: profile } = await (supabase as any)
+        const { data: profile } = await supabase
           .from("profiles")
           .select("*")
           .eq("id", user.id)
@@ -626,7 +629,7 @@ export default function Dashboard() {
     const userId = currentUser?.id;
     if (!userId || typeof isSuperAdmin !== 'boolean') return;
 
-    const mergeRow = (prev: any[], row: any) => {
+    const mergeRow = (prev: DbRow[], row: DbRow) => {
       const exists = prev.some((r) => r.id === row.id);
       if (exists) {
         return prev.map((r) =>
@@ -637,7 +640,7 @@ export default function Dashboard() {
       }
       return [row, ...prev];
     };
-    const removeRow = (prev: any[], id: string) => prev.filter((r) => r.id !== id);
+    const removeRow = (prev: DbRow[], id: string) => prev.filter((r) => r.id !== id);
 
     // For non-admins, restrict each table subscription to rows they own.
     const filter = isSuperAdmin ? undefined : `inspector_id=eq.${userId}`;
@@ -648,7 +651,7 @@ export default function Dashboard() {
 
     const dashboardChannel = supabase
       .channel(`dashboard-realtime:${userId}:${isSuperAdmin ? 'admin' : 'self'}`)
-      .on('postgres_changes', baseConfig('inspections'), (payload: any) => {
+      .on('postgres_changes', baseConfig('inspections'), (payload: RealtimePostgresChangesPayload<DbRow>) => {
         setInspectionsValidated(true);
         if (payload.eventType === 'DELETE') {
           const id = payload.old?.id;
@@ -663,7 +666,7 @@ export default function Dashboard() {
         }
         setInspections((prev) => mergeRow(prev, row));
       })
-      .on('postgres_changes', baseConfig('trainings'), (payload: any) => {
+      .on('postgres_changes', baseConfig('trainings'), (payload: RealtimePostgresChangesPayload<DbRow>) => {
         setTrainingsValidated(true);
         if (payload.eventType === 'DELETE') {
           const id = payload.old?.id;
@@ -678,7 +681,7 @@ export default function Dashboard() {
         }
         setTrainings((prev) => mergeRow(prev, row));
       })
-      .on('postgres_changes', baseConfig('daily_assessments'), (payload: any) => {
+      .on('postgres_changes', baseConfig('daily_assessments'), (payload: RealtimePostgresChangesPayload<DbRow>) => {
         setDailyValidated(true);
         if (payload.eventType === 'DELETE') {
           const id = payload.old?.id;
@@ -742,7 +745,7 @@ export default function Dashboard() {
    */
   const fetchAllPaginated = async <T,>(
     label: string,
-    buildPage: (from: number, to: number) => PromiseLike<{ data: T[] | null; error: any }>,
+    buildPage: (from: number, to: number) => PromiseLike<{ data: T[] | null; error: PostgrestError | null }>,
     pageSize: number = 500,
     maxRows: number = 10000,
   ): Promise<T[]> => {
@@ -782,14 +785,14 @@ export default function Dashboard() {
       // This ensures mobile users see data quickly even if IndexedDB times out
       const offlinePromise = getOfflineInspections(userId, isSuperAdmin).catch(() => []);
       
-      let supabasePromise: Promise<any[] | null> = Promise.resolve([]);
+      let supabasePromise: Promise<DbRow[] | null> = Promise.resolve([]);
       if (navigator.onLine && sessionValid) {
         // Wrap in Promise.resolve to get a proper Promise with .catch()
         // Add 6-second timeout to prevent hanging
         supabasePromise = withNetworkTimeout(
           // M13: Paginate so super-admins with >500 reports get the full set;
           // truncated results were silently caching as the offline source-of-truth.
-          fetchAllPaginated<any>(
+          fetchAllPaginated<DbRow>(
             'inspections',
             (from, to) =>
               supabase
@@ -817,7 +820,7 @@ export default function Dashboard() {
       // IndexedDB timeout (4s) — increased from 2s to avoid empty results on slow iOS devices
       const offlineWithTimeout = Promise.race([
         offlinePromise,
-        new Promise<any[]>((resolve) => setTimeout(() => resolve([]), 4000))
+        new Promise<DbRow[]>((resolve) => setTimeout(() => resolve([]), 4000))
       ]);
       
       // Show offline/cached data immediately (stale-while-revalidate)
@@ -888,7 +891,7 @@ export default function Dashboard() {
                   if (!isSuperAdmin) idQuery.eq('inspector_id', userId);
                   const { data: idRows, error: idErr } = await idQuery;
                   if (idErr) throw idErr;
-                  serverIds = new Set((idRows || []).map((r: any) => r.id));
+                  serverIds = new Set((idRows || []).map((r: { id: string }) => r.id));
                 } catch (e) {
                   console.warn('[Dashboard] Inspection orphan id-fetch failed -- skipping cleanup', e);
                   return;
@@ -946,7 +949,7 @@ export default function Dashboard() {
               } };
               // Yield to UI thread before running cleanup
               if ('requestIdleCallback' in window) {
-                (window as any).requestIdleCallback(() => runOrphanCleanup());
+                (window as Window & { requestIdleCallback: (cb: () => void) => void }).requestIdleCallback(() => runOrphanCleanup());
               } else {
                 setTimeout(runOrphanCleanup, 0);
               }
@@ -972,7 +975,7 @@ export default function Dashboard() {
       }
       // Offline-only: definitive if we got offline data or cache had data
       return { networkSuccess: false, definitive: true };
-    } catch (error: any) {
+    } catch (error) {
       console.error("Error loading inspections:", error);
       return { networkSuccess: false, definitive: false };
     }
@@ -989,12 +992,12 @@ export default function Dashboard() {
       // PARALLEL LOADING: Start both fetches simultaneously
       const offlinePromise = getOfflineTrainings(userId, isSuperAdmin).catch(() => []);
       
-      let supabasePromise: Promise<any[] | null> = Promise.resolve([]);
+      let supabasePromise: Promise<DbRow[] | null> = Promise.resolve([]);
       if (navigator.onLine && sessionValid) {
         // Add 6-second timeout to prevent hanging
         supabasePromise = withNetworkTimeout(
           // M13: Paginate to capture full result set for super-admin views.
-          fetchAllPaginated<any>(
+          fetchAllPaginated<DbRow>(
             'trainings',
             (from, to) =>
               supabase
@@ -1020,7 +1023,7 @@ export default function Dashboard() {
       // IndexedDB timeout (4s) — increased from 2s to avoid empty results on slow iOS devices
       const offlineWithTimeout = Promise.race([
         offlinePromise,
-        new Promise<any[]>((resolve) => setTimeout(() => resolve([]), 4000))
+        new Promise<DbRow[]>((resolve) => setTimeout(() => resolve([]), 4000))
       ]);
       
       const offlineData = await offlineWithTimeout;
@@ -1083,7 +1086,7 @@ export default function Dashboard() {
                   if (!isSuperAdmin) idQuery.eq('inspector_id', userId);
                   const { data: idRows, error: idErr } = await idQuery;
                   if (idErr) throw idErr;
-                  serverIds = new Set((idRows || []).map((r: any) => r.id));
+                  serverIds = new Set((idRows || []).map((r: { id: string }) => r.id));
                 } catch (e) {
                   console.warn('[Dashboard] Training orphan id-fetch failed -- skipping cleanup', e);
                   return;
@@ -1156,7 +1159,7 @@ export default function Dashboard() {
         return { networkSuccess: false, definitive: offlineData.length > 0 };
       }
       return { networkSuccess: false, definitive: true };
-    } catch (error: any) {
+    } catch (error) {
       console.error("Error loading training reports:", error);
       return { networkSuccess: false, definitive: false };
     }
@@ -1173,12 +1176,12 @@ export default function Dashboard() {
       // PARALLEL LOADING: Start both fetches simultaneously
       const offlinePromise = getOfflineDailyAssessments(userId, isSuperAdmin).catch(() => []);
       
-      let supabasePromise: Promise<any[] | null> = Promise.resolve([]);
+      let supabasePromise: Promise<DbRow[] | null> = Promise.resolve([]);
       if (navigator.onLine && sessionValid) {
         // Add 6-second timeout to prevent hanging
         supabasePromise = withNetworkTimeout(
           // M13: Paginate to capture full result set for super-admin views.
-          fetchAllPaginated<any>(
+          fetchAllPaginated<DbRow>(
             'daily_assessments',
             (from, to) =>
               supabase
@@ -1204,7 +1207,7 @@ export default function Dashboard() {
       // IndexedDB timeout (4s) — increased from 2s to avoid empty results on slow iOS devices
       const offlineWithTimeout = Promise.race([
         offlinePromise,
-        new Promise<any[]>((resolve) => setTimeout(() => resolve([]), 4000))
+        new Promise<DbRow[]>((resolve) => setTimeout(() => resolve([]), 4000))
       ]);
       
       const offlineData = await offlineWithTimeout;
@@ -1267,7 +1270,7 @@ export default function Dashboard() {
                   if (!isSuperAdmin) idQuery.eq('inspector_id', userId);
                   const { data: idRows, error: idErr } = await idQuery;
                   if (idErr) throw idErr;
-                  serverIds = new Set((idRows || []).map((r: any) => r.id));
+                  serverIds = new Set((idRows || []).map((r: { id: string }) => r.id));
                 } catch (e) {
                   console.warn('[Dashboard] Assessment orphan id-fetch failed -- skipping cleanup', e);
                   return;
@@ -1340,7 +1343,7 @@ export default function Dashboard() {
         return { networkSuccess: false, definitive: offlineData.length > 0 };
       }
       return { networkSuccess: false, definitive: true };
-    } catch (error: any) {
+    } catch (error) {
       console.error("Error loading daily assessments:", error);
       return { networkSuccess: false, definitive: false };
     }
@@ -1348,7 +1351,7 @@ export default function Dashboard() {
 
   // Sign-out is now handled globally by AuthenticatedHeader
 
-  const handleDeleteClick = (e: React.MouseEvent, inspection: any) => {
+  const handleDeleteClick = (e: React.MouseEvent, inspection: DbRow) => {
     e.stopPropagation();
     triggerHaptic('light'); // Light haptic when opening delete dialog
     setInspectionToDelete(inspection);
@@ -1498,20 +1501,22 @@ export default function Dashboard() {
       setDeleteDialogOpen(false);
       setInspectionToDelete(null);
       setReportToDelete(null);
-    } catch (error: any) {
+    } catch (error) {
       const itemId = itemToDelete?.id || 'unknown';
       const step = isInspection ? 'inspection' : ('start_date' in (reportToDelete || {}) ? 'training' : 'daily_assessment');
-      console.error(`[Dashboard] Soft-delete failed:`, { step, id: itemId, error: error?.message, code: error?.code });
-      
-      const detail = error?.message?.includes('row-level security')
+      const errMessage = error instanceof Error ? error.message : String(error);
+      const errCode = (error as { code?: string } | null)?.code;
+      console.error(`[Dashboard] Soft-delete failed:`, { step, id: itemId, error: errMessage, code: errCode });
+
+      const detail = errMessage.includes('row-level security')
         ? 'Permission denied. Please sign in again and retry.'
-        : (error?.message || 'Unknown error');
+        : (errMessage || 'Unknown error');
       toast.error(`Failed to delete report: ${detail}`);
       triggerHaptic('error');
     }
   };
 
-  const getStatusBadge = (inspection: any) => {
+  const getStatusBadge = (inspection: DbRow) => {
     const unsyncedPhotosCount = photosByInspection[inspection.id] || 0;
     const isCurrentlySyncing = isSyncing && progress.currentItem === inspection.id;
     
@@ -1803,10 +1808,10 @@ export default function Dashboard() {
             </Tabs>
             
             {(() => {
-              const sortByMostRecent = (arr: any[]) => [...arr].sort((a, b) => {
+              const sortByMostRecent = (arr: DbRow[]) => [...arr].sort((a, b) => {
                 const dateA = a.updated_at || a.created_at || '';
                 const dateB = b.updated_at || b.created_at || '';
-                return dateB.localeCompare(dateA);
+                return String(dateB).localeCompare(String(dateA));
               });
               const baseInspections = reportSection === "recent" ? sortByMostRecent(inspections).slice(0, 9) : inspections;
               const baseTrainings = reportSection === "recent" ? sortByMostRecent(trainings).slice(0, 9) : trainings;
