@@ -33,12 +33,9 @@ import {
   clearAllQueuedOperations,
   clearAllQueuedAssessmentOperations,
   clearAllQueuedTrainingOperations,
-  saveRelatedDataOffline,
-  saveAssessmentDataOffline,
-  saveTrainingDataOffline,
   type DbRow,
 } from "@/lib/offline-storage";
-import type { CloudBackupEntry, AllUserCloudSnapshot } from "@/lib/cloud-backup";
+import type { CloudBackupEntry, CloudBackupFull, AllUserCloudSnapshot } from "@/lib/cloud-backup";
 
 // ── Local helper types ────────────────────────────────────────────
 //
@@ -52,9 +49,13 @@ type QueuedAssessmentOp = Awaited<ReturnType<typeof getQueuedAssessmentOperation
 type QueuedTrainingOp = Awaited<ReturnType<typeof getQueuedTrainingOperations>>[number];
 type QueuedOp = QueuedInspectionOp | QueuedAssessmentOp | QueuedTrainingOp;
 
-type RelatedDataKey = Parameters<typeof saveRelatedDataOffline>[0];
-type AssessmentDataKey = Parameters<typeof saveAssessmentDataOffline>[0];
-type TrainingDataKey = Parameters<typeof saveTrainingDataOffline>[0];
+// Use `typeof import(...)` (type-position) so these stay erased at
+// compile time. A static value-import would force tree-shaking to
+// pull the helpers into the same chunk as the dynamic-import call
+// sites below, blowing up the admin bundle.
+type RelatedDataKey = Parameters<typeof import('@/lib/offline-storage').saveRelatedDataOffline>[0];
+type AssessmentDataKey = Parameters<typeof import('@/lib/offline-storage').saveAssessmentDataOffline>[0];
+type TrainingDataKey = Parameters<typeof import('@/lib/offline-storage').saveTrainingDataOffline>[0];
 
 // `formatReportFilename` accepts the dash-form ('daily-assessment') while
 // the rest of the app uses the underscore-form ('daily_assessment'). The
@@ -598,10 +599,10 @@ export function CloudSnapshotsPanel({ allowDelete = true }: CloudSnapshotsPanelP
   const lastFetchedAt = useRef<number>(0);
   const STALE_TIME = 30000;
   const [searchQuery, setSearchQuery] = useState('');
-  type CloudSnapshotData = {
-    parent: Record<string, unknown>;
-    children: Record<string, Record<string, unknown>[]>;
-  };
+  // Mirror the full snapshot_data shape (parent + children + optional
+  // photoMetadata) so exports from the cloud preview dialog don't silently
+  // drop photo metadata.
+  type CloudSnapshotData = CloudBackupFull['snapshot_data'];
   const [previewState, setPreviewState] = useState<{ open: boolean; snapshot: CloudSnapshotData | null; loading: boolean; row: CloudBackupEntry | null }>({ open: false, snapshot: null, loading: false, row: null });
   const previewCache = useRef<Map<string, CloudSnapshotData>>(new Map());
 
@@ -614,9 +615,7 @@ export function CloudSnapshotsPanel({ allowDelete = true }: CloudSnapshotsPanelP
     try {
       const { fetchCloudSnapshot } = await import('@/lib/cloud-backup');
       const full = await fetchCloudSnapshot(s.id);
-      const data: CloudSnapshotData | null = full?.snapshot_data
-        ? { parent: full.snapshot_data.parent, children: full.snapshot_data.children }
-        : null;
+      const data: CloudSnapshotData | null = full?.snapshot_data ?? null;
       if (data) previewCache.current.set(s.id, data);
       setPreviewState({ open: true, snapshot: data, loading: false, row: s });
     } catch (e) {
