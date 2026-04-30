@@ -66,6 +66,23 @@ export type MigrateHeicOutcome =
   | { kind: 'failed-db-update'; error: string; newStoragePath: string }
   | { kind: 'failed-idb-update'; newStoragePath: string };
 
+/**
+ * Detect Supabase Storage "object already exists" errors that occur when
+ * an `upsert: false` upload races a previous successful upload. The DB
+ * row may not yet be updated, so we treat this case as upload success
+ * and let the migration advance to the DB update step. Without this,
+ * any partial migration (upload OK, DB update failed) gets stuck in a
+ * permanent retry loop because every subsequent upload fails with 409.
+ *
+ * Supabase Storage returns these in the wild:
+ *   - "The resource already exists"
+ *   - "Duplicate"
+ *   - status 409
+ */
+export function isAlreadyExistsUploadError(message: string): boolean {
+  return /already exists|duplicate|^409$|\b409\b/i.test(message);
+}
+
 export interface MigrateHeicToJpegDeps {
   photoId: string;
   oldStoragePath: string;
@@ -104,8 +121,11 @@ export interface MigrateHeicToJpegDeps {
  *
  * Errors at step 2/3 are surfaced (so a console warn is loud) but do NOT
  * roll back step 1 — a future load can re-attempt the DB update via the
- * same path; the second upload is `upsert: false` no-op safe because the
- * JPEG is already there.
+ * same path. With `upsert: false`, a retry whose upload sees the JPEG
+ * already at the target path returns a duplicate-resource error: we
+ * detect that via {@link isAlreadyExistsUploadError} and treat it as a
+ * no-op success so the retry advances to the DB update instead of
+ * looping at step 1 forever.
  */
 export async function migrateHeicToJpeg(
   deps: MigrateHeicToJpegDeps
@@ -116,7 +136,7 @@ export async function migrateHeicToJpeg(
   }
 
   const upload = await deps.storageUploadJpeg(newStoragePath, deps.jpegBlob);
-  if (upload.error) {
+  if (upload.error && !isAlreadyExistsUploadError(upload.error.message)) {
     return { kind: 'failed-upload', error: upload.error.message };
   }
 

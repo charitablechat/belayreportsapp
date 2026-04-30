@@ -149,6 +149,7 @@ describe('processBackgroundCacheItem (audit H1)', () => {
 import {
   jpegPathForHeic,
   migrateHeicToJpeg,
+  isAlreadyExistsUploadError,
   type MigrateHeicToJpegDeps,
 } from '../photo-gallery-helpers';
 
@@ -338,5 +339,100 @@ describe('migrateHeicToJpeg (audit H2)', () => {
     await Promise.resolve();
     await Promise.resolve();
     expect(remove).toHaveBeenCalledWith('user-1/insp-1/photo-1.heic');
+  });
+});
+
+describe('isAlreadyExistsUploadError', () => {
+  it('matches Supabase Storage duplicate error variants', () => {
+    expect(isAlreadyExistsUploadError('The resource already exists')).toBe(true);
+    expect(isAlreadyExistsUploadError('Duplicate')).toBe(true);
+    expect(isAlreadyExistsUploadError('Duplicate key')).toBe(true);
+    expect(isAlreadyExistsUploadError('409')).toBe(true);
+    expect(isAlreadyExistsUploadError('Conflict 409: already exists')).toBe(true);
+  });
+
+  it('does not match unrelated upload errors', () => {
+    expect(isAlreadyExistsUploadError('Network error')).toBe(false);
+    expect(isAlreadyExistsUploadError('Storage quota exceeded')).toBe(false);
+    expect(isAlreadyExistsUploadError('Permission denied')).toBe(false);
+    expect(isAlreadyExistsUploadError('413 Payload Too Large')).toBe(false);
+  });
+});
+
+describe('migrateHeicToJpeg retry semantics (audit H2 fix-forward)', () => {
+  // Without the duplicate-error branch, a partial migration (upload OK,
+  // DB update failed) is permanently stuck: every retry's upload fails
+  // with 409 because the .jpg already exists, returning failed-upload
+  // and never re-attempting the DB update. The branch ensures retries
+  // converge.
+  it('treats "already exists" upload error as success so DB update can re-run', async () => {
+    const upload = vi.fn().mockResolvedValue({
+      error: { message: 'The resource already exists' },
+    });
+    const dbUpdate = vi.fn().mockResolvedValue({ error: null });
+    const idbUpdate = vi.fn().mockResolvedValue(undefined);
+    const remove = vi.fn().mockResolvedValue({ error: null });
+
+    const result = await migrateHeicToJpeg(
+      makeMigrateDeps({
+        oldStoragePath: 'user-1/insp-1/photo-1.heic',
+        storageUploadJpeg: upload,
+        dbUpdatePhotoUrl: dbUpdate,
+        idbUpdatePhotoUrl: idbUpdate,
+        storageRemoveOld: remove,
+      })
+    );
+
+    expect(result).toEqual({
+      kind: 'migrated',
+      newStoragePath: 'user-1/insp-1/photo-1.jpg',
+    });
+    expect(dbUpdate).toHaveBeenCalledOnce();
+    expect(idbUpdate).toHaveBeenCalledOnce();
+    await Promise.resolve();
+    expect(remove).toHaveBeenCalledWith('user-1/insp-1/photo-1.heic');
+  });
+
+  it('treats "Duplicate" (Supabase short-form) upload error as success', async () => {
+    const upload = vi.fn().mockResolvedValue({ error: { message: 'Duplicate' } });
+    const dbUpdate = vi.fn().mockResolvedValue({ error: null });
+    const idbUpdate = vi.fn().mockResolvedValue(undefined);
+    const remove = vi.fn().mockResolvedValue({ error: null });
+
+    const result = await migrateHeicToJpeg(
+      makeMigrateDeps({
+        oldStoragePath: 'user-1/insp-1/photo-1.heic',
+        storageUploadJpeg: upload,
+        dbUpdatePhotoUrl: dbUpdate,
+        idbUpdatePhotoUrl: idbUpdate,
+        storageRemoveOld: remove,
+      })
+    );
+
+    expect(result.kind).toBe('migrated');
+    expect(dbUpdate).toHaveBeenCalledOnce();
+  });
+
+  it('still surfaces real (non-duplicate) upload errors as failed-upload', async () => {
+    const upload = vi.fn().mockResolvedValue({
+      error: { message: 'Storage quota exceeded' },
+    });
+    const dbUpdate = vi.fn();
+    const idbUpdate = vi.fn();
+    const remove = vi.fn();
+
+    const result = await migrateHeicToJpeg(
+      makeMigrateDeps({
+        oldStoragePath: 'user-1/insp-1/photo-1.heic',
+        storageUploadJpeg: upload,
+        dbUpdatePhotoUrl: dbUpdate,
+        idbUpdatePhotoUrl: idbUpdate,
+        storageRemoveOld: remove,
+      })
+    );
+
+    expect(result).toEqual({ kind: 'failed-upload', error: 'Storage quota exceeded' });
+    expect(dbUpdate).not.toHaveBeenCalled();
+    expect(idbUpdate).not.toHaveBeenCalled();
   });
 });
