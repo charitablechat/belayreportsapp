@@ -10,6 +10,7 @@ import { useNetworkStatus } from "@/hooks/useNetworkStatus";
 import { triggerHaptic } from "@/lib/haptics";
 import { compressImage } from "@/lib/image-compression";
 import { isHeicFile } from "@/lib/heic-converter";
+import { extractFileExt } from "@/lib/file-ext";
 
 import { toast } from "sonner";
 
@@ -147,7 +148,7 @@ export default function PhotoCapture({
     }
 
     const photoId = `${inspectionId}-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
-    const fileExt = processedFile.name.split('.').pop() || 'jpg';
+    const fileExt = extractFileExt(processedFile.name);
 
     // S23: resolve the capturing user up-front (online → cached; offline → cached id).
     let capturedByUserId: string | null = null;

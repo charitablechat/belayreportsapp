@@ -2583,11 +2583,27 @@ export async function savePhotoOffline(photo: {
   );
 }
 
+/**
+ * Audit M3: previously this returned `0` on IDB-boundary failure (the silent
+ * `withIndexedDBErrorBoundary` swallowed any error). Atomic-sync callers
+ * `await` the result but ignore the count — if the relink truly failed the
+ * photos remain orphaned under the old temp inspection-id and dead-letter
+ * after a few `syncPhotos()` cycles.
+ *
+ * Now we use a sentinel return to distinguish "no photos to relink" (`0`)
+ * from "IDB boundary failed" (`-1`). On boundary-failure we throw a tagged
+ * `Error` so the surrounding `syncInspectionAtomic` / `syncTrainingAtomic` /
+ * `syncDailyAssessmentAtomic` catch-and-rethrow surfaces it to the outer
+ * sync loop, which retries on the next cycle instead of silently losing
+ * the photos.
+ */
+const RELINK_BOUNDARY_FAILED = -1;
+
 export async function relinkPhotosToNewInspectionId(
   oldInspectionId: string,
   newInspectionId: string
 ): Promise<number> {
-  return withIndexedDBErrorBoundary(
+  const result = await withIndexedDBErrorBoundary(
     async () => {
       const db = await getDB();
       const tx = db.transaction('photos', 'readwrite');
@@ -2617,9 +2633,17 @@ export async function relinkPhotosToNewInspectionId(
       
       return relinkedCount;
     },
-    0,
+    RELINK_BOUNDARY_FAILED,
     'relinkPhotosToNewInspectionId'
   );
+
+  if (result === RELINK_BOUNDARY_FAILED) {
+    throw new Error(
+      `[Offline Storage] relinkPhotosToNewInspectionId failed for ${oldInspectionId} → ${newInspectionId}: IDB transaction did not complete. Photos remain under the old id; sync will retry next cycle.`
+    );
+  }
+
+  return result;
 }
 
 /**
