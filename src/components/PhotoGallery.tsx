@@ -465,25 +465,32 @@ export default function PhotoGallery({
           if (abortController.signal.aborted) return;
           
           const actuallyHeic = await isHeicBlob(blob);
-          // Mark this photo as inspected regardless of the result so we
-          // don't re-fetch its blob on subsequent length changes.
-          inspectedHeicIdsRef.current.add(photo.id);
-          if (!actuallyHeic) continue;
-          
+          if (!actuallyHeic) {
+            // Non-HEIC: definitely never want to re-fetch this blob.
+            inspectedHeicIdsRef.current.add(photo.id);
+            continue;
+          }
+
           if (import.meta.env.DEV) {
             console.log(`[PhotoGallery] Background converting HEIC photo: ${photo.id}`);
           }
-          
+
           const jpegBlob = await convertHeicBlobToJpeg(blob, 0.85);
+          // Audit L1 follow-up: only mark as inspected after a successful
+          // conversion AND while the effect is still alive. If the effect
+          // was torn down mid-decode (length change) we want the next run
+          // to retry the conversion, not silently skip the photo and leave
+          // it rendering as raw HEIC bytes (broken in Chrome/Firefox).
           if (!jpegBlob || abortController.signal.aborted) continue;
-          
+
           const objectUrl = URL.createObjectURL(jpegBlob);
           objectUrlsRef.current.push(objectUrl);
-          
+
           // Progressively update this single photo in state
           setPhotos(prev => prev.map(p => 
             p.id === photo.id ? { ...p, photoUrl: objectUrl, blob: jpegBlob, isHeic: false } : p
           ));
+          inspectedHeicIdsRef.current.add(photo.id);
           
           // Fire-and-forget: re-upload + re-cache
           // Find original storage path from the DB photo_url (not the signed URL)
