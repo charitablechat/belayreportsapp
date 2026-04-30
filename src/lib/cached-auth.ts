@@ -149,12 +149,83 @@ function isLockManagerError(error: unknown): boolean {
 }
 
 /**
+ * Audit M2: soft invalidation for iOS bfcache restore.
+ *
+ * Clears in-memory user / admin caches (so the next `getUserWithCache`
+ * call re-fetches via Supabase) but does NOT touch persistent storage
+ * (no `clearOfflineAuth`, no `clearAllAdminCacheKeys`). Used by the
+ * `pageshow` handler when iOS Safari resumes the page from bfcache —
+ * the cached identity in memory may correspond to an already-expired
+ * JWT, so we make the caches expire and trigger a single-flight
+ * refresh. We deliberately keep the persistent offline-auth credentials
+ * intact so a user returning from a phone-lock doesn't get bumped to
+ * the sign-in screen.
+ */
+function softInvalidateForBfcacheRestore(): void {
+  cachedUser = null;
+  cacheTimestamp = 0;
+  pendingUserPromise = null;
+  cachedAdminStatus = null;
+  adminCacheTimestamp = 0;
+  pendingAdminPromise = null;
+  cachedTrueSuperAdmin = null;
+  trueSuperAdminCacheTimestamp = 0;
+  pendingTrueSuperAdminPromise = null;
+}
+
+/**
+ * Audit M2: register the iOS Safari bfcache restore handler exactly once.
+ *
+ * iOS Safari aggressively serves the page from bfcache on back/forward
+ * navigation, tab switch, and after the device wakes from a lock. The
+ * page resumes with whatever in-memory state it had when suspended —
+ * including a `cachedUser` referencing an access token that has long
+ * since expired. We listen for `pageshow` with `event.persisted === true`
+ * (the bfcache-restore signal) and:
+ *
+ *   1. Soft-invalidate in-memory caches so the next call re-fetches.
+ *   2. Kick off a single-flight session refresh so the new token is
+ *      ready before any pending UI render reads it.
+ *
+ * Guarded with an idempotent flag — a second `initAuthListener()` call
+ * (or HMR) will not double-attach.
+ */
+let bfcacheListenerInitialized = false;
+function initBfcacheListener(): void {
+  if (bfcacheListenerInitialized) return;
+  if (typeof window === 'undefined') return;
+  bfcacheListenerInitialized = true;
+  try {
+    window.addEventListener('pageshow', (event) => {
+      // Only fire on actual bfcache restore. Initial page load also fires
+      // pageshow but with `persisted=false`; those don't have a stale cache.
+      if (!(event as PageTransitionEvent).persisted) return;
+      softInvalidateForBfcacheRestore();
+      // Fire-and-forget — we don't want to block the resumed render. If
+      // the refresh fails (network), the next `getUserWithCache` call
+      // will retry via its own path.
+      refreshSessionSingleFlight().catch(() => {
+        // ignore — single-flight wrapper already swallows
+      });
+    });
+  } catch (error) {
+    if (import.meta.env.DEV) {
+      console.warn('[CachedAuth] Failed to attach bfcache listener:', error);
+    }
+  }
+}
+
+/**
  * Initialize auth state change listener (called lazily on first use)
  */
 function initAuthListener() {
   if (authListenerInitialized) return;
   authListenerInitialized = true;
-  
+
+  // M2: pageshow handler also lazy-attaches alongside the auth listener so
+  // we don't pay the cost on a page that never reads the cache.
+  initBfcacheListener();
+
   try {
     supabase.auth.onAuthStateChange((event, session) => {
       if (event === 'SIGNED_OUT' && navigator.onLine) {

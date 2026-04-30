@@ -1153,6 +1153,24 @@ export function isIdbSaveError(e: unknown): e is IdbSaveError {
 
 export type SaveResult = { savedToBackup: boolean };
 
+/**
+ * Audit M3: notify useAutoSync that a record was just saved (or the dirty
+ * count otherwise changed). The hook listens for `sync-records-updated`
+ * and reschedules its periodic-sync interval from `idleSyncInterval`
+ * (long, used when nothing is dirty) down to `activeSyncInterval` (short,
+ * used when there are unsynced records). Best-effort — a failure to
+ * dispatch must never break the underlying save.
+ */
+function dispatchSyncRecordsUpdated(): void {
+  try {
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent('sync-records-updated'));
+    }
+  } catch {
+    /* ignore */
+  }
+}
+
 async function withIndexedDBSaveBoundary(
   operation: () => Promise<void>,
   operationName: string,
@@ -2017,7 +2035,7 @@ export async function saveInspectionOffline(
   inspection: Record<string, unknown> & { id?: string; child_count_hint?: number; dirty?: boolean },
   opts?: { childCountHint?: number }
 ): Promise<SaveResult> {
-  return withIndexedDBSaveBoundary(
+  const result = await withIndexedDBSaveBoundary(
     async () => {
       const db = await getDB();
       // S30: prefer caller-provided hint; otherwise preserve existing hint.
@@ -2036,6 +2054,12 @@ export async function saveInspectionOffline(
     'saveInspectionOffline',
     inspection,
   );
+  // Audit M3: notify useAutoSync so the periodic interval flips from
+  // idleSyncInterval (slow) to activeSyncInterval (fast) the moment a
+  // record becomes dirty. Without this the form save just stamps `dirty`
+  // in IDB and the next attempt to push it sits behind a 60s+ timer.
+  dispatchSyncRecordsUpdated();
+  return result;
 }
 
 export async function getOfflineInspections(userId?: string, isSuperAdmin?: boolean) {
@@ -3475,7 +3499,7 @@ export async function saveDailyAssessmentOffline(
   assessment: Record<string, unknown> & { id?: string; child_count_hint?: number; dirty?: boolean },
   opts?: { childCountHint?: number }
 ): Promise<SaveResult> {
-  return withIndexedDBSaveBoundary(
+  const result = await withIndexedDBSaveBoundary(
     async () => {
       const db = await getDB();
       if (opts?.childCountHint != null && opts.childCountHint >= 0) {
@@ -3491,6 +3515,9 @@ export async function saveDailyAssessmentOffline(
     'saveDailyAssessmentOffline',
     assessment,
   );
+  // Audit M3: see saveInspectionOffline.
+  dispatchSyncRecordsUpdated();
+  return result;
 }
 
 export async function getOfflineDailyAssessments(userId?: string, isSuperAdmin?: boolean) {
@@ -3831,7 +3858,7 @@ export async function saveTrainingOffline(
   training: Record<string, unknown> & { id?: string; child_count_hint?: number; dirty?: boolean },
   opts?: { childCountHint?: number }
 ): Promise<SaveResult> {
-  return withIndexedDBSaveBoundary(
+  const result = await withIndexedDBSaveBoundary(
     async () => {
       const db = await getDB();
       if (opts?.childCountHint != null && opts.childCountHint >= 0) {
@@ -3847,6 +3874,9 @@ export async function saveTrainingOffline(
     'saveTrainingOffline',
     training,
   );
+  // Audit M3: see saveInspectionOffline.
+  dispatchSyncRecordsUpdated();
+  return result;
 }
 
 export async function getOfflineTrainings(userId?: string, isSuperAdmin?: boolean) {
