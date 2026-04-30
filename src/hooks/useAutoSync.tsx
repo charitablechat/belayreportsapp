@@ -371,7 +371,7 @@ export const useAutoSync = () => {
               unsyncedCount: liveUnsyncedCount,
               unsyncedInspections: freshCounts.inspections,
               unsyncedTrainings: freshCounts.trainings,
-              unsyncedDailyAssessments: freshCounts.assessments,
+              unsyncedAssessments: freshCounts.assessments,
             }));
           }
         }
