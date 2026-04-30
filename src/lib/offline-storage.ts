@@ -2584,18 +2584,29 @@ export async function savePhotoOffline(photo: {
 }
 
 /**
- * Audit M3: previously this returned `0` on IDB-boundary failure (the silent
- * `withIndexedDBErrorBoundary` swallowed any error). Atomic-sync callers
- * `await` the result but ignore the count — if the relink truly failed the
- * photos remain orphaned under the old temp inspection-id and dead-letter
- * after a few `syncPhotos()` cycles.
+ * Audit M3: previously this returned `0` on IDB-boundary failure (silent
+ * `withIndexedDBErrorBoundary`), making "no photos to relink" indistinguishable
+ * from "IDB transaction failed". Atomic-sync callers `await` the result but
+ * ignore the count, so a real failure left photos orphaned under the temp
+ * inspection-id with no surfaced error.
  *
- * Now we use a sentinel return to distinguish "no photos to relink" (`0`)
- * from "IDB boundary failed" (`-1`). On boundary-failure we throw a tagged
- * `Error` so the surrounding `syncInspectionAtomic` / `syncTrainingAtomic` /
- * `syncDailyAssessmentAtomic` catch-and-rethrow surfaces it to the outer
- * sync loop, which retries on the next cycle instead of silently losing
- * the photos.
+ * We can't simply throw here: by the time atomic-sync calls relink, the
+ * server transaction has already committed, `safePostSyncSave` has stamped
+ * `synced_at` on the new-UUID record locally, and the old temp-id parent
+ * has been deleted (`atomic-sync-manager.ts:1253` / `:2214` / `:3048`).
+ * Throwing would (a) report a successful sync as failed, (b) trigger
+ * futile retries against the deleted temp-id, and (c) NOT actually retry —
+ * `getUnsyncedInspections` skips records with `synced_at` set, so the
+ * retry never reaches the photo relink.
+ *
+ * Instead we use a sentinel return to distinguish "no photos" (`0`) from
+ * "IDB boundary failed" (`-1`). On boundary-failure we log a loud warning,
+ * emit a `sync` notification so the operator/admin sees the orphan condition,
+ * and return `0` so the caller's post-sync cleanup completes normally. The
+ * orphan can still be recovered: `getUnuploadedPhotos()` enumerates the
+ * full photos store, so `syncPhotos()` will eventually find the temp-id
+ * photos and upload them under the temp-id storage prefix; the next sync
+ * cycle that re-encounters this temp-id will re-attempt the relink.
  */
 const RELINK_BOUNDARY_FAILED = -1;
 
@@ -2638,9 +2649,16 @@ export async function relinkPhotosToNewInspectionId(
   );
 
   if (result === RELINK_BOUNDARY_FAILED) {
-    throw new Error(
-      `[Offline Storage] relinkPhotosToNewInspectionId failed for ${oldInspectionId} → ${newInspectionId}: IDB transaction did not complete. Photos remain under the old id; sync will retry next cycle.`
-    );
+    const warning = `[Offline Storage] relinkPhotosToNewInspectionId IDB-boundary failed for ${oldInspectionId} → ${newInspectionId}. Photos may remain under the temp id and require manual recovery via the sync diagnostics terminal.`;
+    console.warn(warning);
+    void import('./notification-center')
+      .then(({ addSyncNotification }) => {
+        addSyncNotification(
+          `Could not relink offline photos to new report id (${newInspectionId.slice(0, 8)}…). The report itself synced successfully; photos may need a manual retry.`
+        );
+      })
+      .catch(() => { /* never let logging break sync */ });
+    return 0;
   }
 
   return result;
