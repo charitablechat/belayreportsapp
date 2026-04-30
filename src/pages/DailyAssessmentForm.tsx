@@ -7,6 +7,8 @@ import { useParams, useNavigate } from "react-router-dom";
 import { goBack } from "@/lib/navigation";
 import { markPendingDashboardRefresh, markDashboardStaleTimestamp, registerActiveFormRecord, unregisterActiveFormRecord, onPendingRemoteUpdate } from "@/lib/sync-events";
 import { supabase } from "@/integrations/supabase/client";
+import type { RealtimePostgresChangesPayload } from "@supabase/supabase-js";
+import type { CachedUser } from "@/lib/cached-auth";
 import { getUserWithCache, getOfflineUserId } from "@/lib/cached-auth";
 import { useFormConfiguration } from "@/hooks/useFormConfiguration";
 import { Button } from "@/components/ui/button";
@@ -64,7 +66,22 @@ import {
   saveDailyAssessmentOffline,
   saveAssessmentDataOffline,
   queueAssessmentOperation,
+  type DbRow,
 } from "@/lib/offline-storage";
+
+// `saveAssessmentDataOffline` accepts a fixed set of section keys.
+// Derived from its first parameter so the union stays in sync with offline-storage.
+type AssessmentDataKey = Parameters<typeof saveAssessmentDataOffline>[0];
+
+function errorMessage(error: unknown, fallback: string): string {
+  if (error instanceof Error) return error.message;
+  if (typeof error === 'string') return error;
+  if (error && typeof error === 'object' && 'message' in error) {
+    const msg = (error as { message?: unknown }).message;
+    if (typeof msg === 'string') return msg;
+  }
+  return fallback;
+}
 
 import { useUnsavedChanges } from "@/hooks/useUnsavedChanges";
 import { UnsavedChangesDialog } from "@/components/UnsavedChangesDialog";
@@ -122,24 +139,24 @@ export default function DailyAssessmentForm() {
   const [lastSaved, setLastSaved] = useState<Date | null>(null);
   const [lastManuallySaved, setLastManuallySaved] = useState<Date | null>(null);
   const [generating, setGenerating] = useState(false);
-  const [assessment, setAssessment] = useState<any>(null);
+  const [assessment, setAssessment] = useState<DbRow | null>(null);
   const { isInvoiced, toggling: invoiceToggling, toggleInvoiced } = useInvoicedStatus({
     reportId: id,
     reportType: 'daily',
     enabled: isAdmin && assessment?.status === 'completed',
   });
-  const [beginningOfDay, setBeginningOfDay] = useState<any[]>([]);
-  const [endOfDay, setEndOfDay] = useState<any[]>([]);
-  const [operatingSystems, setOperatingSystems] = useState<any[]>([]);
-  const [equipmentChecks, setEquipmentChecks] = useState<any[]>([]);
-  const [structureChecks, setStructureChecks] = useState<any[]>([]);
-  const [environmentChecks, setEnvironmentChecks] = useState<any[]>([]);
+  const [beginningOfDay, setBeginningOfDay] = useState<DbRow[]>([]);
+  const [endOfDay, setEndOfDay] = useState<DbRow[]>([]);
+  const [operatingSystems, setOperatingSystems] = useState<DbRow[]>([]);
+  const [equipmentChecks, setEquipmentChecks] = useState<DbRow[]>([]);
+  const [structureChecks, setStructureChecks] = useState<DbRow[]>([]);
+  const [environmentChecks, setEnvironmentChecks] = useState<DbRow[]>([]);
   const [viewerOpen, setViewerOpen] = useState(false);
   const [reportHtml, setReportHtml] = useState<string>('');
-  const [currentUser, setCurrentUser] = useState<any>(null);
-  const [inspectorProfile, setInspectorProfile] = useState<any>(null);
-  const [currentUserProfile, setCurrentUserProfile] = useState<any>(null);
-  const [modifiedByProfile, setModifiedByProfile] = useState<any>(null);
+  const [currentUser, setCurrentUser] = useState<CachedUser | null>(null);
+  const [inspectorProfile, setInspectorProfile] = useState<DbRow | null>(null);
+  const [currentUserProfile, setCurrentUserProfile] = useState<DbRow | null>(null);
+  const [modifiedByProfile, setModifiedByProfile] = useState<DbRow | null>(null);
   // signingOut removed — sign-out handled by global AuthenticatedHeader
   const [photoRefreshKey, setPhotoRefreshKey] = useState(0);
   // Completion lock derived values (after report state is declared)
@@ -267,7 +284,7 @@ export default function DailyAssessmentForm() {
         // Include photo metadata (IDs, captions) but NOT blobs
         import('@/lib/offline-storage').then(({ getOfflinePhotos }) => {
           getOfflinePhotos(id).then(photos => {
-            const photoMeta = photos.map((p: any) => ({
+            const photoMeta = photos.map((p) => ({
               id: p.id,
               caption: p.caption,
               photo_section: p.section,
@@ -305,7 +322,7 @@ export default function DailyAssessmentForm() {
       let user = await getUserWithCache();
       if (!user) {
         const offlineId = getOfflineUserId();
-        if (offlineId) user = { id: offlineId } as any;
+        if (offlineId) user = { id: offlineId };
       }
       setCurrentUser(user);
     };
@@ -385,7 +402,8 @@ export default function DailyAssessmentForm() {
   // channel doesn't churn on every keystroke.
   const lastLoadedUpdatedAtRef = useRef<string | null>(null);
   useEffect(() => {
-    lastLoadedUpdatedAtRef.current = (assessment as any)?.updated_at ?? null;
+    const ua = assessment?.updated_at;
+    lastLoadedUpdatedAtRef.current = typeof ua === 'string' ? ua : null;
   }, [assessment]);
   useEffect(() => {
     if (!id || id.startsWith('temp-')) return;
@@ -394,8 +412,9 @@ export default function DailyAssessmentForm() {
       .on(
         'postgres_changes',
         { event: 'UPDATE', schema: 'public', table: 'daily_assessments', filter: `id=eq.${id}` },
-        (payload) => {
-          const remoteUpdated = (payload.new as any)?.updated_at;
+        (payload: RealtimePostgresChangesPayload<DbRow>) => {
+          const newRow = payload.new as Partial<DbRow> | null;
+          const remoteUpdated = newRow && typeof newRow.updated_at === 'string' ? newRow.updated_at : null;
           if (!remoteUpdated) return;
           const localUpdated = lastLoadedUpdatedAtRef.current;
           const remoteMs = new Date(remoteUpdated).getTime();
@@ -555,7 +574,7 @@ export default function DailyAssessmentForm() {
           if (backup.children) {
             for (const [childType, childData] of Object.entries(backup.children)) {
               if (Array.isArray(childData) && childData.length > 0) {
-                saveAssessmentDataOffline(childType as any, id!, childData).catch(() => {});
+                saveAssessmentDataOffline(childType as AssessmentDataKey, id!, childData).catch(() => {});
                 if (childType in childDataLoadedRef.current) {
                   childDataLoadedRef.current[childType] = true;
                 }
@@ -638,10 +657,10 @@ export default function DailyAssessmentForm() {
           );
 
           // Helper: only set state & cache if server returned data, otherwise preserve local
-          const guardedSet = (serverData: any[] | null, localData: any[], setter: (d: any[]) => void, key: string) => {
+          const guardedSet = (serverData: DbRow[] | null, localData: DbRow[], setter: (d: DbRow[]) => void, key: AssessmentDataKey) => {
             if (serverData && serverData.length > 0) {
               setter(serverData);
-              saveAssessmentDataOffline(key as any, id!, serverData).catch(e =>
+              saveAssessmentDataOffline(key, id!, serverData).catch(e =>
                 console.warn(`[DailyAssessmentForm] Non-critical: failed to cache ${key}`, e));
             } else if (localData.length > 0) {
               console.warn(`[DailyAssessmentForm] Server returned empty ${key} but local has data -- preserving local`);
@@ -675,7 +694,7 @@ export default function DailyAssessmentForm() {
     }
   };
 
-  const handleUpdateAssessment = async (field: string, value: any) => {
+  const handleUpdateAssessment = async (field: string, value: unknown) => {
     // PR-A: route every header-field write through `applyTrackedFieldWrite`
     // so tracked fields populate `field_timestamps` for cross-device merge.
     const updatedAssessment = applyTrackedFieldWrite(assessment, 'daily_assessment', field, value);
@@ -829,8 +848,8 @@ export default function DailyAssessmentForm() {
     try {
       // offline storage is statically imported — no dynamic import overhead
       if (import.meta.env.DEV) console.log('[Save] Saving to offline storage...');
-      const childOps: Promise<any>[] = [];
-      const guardedSave = (key: Parameters<typeof saveAssessmentDataOffline>[0], data: any[]) => {
+      const childOps: Promise<unknown>[] = [];
+      const guardedSave = (key: AssessmentDataKey, data: DbRow[]) => {
         if (data.length > 0 || childDataLoadedRef.current[key]) {
           childOps.push(saveAssessmentDataOffline(key, id!, data, { allowEmpty: true }));
           } else {
@@ -908,7 +927,7 @@ export default function DailyAssessmentForm() {
           if (isIdbSaveError(offlineError)) {
             setSaveError({
               message: 'Local save failed — your changes are NOT stored. Tap to retry.',
-              code: (offlineError as any)?.code,
+              code: (offlineError as { code?: string })?.code,
             });
             toast.error("Save failed — your changes are NOT stored", {
               description: "Tap Save again to retry. Do not close this page.",
@@ -1118,7 +1137,7 @@ export default function DailyAssessmentForm() {
       setLastSaved(new Date());
       setAssessment(updatedAssessment);
       setSaveError(null);
-    } catch (error: any) {
+    } catch (error) {
       console.error('[Save] Error saving progress:', error);
       logError(error, { scope: 'DailyAssessmentForm.handleSaveProgress' });
       const { isIdbSaveError } = await import('@/lib/offline-storage');
@@ -1146,27 +1165,27 @@ export default function DailyAssessmentForm() {
   // Auto-save/sync retry is now handled by useAutoSync hook
 
   // Wrapper handlers for data section updates
-  const handleBeginningOfDayUpdate = useCallback((items: any[]) => {
+  const handleBeginningOfDayUpdate = useCallback((items: DbRow[]) => {
     setBeginningOfDay(items);
   }, []);
 
-  const handleEndOfDayUpdate = useCallback((items: any[]) => {
+  const handleEndOfDayUpdate = useCallback((items: DbRow[]) => {
     setEndOfDay(items);
   }, []);
 
-  const handleOperatingSystemsUpdate = useCallback((items: any[]) => {
+  const handleOperatingSystemsUpdate = useCallback((items: DbRow[]) => {
     setOperatingSystems(items);
   }, []);
 
-  const handleEquipmentChecksUpdate = useCallback((items: any[]) => {
+  const handleEquipmentChecksUpdate = useCallback((items: DbRow[]) => {
     setEquipmentChecks(items);
   }, []);
 
-  const handleStructureChecksUpdate = useCallback((items: any[]) => {
+  const handleStructureChecksUpdate = useCallback((items: DbRow[]) => {
     setStructureChecks(items);
   }, []);
 
-  const handleEnvironmentChecksUpdate = useCallback((items: any[]) => {
+  const handleEnvironmentChecksUpdate = useCallback((items: DbRow[]) => {
     setEnvironmentChecks(items);
   }, []);
 
@@ -1304,7 +1323,7 @@ export default function DailyAssessmentForm() {
 
           // Update status to completed (include attestation + version when present)
           const submitSyncTimestamp = new Date().toISOString();
-          const assessmentUpdate: Record<string, any> = {
+          const assessmentUpdate: Record<string, unknown> = {
             status: 'completed',
             updated_at: completedAssessment.updated_at,
             synced_at: submitSyncTimestamp,
@@ -1517,17 +1536,18 @@ export default function DailyAssessmentForm() {
       toast.dismiss(progressToastId);
       setReportHtml(html);
       setViewerOpen(true);
-    } catch (error: any) {
+    } catch (error) {
       toast.dismiss(progressToastId);
-      console.error('[Report Generation] Error:', error.message || error);
-      
-      if (error.message?.includes('TIMEOUT')) {
+      const msg = errorMessage(error, '');
+      console.error('[Report Generation] Error:', msg || error);
+
+      if (msg.includes('TIMEOUT')) {
         toast.error("Report generation timed out", {
           description: "Please check your connection and try again.",
         });
       } else {
         toast.error("Failed to generate report", {
-          description: error.message || "Please try again.",
+          description: msg || "Please try again.",
         });
       }
     } finally {
