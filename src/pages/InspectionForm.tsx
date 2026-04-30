@@ -1478,7 +1478,7 @@ export default function InspectionForm() {
         });
       } else {
         toast.error("Failed to load inspection", {
-          description: error.message || "An error occurred while loading the inspection.",
+          description: errorMessage(error, "An error occurred while loading the inspection."),
         });
         navigate('/dashboard');
       }
