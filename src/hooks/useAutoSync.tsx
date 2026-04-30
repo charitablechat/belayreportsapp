@@ -1183,7 +1183,24 @@ export const useAutoSync = () => {
     // until the next photo upload kicked it down to activeSyncInterval — so
     // a freshly-saved-offline form record could sit in IDB for 60s+ before
     // the next sync attempt.
-    const handleSyncRecordsUpdated = () => scheduleNextSync();
+    //
+    // The handler does NOT call scheduleNextSync() — that helper reads the
+    // (still-stale) unsyncedCountRef, which `updateUnsyncedCounts` hasn't yet
+    // refreshed from the just-completed write. Instead we install
+    // activeSyncInterval directly: the event itself is proof that a record was
+    // just saved, so we know there is at least one unsynced record. The next
+    // tick of `performSync` will recompute the count and `sync-photos-updated`
+    // (or another `sync-records-updated`) will swing the interval again.
+    const handleSyncRecordsUpdated = () => {
+      if (periodicSyncIntervalRef.current) {
+        clearInterval(periodicSyncIntervalRef.current);
+      }
+      periodicSyncIntervalRef.current = setInterval(() => {
+        if (!document.hidden && navigator.onLine) {
+          performSync(true);
+        }
+      }, activeSyncInterval);
+    };
     window.addEventListener('sync-records-updated', handleSyncRecordsUpdated);
 
     // H2: When the restore lock releases, kick off a fresh sync so the
