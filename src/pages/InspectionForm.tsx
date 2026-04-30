@@ -9,6 +9,7 @@ import {
 import { toast } from "@/components/ui/sonner";
 import { addSaveNotification, addSyncNotification } from "@/lib/notification-center";
 import { onSyncComplete, markPendingDashboardRefresh, markDashboardStaleTimestamp, registerActiveFormRecord, unregisterActiveFormRecord, onPendingRemoteUpdate } from "@/lib/sync-events";
+import { useFormRecordRealtime } from "@/hooks/useFormRecordRealtime";
 import { useNavigate, useParams } from "react-router-dom";
 import { goBack } from "@/lib/navigation";
 import { isLocalDataNewer } from "@/lib/local-data-guards";
@@ -593,33 +594,39 @@ export default function InspectionForm() {
     const ua = inspection?.updated_at;
     lastLoadedUpdatedAtRef.current = typeof ua === 'string' ? ua : null;
   }, [inspection]);
-  useEffect(() => {
-    if (!id || id.startsWith('temp-')) return;
-    const channel = supabase
-      .channel(`inspection-form-${id}`)
-      .on(
-        'postgres_changes',
-        { event: 'UPDATE', schema: 'public', table: 'inspections', filter: `id=eq.${id}` },
-        (payload: RealtimePostgresChangesPayload<DbRow>) => {
-          const newRow = payload.new as Partial<DbRow> | null;
-          const remoteUpdated = newRow && typeof newRow.updated_at === 'string' ? newRow.updated_at : null;
-          if (!remoteUpdated) return;
-          const localUpdated = lastLoadedUpdatedAtRef.current;
-          const remoteMs = new Date(remoteUpdated).getTime();
-          const localMs = localUpdated ? new Date(localUpdated).getTime() : 0;
-          if (remoteMs - localMs <= 5000) return; // already in sync (within tolerance)
-          if (hasUnsavedRef.current) {
-            if (import.meta.env.DEV) console.log('[InspectionForm] Skipping remote refresh — unsaved local changes');
-            return;
-          }
-          if (import.meta.env.DEV) console.log('[InspectionForm] Remote update detected — reloading');
-          loadInspection();
-        }
-      )
-      .subscribe();
-    return () => { supabase.removeChannel(channel); };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [id]);
+  // Audit H2: form-scoped Realtime now goes through the shared helper which
+  // adds CHANNEL_ERROR/TIMED_OUT/CLOSED fallback refetch + app-resume
+  // resubscribe (online/visibilitychange/iOS pageshow+focus). Without these,
+  // an iPad form silently disconnects when the websocket dies during tab
+  // suspension and the user misses cross-device updates for the rest of the
+  // editing session.
+  useFormRecordRealtime({
+    enabled: !!id && !id.startsWith('temp-'),
+    channelName: id ? `inspection-form-${id}` : '',
+    table: 'inspections',
+    recordId: id || '',
+    logTag: 'InspectionForm',
+    onUpdate: (payload: RealtimePostgresChangesPayload<DbRow>) => {
+      const newRow = payload.new as Partial<DbRow> | null;
+      const remoteUpdated = newRow && typeof newRow.updated_at === 'string' ? newRow.updated_at : null;
+      if (!remoteUpdated) return;
+      const localUpdated = lastLoadedUpdatedAtRef.current;
+      const remoteMs = new Date(remoteUpdated).getTime();
+      const localMs = localUpdated ? new Date(localUpdated).getTime() : 0;
+      if (remoteMs - localMs <= 5000) return; // already in sync (within tolerance)
+      if (hasUnsavedRef.current) {
+        if (import.meta.env.DEV) console.log('[InspectionForm] Skipping remote refresh — unsaved local changes');
+        return;
+      }
+      if (import.meta.env.DEV) console.log('[InspectionForm] Remote update detected — reloading');
+      loadInspection();
+    },
+    onResumeOrDegraded: () => {
+      // Same hasUnsaved guard — never clobber the user's in-flight edits.
+      if (hasUnsavedRef.current) return;
+      loadInspection();
+    },
+  });
 
   // H3: Register this record as actively edited so the global Realtime IDB
   // writer in useAutoSync doesn't silently overwrite our IDB row while we

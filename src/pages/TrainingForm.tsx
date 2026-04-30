@@ -11,6 +11,7 @@ import { applyTrackedFieldWrite } from "@/lib/field-merge";
 import { useParams, useNavigate } from "react-router-dom";
 import { goBack } from "@/lib/navigation";
 import { markPendingDashboardRefresh, markDashboardStaleTimestamp, registerActiveFormRecord, unregisterActiveFormRecord, onPendingRemoteUpdate } from "@/lib/sync-events";
+import { useFormRecordRealtime } from "@/hooks/useFormRecordRealtime";
 import { supabase } from "@/integrations/supabase/client";
 import type { PostgrestError, RealtimePostgresChangesPayload } from "@supabase/supabase-js";
 import { getUserWithCache, getOfflineUserId } from "@/lib/cached-auth";
@@ -627,32 +628,33 @@ export default function TrainingForm() {
     const ua = training?.updated_at;
     lastLoadedUpdatedAtRef.current = typeof ua === 'string' ? ua : null;
   }, [training]);
-  useEffect(() => {
-    if (!id || id.startsWith('temp-')) return;
-    const channel = supabase
-      .channel(`training-form-${id}`)
-      .on(
-        'postgres_changes',
-        { event: 'UPDATE', schema: 'public', table: 'trainings', filter: `id=eq.${id}` },
-        (payload: RealtimePostgresChangesPayload<DbRow>) => {
-          const newRow = payload.new as Partial<DbRow> | null;
-          const remoteUpdated = newRow && typeof newRow.updated_at === 'string' ? newRow.updated_at : null;
-          if (!remoteUpdated) return;
-          const localUpdated = lastLoadedUpdatedAtRef.current;
-          const remoteMs = new Date(remoteUpdated).getTime();
-          const localMs = localUpdated ? new Date(localUpdated).getTime() : 0;
-          if (remoteMs - localMs <= 5000) return;
-          if (hasUnsavedRef.current) {
-            if (import.meta.env.DEV) console.log('[TrainingForm] Skipping remote refresh — unsaved local changes');
-            return;
-          }
-          if (import.meta.env.DEV) console.log('[TrainingForm] Remote update detected — reloading');
-          loadTraining();
-        }
-      )
-      .subscribe();
-    return () => { supabase.removeChannel(channel); };
-  }, [id, loadTraining]);
+  // Audit H2: see InspectionForm — same Realtime-recovery pattern via shared helper.
+  useFormRecordRealtime({
+    enabled: !!id && !id.startsWith('temp-'),
+    channelName: id ? `training-form-${id}` : '',
+    table: 'trainings',
+    recordId: id || '',
+    logTag: 'TrainingForm',
+    onUpdate: (payload: RealtimePostgresChangesPayload<DbRow>) => {
+      const newRow = payload.new as Partial<DbRow> | null;
+      const remoteUpdated = newRow && typeof newRow.updated_at === 'string' ? newRow.updated_at : null;
+      if (!remoteUpdated) return;
+      const localUpdated = lastLoadedUpdatedAtRef.current;
+      const remoteMs = new Date(remoteUpdated).getTime();
+      const localMs = localUpdated ? new Date(localUpdated).getTime() : 0;
+      if (remoteMs - localMs <= 5000) return;
+      if (hasUnsavedRef.current) {
+        if (import.meta.env.DEV) console.log('[TrainingForm] Skipping remote refresh — unsaved local changes');
+        return;
+      }
+      if (import.meta.env.DEV) console.log('[TrainingForm] Remote update detected — reloading');
+      loadTraining();
+    },
+    onResumeOrDegraded: () => {
+      if (hasUnsavedRef.current) return;
+      loadTraining();
+    },
+  });
 
   // H3: Register this record as actively edited so the global Realtime IDB
   // writer in useAutoSync doesn't silently overwrite our IDB row while we
