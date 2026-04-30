@@ -241,12 +241,25 @@ test.describe('admin pre-edit override: snapshot captured on admin save', () => 
     });
 
     // ── 6. Wait for the admin_edit_snapshots row ─────────────────────────
+    // 180s budget (matches the location-wait above). `capturePreEditSnapshot`
+    // is fire-and-forget: on a network blip its inline insert fails and the
+    // intent falls into a local IDB queue that drains on the next
+    // `useAutoSync` tick (~5s interval). On heavily-loaded GH Actions runners
+    // the cumulative path of `auth.getUser` → `inspections SELECT` →
+    // `*_summary SELECT` → `*_photos SELECT` → … → `admin_edit_snapshots
+    // INSERT` can easily eat 30–60s before the row lands; a 60s test budget
+    // was producing run-to-run flakes even after the location-prop fix in
+    // PR #49 stabilised the upstream layer. The fetch-level retry from PR
+    // #50 helps the read legs but deliberately does not retry the POST
+    // mutation, so the local-queue fallback is the actual durability path
+    // here. 180s gives that fallback a realistic chance to drain on a
+    // congested runner without papering over a real production-code bug.
     const snapshot = await waitForAdminEditSnapshot(adminSession, {
       reportType: 'inspection',
       reportId: serverId,
       editedBy: adminSession.userId,
       originalOwnerId: ownerUserId,
-      timeoutMs: 60_000,
+      timeoutMs: 180_000,
     });
     expect(snapshot.report_type).toBe('inspection');
     expect(snapshot.report_id).toBe(serverId);
