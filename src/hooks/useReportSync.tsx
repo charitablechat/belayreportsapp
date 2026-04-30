@@ -19,7 +19,10 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { useNetworkStatus } from './useNetworkStatus';
+import { useFormRecordRealtime } from './useFormRecordRealtime';
 import { syncLog } from '@/lib/sync-logger';
+import type { RealtimePostgresChangesPayload } from '@supabase/supabase-js';
+import type { DbRow } from '@/lib/offline-storage';
 
 export type ReportType = 'inspection' | 'training' | 'daily_assessment';
 
@@ -183,83 +186,77 @@ export const useReportSync = (entityId: string | undefined, reportType: ReportTy
   
   const retryTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
-  // Load initial state from database
-  useEffect(() => {
+  // Load initial / refresh state from database. Hoisted out of the initial-load
+  // useEffect so the H2 Realtime resume-or-degraded callback can reuse it.
+  const refreshFromDatabase = useCallback(async () => {
     if (!entityId) return;
-    
-    const loadInitialState = async () => {
-      const tableName = getTableName(reportType);
-      
-      // Query with explicit columns, cast to any for new columns
-      const { data, error } = await supabase
-        .from(tableName)
-        .select('*')
-        .eq('id', entityId)
-        .single();
-      
-      if (!error && data) {
-        const record = data as any;
-        setState(prev => ({
-          ...prev,
-          hasLatestReport: !!record.latest_report_html,
-          lastSyncedAt: record.latest_report_generated_at 
-            ? new Date(record.latest_report_generated_at) 
-            : null,
-          reportVersion: record.report_version || 0,
-          isSynced: !!record.latest_report_html,
-        }));
-      }
-    };
-    
-    loadInitialState();
+    const tableName = getTableName(reportType);
+    const { data, error } = await supabase
+      .from(tableName)
+      .select('*')
+      .eq('id', entityId)
+      .single();
+    if (!error && data) {
+      const record = data as Record<string, unknown>;
+      const generatedAt = typeof record.latest_report_generated_at === 'string'
+        ? new Date(record.latest_report_generated_at)
+        : null;
+      const version = typeof record.report_version === 'number' ? record.report_version : 0;
+      const html = record.latest_report_html;
+      setState(prev => ({
+        ...prev,
+        hasLatestReport: !!html,
+        lastSyncedAt: generatedAt,
+        reportVersion: version,
+        isSynced: !!html,
+      }));
+    }
   }, [entityId, reportType]);
 
-  // Subscribe to realtime updates
   useEffect(() => {
-    if (!entityId) return;
-    
-    const tableName = getTableName(reportType);
-    
-    const channel = supabase
-      .channel(`report-sync-${entityId}`)
-      .on(
-        'postgres_changes',
-        {
-          event: 'UPDATE',
-          schema: 'public',
-          table: tableName,
-          filter: `id=eq.${entityId}`,
-        },
-        (payload) => {
-          const newData = payload.new as any;
-          
-          // Only update if version increased (prevents stale updates)
-          if ((newData.report_version || 0) > state.reportVersion) {
-            syncLog.log('[ReportSync] Realtime update received:', { 
-              entityId, 
-              newVersion: newData.report_version 
-            });
-            
-            setState(prev => ({
-              ...prev,
-              hasLatestReport: !!newData.latest_report_html,
-              lastSyncedAt: newData.latest_report_generated_at 
-                ? new Date(newData.latest_report_generated_at) 
-                : null,
-              reportVersion: newData.report_version || 0,
-              isSynced: true,
-              isSyncing: false,
-              error: null,
-            }));
-          }
-        }
-      )
-      .subscribe();
-    
-    return () => {
-      supabase.removeChannel(channel);
-    };
-  }, [entityId, reportType, state.reportVersion]);
+    refreshFromDatabase();
+  }, [refreshFromDatabase]);
+
+  // Audit H2: Realtime now goes through the shared helper which adds
+  // CHANNEL_ERROR/TIMED_OUT/CLOSED fallback refetch + app-resume
+  // resubscribe so a dead websocket on iPad bfcache/handoff doesn't leave
+  // the report card showing stale `Synced` state.
+  const tableName = entityId ? getTableName(reportType) : 'inspections';
+  useFormRecordRealtime({
+    enabled: !!entityId,
+    channelName: entityId ? `report-sync-${entityId}` : '',
+    table: tableName,
+    recordId: entityId || '',
+    logTag: 'ReportSync',
+    onUpdate: (payload: RealtimePostgresChangesPayload<DbRow>) => {
+      const newData = payload.new as Record<string, unknown> | null;
+      if (!newData) return;
+      const incomingVersion = typeof newData.report_version === 'number' ? newData.report_version : 0;
+      // Compare against the ref so we always see the latest version. The
+      // helper's callback-ref pattern means this closure is the latest
+      // render's, so reading state via the closure is also fine.
+      if (incomingVersion > state.reportVersion) {
+        syncLog.log('[ReportSync] Realtime update received:', { entityId, newVersion: incomingVersion });
+        const generatedAt = typeof newData.latest_report_generated_at === 'string'
+          ? new Date(newData.latest_report_generated_at)
+          : null;
+        setState(prev => ({
+          ...prev,
+          hasLatestReport: !!newData.latest_report_html,
+          lastSyncedAt: generatedAt,
+          reportVersion: incomingVersion,
+          isSynced: true,
+          isSyncing: false,
+          error: null,
+        }));
+      }
+    },
+    onResumeOrDegraded: () => {
+      // Refetch the row so we pick up any UPDATE events we missed while the
+      // websocket was dead.
+      refreshFromDatabase();
+    },
+  });
 
   // Process pending syncs when coming back online
   useEffect(() => {
