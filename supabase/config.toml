@@ -1,91 +1,65 @@
 project_id = "ssgzcgvygnsrqalisshx"
 
-[functions.get-vapid-public-key]
-verify_jwt = false
-
-[functions.send-push-notification]
-verify_jwt = false
-
-[functions.send-notification-email]
-verify_jwt = false
-
-[functions.check-overdue-reports]
-verify_jwt = false
-
-[functions.generate-inspection-pdf]
-verify_jwt = true
-
-[functions.generate-inspection-html]
-verify_jwt = true
-
-[functions.generate-training-pdf]
-verify_jwt = true
-
-[functions.generate-training-html]
-verify_jwt = true
-
-[functions.send-contact-email]
-verify_jwt = false
-
-[functions.send-training-pdf-email]
-verify_jwt = true
-
-[functions.get-logo-base64]
-verify_jwt = false
-
-[functions.extract-names]
-verify_jwt = true
-
-[functions.migrate-field-history]
-verify_jwt = true
- 
- [functions.send-report-email]
- verify_jwt = true
-
-[functions.generate-og-image]
-verify_jwt = false
-
-[functions.og-meta]
-verify_jwt = false
-
-[functions.migrate-orphaned-photos]
-verify_jwt = false
-
-[functions.convert-heic-photos]
-verify_jwt = true
-
-[functions.export-full-backup]
-verify_jwt = false
-
-[functions.restore-full-backup]
-verify_jwt = false
-
-[functions.parse-inspection-docx]
-verify_jwt = true
-
-[functions.scheduled-backup-notify]
-verify_jwt = false
-
-[functions.process-email-queue]
-verify_jwt = true
-
-[functions.send-transactional-email]
-verify_jwt = true
-
-[functions.preview-transactional-email]
-verify_jwt = false
-
-[functions.handle-email-unsubscribe]
-verify_jwt = false
-
-[functions.handle-email-suppression]
-verify_jwt = false
-
-[functions.backup-photo-storage]
-verify_jwt = false
-
-[functions.sync-offsite-backup]
-verify_jwt = false
-
-[functions.generate-backup-pdfs]
-verify_jwt = false
+[functions]
+  [functions.auth-email-hook]
+    verify_jwt = false
+  [functions.backup-photo-storage]
+    verify_jwt = false
+  [functions.check-overdue-reports]
+    verify_jwt = false
+  [functions.convert-heic-photos]
+    verify_jwt = true
+  [functions.export-full-backup]
+    verify_jwt = false
+  [functions.extract-names]
+    verify_jwt = true
+  [functions.generate-backup-pdfs]
+    verify_jwt = false
+  [functions.generate-inspection-html]
+    verify_jwt = true
+  [functions.generate-inspection-pdf]
+    verify_jwt = true
+  [functions.generate-og-image]
+    verify_jwt = false
+  [functions.generate-training-html]
+    verify_jwt = true
+  [functions.generate-training-pdf]
+    verify_jwt = true
+  [functions.get-logo-base64]
+    verify_jwt = false
+  [functions.get-vapid-public-key]
+    verify_jwt = false
+  [functions.handle-email-suppression]
+    verify_jwt = false
+  [functions.handle-email-unsubscribe]
+    verify_jwt = false
+  [functions.migrate-field-history]
+    verify_jwt = true
+  [functions.migrate-orphaned-photos]
+    verify_jwt = false
+  [functions.og-meta]
+    verify_jwt = false
+  [functions.parse-inspection-docx]
+    verify_jwt = true
+  [functions.preview-transactional-email]
+    verify_jwt = false
+  [functions.process-email-queue]
+    verify_jwt = true
+  [functions.restore-full-backup]
+    verify_jwt = false
+  [functions.scheduled-backup-notify]
+    verify_jwt = false
+  [functions.send-contact-email]
+    verify_jwt = false
+  [functions.send-notification-email]
+    verify_jwt = false
+  [functions.send-push-notification]
+    verify_jwt = false
+  [functions.send-report-email]
+    verify_jwt = true
+  [functions.send-training-pdf-email]
+    verify_jwt = true
+  [functions.send-transactional-email]
+    verify_jwt = true
+  [functions.sync-offsite-backup]
+    verify_jwt = false
