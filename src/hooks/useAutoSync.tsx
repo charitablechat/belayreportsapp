@@ -1303,7 +1303,14 @@ export const useAutoSync = () => {
         resubscribeRealtimeIfStale('visibilitychange');
       }
     };
-    const handleRealtimePageShow = () => resubscribeRealtimeIfStale('pageshow');
+    // `pageshow` fires with `persisted: false` on initial page load too — only
+    // the bfcache-restore case needs a resubscribe (the initial-load channel
+    // was just created above by `setupRealtimeChannel()`). Without this guard,
+    // the throttle ref starts at 0 so the throttle check passes and the fresh
+    // channel is torn down mid-handshake every iOS page load.
+    const handleRealtimePageShow = (e: PageTransitionEvent) => {
+      if (e.persisted) resubscribeRealtimeIfStale('pageshow');
+    };
     const handleRealtimeFocus = () => resubscribeRealtimeIfStale('focus');
     window.addEventListener('online', handleRealtimeOnline);
     document.addEventListener('visibilitychange', handleRealtimeVisibilityChange);
