@@ -6,6 +6,7 @@ import { applyTrackedFieldWrite } from "@/lib/field-merge";
 import { useParams, useNavigate } from "react-router-dom";
 import { goBack } from "@/lib/navigation";
 import { markPendingDashboardRefresh, markDashboardStaleTimestamp, registerActiveFormRecord, unregisterActiveFormRecord, onPendingRemoteUpdate } from "@/lib/sync-events";
+import { useFormRecordRealtime } from "@/hooks/useFormRecordRealtime";
 import { supabase } from "@/integrations/supabase/client";
 import type { RealtimePostgresChangesPayload } from "@supabase/supabase-js";
 import type { CachedUser } from "@/lib/cached-auth";
@@ -405,33 +406,33 @@ export default function DailyAssessmentForm() {
     const ua = assessment?.updated_at;
     lastLoadedUpdatedAtRef.current = typeof ua === 'string' ? ua : null;
   }, [assessment]);
-  useEffect(() => {
-    if (!id || id.startsWith('temp-')) return;
-    const channel = supabase
-      .channel(`assessment-form-${id}`)
-      .on(
-        'postgres_changes',
-        { event: 'UPDATE', schema: 'public', table: 'daily_assessments', filter: `id=eq.${id}` },
-        (payload: RealtimePostgresChangesPayload<DbRow>) => {
-          const newRow = payload.new as Partial<DbRow> | null;
-          const remoteUpdated = newRow && typeof newRow.updated_at === 'string' ? newRow.updated_at : null;
-          if (!remoteUpdated) return;
-          const localUpdated = lastLoadedUpdatedAtRef.current;
-          const remoteMs = new Date(remoteUpdated).getTime();
-          const localMs = localUpdated ? new Date(localUpdated).getTime() : 0;
-          if (remoteMs - localMs <= 5000) return;
-          if (hasUnsavedRef.current) {
-            if (import.meta.env.DEV) console.log('[DailyAssessmentForm] Skipping remote refresh — unsaved local changes');
-            return;
-          }
-          if (import.meta.env.DEV) console.log('[DailyAssessmentForm] Remote update detected — reloading');
-          loadAssessment();
-        }
-      )
-      .subscribe();
-    return () => { supabase.removeChannel(channel); };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [id]);
+  // Audit H2: see InspectionForm — same Realtime-recovery pattern via shared helper.
+  useFormRecordRealtime({
+    enabled: !!id && !id.startsWith('temp-'),
+    channelName: id ? `assessment-form-${id}` : '',
+    table: 'daily_assessments',
+    recordId: id || '',
+    logTag: 'DailyAssessmentForm',
+    onUpdate: (payload: RealtimePostgresChangesPayload<DbRow>) => {
+      const newRow = payload.new as Partial<DbRow> | null;
+      const remoteUpdated = newRow && typeof newRow.updated_at === 'string' ? newRow.updated_at : null;
+      if (!remoteUpdated) return;
+      const localUpdated = lastLoadedUpdatedAtRef.current;
+      const remoteMs = new Date(remoteUpdated).getTime();
+      const localMs = localUpdated ? new Date(localUpdated).getTime() : 0;
+      if (remoteMs - localMs <= 5000) return;
+      if (hasUnsavedRef.current) {
+        if (import.meta.env.DEV) console.log('[DailyAssessmentForm] Skipping remote refresh — unsaved local changes');
+        return;
+      }
+      if (import.meta.env.DEV) console.log('[DailyAssessmentForm] Remote update detected — reloading');
+      loadAssessment();
+    },
+    onResumeOrDegraded: () => {
+      if (hasUnsavedRef.current) return;
+      loadAssessment();
+    },
+  });
 
   // H3: Register this record as actively edited so the global Realtime IDB
   // writer in useAutoSync doesn't silently overwrite our IDB row while we
