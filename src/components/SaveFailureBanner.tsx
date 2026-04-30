@@ -28,6 +28,8 @@ function explainCode(code?: IdbSaveErrorCode): string {
       return "Both fast and backup storage are unavailable on this device.";
     case "idb_unhealthy":
       return "Your browser's local database is in a bad state. A page reload may help.";
+    case "idb_closing":
+      return "The save was interrupted by a tab switch or device lock. Tap Retry to save again.";
     case "timeout":
       return "The save took too long to complete. Your device may be under heavy load.";
     case "unknown":

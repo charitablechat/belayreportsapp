@@ -1092,6 +1092,7 @@ async function withIndexedDBReadBoundary<T>(
       if (import.meta.env.DEV) {
         console.info(`[Offline Storage] Read skipped — IDB closing in ${operationName}`);
       }
+      dbConnectionVerified = false;
       return makeIdbReadFailure(operationName, 'idb_closing');
     }
     console.error(`[Offline Storage] Read failed for ${operationName}:`, err);
@@ -1124,6 +1125,7 @@ async function withIndexedDBReadBoundary<T>(
 // ============================================================================
 export type IdbSaveErrorCode =
   | 'idb_unhealthy'
+  | 'idb_closing'
   | 'timeout'
   | 'quota_exceeded'
   | 'storage_unavailable'
@@ -1264,7 +1266,7 @@ async function withIndexedDBSaveBoundary(
         console.info(`[Offline Storage] Save skipped — IDB closing in ${operationName}`);
       }
       dbConnectionVerified = false;
-      throw new IdbSaveError('idb_unhealthy', operationName, error);
+      throw new IdbSaveError('idb_closing', operationName, error);
     }
 
     console.error(`[Offline Storage] Save error in ${operationName}:`, error);
