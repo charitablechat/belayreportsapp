@@ -1093,6 +1093,16 @@ async function withIndexedDBReadBoundary<T>(
         console.info(`[Offline Storage] Read skipped — IDB closing in ${operationName}`);
       }
       dbConnectionVerified = false;
+      // Discard the cached connection: the resolved `dbPromise` holds a
+      // closed IDBDatabase handle, and `getDB()` would otherwise keep
+      // returning it on every call after bfcache restore. `checkIndexedDBHealth`
+      // opens a *separate* probe DB so it can't notice. Mirror the timeout
+      // recovery pattern (see lines below) so the next op opens a fresh
+      // connection.
+      if (dbPromise) {
+        dbPromise.then(db => db.close()).catch(() => {});
+        dbPromise = null;
+      }
       return makeIdbReadFailure(operationName, 'idb_closing');
     }
     console.error(`[Offline Storage] Read failed for ${operationName}:`, err);
@@ -1284,6 +1294,13 @@ async function withIndexedDBSaveBoundary(
         console.info(`[Offline Storage] Save skipped — IDB closing in ${operationName}`);
       }
       dbConnectionVerified = false;
+      // Discard the cached connection: the resolved `dbPromise` holds a
+      // closed IDBDatabase handle. Mirror the timeout recovery pattern so
+      // the next op opens a fresh connection on bfcache resume.
+      if (dbPromise) {
+        dbPromise.then(db => db.close()).catch(() => {});
+        dbPromise = null;
+      }
       throw new IdbSaveError('idb_closing', operationName, error);
     }
 
@@ -1451,6 +1468,13 @@ async function withIndexedDBErrorBoundary<T>(
         console.info(`[Offline Storage] Read skipped — IDB closing in ${operationName}`);
       }
       dbConnectionVerified = false;
+      // Discard the cached connection: the resolved `dbPromise` holds a
+      // closed IDBDatabase handle. Mirror the timeout recovery pattern so
+      // the next op opens a fresh connection on bfcache resume.
+      if (dbPromise) {
+        dbPromise.then(db => db.close()).catch(() => {});
+        dbPromise = null;
+      }
       return fallbackValue;
     }
 
