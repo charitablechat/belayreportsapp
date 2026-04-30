@@ -6,7 +6,8 @@ import { logError } from '@/lib/log-error';
 import { syncPhotos } from '@/lib/sync-manager';
 import { saveInspectionOffline, saveTrainingOffline, saveDailyAssessmentOffline } from '@/lib/offline-storage';
 import { shouldPreserveLocalRecord } from '@/lib/local-data-guards';
-import { getUnsyncedInspections, getUnsyncedTrainings, getUnsyncedDailyAssessments, isIdbReadFailure, getCircuitBreakerStatus, resetCircuitBreaker, pruneOldSyncedPhotoBlobs, getQueuedOperations, removeQueuedOperation, getQueuedTrainingOperations, removeQueuedTrainingOperation, getQueuedAssessmentOperations, removeQueuedAssessmentOperation, withIDBTimeout } from '@/lib/offline-storage';
+import { getUnsyncedInspections, getUnsyncedTrainings, getUnsyncedDailyAssessments, isIdbReadFailure, getCircuitBreakerStatus, resetCircuitBreaker, pruneOldSyncedPhotoBlobs, getQueuedOperations, removeQueuedOperation, getQueuedTrainingOperations, removeQueuedTrainingOperation, getQueuedAssessmentOperations, removeQueuedAssessmentOperation, withIDBTimeout, type DbRow } from '@/lib/offline-storage';
+import type { RealtimePostgresChangesPayload } from '@supabase/supabase-js';
 import { getUserWithCache, getCachedUserFromStorage, ensureValidSession, type CachedUser } from '@/lib/cached-auth';
 import { hasPendingOfflineAuth, verifyAndReconcileOfflineAuth } from '@/lib/offline-auth';
 import { useQueryClient } from '@tanstack/react-query';
@@ -19,6 +20,22 @@ import { toast } from '@/components/ui/sonner';
 import { markSnapshotSynced } from '@/lib/local-backup-ledger';
 import { isRestoreInProgress, onRestoreLockChange } from '@/lib/restore-lock';
 import { syncLog } from '@/lib/sync-logger';
+
+/**
+ * Result returned by each per-table atomic-sync helper
+ * (`syncAllInspectionsAtomic`, `syncAllTrainingsAtomic`,
+ * `syncAllDailyAssessmentsAtomic`). Photos use the same shape via
+ * `syncPhotos`. `total === -1` is the sentinel for "fetch failed due to
+ * timeout" (see `withSyncTimeout` callers); a result is null when the
+ * helper threw or skipped.
+ */
+type TableSyncResult = {
+  total: number;
+  success: number;
+  failed: number;
+  remaining?: number;
+  errors?: unknown[];
+} | null | undefined | void;
 
 // Sync configuration with mobile optimization
 // Tuned for fast user-driven sync (S5/S6/S7) — duplicate prevention is handled by syncInProgressRef
@@ -94,9 +111,9 @@ export interface AutoSyncState {
   lastSyncTime: Date | null;
   unsyncedCount: number;
   unsyncedPhotoCount: number;
-  unsyncedInspections: any[];
-  unsyncedTrainings: any[];
-  unsyncedAssessments: any[];
+  unsyncedInspections: DbRow[];
+  unsyncedTrainings: DbRow[];
+  unsyncedAssessments: DbRow[];
   // S11: surfaces IDB read failures so the badge keeps last-known counts
   // and the user gets a real error instead of a silent 0.
   syncError: string | null;
@@ -301,19 +318,19 @@ export const useAutoSync = () => {
               'refreshUnsyncedInspections',
               'heavy',
               () => getUnsyncedInspections(freshUser.id),
-              [] as any[]
+              [] as DbRow[]
             ),
             withIDBTimeout(
               'refreshUnsyncedTrainings',
               'heavy',
               () => getUnsyncedTrainings(freshUser.id),
-              [] as any[]
+              [] as DbRow[]
             ),
             withIDBTimeout(
               'refreshUnsyncedDailyAssessments',
               'heavy',
               () => getUnsyncedDailyAssessments(freshUser.id),
-              [] as any[]
+              [] as DbRow[]
             ),
           ]);
 
@@ -339,9 +356,9 @@ export const useAutoSync = () => {
           }
 
           const freshCounts = {
-            inspections: inspRes.data as any[],
-            trainings: trainRes.data as any[],
-            assessments: assessRes.data as any[],
+            inspections: inspRes.data as DbRow[],
+            trainings: trainRes.data as DbRow[],
+            assessments: assessRes.data as DbRow[],
           };
           liveUnsyncedCount =
             freshCounts.inspections.length +
@@ -500,7 +517,7 @@ export const useAutoSync = () => {
       // Only do post-sync work if we didn't time out
       if (!syncResult.timedOut) {
         // Check if any sync actually happened or if all returned -1 (fetch failed due to timeout)
-        const results = (syncResult.result as any[]) || [];
+        const results = (syncResult.result as TableSyncResult[]) || [];
         const allFetchesFailed = results.length > 0 && results.every(r => r?.total === -1);
         const anySuccess = results.some(r => r?.success > 0);
         const totalSynced = results.reduce((sum, r) => sum + (r?.success || 0), 0);
@@ -664,7 +681,7 @@ export const useAutoSync = () => {
           console.warn('[AutoSync] All IndexedDB fetches timed out - not reporting success');
         }
       }
-    } catch (error: any) {
+    } catch (error) {
       console.error('[AutoSync] Sync failed:', error);
       logError(error, { scope: 'useAutoSync.performSync' });
       clearTimeout(safetyTimeoutHandle);
@@ -778,9 +795,9 @@ export const useAutoSync = () => {
         return;
       }
 
-      const inspections = insp as any[];
-      const trainings = train as any[];
-      const assessments = assess as any[];
+      const inspections = insp as DbRow[];
+      const trainings = train as DbRow[];
+      const assessments = assess as DbRow[];
       const total = inspections.length + trainings.length + assessments.length;
 
       setState(prev => ({
@@ -997,7 +1014,7 @@ export const useAutoSync = () => {
   /**
    * Handle Realtime database changes from other devices
    */
-  const handleRemoteChange = useCallback((payload: any) => {
+  const handleRemoteChange = useCallback((payload: RealtimePostgresChangesPayload<DbRow>) => {
           syncLog.log('[AutoSync] Realtime change detected:', payload.eventType, payload.table);
     
     // Persist the remote record into IndexedDB so offline data stays fresh.
