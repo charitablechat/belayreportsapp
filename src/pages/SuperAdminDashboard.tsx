@@ -256,7 +256,8 @@ export default function SuperAdminDashboard() {
           *,
           inspections(inspection_date),
           trainings(id),
-          daily_assessments(id)
+          daily_assessments(id),
+          organization_members(count)
         `)
         .order("name", { ascending: true });
 
@@ -1657,14 +1658,17 @@ export default function SuperAdminDashboard() {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {organizations?.slice((orgsPage - 1) * ITEMS_PER_PAGE, orgsPage * ITEMS_PER_PAGE).map((org) => (
+              {organizations?.slice((orgsPage - 1) * ITEMS_PER_PAGE, orgsPage * ITEMS_PER_PAGE).map((org) => {
+                const adminOrg = org as AdminOrganization;
+                return (
                 <TableRow key={org.id}>
                   <TableCell className="font-medium">{org.name}</TableCell>
-                  <TableCell>{(org as { organization_members?: Array<{ count: number }> }).organization_members?.[0]?.count || 0}</TableCell>
-                  <TableCell>{(org.inspections as unknown as Array<{ count: number }> | undefined)?.[0]?.count || 0}</TableCell>
+                  <TableCell>{adminOrg.organization_members?.[0]?.count || 0}</TableCell>
+                  <TableCell>{adminOrg.inspections?.length || 0}</TableCell>
                   <TableCell>{format(new Date(org.created_at), "PP")}</TableCell>
                 </TableRow>
-              ))}
+                );
+              })}
             </TableBody>
           </Table>
           </div>
