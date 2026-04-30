@@ -1547,7 +1547,7 @@ export default function DailyAssessmentForm() {
         });
       } else {
         toast.error("Failed to generate report", {
-          description: error.message || "Please try again.",
+          description: msg || "Please try again.",
         });
       }
     } finally {
