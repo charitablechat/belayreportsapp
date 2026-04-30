@@ -62,3 +62,16 @@ const button = {
   display: 'inline-block',
 }
 const footer = { fontSize: '12px', color: 'hsl(215, 16%, 46%)', margin: '32px 0 0', borderTop: '1px solid hsl(215, 16%, 90%)', paddingTop: '16px' }
+const codeStyle = {
+  display: 'inline-block',
+  padding: '16px 24px',
+  backgroundColor: 'hsl(210, 40%, 96%)',
+  border: '1px solid hsl(215, 16%, 85%)',
+  borderRadius: '8px',
+  fontSize: '28px',
+  fontWeight: 'bold' as const,
+  letterSpacing: '6px',
+  color: 'hsl(215, 25%, 15%)',
+  fontFamily: '"Courier New", monospace',
+  margin: '0 0 24px',
+}
