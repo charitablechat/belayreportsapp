@@ -244,21 +244,32 @@ test.describe('admin pre-edit override: snapshot captured on admin save', () => 
     // Poll using the OWNER's session, not the admin's. The
     // `Admins can view admin edit snapshots` SELECT policy from
     // migration 20260427131652 was never confirmed deployed live (the
-    // pg_policy verification query only checked the INSERT policy, see
-    // migration 20260429083000). The owner's existing SELECT policy
-    // (`original_owner_id = auth.uid()` from the original
+    // pg_policy verification query only checked the INSERT policy; see
+    // migration 20260429083000 for the redeploy). The owner's existing
+    // SELECT policy (`original_owner_id = auth.uid()` from the original
     // 20260226134608 table migration) is definitively live, so polling
     // with the owner session works regardless of admin SELECT state.
-    // The admin session signed in at step 3 is only used as the *writer*
+    // The admin session signed in at step 3 is still the *writer*
     // (capturePreEditSnapshot's `edited_by`); reads happen through the
-    // owner whose JWT is still valid (signOut on the browser doesn't
+    // owner whose JWT remains valid (signOut on the browser doesn't
     // revoke the captured access token in ownerSession.apiClient).
+    //
+    // 180s budget (matches the location-wait above). `capturePreEditSnapshot`
+    // is fire-and-forget: on a network blip its inline insert fails and the
+    // intent falls into a local IDB queue that drains on the next
+    // `useAutoSync` tick. On heavily-loaded GH Actions runners the cumulative
+    // path of `auth.getUser` → `inspections SELECT` → `*_summary SELECT` →
+    // `*_photos SELECT` → … → `admin_edit_snapshots INSERT` can easily eat
+    // 30–60s before the row lands; the fetch-level retry from PR #50 helps
+    // the read legs but deliberately does not retry the POST mutation, so
+    // the local-queue fallback is the actual durability path here. 180s
+    // gives that fallback realistic headroom on a congested runner.
     const snapshot = await waitForAdminEditSnapshot(ownerSession, {
       reportType: 'inspection',
       reportId: serverId,
       editedBy: adminSession.userId,
       originalOwnerId: ownerUserId,
-      timeoutMs: 60_000,
+      timeoutMs: 180_000,
     });
     expect(snapshot.report_type).toBe('inspection');
     expect(snapshot.report_id).toBe(serverId);

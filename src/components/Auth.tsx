@@ -37,9 +37,18 @@ const getAuthErrorMessage = (error: any): string => {
   if (message.includes('network') || message.includes('fetch')) {
     return 'Network error. Please check your connection and try again.';
   }
+  if (message.includes('timed out') || message.includes('timeout')) {
+    return 'Sign-in timed out. The service may be temporarily unavailable — please try again in a moment.';
+  }
   
   return error?.message || 'An unexpected error occurred. Please try again.';
 };
+
+// Hard cap on how long we'll wait for Supabase auth to respond before giving
+// the user a real error. The Supabase JS client has no built-in timeout, so
+// when the auth API is unreachable (platform outage, DNS, paused project) the
+// submit button would otherwise stay on "Please wait..." forever.
+const SIGN_IN_TIMEOUT_MS = 20_000;
 
 export default function Auth() {
   const navigate = useNavigate();
@@ -82,10 +91,15 @@ export default function Auth() {
         return;
       }
 
-      const { data, error } = await supabase.auth.signInWithPassword({
-        email,
-        password,
-      });
+      const { data, error } = await Promise.race([
+        supabase.auth.signInWithPassword({ email, password }),
+        new Promise<never>((_, reject) =>
+          setTimeout(
+            () => reject(new Error('Sign-in timed out. The service may be temporarily unavailable — please try again in a moment.')),
+            SIGN_IN_TIMEOUT_MS
+          )
+        ),
+      ]);
 
       if (error) throw error;
 
