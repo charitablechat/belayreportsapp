@@ -208,6 +208,13 @@ export async function cleanupStaleCachedPhotos(): Promise<number> {
     }
     await tx.done;
   } catch (err) {
+    // The `idb` wrapper's `tx.done` is a Promise that rejects when the
+    // transaction aborts. We jumped to this catch from inside the cursor
+    // walk before reaching `await tx.done`, so the abort-triggered
+    // rejection is now floating. Attach a no-op handler before doing
+    // anything else so it doesn't surface as an unhandled promise
+    // rejection — that's exactly the symptom the user reported.
+    tx.done.catch(() => {});
     // Mid-walk failure. Most common shape on iOS 18 Safari is the
     // `InvalidStateError: The database connection is closing` thrown when
     // the tab goes into bfcache between cursor steps. The deletes that

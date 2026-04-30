@@ -139,6 +139,56 @@ describe('cleanupStaleCachedPhotos — iOS Safari closing-connection guard', () 
     expect(fakeTx.abort).toHaveBeenCalled();
   });
 
+  it('attaches a catch handler to tx.done so its abort-rejection does not surface as an unhandled rejection', async () => {
+    // Regression: prior to attaching `tx.done.catch(() => {})` in the
+    // mid-walk error path, the `idb` wrapper's `tx.done` would reject on
+    // abort with no listener — surfacing as an unhandled-rejection
+    // (the exact symptom the user reported on iOS 18.7).
+    let txDoneRejected = false;
+    const fakeTxDone = new Promise<void>((_, reject) => {
+      // Reject async so the catch handler must be attached BEFORE the
+      // rejection lands in the microtask queue. If `cleanupStaleCachedPhotos`
+      // doesn't attach a handler, this becomes an unhandled rejection.
+      setTimeout(() => {
+        txDoneRejected = true;
+        reject(new Error('AbortError: transaction was aborted'));
+      }, 0);
+    });
+
+    const fakeStore = {
+      openCursor: vi.fn(async () => {
+        const err = new Error('The database connection is closing');
+        (err as Error & { name: string }).name = 'InvalidStateError';
+        throw err;
+      }),
+    };
+    const fakeTx = {
+      store: fakeStore,
+      done: fakeTxDone,
+      abort: vi.fn(),
+    };
+    const fakeDb = {
+      transaction: vi.fn(() => fakeTx),
+    };
+    __setGetDBForCleanupForTesting(async () => fakeDb as never);
+
+    const unhandled: unknown[] = [];
+    const onUnhandled = (e: unknown) => unhandled.push(e);
+    process.on('unhandledRejection', onUnhandled);
+
+    try {
+      const cleaned = await cleanupStaleCachedPhotos();
+      expect(cleaned).toBe(0);
+      // Give the microtask queue + the setTimeout(0) above time to flush
+      // so we can observe whether tx.done's rejection was caught.
+      await new Promise((r) => setTimeout(r, 10));
+      expect(txDoneRejected).toBe(true);
+      expect(unhandled).toHaveLength(0);
+    } finally {
+      process.off('unhandledRejection', onUnhandled);
+    }
+  });
+
   it('skips work entirely when document.visibilityState === "hidden"', async () => {
     const original = Object.getOwnPropertyDescriptor(Document.prototype, 'visibilityState');
     Object.defineProperty(document, 'visibilityState', {
