@@ -159,6 +159,14 @@ export const useAutoSync = () => {
   const realtimeErrorCountRef = useRef<number>(0);
   const realtimeReconnectTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const realtimeBackoffRef = useRef<number>(60000); // Start at 60s, doubles up to 300s cap
+  // H1: throttle for resume-triggered Realtime resubscribes. iOS Safari kills
+  // suspended websockets without firing CHANNEL_ERROR, so the only way to
+  // recover after bfcache restore / tab return / network handoff is to tear
+  // down + recreate on app-resume signals (pageshow / visibilitychange→visible
+  // / focus / online). The throttle prevents thrash if the user tabs around
+  // quickly — a 30s window is well under the typical 2–5min idle that
+  // actually kills the websocket.
+  const lastRealtimeResubscribeAtRef = useRef<number>(0);
   // S12: Per-id debounced full-package refetch on Realtime parent events.
   // Coalesces bursts of UPDATEs to the same record into one refetch (~300ms window).
   const refetchTimersRef = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map());
@@ -1255,14 +1263,77 @@ export const useAutoSync = () => {
     };
     
     setupRealtimeChannel();
-    
+
+    // H1: iOS Safari kills suspended websockets silently when a backgrounded
+    // tab is re-foregrounded after bfcache restore, tab switch, or network
+    // handoff (Wi-Fi ↔ cellular on iPad). supabase-js does not fire
+    // CHANNEL_ERROR for a websocket that died during suspension, so the
+    // existing 3× CHANNEL_ERROR backoff above never trips and the channel
+    // sits in a dead state — the user silently misses cross-device updates
+    // (admin edits, co-worker inspections) until they reload the page. We
+    // recover by tearing down + recreating the channel on app-resume
+    // signals, throttled to once per 30s so quick tab-flips don't thrash.
+    const REALTIME_RESUBSCRIBE_THROTTLE_MS = 30_000;
+    const resubscribeRealtimeIfStale = (reason: string) => {
+      const now = Date.now();
+      if (now - lastRealtimeResubscribeAtRef.current < REALTIME_RESUBSCRIBE_THROTTLE_MS) {
+        syncLog.log(`[AutoSync] Realtime resubscribe throttled (${reason})`);
+        return;
+      }
+      lastRealtimeResubscribeAtRef.current = now;
+      // Cancel any pending CHANNEL_ERROR-backoff reconnect; otherwise that
+      // timer would fire and call `setupRealtimeChannel()` again moments after
+      // we re-subscribe, tearing down the fresh channel mid-handshake and
+      // briefly dropping events. Also reset the error counter + backoff so a
+      // single transient CHANNEL_ERROR on the freshly-subscribed channel
+      // doesn't immediately re-arm the 3× backoff using stale counts from the
+      // dead pre-resume channel.
+      if (realtimeReconnectTimerRef.current) {
+        clearTimeout(realtimeReconnectTimerRef.current);
+        realtimeReconnectTimerRef.current = null;
+      }
+      realtimeErrorCountRef.current = 0;
+      realtimeBackoffRef.current = 60000;
+      syncLog.log(`[AutoSync] Resubscribing Realtime channel — ${reason}`);
+      setupRealtimeChannel();
+    };
+    const handleRealtimeOnline = () => resubscribeRealtimeIfStale('online');
+    const handleRealtimeVisibilityChange = () => {
+      if (document.visibilityState === 'visible') {
+        resubscribeRealtimeIfStale('visibilitychange');
+      }
+    };
+    // `pageshow` fires with `persisted: false` on initial page load too — only
+    // the bfcache-restore case needs a resubscribe (the initial-load channel
+    // was just created above by `setupRealtimeChannel()`). Without this guard,
+    // the throttle ref starts at 0 so the throttle check passes and the fresh
+    // channel is torn down mid-handshake every iOS page load.
+    const handleRealtimePageShow = (e: PageTransitionEvent) => {
+      if (e.persisted) resubscribeRealtimeIfStale('pageshow');
+    };
+    const handleRealtimeFocus = () => resubscribeRealtimeIfStale('focus');
+    window.addEventListener('online', handleRealtimeOnline);
+    document.addEventListener('visibilitychange', handleRealtimeVisibilityChange);
+    if (isIOSDevice) {
+      window.addEventListener('pageshow', handleRealtimePageShow);
+      window.addEventListener('focus', handleRealtimeFocus);
+    }
+
     return () => {
       clearTimeout(initialSyncTimer);
       window.removeEventListener('online', handleOnline);
       window.removeEventListener('sync-photos-updated', handleSyncPhotosUpdated);
       unsubscribeRestoreLock();
       document.removeEventListener('visibilitychange', handleVisibilityChange);
-      
+
+      // H1: tear down resume-triggered Realtime resubscribers
+      window.removeEventListener('online', handleRealtimeOnline);
+      document.removeEventListener('visibilitychange', handleRealtimeVisibilityChange);
+      if (isIOSDevice) {
+        window.removeEventListener('pageshow', handleRealtimePageShow);
+        window.removeEventListener('focus', handleRealtimeFocus);
+      }
+
       if (isIOSDevice) {
         window.removeEventListener('pageshow', handlePageShow as EventListener);
         window.removeEventListener('focus', handleFocus);
