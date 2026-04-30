@@ -15,6 +15,8 @@ import { isLocalDataNewer } from "@/lib/local-data-guards";
 import { applyTrackedFieldWrite } from "@/lib/field-merge";
 import { hasTextContent } from "@/lib/html-content-cleaner";
 import { supabase } from "@/integrations/supabase/client";
+import type { PostgrestError, RealtimePostgresChangesPayload } from "@supabase/supabase-js";
+import type { CachedUser } from "@/lib/cached-auth";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
@@ -36,11 +38,12 @@ import SummarySection from "@/components/inspection/SummarySection";
 import PhotoCapture from "@/components/PhotoCapture";
 import PhotoGallery from "@/components/PhotoGallery";
 import {
-  saveInspectionOffline, 
-  getOfflineInspection, 
+  saveInspectionOffline,
+  getOfflineInspection,
   saveRelatedDataOffline,
   getRelatedDataOffline,
-  getOfflinePhotos
+  getOfflinePhotos,
+  type DbRow,
 } from "@/lib/offline-storage";
 import { validateInspectionPackage } from "@/lib/validation-schemas";
 import { AttestationDialog } from "@/components/AttestationDialog";
@@ -99,9 +102,31 @@ const STANDARDS_TEMPLATE = [
   { standard_name: "Operational Review Every 5 Years", has_documentation: null },
 ];
 
-const mergeStandards = (loaded: any[]) => {
+// `saveRelatedDataOffline` accepts a small set of well-known child-table keys.
+// Mirrors the `RelatedDataType` union in `@/lib/offline-storage`.
+type RelatedDataKey = 'systems' | 'ziplines' | 'equipment' | 'standards' | 'summary';
+
+function errorMessage(error: unknown, fallback: string): string {
+  if (error instanceof Error) return error.message;
+  if (typeof error === 'string') return error;
+  if (error && typeof error === 'object' && 'message' in error) {
+    const msg = (error as { message?: unknown }).message;
+    if (typeof msg === 'string') return msg;
+  }
+  return fallback;
+}
+
+function errorCode(error: unknown): string | undefined {
+  if (error && typeof error === 'object' && 'code' in error) {
+    const code = (error as { code?: unknown }).code;
+    if (typeof code === 'string') return code;
+  }
+  return undefined;
+}
+
+const mergeStandards = (loaded: DbRow[]) => {
   return STANDARDS_TEMPLATE.map(template => {
-    const match = loaded.find((s: any) => s.standard_name === template.standard_name);
+    const match = loaded.find((s) => s.standard_name === template.standard_name);
     return match || { ...template, id: crypto.randomUUID() };
   });
 };
@@ -159,25 +184,27 @@ export default function InspectionForm() {
   const anySaveInProgressRef = useRef(false);
   const wasOfflineRef = useRef(!isOnline);
   const autoRetryingRef = useRef(false);
-  const [currentUser, setCurrentUser] = useState<any>(null);
-  const [inspectorProfile, setInspectorProfile] = useState<any>(null);
-  const [currentUserProfile, setCurrentUserProfile] = useState<any>(null);
+  const [currentUser, setCurrentUser] = useState<CachedUser | null>(null);
+  const [inspectorProfile, setInspectorProfile] = useState<DbRow | null>(null);
+  const [currentUserProfile, setCurrentUserProfile] = useState<DbRow | null>(null);
   // signingOut removed — sign-out handled by global AuthenticatedHeader
   const [htmlViewerOpen, setHtmlViewerOpen] = useState(false);
   const [reportHtml, setReportHtml] = useState<string>('');
-  const [inspection, setInspection] = useState<any>(null);
+  const [inspection, setInspection] = useState<DbRow | null>(null);
   const { isInvoiced, toggling: invoiceToggling, toggleInvoiced } = useInvoicedStatus({
     reportId: id,
     reportType: 'inspection',
     enabled: isAdmin && inspection?.status === 'completed',
   });
-  const [systems, setSystems] = useState<any[]>([]);
-  const [ziplines, setZiplines] = useState<any[]>([]);
-  const [equipment, setEquipment] = useState<any[]>([]);
+  const [systems, setSystems] = useState<DbRow[]>([]);
+  const [ziplines, setZiplines] = useState<DbRow[]>([]);
+  const [equipment, setEquipment] = useState<DbRow[]>([]);
 
   // Equipment type options per category — pass existing values so custom entries persist in dropdown
   const getExistingTypes = (cat: string) =>
-    equipment.filter((e: any) => e.equipment_category === cat && e.equipment_type?.trim()).map((e: any) => e.equipment_type);
+    equipment
+      .filter((e) => e.equipment_category === cat && typeof e.equipment_type === 'string' && e.equipment_type.trim())
+      .map((e) => e.equipment_type as string);
   const harnessesOpts = useEquipmentTypeOptions("harnesses", getExistingTypes("harnesses"));
   const helmetsOpts = useEquipmentTypeOptions("helmets", getExistingTypes("helmets"));
   const lanyardsOpts = useEquipmentTypeOptions("lanyards", getExistingTypes("lanyards"));
@@ -186,8 +213,8 @@ export default function InspectionForm() {
   const belayOpts = useEquipmentTypeOptions("belay", getExistingTypes("belay"));
   const trolleysOpts = useEquipmentTypeOptions("trolleys", getExistingTypes("trolleys"));
   const otherOpts = useEquipmentTypeOptions("other", getExistingTypes("other"));
-  const [modifiedByProfile, setModifiedByProfile] = useState<any>(null);
-  const [standards, setStandards] = useState<any[]>([
+  const [modifiedByProfile, setModifiedByProfile] = useState<DbRow | null>(null);
+  const [standards, setStandards] = useState<DbRow[]>([
     { id: crypto.randomUUID(), standard_name: "Local Written Operations Procedures", has_documentation: null },
     { id: crypto.randomUUID(), standard_name: "Local Written Emergency Action Plan", has_documentation: null },
     { id: crypto.randomUUID(), standard_name: "Minimum Annual Training", has_documentation: null },
@@ -387,7 +414,7 @@ export default function InspectionForm() {
       if (inspection && id) {
         // Include photo metadata (IDs, captions) but NOT blobs for localStorage budget
         getOfflinePhotos(id).then(photos => {
-          const photoMeta = photos.map((p: any) => ({
+          const photoMeta = photos.map((p) => ({
             id: p.id,
             caption: p.caption,
             photo_section: p.section,
@@ -533,7 +560,7 @@ export default function InspectionForm() {
       let user = await getUserWithCache();
       if (!user) {
         const offlineId = getOfflineUserId();
-        if (offlineId) user = { id: offlineId } as any;
+        if (offlineId) user = { id: offlineId };
       }
       setCurrentUser(user);
     };
@@ -563,7 +590,8 @@ export default function InspectionForm() {
   // channel doesn't churn on every keystroke.
   const lastLoadedUpdatedAtRef = useRef<string | null>(null);
   useEffect(() => {
-    lastLoadedUpdatedAtRef.current = (inspection as any)?.updated_at ?? null;
+    const ua = inspection?.updated_at;
+    lastLoadedUpdatedAtRef.current = typeof ua === 'string' ? ua : null;
   }, [inspection]);
   useEffect(() => {
     if (!id || id.startsWith('temp-')) return;
@@ -572,8 +600,9 @@ export default function InspectionForm() {
       .on(
         'postgres_changes',
         { event: 'UPDATE', schema: 'public', table: 'inspections', filter: `id=eq.${id}` },
-        (payload) => {
-          const remoteUpdated = (payload.new as any)?.updated_at;
+        (payload: RealtimePostgresChangesPayload<DbRow>) => {
+          const newRow = payload.new as Partial<DbRow> | null;
+          const remoteUpdated = newRow && typeof newRow.updated_at === 'string' ? newRow.updated_at : null;
           if (!remoteUpdated) return;
           const localUpdated = lastLoadedUpdatedAtRef.current;
           const remoteMs = new Date(remoteUpdated).getTime();
@@ -1007,7 +1036,7 @@ export default function InspectionForm() {
       saveDebounceTimerRef.current = setTimeout(() => {
         performSaveRef.current?.(true);
       }, 500); // Short debounce for header fields
-    } catch (error: any) {
+    } catch (error) {
       console.error("Error updating header field:", error);
     }
   };
@@ -1046,10 +1075,10 @@ export default function InspectionForm() {
       // Helper to wrap Supabase queries with timeout protection
       // Note: We use Promise.race with the query's .then() to ensure proper Promise conversion
       const withQueryTimeout = async <T,>(
-        query: PromiseLike<{ data: T | null; error: any }>,
+        query: PromiseLike<{ data: T | null; error: PostgrestError | Error | null }>,
         timeoutMs: number = 8000
-      ): Promise<{ data: T | null; error: any }> => {
-        const timeoutPromise = new Promise<{ data: T | null; error: any }>((resolve) => 
+      ): Promise<{ data: T | null; error: PostgrestError | Error | null }> => {
+        const timeoutPromise = new Promise<{ data: T | null; error: PostgrestError | Error | null }>((resolve) =>
           setTimeout(() => {
             console.warn('[InspectionForm] Supabase query timed out after', timeoutMs, 'ms');
             resolve({ data: null, error: new Error('Query timeout') });
@@ -1097,7 +1126,7 @@ export default function InspectionForm() {
           if (backup.children) {
             for (const [childType, childData] of Object.entries(backup.children)) {
               if (Array.isArray(childData) && childData.length > 0) {
-                saveRelatedDataOffline(childType as any, id!, childData).catch(() => {});
+                saveRelatedDataOffline(childType as RelatedDataKey, id!, childData).catch(() => {});
                 // Mark restored child types as loaded
                 if (childType in childDataLoadedRef.current) {
                   childDataLoadedRef.current[childType] = true;
@@ -1296,9 +1325,9 @@ export default function InspectionForm() {
           // Only update inspection header metadata from server (status, inspector info)
           if (data) {
             setInspection(prev => ({
-              ...prev,
+              ...(prev ?? {} as DbRow),
               status: data.status,
-              inspector: (data as any).inspector,
+              inspector: (data as DbRow).inspector,
             }));
             setInspectorId(data.inspector_id);
             // Do NOT cache server inspection — local version is the source of truth
@@ -1433,13 +1462,13 @@ export default function InspectionForm() {
         navigate('/dashboard');
         return;
       }
-    } catch (error: any) {
+    } catch (error) {
       console.error("Error loading inspection:", error);
-      
+
       // LockManager timeout: concurrency issue, not a real failure.
       // If we already have inspection data loaded (from offline cache or partial server fetch),
       // continue with what we have instead of crashing back to dashboard.
-      const errorMsg = error?.message || error?.toString?.() || '';
+      const errorMsg = errorMessage(error, '');
       const isLockTimeout = errorMsg.includes('LockManager') || (errorMsg.includes('lock') && errorMsg.includes('timed out'));
       
       if (isLockTimeout && inspection.organization) {
@@ -1723,7 +1752,7 @@ export default function InspectionForm() {
         // localStorage snapshot above is still the user's safety net.
         const { isIdbSaveError } = await import('@/lib/offline-storage');
         if (isIdbSaveError(offlineError)) {
-          setSaveError({ message: 'Local save failed — your changes are NOT stored. Tap to retry.', code: (offlineError as any)?.code });
+          setSaveError({ message: 'Local save failed — your changes are NOT stored. Tap to retry.', code: (offlineError as { code?: string })?.code });
           throw offlineError;
         }
         if (!silent) {
@@ -1776,7 +1805,7 @@ export default function InspectionForm() {
             // 'child_count_hint' column …"). Mirrors the strip list in
             // `atomic-sync-manager.ts:LOCAL_ONLY_REMOTE_UPSERT_FIELDS` —
             // keep both lists in sync when adding new IDB-only flags.
-            const sanitizeInspection = (insp: any) => {
+            const sanitizeInspection = (insp: DbRow) => {
               const {
                 id,
                 inspector,
@@ -1852,7 +1881,7 @@ export default function InspectionForm() {
             }));
             
             // Prepare summary
-            const sanitizeSummary = (sum: any) => ({
+            const sanitizeSummary = (sum: DbRow) => ({
               ...sum,
               next_inspection_date: sum.next_inspection_date === "" ? null : sum.next_inspection_date
             });
@@ -1881,7 +1910,7 @@ export default function InspectionForm() {
             }
             
             // Helper to convert PromiseLike to proper Promise
-            const dbOp = async (operation: PromiseLike<{ error: any }>) => {
+            const dbOp = async (operation: PromiseLike<{ error: PostgrestError | null }>) => {
               const { error } = await operation;
               if (error) throw error;
             };
@@ -2033,17 +2062,20 @@ export default function InspectionForm() {
 
             markSnapshotSynced('inspection', id!);
             console.log('[InspectionForm Sync] Synced all data to Supabase successfully (verified)');
-          } catch (error: any) {
+          } catch (error) {
             // Detect network-related errors for retry
-            const isNetworkError = 
-              error?.message?.toLowerCase().includes('network') ||
-              error?.message?.toLowerCase().includes('fetch') ||
-              error?.message?.toLowerCase().includes('failed to fetch') ||
-              error?.message?.toLowerCase().includes('connection') ||
-              error?.message?.toLowerCase().includes('timeout') ||
-              error?.code === 'NETWORK_ERROR' ||
-              error?.code === 'ECONNREFUSED' ||
-              error?.name === 'TypeError' || // Often thrown on network failures
+            const errMsg = errorMessage(error, '').toLowerCase();
+            const code = errorCode(error);
+            const errName = error instanceof Error ? error.name : undefined;
+            const isNetworkError =
+              errMsg.includes('network') ||
+              errMsg.includes('fetch') ||
+              errMsg.includes('failed to fetch') ||
+              errMsg.includes('connection') ||
+              errMsg.includes('timeout') ||
+              code === 'NETWORK_ERROR' ||
+              code === 'ECONNREFUSED' ||
+              errName === 'TypeError' || // Often thrown on network failures
               !navigator.onLine;
             
             if (retries > 0 && isNetworkError) {
@@ -2058,7 +2090,7 @@ export default function InspectionForm() {
 
         try {
           await syncWithRetry(3); // 3 retries with exponential backoff
-        } catch (error: any) {
+        } catch (error) {
           console.error('[InspectionForm Sync] Failed after retries:', error);
           // Use "Pending sync" instead of error - less alarming, auto-retry handles it
           setSaveError('pending_sync');
@@ -2094,10 +2126,10 @@ export default function InspectionForm() {
         // and sync via syncInspectionAtomic when the device comes back online.
         console.log('[InspectionForm Sync] Offline — IDB drift will trigger sync when online');
       }
-    } catch (error: any) {
+    } catch (error) {
       console.error('[InspectionForm] Save error:', error);
       logError(error, { scope: 'InspectionForm.performSave' });
-      setSaveError({ message: error.message || 'Failed to save', code: error?.code });
+      setSaveError({ message: errorMessage(error, 'Failed to save'), code: errorCode(error) });
       throw error;
     } finally {
       clearTimeout(performSaveDeadlockTimer);
@@ -2153,9 +2185,9 @@ export default function InspectionForm() {
         console.log("Immediate save triggered at", new Date().toLocaleTimeString());
       }
       // Sync is now handled automatically by useAutoSync hook
-    } catch (error: any) {
+    } catch (error) {
       console.error("Immediate save failed:", error);
-      setSaveError({ message: error.message || 'Immediate save failed', code: error?.code });
+      setSaveError({ message: errorMessage(error, 'Immediate save failed'), code: errorCode(error) });
     } finally {
       clearTimeout(safetyTimeout);
       setAutoSaving(false);
@@ -2194,9 +2226,9 @@ export default function InspectionForm() {
         console.log("Auto-saved successfully at", new Date().toLocaleTimeString());
       }
       // Sync is now handled automatically by useAutoSync hook
-    } catch (error: any) {
+    } catch (error) {
       console.error("Auto-save failed:", error);
-      setSaveError({ message: error.message || 'Auto-save failed', code: error?.code });
+      setSaveError({ message: errorMessage(error, 'Auto-save failed'), code: errorCode(error) });
     } finally {
       clearTimeout(safetyTimeout);
       setAutoSaving(false);
@@ -2248,10 +2280,9 @@ export default function InspectionForm() {
         console.log('[InspectionForm] Progress saved:', isOnline ? 'online' : 'offline');
       }
       // Sync is now handled automatically by useAutoSync hook
-    } catch (error: any) {
+    } catch (error) {
       console.error("Save error:", error);
-      const errorMsg = error.message || "Failed to save progress";
-      setSaveError({ message: errorMsg, code: error?.code });
+      setSaveError({ message: errorMessage(error, 'Failed to save progress'), code: errorCode(error) });
     } finally {
       clearTimeout(safetyTimeout);
       // Only flip UI state + release the mutex if the safety timer hasn't
@@ -2305,7 +2336,7 @@ export default function InspectionForm() {
       
       // Build the update payload — include attestation only when first signing,
       // and always stamp the app version at completion time.
-      const updatePayload: Record<string, any> = {
+      const updatePayload: Record<string, unknown> = {
         status: "completed",
         app_version_at_completion: APP_VERSION_FULL,
       };
@@ -2354,7 +2385,7 @@ export default function InspectionForm() {
         }
       }
       // Stay on the inspection page - don't navigate away
-    } catch (error: any) {
+    } catch (error) {
       console.error('[InspectionForm] Failed to complete inspection:', error);
     }
   };
@@ -2498,7 +2529,7 @@ export default function InspectionForm() {
           blobUrl = URL.createObjectURL(blob);
           console.log('[PDF Generation] Blob URL created for preview:', blobUrl);
           
-        } catch (decodeError: any) {
+        } catch (decodeError) {
           console.error('[PDF Generation] Base64 decode error:', decodeError);
           throw new Error('DECODE_ERROR: Failed to decode PDF data. The file may be corrupted.');
         }
@@ -2534,9 +2565,9 @@ export default function InspectionForm() {
           blobUrl = URL.createObjectURL(blob);
           console.log('[PDF Generation] Blob URL created for preview:', blobUrl);
           
-        } catch (fetchError: any) {
+        } catch (fetchError) {
           console.error('[PDF Generation] Storage fetch error:', fetchError);
-          throw new Error(`STORAGE_ERROR: ${fetchError.message}`);
+          throw new Error(`STORAGE_ERROR: ${errorMessage(fetchError, 'fetch failed')}`);
         }
         
       } else {
@@ -2566,12 +2597,13 @@ export default function InspectionForm() {
       
       console.log('[PDF Generation] ✅ SUCCESS - PDF downloaded');
 
-    } catch (error: any) {
-      console.error('[PDF Generation] ❌ FAILED:', error.message);
-      
-      const userMessage = error.message?.includes('NETWORK_ERROR')
+    } catch (error) {
+      const msg = errorMessage(error, '');
+      console.error('[PDF Generation] ❌ FAILED:', msg);
+
+      const userMessage = msg.includes('NETWORK_ERROR')
         ? 'Network error — check your connection and try again.'
-        : error.message?.includes('AUTH_ERROR')
+        : msg.includes('AUTH_ERROR')
         ? 'Authentication failed. Please log out and log in again.'
         : 'Failed to generate PDF. Please try again.';
       
@@ -2690,17 +2722,18 @@ export default function InspectionForm() {
       toast.dismiss(progressToastId);
       setReportHtml(html);
       setHtmlViewerOpen(true);
-    } catch (error: any) {
+    } catch (error) {
       toast.dismiss(progressToastId);
-      console.error('[HTML Generation] Error:', error.message || error);
-      
-      if (error.message?.includes('TIMEOUT')) {
+      const msg = errorMessage(error, 'Please try again.');
+      console.error('[HTML Generation] Error:', msg || error);
+
+      if (msg.includes('TIMEOUT')) {
         toast.error("Report generation timed out", {
           description: "Please check your connection and try again.",
         });
       } else {
         toast.error("Failed to generate report", {
-          description: error.message || "Please try again.",
+          description: msg,
         });
       }
     } finally {
