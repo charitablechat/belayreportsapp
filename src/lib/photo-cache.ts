@@ -1,4 +1,5 @@
 import { getDB, putPhotoRecord } from './offline-storage';
+import { isDocumentHidden, isIdbClosingError } from './idb-closing-error';
 
 // Cache duration: 24 hours
 const CACHE_DURATION = 24 * 60 * 60 * 1000;
@@ -116,31 +117,6 @@ type DbForCleanup = Awaited<ReturnType<typeof getDB>>;
 let _getDBForCleanup: () => Promise<DbForCleanup> = getDB;
 export function __setGetDBForCleanupForTesting(fn: (() => Promise<DbForCleanup>) | null): void {
   _getDBForCleanup = fn ?? getDB;
-}
-
-/**
- * True when the current document is hidden (iOS Safari aggressively suspends
- * background tabs, which auto-aborts any open IDB transaction with
- * "InvalidStateError: The database connection is closing" mid-walk).
- */
-function isDocumentHidden(): boolean {
-  return typeof document !== 'undefined' && document.visibilityState === 'hidden';
-}
-
-/**
- * True when the error looks like an IDB "closing" / "invalid state" failure.
- * On iOS 18 Safari the page entering bfcache or being suspended fires
- * `InvalidStateError: The database connection is closing` either at
- * `db.transaction()` call time or anywhere inside the cursor walk.
- */
-function isIdbClosingError(err: unknown): boolean {
-  if (!err || typeof err !== 'object') return false;
-  const e = err as { name?: unknown; message?: unknown };
-  if (e.name === 'InvalidStateError') return true;
-  if (typeof e.message === 'string' && /database connection is closing|InvalidStateError/i.test(e.message)) {
-    return true;
-  }
-  return false;
 }
 
 /**

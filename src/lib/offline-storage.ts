@@ -1,4 +1,5 @@
 import { openDB, DBSchema, IDBPDatabase, StoreNames } from 'idb';
+import { isIdbClosingError } from './idb-closing-error';
 import { checkStorageQuota, requestPersistentStorage, isMobile } from './mobile-detection';
 import { isUpdatedAheadOfSync } from './local-data-guards';
 import { safeSetItem } from './safe-local-storage';
@@ -1084,6 +1085,15 @@ async function withIndexedDBReadBoundary<T>(
     recordIndexedDBSuccess(store);
     return result as T;
   } catch (err) {
+    // Audit M4: iOS Safari closing-connection — surface as IdbReadFailure so
+    // the caller still preserves last-known UI state, but skip the breaker so
+    // the next attempt after page resume isn't gated by a cooldown.
+    if (isIdbClosingError(err)) {
+      if (import.meta.env.DEV) {
+        console.info(`[Offline Storage] Read skipped — IDB closing in ${operationName}`);
+      }
+      return makeIdbReadFailure(operationName, 'idb_closing');
+    }
     console.error(`[Offline Storage] Read failed for ${operationName}:`, err);
     recordIndexedDBFailure(store);
     return makeIdbReadFailure(operationName, err);
@@ -1243,6 +1253,20 @@ async function withIndexedDBSaveBoundary(
       throw error;
     }
 
+    // Audit M4: iOS Safari throws "InvalidStateError: The database connection
+    // is closing" when the page enters bfcache (tab switch / phone lock /
+    // back-forward navigation) mid-write. This is NOT an IDB health problem
+    // and must not trip the circuit breaker — log at info level, skip the
+    // breaker bookkeeping, but still throw IdbSaveError so the form keeps its
+    // dirty flag and the user can retry on resume.
+    if (isIdbClosingError(error)) {
+      if (import.meta.env.DEV) {
+        console.info(`[Offline Storage] Save skipped — IDB closing in ${operationName}`);
+      }
+      dbConnectionVerified = false;
+      throw new IdbSaveError('idb_unhealthy', operationName, error);
+    }
+
     console.error(`[Offline Storage] Save error in ${operationName}:`, error);
     dbConnectionVerified = false;
 
@@ -1398,6 +1422,18 @@ async function withIndexedDBErrorBoundary<T>(
     recordIndexedDBSuccess(store);
     return result;
   } catch (error: unknown) {
+    // Audit M4: iOS Safari "database connection is closing" — bfcache /
+    // tab-switch artifact, NOT an IDB health problem. Log at info level
+    // and bypass the circuit breaker so resuming the tab doesn't start in
+    // breaker-open state.
+    if (isIdbClosingError(error)) {
+      if (import.meta.env.DEV) {
+        console.info(`[Offline Storage] Read skipped — IDB closing in ${operationName}`);
+      }
+      dbConnectionVerified = false;
+      return fallbackValue;
+    }
+
     console.error(`[Offline Storage] Error in ${operationName}:`, error);
     // Reset verification on error so next operation re-checks
     dbConnectionVerified = false;
