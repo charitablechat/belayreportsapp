@@ -268,6 +268,23 @@ export const compressImage = async (
   file: File,
   options: CompressionOptions = {}
 ): Promise<File> => {
+  // HEIC/HEIF files MUST be converted before the small-file early-exit, or
+  // small mislabelled HEIC uploads (e.g. iOS share-sheet pictures rewrapped
+  // as image/heic via magic-byte detection in PhotoCapture) would be returned
+  // unchanged and then rejected by the post-compression `isHeicFile` guard
+  // with a misleading "HEIC conversion failed" toast.
+  if (isHeicFile(file)) {
+    try {
+      const jpegFile = await convertHeicToJpeg(file);
+      // Continue into the rest of the pipeline with the converted JPEG —
+      // small-file early-exit below is fine because the file is now a JPEG.
+      file = jpegFile;
+    } catch (heicError) {
+      console.warn('[Image Compression] HEIC conversion failed in compressImage:', heicError);
+      // Fall through; downstream guards in the caller will surface the failure.
+    }
+  }
+
   // Skip compression for very small files (<100KB) - early exit
   if (file.size < 100 * 1024) {
     if (import.meta.env.DEV) {
