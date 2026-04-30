@@ -14,7 +14,7 @@ import { useNavigate } from "react-router-dom";
 import { goBack } from "@/lib/navigation";
 import { useState, useEffect, useMemo } from "react";
 import { useProfileMap } from "@/hooks/useProfileMap";
-import { resolveProfileName } from "@/lib/report-utils";
+import { resolveProfileName, type ProfileLike } from "@/lib/report-utils";
 import { AdminTabsSection } from "@/components/admin/AdminTabsSection";
 import { UserManagementDialog } from "@/components/admin/UserManagementDialog";
 
@@ -33,6 +33,83 @@ import { parseLocalDate } from "@/lib/date-utils";
 import { getSessionBackground } from "@/lib/background-manager";
 import { getUserWithCache } from "@/lib/cached-auth";
 
+// Local types — admin payloads aren't in the generated Supabase types.
+type ManagedUserRole = {
+  user_id: string;
+  role: string;
+  organization_id: string | null;
+};
+type ManagedUserOrg = { id: string; name: string };
+type ManagedUser = {
+  id: string;
+  email: string;
+  firstName: string;
+  lastName: string;
+  createdAt: string;
+  lastSignIn: string | null;
+  roles: ManagedUserRole[];
+  organizations: ManagedUserOrg[];
+  isSuperAdmin: boolean;
+  isActive: boolean;
+  currentRole?: string;
+};
+
+type AdminOrgInspectionStub = { inspection_date: string | null };
+type AdminOrganization = {
+  id: string;
+  name: string;
+  created_at: string;
+  inspections?: AdminOrgInspectionStub[] | null;
+  trainings?: Array<{ id: string }> | null;
+  daily_assessments?: Array<{ id: string }> | null;
+  organization_members?: Array<{ count: number }> | null;
+};
+
+type AdminUserFormPayload = {
+  email: string;
+  password?: string;
+  firstName: string;
+  lastName: string;
+  organizationId?: string;
+  role?: 'admin' | 'inspector' | 'trainer';
+};
+
+/** Joined profile/inspector fields that exist on report rows but aren't
+ *  in the generated Supabase types because they come from a renamed FK alias
+ *  (`inspector:profiles!...`, `trainer:profiles!...`). */
+type JoinedReportProfile = {
+  inspector?: ProfileLike | null;
+  trainer?: ProfileLike | null;
+  inspector_id?: string | null;
+  trainer_of_record?: string | null;
+};
+
+/** Narrow shape of FunctionsHttpError-style errors returned by
+ *  `supabase.functions.invoke()`. */
+type InvokeErrorContext = {
+  context?: { json?: () => Promise<{ error?: string } | undefined> };
+};
+
+async function readInvokeErrorMessage(error: unknown, fallback: string): Promise<string> {
+  if (error && typeof error === 'object') {
+    try {
+      const ctx = (error as InvokeErrorContext).context;
+      const body = await ctx?.json?.();
+      if (body && typeof body.error === 'string' && body.error) return body.error;
+    } catch {
+      // fall through to the message-based path
+    }
+    if (error instanceof Error && error.message) return error.message;
+  }
+  return fallback;
+}
+
+function errorMessage(error: unknown, fallback: string): string {
+  if (error instanceof Error) return error.message;
+  if (typeof error === 'string') return error;
+  return fallback;
+}
+
 export default function SuperAdminDashboard() {
   const { loading } = useRequireAdmin();
   const navigate = useNavigate();
@@ -50,15 +127,15 @@ export default function SuperAdminDashboard() {
   
   const [dialogOpen, setDialogOpen] = useState(false);
   const [dialogMode, setDialogMode] = useState<'create' | 'edit'>('create');
-  const [selectedUser, setSelectedUser] = useState<any>(null);
+  const [selectedUser, setSelectedUser] = useState<ManagedUser | null>(null);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
-  const [userToDelete, setUserToDelete] = useState<any>(null);
+  const [userToDelete, setUserToDelete] = useState<ManagedUser | null>(null);
   const [isMergeDialogOpen, setIsMergeDialogOpen] = useState(false);
   const [adminDialogOpen, setAdminDialogOpen] = useState(false);
   const [adminAction, setAdminAction] = useState<'grant' | 'revoke'>('grant');
-  const [adminTargetUser, setAdminTargetUser] = useState<any>(null);
+  const [adminTargetUser, setAdminTargetUser] = useState<ManagedUser | null>(null);
   const [deactivateDialogOpen, setDeactivateDialogOpen] = useState(false);
-  const [userToDeactivate, setUserToDeactivate] = useState<any>(null);
+  const [userToDeactivate, setUserToDeactivate] = useState<ManagedUser | null>(null);
   
   // Dialog states for stat cards
   const [isUsersListOpen, setIsUsersListOpen] = useState(false);
@@ -72,9 +149,9 @@ export default function SuperAdminDashboard() {
   // Organization edit/delete states
   const [editOrgDialogOpen, setEditOrgDialogOpen] = useState(false);
   const [deleteOrgDialogOpen, setDeleteOrgDialogOpen] = useState(false);
-  const [selectedOrg, setSelectedOrg] = useState<any>(null);
+  const [selectedOrg, setSelectedOrg] = useState<AdminOrganization | null>(null);
   const [editingOrgName, setEditingOrgName] = useState("");
-  const [orgToDelete, setOrgToDelete] = useState<any>(null);
+  const [orgToDelete, setOrgToDelete] = useState<AdminOrganization | null>(null);
   const [selectedOrgForReports, setSelectedOrgForReports] = useState<{ id: string; name: string } | null>(null);
   
   // Pagination states for dialogs
@@ -95,7 +172,7 @@ export default function SuperAdminDashboard() {
 
       if (error) throw error;
       if (!data.success) throw new Error(data.error);
-      return data.users;
+      return data.users as ManagedUser[];
     },
     enabled: !loading,
   });
@@ -308,9 +385,9 @@ export default function SuperAdminDashboard() {
   // available joins plus lazy fill via getCachedProfile.
   const allReportsForProfileMap = useMemo(
     () => [
-      ...((allInspections as any[]) || []),
-      ...((allTrainings as any[]) || []),
-      ...((allDailyAssessments as any[]) || []),
+      ...((allInspections as ReadonlyArray<Record<string, unknown>>) ?? []),
+      ...((allTrainings as ReadonlyArray<Record<string, unknown>>) ?? []),
+      ...((allDailyAssessments as ReadonlyArray<Record<string, unknown>>) ?? []),
     ],
     [allInspections, allTrainings, allDailyAssessments],
   );
@@ -335,12 +412,14 @@ export default function SuperAdminDashboard() {
   const { data: resetTimestamp } = useQuery({
     queryKey: ["admin-settings", "avg_completion_time_reset_at"],
     queryFn: async () => {
+      // admin_settings isn't in the generated Supabase types.
+      // @ts-expect-error untyped admin_settings table
       const { data, error } = await supabase
-        .from("admin_settings" as any)
+        .from("admin_settings")
         .select("value, updated_at")
         .eq("key", "avg_completion_time_reset_at")
-        .single() as any;
-      
+        .single();
+
       if (error) return { value: '1970-01-01T00:00:00Z', updated_at: null };
       return data as { value: string; updated_at: string | null };
     },
@@ -417,39 +496,35 @@ export default function SuperAdminDashboard() {
   });
 
   // User management functions
-  const handleCreateUser = async (userData: any) => {
+  const handleCreateUser = async (userData: AdminUserFormPayload) => {
     try {
       const { data, error } = await supabase.functions.invoke('admin-manage-user', {
-        body: { 
+        body: {
           action: 'create',
           ...userData
         }
       });
 
       if (error) {
-        let msg = 'Failed to create user';
-        try {
-          const errorBody = await (error as any).context?.json?.();
-          msg = errorBody?.error || error.message || msg;
-        } catch { msg = error.message || msg; }
-        throw new Error(msg);
+        throw new Error(await readInvokeErrorMessage(error, 'Failed to create user'));
       }
       if (!data?.success) throw new Error(data?.error || 'Failed to create user');
 
       toast.success(`User ${userData.email} created successfully`);
       refetchUsers();
       queryClient.invalidateQueries({ queryKey: ["admin-users"] });
-    } catch (error: any) {
+    } catch (error) {
       console.error('Error creating user:', error);
-      toast.error(error?.message || 'Failed to create user');
+      toast.error(errorMessage(error, 'Failed to create user'));
       throw error;
     }
   };
 
-  const handleUpdateUser = async (userData: any) => {
+  const handleUpdateUser = async (userData: AdminUserFormPayload) => {
+    if (!selectedUser) return;
     try {
       const { data, error } = await supabase.functions.invoke('admin-manage-user', {
-        body: { 
+        body: {
           action: 'update',
           userId: selectedUser.id,
           ...userData
@@ -457,21 +532,16 @@ export default function SuperAdminDashboard() {
       });
 
       if (error) {
-        let msg = 'Failed to update user';
-        try {
-          const errorBody = await (error as any).context?.json?.();
-          msg = errorBody?.error || error.message || msg;
-        } catch { msg = error.message || msg; }
-        throw new Error(msg);
+        throw new Error(await readInvokeErrorMessage(error, 'Failed to update user'));
       }
       if (!data?.success) throw new Error(data?.error || 'Failed to update user');
 
       toast.success('User updated successfully');
       refetchUsers();
       queryClient.invalidateQueries({ queryKey: ["admin-users"] });
-    } catch (error: any) {
+    } catch (error) {
       console.error('Error updating user:', error);
-      toast.error(error?.message || 'Failed to update user');
+      toast.error(errorMessage(error, 'Failed to update user'));
       throw error;
     }
   };
@@ -495,19 +565,19 @@ export default function SuperAdminDashboard() {
       setUserToDelete(null);
       refetchUsers();
       queryClient.invalidateQueries({ queryKey: ["admin-users"] });
-    } catch (error: any) {
+    } catch (error) {
       console.error('Error deleting user:', error);
-      toast.error(error?.message || 'Failed to delete user');
+      toast.error(errorMessage(error, 'Failed to delete user'));
     }
   };
 
-  const handleEditClick = (user: any) => {
+  const handleEditClick = (user: ManagedUser) => {
     // Determine the user's primary role
-    const primaryRole = user.isSuperAdmin 
-      ? 'admin' 
-      : user.roles?.find((r: any) => r.role === 'admin') 
-        ? 'admin' 
-        : user.roles?.find((r: any) => r.role === 'inspector')
+    const primaryRole = user.isSuperAdmin
+      ? 'admin'
+      : user.roles?.find((r) => r.role === 'admin')
+        ? 'admin'
+        : user.roles?.find((r) => r.role === 'inspector')
           ? 'inspector'
           : 'inspector';
     setSelectedUser({ ...user, currentRole: primaryRole });
@@ -515,12 +585,12 @@ export default function SuperAdminDashboard() {
     setDialogOpen(true);
   };
 
-  const handleDeleteClick = (user: any) => {
+  const handleDeleteClick = (user: ManagedUser) => {
     setUserToDelete(user);
     setDeleteDialogOpen(true);
   };
 
-  const handleAdminToggle = (user: any) => {
+  const handleAdminToggle = (user: ManagedUser) => {
     setAdminTargetUser(user);
     setAdminAction(user.isSuperAdmin ? 'revoke' : 'grant');
     setAdminDialogOpen(true);
@@ -547,13 +617,13 @@ export default function SuperAdminDashboard() {
       setAdminTargetUser(null);
       refetchUsers();
       queryClient.invalidateQueries({ queryKey: ["admin-users"] });
-    } catch (error: any) {
+    } catch (error) {
       console.error('Error toggling admin:', error);
-      toast.error(error?.message || 'Failed to update admin status');
+      toast.error(errorMessage(error, 'Failed to update admin status'));
     }
   };
 
-  const handleDeactivateClick = (user: any) => {
+  const handleDeactivateClick = (user: ManagedUser) => {
     setUserToDeactivate(user);
     setDeactivateDialogOpen(true);
   };
@@ -578,41 +648,43 @@ export default function SuperAdminDashboard() {
       setUserToDeactivate(null);
       refetchUsers();
       queryClient.invalidateQueries({ queryKey: ["admin-users"] });
-    } catch (error: any) {
+    } catch (error) {
       console.error('Error toggling user activation:', error);
-      toast.error(error?.message || 'Failed to update user status');
+      toast.error(errorMessage(error, 'Failed to update user status'));
     }
   };
 
   // Reset avg completion time metric
   const handleResetCompletionTime = async () => {
     try {
-      const { error } = await (supabase
-        .from("admin_settings" as any)
-        .update({ value: new Date().toISOString(), updated_at: new Date().toISOString() } as any)
-        .eq("key", "avg_completion_time_reset_at") as any);
-      
+      // admin_settings isn't in the generated Supabase types.
+      // @ts-expect-error untyped admin_settings table
+      const { error } = await supabase
+        .from("admin_settings")
+        .update({ value: new Date().toISOString(), updated_at: new Date().toISOString() })
+        .eq("key", "avg_completion_time_reset_at");
+
       if (error) throw error;
       
       toast.success("Metric reset — tracking starts from now");
       setResetMetricDialogOpen(false);
       queryClient.invalidateQueries({ queryKey: ["admin-settings"] });
       queryClient.invalidateQueries({ queryKey: ["avg-completion-time"] });
-    } catch (error: any) {
+    } catch (error) {
       console.error("Error resetting metric:", error);
-      toast.error(error?.message || "Failed to reset metric");
+      toast.error(errorMessage(error, "Failed to reset metric"));
     }
   };
 
 
   // Organization management functions
-  const handleEditOrg = (org: any) => {
+  const handleEditOrg = (org: AdminOrganization) => {
     setSelectedOrg(org);
     setEditingOrgName(org.name);
     setEditOrgDialogOpen(true);
   };
 
-  const handleDeleteOrgClick = (org: any) => {
+  const handleDeleteOrgClick = (org: AdminOrganization) => {
     setOrgToDelete(org);
     setDeleteOrgDialogOpen(true);
   };
@@ -634,9 +706,9 @@ export default function SuperAdminDashboard() {
       setEditingOrgName("");
       refetchOrganizations();
       queryClient.invalidateQueries({ queryKey: ["admin-stats"] });
-    } catch (error: any) {
+    } catch (error) {
       console.error("Error updating organization:", error);
-      toast.error(error?.message || "Failed to update organization");
+      toast.error(errorMessage(error, "Failed to update organization"));
     }
   };
 
@@ -656,9 +728,9 @@ export default function SuperAdminDashboard() {
       setOrgToDelete(null);
       refetchOrganizations();
       queryClient.invalidateQueries({ queryKey: ["admin-stats"] });
-    } catch (error: any) {
+    } catch (error) {
       console.error("Error deleting organization:", error);
-      toast.error(error?.message || "Failed to delete organization");
+      toast.error(errorMessage(error, "Failed to delete organization"));
     }
   };
 
@@ -715,7 +787,7 @@ export default function SuperAdminDashboard() {
             description: "Total client organizations registered in the system.",
             details: [
               { label: "Total registered", value: stats?.organizations || 0 },
-              { label: "With inspections", value: organizations?.filter(o => o.inspections?.length > 0).length || 0 },
+              { label: "With inspections", value: organizations?.filter(o => ((o as AdminOrganization).inspections?.length ?? 0) > 0).length || 0 },
             ],
             tip: "Click to view full organization list"
           }}
@@ -729,8 +801,8 @@ export default function SuperAdminDashboard() {
             title: "System Users",
             description: "All registered users including inspectors and admins.",
             details: [
-              { label: "Admins", value: managedUsers?.filter((u: any) => u.isSuperAdmin).length || 0 },
-              { label: "Regular users", value: managedUsers?.filter((u: any) => !u.isSuperAdmin).length || 0 },
+              { label: "Admins", value: managedUsers?.filter((u) => u.isSuperAdmin).length || 0 },
+              { label: "Regular users", value: managedUsers?.filter((u) => !u.isSuperAdmin).length || 0 },
             ],
             tip: "Click to manage user accounts"
           }}
@@ -896,11 +968,12 @@ export default function SuperAdminDashboard() {
                   </TableRow>
                 ) : (
                   organizations?.map((org) => {
-                    const inspectionCount = org.inspections?.length || 0;
-                    const trainingCount = (org as any).trainings?.length || 0;
-                    const dailyAssessmentCount = (org as any).daily_assessments?.length || 0;
-                    const lastInspectionDate = org.inspections && org.inspections.length > 0
-                      ? org.inspections.reduce((latest: any, insp: any) => {
+                    const adminOrg = org as AdminOrganization;
+                    const inspectionCount = adminOrg.inspections?.length || 0;
+                    const trainingCount = adminOrg.trainings?.length || 0;
+                    const dailyAssessmentCount = adminOrg.daily_assessments?.length || 0;
+                    const lastInspectionDate = adminOrg.inspections && adminOrg.inspections.length > 0
+                      ? adminOrg.inspections.reduce<string | null>((latest, insp) => {
                           if (!insp.inspection_date) return latest;
                           if (!latest || new Date(insp.inspection_date) > new Date(latest)) {
                             return insp.inspection_date;
@@ -942,14 +1015,14 @@ export default function SuperAdminDashboard() {
                             <Button
                               variant="ghost"
                               size="sm"
-                              onClick={(e) => { e.stopPropagation(); handleEditOrg(org); }}
+                              onClick={(e) => { e.stopPropagation(); handleEditOrg(adminOrg); }}
                             >
                               <Pencil className="h-4 w-4" />
                             </Button>
                             <Button
                               variant="ghost"
                               size="sm"
-                              onClick={(e) => { e.stopPropagation(); handleDeleteOrgClick(org); }}
+                              onClick={(e) => { e.stopPropagation(); handleDeleteOrgClick(adminOrg); }}
                             >
                               <Trash2 className="h-4 w-4 text-destructive" />
                             </Button>
@@ -969,11 +1042,12 @@ export default function SuperAdminDashboard() {
               <p className="text-center text-muted-foreground py-8">No organizations found</p>
             ) : (
               organizations?.map((org) => {
-                const inspectionCount = org.inspections?.length || 0;
-                const trainingCount = (org as any).trainings?.length || 0;
-                const dailyAssessmentCount = (org as any).daily_assessments?.length || 0;
-                const lastInspectionDate = org.inspections && org.inspections.length > 0
-                  ? org.inspections.reduce((latest: any, insp: any) => {
+                const adminOrg = org as AdminOrganization;
+                const inspectionCount = adminOrg.inspections?.length || 0;
+                const trainingCount = adminOrg.trainings?.length || 0;
+                const dailyAssessmentCount = adminOrg.daily_assessments?.length || 0;
+                const lastInspectionDate = adminOrg.inspections && adminOrg.inspections.length > 0
+                  ? adminOrg.inspections.reduce<string | null>((latest, insp) => {
                       if (!insp.inspection_date) return latest;
                       if (!latest || new Date(insp.inspection_date) > new Date(latest)) return insp.inspection_date;
                       return latest;
@@ -993,10 +1067,10 @@ export default function SuperAdminDashboard() {
                       <span>Created: {format(new Date(org.created_at), "PP")}</span>
                     </div>
                     <div className="flex justify-end gap-1 pt-1">
-                      <Button variant="ghost" size="sm" onClick={(e) => { e.stopPropagation(); handleEditOrg(org); }}>
+                      <Button variant="ghost" size="sm" onClick={(e) => { e.stopPropagation(); handleEditOrg(adminOrg); }}>
                         <Pencil className="h-4 w-4" />
                       </Button>
-                      <Button variant="ghost" size="sm" onClick={(e) => { e.stopPropagation(); handleDeleteOrgClick(org); }}>
+                      <Button variant="ghost" size="sm" onClick={(e) => { e.stopPropagation(); handleDeleteOrgClick(adminOrg); }}>
                         <Trash2 className="h-4 w-4 text-destructive" />
                       </Button>
                     </div>
@@ -1048,7 +1122,7 @@ export default function SuperAdminDashboard() {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {managedUsers?.map((user: any) => {
+              {managedUsers?.map((user) => {
                 const isInactive = user.isActive === false;
                 return (
                 <TableRow key={user.id} className={isInactive ? 'opacity-50' : ''}>
@@ -1064,7 +1138,7 @@ export default function SuperAdminDashboard() {
                   <TableCell>
                     {user.roles?.length > 0 ? (
                       <div className="flex flex-wrap gap-1">
-                        {user.roles.map((r: any, idx: number) => (
+                        {user.roles.map((r, idx) => (
                           <Badge key={idx} variant="outline" className="text-xs">
                             {r.role}
                           </Badge>
@@ -1128,7 +1202,7 @@ export default function SuperAdminDashboard() {
 
           {/* Mobile cards */}
           <div className="md:hidden space-y-3">
-            {managedUsers?.map((user: any) => {
+            {managedUsers?.map((user) => {
               const isInactive = user.isActive === false;
               return (
                 <div key={user.id} className={`rounded-lg border bg-card p-4 space-y-2 ${isInactive ? 'opacity-50' : ''}`}>
@@ -1141,7 +1215,7 @@ export default function SuperAdminDashboard() {
                       <Badge variant="outline" className="text-xs bg-emerald-500/10 text-emerald-500 border-emerald-500/30">Active</Badge>
                     )}
                     {user.isSuperAdmin && <Badge className="text-xs">Admin</Badge>}
-                    {user.roles?.map((r: any, idx: number) => (
+                    {user.roles?.map((r, idx) => (
                       <Badge key={idx} variant="outline" className="text-xs">{r.role}</Badge>
                     ))}
                   </div>
@@ -1203,7 +1277,7 @@ export default function SuperAdminDashboard() {
                   <TableCell>{parseLocalDate(inspection.inspection_date) ? format(parseLocalDate(inspection.inspection_date)!, "PP") : '-'}</TableCell>
                   <TableCell>{format(new Date(inspection.created_at), "PP")}</TableCell>
                   <TableCell>
-                    {resolveProfileName((inspection as any).inspector, (inspection as any).inspector_id, profilesById)}
+                    {resolveProfileName((inspection as JoinedReportProfile).inspector, (inspection as JoinedReportProfile).inspector_id, profilesById)}
                   </TableCell>
                 </TableRow>
               ))}
@@ -1226,7 +1300,7 @@ export default function SuperAdminDashboard() {
                     {inspection.status}
                   </Badge>
                   <span className="text-xs text-muted-foreground">
-                    {resolveProfileName((inspection as any).inspector, (inspection as any).inspector_id, profilesById)}
+                    {resolveProfileName((inspection as JoinedReportProfile).inspector, (inspection as JoinedReportProfile).inspector_id, profilesById)}
                   </span>
                 </div>
                 <div className="flex justify-between text-xs text-muted-foreground">
@@ -1261,7 +1335,7 @@ export default function SuperAdminDashboard() {
                 >
                   <TableCell>{training.organizations?.name || training.organization}</TableCell>
                   <TableCell>
-                    {resolveProfileName((training as any).trainer, (training as any).inspector_id, profilesById, (training as any).trainer_of_record)}
+                    {resolveProfileName((training as JoinedReportProfile).trainer, (training as JoinedReportProfile).inspector_id, profilesById, (training as JoinedReportProfile).trainer_of_record)}
                   </TableCell>
                   <TableCell>
                     <Badge className={
@@ -1287,7 +1361,7 @@ export default function SuperAdminDashboard() {
               <div key={training.id} className="rounded-lg border bg-card p-4 space-y-2 cursor-pointer active:bg-muted/50" onClick={() => navigate(`/training/${training.id}`)}>
                 <div className="font-medium text-sm">{training.organizations?.name || training.organization}</div>
                 <div className="text-sm text-muted-foreground">
-                  {resolveProfileName((training as any).trainer, (training as any).inspector_id, profilesById, (training as any).trainer_of_record)}
+                  {resolveProfileName((training as JoinedReportProfile).trainer, (training as JoinedReportProfile).inspector_id, profilesById, (training as JoinedReportProfile).trainer_of_record)}
                 </div>
                 <Badge className={
                   training.status === "completed" ? "bg-emerald-400/15 text-emerald-400 border-emerald-400/30" :
@@ -1329,7 +1403,7 @@ export default function SuperAdminDashboard() {
                   <TableCell>{assessment.organizations?.name || assessment.organization}</TableCell>
                   <TableCell>{assessment.site || '-'}</TableCell>
                   <TableCell>
-                    {resolveProfileName((assessment as any).inspector, (assessment as any).inspector_id, profilesById, (assessment as any).trainer_of_record)}
+                    {resolveProfileName((assessment as JoinedReportProfile).inspector, (assessment as JoinedReportProfile).inspector_id, profilesById, (assessment as JoinedReportProfile).trainer_of_record)}
                   </TableCell>
                   <TableCell>
                     <Badge className={
@@ -1363,7 +1437,7 @@ export default function SuperAdminDashboard() {
                     {assessment.status}
                   </Badge>
                   <span className="text-xs text-muted-foreground">
-                    {resolveProfileName((assessment as any).inspector, (assessment as any).inspector_id, profilesById, (assessment as any).trainer_of_record)}
+                    {resolveProfileName((assessment as JoinedReportProfile).inspector, (assessment as JoinedReportProfile).inspector_id, profilesById, (assessment as JoinedReportProfile).trainer_of_record)}
                   </span>
                 </div>
                 <div className="flex justify-between text-xs text-muted-foreground">
@@ -1504,7 +1578,7 @@ export default function SuperAdminDashboard() {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {managedUsers?.slice((usersPage - 1) * ITEMS_PER_PAGE, usersPage * ITEMS_PER_PAGE).map((user: any) => (
+              {managedUsers?.slice((usersPage - 1) * ITEMS_PER_PAGE, usersPage * ITEMS_PER_PAGE).map((user) => (
                 <TableRow key={user.id}>
                   <TableCell className="font-medium">{user.email}</TableCell>
                   <TableCell>
@@ -1513,14 +1587,14 @@ export default function SuperAdminDashboard() {
                       : '-'}
                   </TableCell>
                   <TableCell>
-                    {user.organizations?.length > 0 
-                      ? user.organizations.map((org: any) => org.name).join(', ')
+                    {user.organizations?.length > 0
+                      ? user.organizations.map((org) => org.name).join(', ')
                       : '-'}
                   </TableCell>
                   <TableCell>
                     {user.roles?.length > 0 ? (
                       <div className="flex flex-wrap gap-1">
-                        {user.roles.map((r: any, idx: number) => (
+                        {user.roles.map((r, idx) => (
                           <Badge key={idx} variant="outline">{r.role}</Badge>
                         ))}
                       </div>
@@ -1534,12 +1608,12 @@ export default function SuperAdminDashboard() {
           </div>
           {/* Mobile cards */}
           <div className="md:hidden space-y-3">
-            {managedUsers?.slice((usersPage - 1) * ITEMS_PER_PAGE, usersPage * ITEMS_PER_PAGE).map((user: any) => (
+            {managedUsers?.slice((usersPage - 1) * ITEMS_PER_PAGE, usersPage * ITEMS_PER_PAGE).map((user) => (
               <div key={user.id} className="rounded-lg border bg-card p-3 space-y-1">
                 <div className="font-medium text-sm break-all">{user.email}</div>
                 <div className="text-sm text-muted-foreground">{user.firstName || user.lastName ? `${user.firstName} ${user.lastName}`.trim() : '-'}</div>
                 <div className="flex flex-wrap gap-1">
-                  {user.roles?.map((r: any, idx: number) => (
+                  {user.roles?.map((r, idx) => (
                     <Badge key={idx} variant="outline" className="text-xs">{r.role}</Badge>
                   ))}
                 </div>
@@ -1583,11 +1657,11 @@ export default function SuperAdminDashboard() {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {organizations?.slice((orgsPage - 1) * ITEMS_PER_PAGE, orgsPage * ITEMS_PER_PAGE).map((org: any) => (
+              {organizations?.slice((orgsPage - 1) * ITEMS_PER_PAGE, orgsPage * ITEMS_PER_PAGE).map((org) => (
                 <TableRow key={org.id}>
                   <TableCell className="font-medium">{org.name}</TableCell>
-                  <TableCell>{org.organization_members?.[0]?.count || 0}</TableCell>
-                  <TableCell>{org.inspections?.[0]?.count || 0}</TableCell>
+                  <TableCell>{(org as { organization_members?: Array<{ count: number }> }).organization_members?.[0]?.count || 0}</TableCell>
+                  <TableCell>{(org.inspections as unknown as Array<{ count: number }> | undefined)?.[0]?.count || 0}</TableCell>
                   <TableCell>{format(new Date(org.created_at), "PP")}</TableCell>
                 </TableRow>
               ))}
@@ -1595,7 +1669,7 @@ export default function SuperAdminDashboard() {
           </Table>
           </div>
           <div className="md:hidden space-y-3">
-            {organizations?.slice((orgsPage - 1) * ITEMS_PER_PAGE, orgsPage * ITEMS_PER_PAGE).map((org: any) => (
+            {organizations?.slice((orgsPage - 1) * ITEMS_PER_PAGE, orgsPage * ITEMS_PER_PAGE).map((org) => (
               <div key={org.id} className="rounded-lg border bg-card p-3 space-y-1">
                 <div className="font-medium text-sm">{org.name}</div>
                 <div className="text-xs text-muted-foreground">Created: {format(new Date(org.created_at), "PP")}</div>
@@ -1705,7 +1779,7 @@ export default function SuperAdminDashboard() {
                 <TableRow key={training.id} className="cursor-pointer hover:bg-muted/50" onClick={() => { setIsTrainingsListOpen(false); navigate(`/training/${training.id}`); }}>
                   <TableCell className="font-medium">{training.organizations?.name || training.organization}</TableCell>
                   <TableCell>
-                    {resolveProfileName((training as any).trainer, (training as any).inspector_id, profilesById, (training as any).trainer_of_record)}
+                    {resolveProfileName((training as JoinedReportProfile).trainer, (training as JoinedReportProfile).inspector_id, profilesById, (training as JoinedReportProfile).trainer_of_record)}
                   </TableCell>
                   <TableCell>
                     <Badge variant={training.status === 'completed' ? 'default' : 'secondary'}>
@@ -1723,7 +1797,7 @@ export default function SuperAdminDashboard() {
               <div key={training.id} className="rounded-lg border bg-card p-3 space-y-1 cursor-pointer active:bg-muted/50" onClick={() => { setIsTrainingsListOpen(false); navigate(`/training/${training.id}`); }}>
                 <div className="font-medium text-sm">{training.organizations?.name || training.organization}</div>
                 <div className="text-sm text-muted-foreground">
-                  {resolveProfileName((training as any).trainer, (training as any).inspector_id, profilesById, (training as any).trainer_of_record)}
+                  {resolveProfileName((training as JoinedReportProfile).trainer, (training as JoinedReportProfile).inspector_id, profilesById, (training as JoinedReportProfile).trainer_of_record)}
                 </div>
                 <div className="flex items-center justify-between">
                   <Badge variant={training.status === 'completed' ? 'default' : 'secondary'} className="text-xs">{training.status}</Badge>
@@ -1978,8 +2052,8 @@ export default function SuperAdminDashboard() {
                   <p>This organization has:</p>
                   <ul className="list-disc list-inside mt-1">
                     <li>{orgToDelete.inspections?.length || 0} inspection(s)</li>
-                    <li>{(orgToDelete as any).trainings?.length || 0} training report(s)</li>
-                    <li>{(orgToDelete as any).daily_assessments?.length || 0} daily report(s)</li>
+                    <li>{orgToDelete.trainings?.length || 0} training report(s)</li>
+                    <li>{orgToDelete.daily_assessments?.length || 0} daily report(s)</li>
                   </ul>
                   <p className="mt-2 text-destructive font-medium">
                     Note: Related records may become orphaned.
