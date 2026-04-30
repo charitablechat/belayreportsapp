@@ -12,7 +12,9 @@ import { useParams, useNavigate } from "react-router-dom";
 import { goBack } from "@/lib/navigation";
 import { markPendingDashboardRefresh, markDashboardStaleTimestamp, registerActiveFormRecord, unregisterActiveFormRecord, onPendingRemoteUpdate } from "@/lib/sync-events";
 import { supabase } from "@/integrations/supabase/client";
+import type { PostgrestError, RealtimePostgresChangesPayload } from "@supabase/supabase-js";
 import { getUserWithCache, getOfflineUserId } from "@/lib/cached-auth";
+import type { CachedUser } from "@/lib/cached-auth";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
@@ -40,13 +42,28 @@ import PhotoGallery from "@/components/PhotoGallery";
 import { useNetworkStatus } from "@/hooks/useNetworkStatus";
 import { useStorageHealthCheck } from "@/hooks/useStorageHealthCheck";
 import { format } from "date-fns";
-import { 
-  getOfflineTraining, 
-  saveTrainingOffline, 
+import {
+  getOfflineTraining,
+  saveTrainingOffline,
   getTrainingDataOffline,
   saveTrainingDataOffline,
-  queueTrainingOperation 
+  queueTrainingOperation,
+  type DbRow,
 } from "@/lib/offline-storage";
+
+// `saveTrainingDataOffline` accepts a fixed set of section keys.
+// Derived from its first parameter so the union stays in sync with offline-storage.
+type TrainingDataKey = Parameters<typeof saveTrainingDataOffline>[0];
+
+function errorMessage(error: unknown, fallback: string): string {
+  if (error instanceof Error) return error.message;
+  if (typeof error === 'string') return error;
+  if (error && typeof error === 'object' && 'message' in error) {
+    const msg = (error as { message?: unknown }).message;
+    if (typeof msg === 'string') return msg;
+  }
+  return fallback;
+}
 import { HtmlReportViewer } from "@/components/HtmlReportViewer";
 import { AttestationDialog } from "@/components/AttestationDialog";
 import { useUserProfile } from "@/hooks/useUserProfile";
@@ -124,18 +141,18 @@ export default function TrainingForm() {
     recipientName: '',
     message: ''
   });
-  const [training, setTraining] = useState<any>(null);
+  const [training, setTraining] = useState<DbRow | null>(null);
   const { isInvoiced, toggling: invoiceToggling, toggleInvoiced } = useInvoicedStatus({
     reportId: id,
     reportType: 'training',
     enabled: isAdmin && training?.status === 'completed',
   });
-  const [deliveryApproaches, setDeliveryApproaches] = useState<any[]>([]);
-  const [operatingSystems, setOperatingSystems] = useState<any[]>([]);
-  const [immediateAttention, setImmediateAttention] = useState<any[]>([]);
-  const [verifiableItems, setVerifiableItems] = useState<any[]>([]);
-  const [systemsInPlace, setSystemsInPlace] = useState<any[]>([]);
-  const [summary, setSummary] = useState<any>(null);
+  const [deliveryApproaches, setDeliveryApproaches] = useState<DbRow[]>([]);
+  const [operatingSystems, setOperatingSystems] = useState<DbRow[]>([]);
+  const [immediateAttention, setImmediateAttention] = useState<DbRow[]>([]);
+  const [verifiableItems, setVerifiableItems] = useState<DbRow[]>([]);
+  const [systemsInPlace, setSystemsInPlace] = useState<DbRow[]>([]);
+  const [summary, setSummary] = useState<DbRow | null>(null);
   const [photoRefreshKey, setPhotoRefreshKey] = useState(0);
   // Completion lock derived values (after report state is declared)
   const isCompletionLocked = training?.status === 'completed' && !completionLockOverridden;
@@ -190,10 +207,10 @@ export default function TrainingForm() {
   });
   const [htmlViewerOpen, setHtmlViewerOpen] = useState(false);
   const [reportHtml, setReportHtml] = useState<string>('');
-  const [currentUser, setCurrentUser] = useState<any>(null);
-  const [inspectorProfile, setInspectorProfile] = useState<any>(null);
-  const [currentUserProfile, setCurrentUserProfile] = useState<any>(null);
-  const [modifiedByProfile, setModifiedByProfile] = useState<any>(null);
+  const [currentUser, setCurrentUser] = useState<CachedUser | null>(null);
+  const [inspectorProfile, setInspectorProfile] = useState<DbRow | null>(null);
+  const [currentUserProfile, setCurrentUserProfile] = useState<DbRow | null>(null);
+  const [modifiedByProfile, setModifiedByProfile] = useState<DbRow | null>(null);
   // signingOut removed — sign-out handled by global AuthenticatedHeader
   
   // Tab navigation state
@@ -268,7 +285,7 @@ export default function TrainingForm() {
         // Include photo metadata (IDs, captions) but NOT blobs
         import('@/lib/offline-storage').then(({ getOfflinePhotos }) => {
           getOfflinePhotos(id).then(photos => {
-            const photoMeta = photos.map((p: any) => ({
+            const photoMeta = photos.map((p) => ({
               id: p.id,
               caption: p.caption,
               photo_section: p.section,
@@ -306,7 +323,7 @@ export default function TrainingForm() {
       let user = await getUserWithCache();
       if (!user) {
         const offlineId = getOfflineUserId();
-        if (offlineId) user = { id: offlineId } as any;
+        if (offlineId) user = { id: offlineId };
       }
       setCurrentUser(user);
     };
@@ -377,7 +394,7 @@ export default function TrainingForm() {
   useEffect(() => {
     if (!summary || isLoading || !inspectorProfile || summaryAutoPopulatedRef.current) return;
 
-    const updates: any = {};
+    const updates: Record<string, unknown> = {};
 
     if (!summary.person_submitting) {
       const fullName = [inspectorProfile.first_name, inspectorProfile.last_name]
@@ -453,7 +470,7 @@ export default function TrainingForm() {
             if (backup.children) {
               for (const [childType, childData] of Object.entries(backup.children)) {
                 if (Array.isArray(childData) && childData.length > 0) {
-                  saveTrainingDataOffline(childType as any, id, childData).catch(() => {});
+                  saveTrainingDataOffline(childType as TrainingDataKey, id, childData).catch(() => {});
                   if (childType in childDataLoadedRef.current) {
                     childDataLoadedRef.current[childType] = true;
                   }
@@ -607,7 +624,8 @@ export default function TrainingForm() {
   // channel doesn't churn on every keystroke.
   const lastLoadedUpdatedAtRef = useRef<string | null>(null);
   useEffect(() => {
-    lastLoadedUpdatedAtRef.current = (training as any)?.updated_at ?? null;
+    const ua = training?.updated_at;
+    lastLoadedUpdatedAtRef.current = typeof ua === 'string' ? ua : null;
   }, [training]);
   useEffect(() => {
     if (!id || id.startsWith('temp-')) return;
@@ -616,8 +634,9 @@ export default function TrainingForm() {
       .on(
         'postgres_changes',
         { event: 'UPDATE', schema: 'public', table: 'trainings', filter: `id=eq.${id}` },
-        (payload) => {
-          const remoteUpdated = (payload.new as any)?.updated_at;
+        (payload: RealtimePostgresChangesPayload<DbRow>) => {
+          const newRow = payload.new as Partial<DbRow> | null;
+          const remoteUpdated = newRow && typeof newRow.updated_at === 'string' ? newRow.updated_at : null;
           if (!remoteUpdated) return;
           const localUpdated = lastLoadedUpdatedAtRef.current;
           const remoteMs = new Date(remoteUpdated).getTime();
@@ -779,7 +798,7 @@ export default function TrainingForm() {
 
       // Save offline (fire-and-forget for UI responsiveness)
       // Guard: Only write child data if it was successfully loaded OR has items
-      const childOps: Promise<any>[] = [saveTrainingOffline(updatedTraining, { childCountHint: totalChildCount })];
+      const childOps: Promise<unknown>[] = [saveTrainingOffline(updatedTraining, { childCountHint: totalChildCount })];
       if (deliveryApproaches.length > 0 || childDataLoadedRef.current.delivery_approaches) {
         childOps.push(saveTrainingDataOffline('delivery_approaches', id, deliveryApproaches, { allowEmpty: true }));
       } else {
@@ -850,7 +869,7 @@ export default function TrainingForm() {
         if (isIdbSaveError(offlineError)) {
           setSaveError({
             message: 'Local save failed — your changes are NOT stored. Tap to retry.',
-            code: (offlineError as any)?.code,
+            code: (offlineError as { code?: string })?.code,
           });
           toast.error("Save failed — your changes are NOT stored", {
             description: "Tap Save again to retry. Do not close this page.",
@@ -956,7 +975,7 @@ export default function TrainingForm() {
           }
           
           // Helper to convert PromiseLike to proper Promise
-          const dbOp = async (operation: PromiseLike<{ error: any }>) => {
+          const dbOp = async (operation: PromiseLike<{ error: PostgrestError | null }>) => {
             const { error } = await operation;
             if (error) throw error;
           };
@@ -1066,7 +1085,7 @@ export default function TrainingForm() {
       hasUnsavedRef.current = false;
       setHasUnsavedChanges(false);
       setSaveError(null);
-    } catch (error: any) {
+    } catch (error) {
       console.error('[Training Save] Error saving training:', error);
       logError(error, { scope: 'TrainingForm.saveTraining' });
       const { isIdbSaveError } = await import('@/lib/offline-storage');
@@ -1217,10 +1236,10 @@ export default function TrainingForm() {
         // Show email dialog after a short delay
         setTimeout(() => setShowEmailDialog(true), 500);
       }
-    } catch (error: any) {
+    } catch (error) {
       console.error('Error generating PDF:', error);
       toast.error('Failed to generate PDF', {
-        description: error.message || 'Please try again.',
+        description: errorMessage(error, 'Please try again.'),
       });
     } finally {
       clearTimeout(safetyTimeout);
@@ -1264,7 +1283,7 @@ export default function TrainingForm() {
       // Reset form and close dialog
       setEmailForm({ recipientEmail: '', recipientName: '', message: '' });
       setShowEmailDialog(false);
-    } catch (error: any) {
+    } catch (error) {
       console.error('Error sending email:', error);
     } finally {
       setIsSendingEmail(false);
@@ -1355,17 +1374,18 @@ export default function TrainingForm() {
       toast.dismiss(progressToastId);
       setReportHtml(html);
       setHtmlViewerOpen(true);
-    } catch (error: any) {
+    } catch (error) {
       toast.dismiss(progressToastId);
-      console.error('[HTML Generation] Error:', error.message || error);
-      
-      if (error.message?.includes('TIMEOUT')) {
+      const msg = errorMessage(error, '');
+      console.error('[HTML Generation] Error:', msg || error);
+
+      if (msg.includes('TIMEOUT')) {
         toast.error("Report generation timed out", {
           description: "Please check your connection and try again.",
         });
       } else {
         toast.error("Failed to generate report", {
-          description: error.message || "Please try again.",
+          description: msg || "Please try again.",
         });
       }
     } finally {
@@ -1410,7 +1430,7 @@ export default function TrainingForm() {
       if (isOnline) {
         try {
           // Update main training record (include attestation + version when present)
-          const trainingUpdate: Record<string, any> = {
+          const trainingUpdate: Record<string, unknown> = {
             status: 'completed',
             updated_at: completedTraining.updated_at,
             app_version_at_completion: APP_VERSION_FULL,
@@ -1431,7 +1451,7 @@ export default function TrainingForm() {
               [foreignKey]: id
             }));
 
-          const dbOp = async (operation: PromiseLike<{ error: any }>) => {
+          const dbOp = async (operation: PromiseLike<{ error: PostgrestError | null }>) => {
             const { error } = await operation;
             if (error) throw error;
           };
@@ -1526,13 +1546,13 @@ export default function TrainingForm() {
     }
   }, [training, id, deliveryApproaches, operatingSystems, immediateAttention, verifiableItems, systemsInPlace, summary, isOnline]);
 
-  const updateTrainingField = (field: string, value: any) => {
+  const updateTrainingField = (field: string, value: unknown) => {
     // PR-A: route every header-field write through `applyTrackedFieldWrite`
     // so tracked fields populate `field_timestamps` for cross-device merge.
     setTraining(applyTrackedFieldWrite(training, 'training', field, value));
   };
 
-  const updateSummaryField = (field: string, value: any) => {
+  const updateSummaryField = (field: string, value: unknown) => {
     setSummary({ ...summary, [field]: value });
   };
 
