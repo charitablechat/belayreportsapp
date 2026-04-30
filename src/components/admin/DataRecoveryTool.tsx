@@ -12,10 +12,10 @@ import { Input } from "@/components/ui/input";
 import { toast } from "sonner";
 import { format, formatDistanceToNow } from "date-fns";
 import { supabase } from "@/integrations/supabase/client";
-import { listAllSnapshots, getReportSnapshot, deleteReportSnapshot, getBackupStorageInfo, importReportBackup, sanitizeFilename, type ReportType } from "@/lib/local-backup-ledger";
+import { listAllSnapshots, getReportSnapshot, deleteReportSnapshot, getBackupStorageInfo, importReportBackup, sanitizeFilename, type ReportType, type ReportSnapshot } from "@/lib/local-backup-ledger";
 import { withRestoreLock } from "@/lib/restore-lock";
 import { verifyRestoreIntegrity } from "@/lib/restore-integrity";
-import { fetchAdminEditSnapshots, restoreAdminEditSnapshot } from "@/lib/admin-edit-snapshot";
+import { fetchAdminEditSnapshots, restoreAdminEditSnapshot, type AdminEditSnapshotEntry } from "@/lib/admin-edit-snapshot";
 import { formatReportFilename } from "@/lib/report-naming";
 import {
   getOfflineTrainings,
@@ -33,7 +33,50 @@ import {
   clearAllQueuedOperations,
   clearAllQueuedAssessmentOperations,
   clearAllQueuedTrainingOperations,
+  type DbRow,
 } from "@/lib/offline-storage";
+import type { CloudBackupEntry, CloudBackupFull, AllUserCloudSnapshot } from "@/lib/cloud-backup";
+
+// ── Local helper types ────────────────────────────────────────────
+//
+// Derived from the source helpers' signatures so renames flow through to
+// this file automatically. Kept here (rather than re-exported from the
+// helpers) to keep the helper modules' public surface intentional.
+
+type SnapshotMeta = ReturnType<typeof listAllSnapshots>[number];
+type QueuedInspectionOp = Awaited<ReturnType<typeof getQueuedOperations>>[number];
+type QueuedAssessmentOp = Awaited<ReturnType<typeof getQueuedAssessmentOperations>>[number];
+type QueuedTrainingOp = Awaited<ReturnType<typeof getQueuedTrainingOperations>>[number];
+type QueuedOp = QueuedInspectionOp | QueuedAssessmentOp | QueuedTrainingOp;
+
+// Use `typeof import(...)` (type-position) so these stay erased at
+// compile time. A static value-import would force tree-shaking to
+// pull the helpers into the same chunk as the dynamic-import call
+// sites below, blowing up the admin bundle.
+type RelatedDataKey = Parameters<typeof import('@/lib/offline-storage').saveRelatedDataOffline>[0];
+type AssessmentDataKey = Parameters<typeof import('@/lib/offline-storage').saveAssessmentDataOffline>[0];
+type TrainingDataKey = Parameters<typeof import('@/lib/offline-storage').saveTrainingDataOffline>[0];
+
+// `formatReportFilename` accepts the dash-form ('daily-assessment') while
+// the rest of the app uses the underscore-form ('daily_assessment'). The
+// function body ignores `reportType` today but keep the argument type
+// honest so callers don't widen back to `any`.
+type FilenameReportType = 'inspection' | 'training' | 'daily-assessment';
+function toFilenameReportType(t: string | undefined | null): FilenameReportType {
+  if (t === 'training') return 'training';
+  if (t === 'daily_assessment' || t === 'daily-assessment') return 'daily-assessment';
+  return 'inspection';
+}
+
+function errorMessage(error: unknown, fallback: string): string {
+  if (error instanceof Error) return error.message;
+  if (typeof error === 'string') return error;
+  if (error && typeof error === 'object' && 'message' in error) {
+    const msg = (error as { message?: unknown }).message;
+    if (typeof msg === 'string') return msg;
+  }
+  return fallback;
+}
 
 // verifyRestoreIntegrity moved to @/lib/restore-integrity (shared with importBackupZip).
 // Error Boundary to isolate panel crashes
@@ -115,12 +158,12 @@ function RecoverySearchBar({ value, onChange, placeholder = "Search by facility 
 }
 
 interface LocalData {
-  trainings: any[];
-  dailyAssessments: any[];
-  inspections: any[];
-  queuedOperations: any[];
-  queuedAssessmentOperations: any[];
-  queuedTrainingOperations: any[];
+  trainings: DbRow[];
+  dailyAssessments: DbRow[];
+  inspections: DbRow[];
+  queuedOperations: QueuedInspectionOp[];
+  queuedAssessmentOperations: QueuedAssessmentOp[];
+  queuedTrainingOperations: QueuedTrainingOp[];
 }
 
 interface DataRecoveryToolProps {
@@ -192,14 +235,27 @@ export function LocalSnapshotsPanel({ allowDelete = true }: SnapshotsPanelProps)
   const [importing, setImporting] = useState(false);
   const [highlightedId, setHighlightedId] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
-  const [previewState, setPreviewState] = useState<{ open: boolean; snapshot: any; reportType?: ReportType; reportId?: string; meta?: any }>({ open: false, snapshot: null });
+  const [previewState, setPreviewState] = useState<{
+    open: boolean;
+    snapshot: ReportSnapshot | null;
+    reportType?: ReportType;
+    reportId?: string;
+    meta?: {
+      snapshotId: string;
+      device: string;
+      timestamp: number;
+      synced: boolean;
+      sizeBytes: number;
+      source: 'local';
+    };
+  }>({ open: false, snapshot: null });
 
   const refreshSnapshots = useCallback(() => {
     setSnapshots(listAllSnapshots());
     setStorageInfo(getBackupStorageInfo());
   }, []);
 
-  const handlePreview = useCallback((s: any) => {
+  const handlePreview = useCallback((s: SnapshotMeta) => {
     const snap = getReportSnapshot(s.reportType, s.reportId);
     setPreviewState({
       open: true,
@@ -232,8 +288,8 @@ export function LocalSnapshotsPanel({ allowDelete = true }: SnapshotsPanelProps)
       toast.success(`Imported ${reportType.replace('_', ' ')} backup${photoPart}`, {
         description: `Report ${reportId.substring(0, 8)}… restored to local + cloud storage.`,
       });
-    } catch (err: any) {
-      toast.error('Import failed', { description: err?.message || 'Unknown error' });
+    } catch (err) {
+      toast.error('Import failed', { description: errorMessage(err, 'Unknown error') });
     } finally {
       setImporting(false);
     }
@@ -247,7 +303,7 @@ export function LocalSnapshotsPanel({ allowDelete = true }: SnapshotsPanelProps)
     const a = document.createElement('a');
     a.href = url;
     const org = snapshot.parent?.organization;
-    a.download = formatReportFilename((org as string | undefined) || undefined, reportType as any, 'json');
+    a.download = formatReportFilename((org as string | undefined) || undefined, toFilenameReportType(reportType), 'json');
     a.click();
     URL.revokeObjectURL(url);
     toast.success("Snapshot exported as JSON");
@@ -269,21 +325,21 @@ export function LocalSnapshotsPanel({ allowDelete = true }: SnapshotsPanelProps)
           await saveInspectionOffline(parentArg);
           for (const [key, data] of Object.entries(snapshot.children)) {
             if (Array.isArray(data) && data.length > 0) {
-              await saveRelatedDataOffline(key as any, reportId, data as Record<string, unknown>[]);
+              await saveRelatedDataOffline(key as RelatedDataKey, reportId, data as Record<string, unknown>[]);
             }
           }
         } else if (reportType === 'training') {
           await saveTrainingOffline(parentArg);
           for (const [key, data] of Object.entries(snapshot.children)) {
             if (Array.isArray(data) && data.length > 0) {
-              await saveTrainingDataOffline(key as any, reportId, data as Record<string, unknown>[]);
+              await saveTrainingDataOffline(key as TrainingDataKey, reportId, data as Record<string, unknown>[]);
             }
           }
         } else if (reportType === 'daily_assessment') {
           await saveDailyAssessmentOffline(parentArg);
           for (const [key, data] of Object.entries(snapshot.children)) {
             if (Array.isArray(data) && data.length > 0) {
-              await saveAssessmentDataOffline(key as any, reportId, data as Record<string, unknown>[]);
+              await saveAssessmentDataOffline(key as AssessmentDataKey, reportId, data as Record<string, unknown>[]);
             }
           }
         }
@@ -301,21 +357,21 @@ export function LocalSnapshotsPanel({ allowDelete = true }: SnapshotsPanelProps)
               if (reportType === 'inspection') {
                 await saveInspectionOffline(parentArg);
                 for (const [key, data] of Object.entries(snapshot.children)) {
-                  if (Array.isArray(data) && data.length > 0) await saveRelatedDataOffline(key as any, reportId, data as Record<string, unknown>[]);
+                  if (Array.isArray(data) && data.length > 0) await saveRelatedDataOffline(key as RelatedDataKey, reportId, data as Record<string, unknown>[]);
                 }
               } else if (reportType === 'training') {
                 await saveTrainingOffline(parentArg);
                 for (const [key, data] of Object.entries(snapshot.children)) {
-                  if (Array.isArray(data) && data.length > 0) await saveTrainingDataOffline(key as any, reportId, data as Record<string, unknown>[]);
+                  if (Array.isArray(data) && data.length > 0) await saveTrainingDataOffline(key as TrainingDataKey, reportId, data as Record<string, unknown>[]);
                 }
               } else if (reportType === 'daily_assessment') {
                 await saveDailyAssessmentOffline(parentArg);
                 for (const [key, data] of Object.entries(snapshot.children)) {
-                  if (Array.isArray(data) && data.length > 0) await saveAssessmentDataOffline(key as any, reportId, data as Record<string, unknown>[]);
+                  if (Array.isArray(data) && data.length > 0) await saveAssessmentDataOffline(key as AssessmentDataKey, reportId, data as Record<string, unknown>[]);
                 }
               }
             },
-            { expectedChildren: snapshot.children as Record<string, any[]> },
+            { expectedChildren: snapshot.children },
           );
           toast.success("Snapshot restored to local storage");
         } catch (verifyErr) {
@@ -538,15 +594,19 @@ interface CloudSnapshotsPanelProps {
 }
 
 export function CloudSnapshotsPanel({ allowDelete = true }: CloudSnapshotsPanelProps) {
-  const [snapshots, setSnapshots] = useState<any[]>([]);
+  const [snapshots, setSnapshots] = useState<CloudBackupEntry[]>([]);
   const [loading, setLoading] = useState(true);
   const lastFetchedAt = useRef<number>(0);
   const STALE_TIME = 30000;
   const [searchQuery, setSearchQuery] = useState('');
-  const [previewState, setPreviewState] = useState<{ open: boolean; snapshot: any; loading: boolean; row: any | null }>({ open: false, snapshot: null, loading: false, row: null });
-  const previewCache = useRef<Map<string, any>>(new Map());
+  // Mirror the full snapshot_data shape (parent + children + optional
+  // photoMetadata) so exports from the cloud preview dialog don't silently
+  // drop photo metadata.
+  type CloudSnapshotData = CloudBackupFull['snapshot_data'];
+  const [previewState, setPreviewState] = useState<{ open: boolean; snapshot: CloudSnapshotData | null; loading: boolean; row: CloudBackupEntry | null }>({ open: false, snapshot: null, loading: false, row: null });
+  const previewCache = useRef<Map<string, CloudSnapshotData>>(new Map());
 
-  const handlePreview = useCallback(async (s: any) => {
+  const handlePreview = useCallback(async (s: CloudBackupEntry) => {
     if (previewCache.current.has(s.id)) {
       setPreviewState({ open: true, snapshot: previewCache.current.get(s.id), loading: false, row: s });
       return;
@@ -555,7 +615,7 @@ export function CloudSnapshotsPanel({ allowDelete = true }: CloudSnapshotsPanelP
     try {
       const { fetchCloudSnapshot } = await import('@/lib/cloud-backup');
       const full = await fetchCloudSnapshot(s.id);
-      const data = full?.snapshot_data || null;
+      const data: CloudSnapshotData | null = full?.snapshot_data ?? null;
       if (data) previewCache.current.set(s.id, data);
       setPreviewState({ open: true, snapshot: data, loading: false, row: s });
     } catch (e) {
@@ -573,7 +633,7 @@ export function CloudSnapshotsPanel({ allowDelete = true }: CloudSnapshotsPanelP
     const a = document.createElement('a');
     a.href = url;
     const org = data?.parent?.organization || row.facility || 'snapshot';
-    a.download = formatReportFilename(org, (row.report_type || 'inspection') as any, 'json');
+    a.download = formatReportFilename(org, toFilenameReportType(row.report_type), 'json');
     a.click();
     URL.revokeObjectURL(url);
     toast.success("Snapshot exported as JSON");
@@ -630,17 +690,17 @@ export function CloudSnapshotsPanel({ allowDelete = true }: CloudSnapshotsPanelP
         if (reportType === 'inspection') {
           await saveInspectionOffline(parentArg);
           for (const [key, data] of Object.entries(children)) {
-            if (Array.isArray(data) && data.length > 0) await saveRelatedDataOffline(key as any, reportId, data as Record<string, unknown>[]);
+            if (Array.isArray(data) && data.length > 0) await saveRelatedDataOffline(key as RelatedDataKey, reportId, data as Record<string, unknown>[]);
           }
         } else if (reportType === 'training') {
           await saveTrainingOffline(parentArg);
           for (const [key, data] of Object.entries(children)) {
-            if (Array.isArray(data) && data.length > 0) await saveTrainingDataOffline(key as any, reportId, data as Record<string, unknown>[]);
+            if (Array.isArray(data) && data.length > 0) await saveTrainingDataOffline(key as TrainingDataKey, reportId, data as Record<string, unknown>[]);
           }
         } else if (reportType === 'daily_assessment') {
           await saveDailyAssessmentOffline(parentArg);
           for (const [key, data] of Object.entries(children)) {
-            if (Array.isArray(data) && data.length > 0) await saveAssessmentDataOffline(key as any, reportId, data as Record<string, unknown>[]);
+            if (Array.isArray(data) && data.length > 0) await saveAssessmentDataOffline(key as AssessmentDataKey, reportId, data as Record<string, unknown>[]);
           }
         }
 
@@ -654,21 +714,21 @@ export function CloudSnapshotsPanel({ allowDelete = true }: CloudSnapshotsPanelP
               if (reportType === 'inspection') {
                 await saveInspectionOffline(parentArg);
                 for (const [key, data] of Object.entries(children)) {
-                  if (Array.isArray(data) && data.length > 0) await saveRelatedDataOffline(key as any, reportId, data as Record<string, unknown>[]);
+                  if (Array.isArray(data) && data.length > 0) await saveRelatedDataOffline(key as RelatedDataKey, reportId, data as Record<string, unknown>[]);
                 }
               } else if (reportType === 'training') {
                 await saveTrainingOffline(parentArg);
                 for (const [key, data] of Object.entries(children)) {
-                  if (Array.isArray(data) && data.length > 0) await saveTrainingDataOffline(key as any, reportId, data as Record<string, unknown>[]);
+                  if (Array.isArray(data) && data.length > 0) await saveTrainingDataOffline(key as TrainingDataKey, reportId, data as Record<string, unknown>[]);
                 }
               } else if (reportType === 'daily_assessment') {
                 await saveDailyAssessmentOffline(parentArg);
                 for (const [key, data] of Object.entries(children)) {
-                  if (Array.isArray(data) && data.length > 0) await saveAssessmentDataOffline(key as any, reportId, data as Record<string, unknown>[]);
+                  if (Array.isArray(data) && data.length > 0) await saveAssessmentDataOffline(key as AssessmentDataKey, reportId, data as Record<string, unknown>[]);
                 }
               }
             },
-            { expectedChildren: children as Record<string, any[]> },
+            { expectedChildren: children },
           );
           toast.success("Cloud backup restored to local storage");
         } catch (verifyErr) {
@@ -731,7 +791,7 @@ export function CloudSnapshotsPanel({ allowDelete = true }: CloudSnapshotsPanelP
                 try {
                   const { fetchCloudSnapshot } = await import('@/lib/cloud-backup');
                   const fullSnapshots = await Promise.all(
-                    snapshots.map(async (s: any) => {
+                    snapshots.map(async (s) => {
                       const full = await fetchCloudSnapshot(s.id);
                       return { ...s, snapshot_data: full?.snapshot_data };
                     })
@@ -902,7 +962,7 @@ export function CloudSnapshotsPanel({ allowDelete = true }: CloudSnapshotsPanelP
 // ── All User Snapshots (Super Admin only) ──────────────────────────
 
 function AllUserSnapshotsPanel() {
-  const [snapshots, setSnapshots] = useState<any[]>([]);
+  const [snapshots, setSnapshots] = useState<AllUserCloudSnapshot[]>([]);
   const [loading, setLoading] = useState(true);
   const [restoring, setRestoring] = useState<string | null>(null);
   const [expandedUsers, setExpandedUsers] = useState<Set<string>>(new Set());
@@ -962,7 +1022,7 @@ function AllUserSnapshotsPanel() {
       const a = document.createElement('a');
       a.href = url;
       const org = full?.snapshot_data?.parent?.organization as string | undefined;
-      a.download = formatReportFilename(org || undefined, reportType as any, 'json');
+      a.download = formatReportFilename(org || undefined, toFilenameReportType(reportType), 'json');
       a.click();
       URL.revokeObjectURL(url);
       toast.success("Exported as JSON");
@@ -994,7 +1054,7 @@ function AllUserSnapshotsPanel() {
         || (s.report_id || '').toLowerCase().includes(q);
   });
 
-  const grouped = filteredSnapshots.reduce<Record<string, { name: string; items: any[] }>>((acc, s) => {
+  const grouped = filteredSnapshots.reduce<Record<string, { name: string; items: AllUserCloudSnapshot[] }>>((acc, s) => {
     if (!acc[s.user_id]) acc[s.user_id] = { name: s.user_name, items: [] };
     acc[s.user_id].items.push(s);
     return acc;
@@ -1056,7 +1116,7 @@ function AllUserSnapshotsPanel() {
                   </button>
                   {isExpanded && (
                     <div className="border-t border-white/10 divide-y divide-white/5">
-                      {items.map((s: any) => (
+                      {items.map((s) => (
                         <div key={s.id} className="px-4 py-3 flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-4">
                           <div className="flex items-center gap-2 flex-1 min-w-0">
                             <Badge variant="outline" className="text-xs shrink-0">{(s.report_type || '').replace('_', ' ')}</Badge>
@@ -1105,7 +1165,7 @@ function AllUserSnapshotsPanel() {
 // ── Admin Edit History Panel ──────────────────────────────────────
 
 function AdminEditHistoryPanel() {
-  const [snapshots, setSnapshots] = useState<any[]>([]);
+  const [snapshots, setSnapshots] = useState<AdminEditSnapshotEntry[]>([]);
   const [loading, setLoading] = useState(true);
   const [restoring, setRestoring] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
@@ -1157,7 +1217,7 @@ function AdminEditHistoryPanel() {
 
   const handleExport = async (snapshotId: string, reportType: string) => {
     try {
-      const { data, error } = await (supabase.from('admin_edit_snapshots') as any)
+      const { data, error } = await supabase.from('admin_edit_snapshots')
         .select('snapshot_data')
         .eq('id', snapshotId)
         .single();
@@ -1166,8 +1226,10 @@ function AdminEditHistoryPanel() {
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
-      const org = data.snapshot_data?.parent?.organization;
-      a.download = formatReportFilename(org || undefined, reportType as any, 'json');
+      const snapshotData = data.snapshot_data as { parent?: { organization?: unknown } } | null;
+      const orgRaw = snapshotData?.parent?.organization;
+      const org = typeof orgRaw === 'string' ? orgRaw : undefined;
+      a.download = formatReportFilename(org, toFilenameReportType(reportType), 'json');
       a.click();
       URL.revokeObjectURL(url);
       toast.success("Exported as JSON");
@@ -1227,7 +1289,7 @@ function AdminEditHistoryPanel() {
                   No snapshots match &ldquo;{searchQuery}&rdquo;.
                 </div>
               );
-              return filtered.map((s: any) => (
+              return filtered.map((s) => (
               <div key={s.id} className="rounded-lg border border-white/10 px-4 py-3 flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-4">
                 <div className="flex items-center gap-2 flex-1 min-w-0 flex-wrap">
                   <Badge variant="outline" className="text-xs shrink-0">{(s.report_type || '').replace('_', ' ')}</Badge>
@@ -1299,7 +1361,7 @@ export function IndexedDBRecoveryPanel({ allowDelete = true }: IndexedDBPanelPro
           getQueuedAssessmentOperations(),
           getQueuedTrainingOperations(),
         ]),
-        new Promise<[any[], any[], any[], any[], any[], any[]]>((_, reject) =>
+        new Promise<[DbRow[], DbRow[], DbRow[], QueuedInspectionOp[], QueuedAssessmentOp[], QueuedTrainingOp[]]>((_, reject) =>
           setTimeout(() => reject(new Error('Data recovery load timeout after 10s')), 10000)
         ),
       ]);
@@ -1362,7 +1424,7 @@ export function IndexedDBRecoveryPanel({ allowDelete = true }: IndexedDBPanelPro
     });
   };
 
-  const toggleSelectAll = (prefix: string, ops: any[]) => {
+  const toggleSelectAll = (prefix: string, ops: QueuedOp[]) => {
     setSelectedOps(prev => {
       const next = new Set(prev);
       const keys = ops.map((op, idx) => `${prefix}-${op.id ?? idx}`);
@@ -1413,8 +1475,9 @@ export function IndexedDBRecoveryPanel({ allowDelete = true }: IndexedDBPanelPro
       toast.success(`Deleted ${selectedOps.size} operations`);
       setSelectedOps(new Set());
       await loadLocalData();
-    } catch (e: any) {
-      toast.error(e?.message?.includes('timeout') ? "Operation timed out — some items may not have been deleted" : "Failed to delete selected operations");
+    } catch (e) {
+      const msg = errorMessage(e, '');
+      toast.error(msg.includes('timeout') ? "Operation timed out — some items may not have been deleted" : "Failed to delete selected operations");
     } finally {
       setBatchDeleteDialog(false);
     }
@@ -1456,7 +1519,7 @@ export function IndexedDBRecoveryPanel({ allowDelete = true }: IndexedDBPanelPro
     }
   };
 
-  const syncTrainingToDatabase = async (training: any) => {
+  const syncTrainingToDatabase = async (training: DbRow) => {
     setSyncing(training.id);
     try {
       // Step 1: Upsert parent WITHOUT synced_at
@@ -1490,15 +1553,15 @@ export function IndexedDBRecoveryPanel({ allowDelete = true }: IndexedDBPanelPro
 
       toast.success("Training synced successfully");
       await loadLocalData();
-    } catch (error: any) {
+    } catch (error) {
       console.error("[Data Recovery] Sync failed:", error);
-      toast.error(error.message || "Failed to sync training");
+      toast.error(errorMessage(error, "Failed to sync training"));
     } finally {
       setSyncing(null);
     }
   };
 
-  const syncDailyAssessmentToDatabase = async (assessment: any) => {
+  const syncDailyAssessmentToDatabase = async (assessment: DbRow) => {
     setSyncing(assessment.id);
     try {
       // Step 1: Upsert parent WITHOUT synced_at
@@ -1531,15 +1594,15 @@ export function IndexedDBRecoveryPanel({ allowDelete = true }: IndexedDBPanelPro
 
       toast.success("Daily assessment synced successfully");
       await loadLocalData();
-    } catch (error: any) {
+    } catch (error) {
       console.error("[Data Recovery] Sync failed:", error);
-      toast.error(error.message || "Failed to sync daily assessment");
+      toast.error(errorMessage(error, "Failed to sync daily assessment"));
     } finally {
       setSyncing(null);
     }
   };
 
-  const syncInspectionToDatabase = async (inspection: any) => {
+  const syncInspectionToDatabase = async (inspection: DbRow) => {
     setSyncing(inspection.id);
     try {
       // Step 1: Upsert parent WITHOUT synced_at
@@ -1576,9 +1639,9 @@ export function IndexedDBRecoveryPanel({ allowDelete = true }: IndexedDBPanelPro
 
       toast.success("Inspection synced successfully");
       await loadLocalData();
-    } catch (error: any) {
+    } catch (error) {
       console.error("[Data Recovery] Sync failed:", error);
-      toast.error(error.message || "Failed to sync inspection");
+      toast.error(errorMessage(error, "Failed to sync inspection"));
     } finally {
       setSyncing(null);
     }
@@ -1598,15 +1661,15 @@ export function IndexedDBRecoveryPanel({ allowDelete = true }: IndexedDBPanelPro
 
       toast.success("Deleted from local storage");
       await loadLocalData();
-    } catch (error: any) {
+    } catch (error) {
       console.error("[Data Recovery] Delete failed:", error);
-      toast.error(error.message || "Failed to delete");
+      toast.error(errorMessage(error, "Failed to delete"));
     } finally {
       setDeleteConfirm(null);
     }
   };
 
-  const getSyncStatus = (item: any) => {
+  const getSyncStatus = (item: DbRow) => {
     if (item.synced_at) {
       return { label: "Synced", variant: "default" as const, icon: CheckCircle2 };
     }
@@ -1641,7 +1704,7 @@ export function IndexedDBRecoveryPanel({ allowDelete = true }: IndexedDBPanelPro
     (localData?.queuedAssessmentOperations.length || 0) +
     (localData?.queuedTrainingOperations.length || 0);
 
-  const idbMatch = (item: any) => {
+  const idbMatch = (item: DbRow) => {
     if (!searchQuery) return true;
     const q = searchQuery.toLowerCase();
     return (item.organization || '').toLowerCase().includes(q)
