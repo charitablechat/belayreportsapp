@@ -1281,6 +1281,19 @@ export const useAutoSync = () => {
         return;
       }
       lastRealtimeResubscribeAtRef.current = now;
+      // Cancel any pending CHANNEL_ERROR-backoff reconnect; otherwise that
+      // timer would fire and call `setupRealtimeChannel()` again moments after
+      // we re-subscribe, tearing down the fresh channel mid-handshake and
+      // briefly dropping events. Also reset the error counter + backoff so a
+      // single transient CHANNEL_ERROR on the freshly-subscribed channel
+      // doesn't immediately re-arm the 3× backoff using stale counts from the
+      // dead pre-resume channel.
+      if (realtimeReconnectTimerRef.current) {
+        clearTimeout(realtimeReconnectTimerRef.current);
+        realtimeReconnectTimerRef.current = null;
+      }
+      realtimeErrorCountRef.current = 0;
+      realtimeBackoffRef.current = 60000;
       syncLog.log(`[AutoSync] Resubscribing Realtime channel — ${reason}`);
       setupRealtimeChannel();
     };
