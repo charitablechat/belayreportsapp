@@ -175,14 +175,8 @@ serve(async (req) => {
     const header = () => createPageHeader(ropeWorksLogo, acctLogo);
     const footer = (pageNum: number) => createPageFooter(pageNum, footerDisclaimerText);
 
-    // Fetch any post-completion edits for the admin-edit banner
-    const postEdits = await fetchPostCompletionEdits(
-      supabase,
-      'daily_assessments',
-      assessmentId,
-      (assessment as any).attestation_signed_at,
-    );
-    const adminEditBannerHtml = buildAdminEditBanner(postEdits);
+    // Admin-edit banner intentionally disabled — audit trail lives in the admin panel only.
+    const adminEditBannerHtml = '';
 
     // Terminal-style section comments renderer
     const renderSectionComments = (comments: string | null, title: string) => {
