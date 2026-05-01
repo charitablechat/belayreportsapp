@@ -2394,8 +2394,20 @@ export async function clearAllQueuedTrainingOperations() {
   );
 }
 
-export async function incrementOperationRetry(id: number) {
-  return withIndexedDBErrorBoundary(
+// Audit P1: this counter persists how many times a queued op has been retried
+// after transient failures. The silent boundary previously swallowed errors
+// and returned `undefined` — meaning a write that failed (closed connection,
+// quota, etc.) silently no-op'd, the counter never advanced, and the op
+// would retry indefinitely against whatever transient condition was hitting
+// it. Promote to the strict-save boundary so callers can decide how to
+// degrade (e.g. force dead-letter, surface diagnostic) instead of getting a
+// false-success.
+//
+// `incrementOperationRetry` currently has no in-tree callers — it's part of
+// the public API for queued-op processors to opt into. Migrating now ensures
+// any future caller inherits loud-fail semantics by default.
+export async function incrementOperationRetry(id: number): Promise<SaveResult> {
+  return withIndexedDBSaveBoundary(
     async () => {
       const db = await getDB();
       const operation = await db.get('operations', id);
@@ -2404,8 +2416,9 @@ export async function incrementOperationRetry(id: number) {
         await db.put('operations', operation);
       }
     },
-    undefined,
-    'incrementOperationRetry'
+    'incrementOperationRetry',
+    undefined, // no localStorage fallback — counter has no reportType shape
+    { store: 'global' }
   );
 }
 
@@ -2456,8 +2469,23 @@ export async function updateQueuedTrainingOperation(id: number | undefined | nul
   return patchOpInStore('training_operations', id, patch);
 }
 
-export async function addToDeadLetterSoftDeletes(entry: DeadLetterSoftDelete) {
-  return withIndexedDBErrorBoundary(
+// Audit P1: the dead-letter store is the safety net for queued operations
+// that have exhausted their retry budget. The silent boundary previously
+// swallowed write errors and returned `undefined` — meaning the caller
+// (`queued-soft-delete-processor.handleSoftDeleteFailure`) would proceed to
+// `await remove(op.id)` and **delete the queued op from the queue** even
+// though the dead-letter row was never written. Net result: the op is gone
+// from the queue AND from the dead-letter store. The recovery tool sees
+// nothing; the operator has no way to recover the lost soft-delete.
+//
+// Promote to the strict-save boundary so the caller's existing try/catch
+// at `queued-soft-delete-processor.ts:118` runs: it skips the `remove(op.id)`
+// and bumps `attempts` via `patch()`, leaving the op in the queue for the
+// next sync cycle to retry. The op is never lost.
+export async function addToDeadLetterSoftDeletes(
+  entry: DeadLetterSoftDelete,
+): Promise<SaveResult> {
+  return withIndexedDBSaveBoundary(
     async () => {
       const db = await getDB();
       await db.put('dead_letter_soft_deletes', entry as unknown as DbRow);
@@ -2465,8 +2493,9 @@ export async function addToDeadLetterSoftDeletes(entry: DeadLetterSoftDelete) {
         console.warn('[Offline Storage] Dead-lettered soft-delete:', entry.id, entry.lastError);
       }
     },
-    undefined,
-    'addToDeadLetterSoftDeletes'
+    'addToDeadLetterSoftDeletes',
+    undefined, // no localStorage fallback — dead-letter row has no reportType shape
+    { store: 'global' },
   );
 }
 
