@@ -18,6 +18,16 @@ dist
 dist-ssr
 *.local
 
+# Vite mode-scoped env files. `.env` is intentionally tracked (anon Supabase
+# key only, RLS-protected). These mode-scoped variants are NOT tracked, so a
+# developer who creates `.env.production` with a service-role key for local
+# testing can't accidentally commit it. (`*.local` above already covers
+# `.env.local` / `.env.*.local`.)
+.env.development
+.env.production
+.env.staging
+.env.test
+
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json
