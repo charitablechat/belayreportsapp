@@ -3331,6 +3331,25 @@ const ensureValidUUID = (id: string | undefined): string => {
   return id;
 };
 
+// Audit L2: dedupe the "child_count_hint recompute skipped" dev warning so a
+// busy edit session (which can fire 50-100 saves in rapid succession against
+// the same parent record) doesn't flood the console with the same warning.
+// One warn per (kind, parentId) per session is enough to surface the
+// degradation — the actual recovery (preserving the existing hint) already
+// runs on every call. The set is intentionally process-lived: a fresh
+// PWA load resets it so persistent issues stay visible.
+const warnedStaleHints: Set<string> = new Set();
+function warnStaleHintOnce(kind: 'inspection' | 'assessment' | 'training', parentId: string, justSavedType: string): void {
+  if (!import.meta.env.DEV) return;
+  const key = `${kind}:${parentId}`;
+  if (warnedStaleHints.has(key)) return;
+  warnedStaleHints.add(key);
+  console.warn(
+    `[Offline Storage] ${kind} child_count_hint recompute skipped — sibling read failed (further occurrences for this record suppressed)`,
+    { parentId, justSavedType },
+  );
+}
+
 // S30: Recompute child_count_hint on the parent record after a child mutation.
 // Called fire-and-forget from child-save helpers so it never blocks the save.
 // Uses cheap count() per "other" store (not getAllFromIndex) to minimize IDB load,
@@ -3378,11 +3397,8 @@ async function recomputeInspectionChildCountHint(
       // Summary contributes 1 if any row exists; align with old "summary?.length > 0 ? 1 : 0" semantics.
       const newHint = otherTotal + (justSavedType === 'summary' ? (justSavedCount > 0 ? 1 : 0) : justSavedCount);
       inspection.child_count_hint = newHint;
-    } else if (import.meta.env.DEV) {
-      console.warn('[Offline Storage] child_count_hint recompute skipped — sibling read failed', {
-        inspectionId,
-        justSavedType,
-      });
+    } else {
+      warnStaleHintOnce('inspection', inspectionId, justSavedType);
     }
 
     await db.put('inspections', inspection);
@@ -3420,8 +3436,8 @@ async function recomputeAssessmentChildCountHint(
     // M2: preserve existing hint when any sibling read failed.
     if (!anyReadFailed) {
       assessment.child_count_hint = counts.reduce((a, b) => a + b, 0) + justSavedCount;
-    } else if (import.meta.env.DEV) {
-      console.warn('[Offline Storage] assessment child_count_hint recompute skipped — sibling read failed', { assessmentId, justSavedType });
+    } else {
+      warnStaleHintOnce('assessment', assessmentId, justSavedType);
     }
     await db.put('daily_assessments', assessment);
   } catch {
@@ -3458,8 +3474,8 @@ async function recomputeTrainingChildCountHint(
     // M2: preserve existing hint when any sibling read failed.
     if (!anyReadFailed) {
       training.child_count_hint = counts.reduce((a, b) => a + b, 0) + justSavedCount;
-    } else if (import.meta.env.DEV) {
-      console.warn('[Offline Storage] training child_count_hint recompute skipped — sibling read failed', { trainingId, justSavedType });
+    } else {
+      warnStaleHintOnce('training', trainingId, justSavedType);
     }
     await db.put('trainings', training);
   } catch {
