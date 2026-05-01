@@ -192,14 +192,19 @@ export default function SuperAdminDashboard() {
         { count: dailyAssessmentsCount },
         { data: dailyAssessmentsByStatus },
       ] = await Promise.all([
-        supabase.from("organizations").select("*", { count: "exact", head: true }),
-        supabase.from("inspections").select("*", { count: "exact", head: true }),
+        // Use 'estimated' counts (pg_class.reltuples) instead of 'exact' on
+        // dashboard tiles — exact forces a full table scan per request and
+        // these tiles are loaded on every super-admin dashboard view. Keep
+        // 'exact' only on filtered queries (sync_conflicts, notifications_log)
+        // where the filter is selective and the count needs to be precise.
+        supabase.from("organizations").select("*", { count: "estimated", head: true }),
+        supabase.from("inspections").select("*", { count: "estimated", head: true }),
         supabase.from("inspections").select("status"),
         supabase.from("notifications_log").select("*", { count: "exact", head: true }).gte("sent_at", new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString()),
         supabase.from("sync_conflicts").select("*", { count: "exact", head: true }).eq("resolved", false),
-        supabase.from("trainings").select("*", { count: "exact", head: true }),
+        supabase.from("trainings").select("*", { count: "estimated", head: true }),
         supabase.from("trainings").select("status"),
-        supabase.from("daily_assessments").select("*", { count: "exact", head: true }),
+        supabase.from("daily_assessments").select("*", { count: "estimated", head: true }),
         supabase.from("daily_assessments").select("status"),
       ]);
 
