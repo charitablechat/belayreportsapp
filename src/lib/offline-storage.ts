@@ -13,6 +13,12 @@ import { safeSetItem } from './safe-local-storage';
 // `idb-migration-safety.ts` only imports from `idb`, never back from
 // `offline-storage.ts`.
 import * as migrationSafety from './idb-migration-safety';
+// Audit P3: static-import addSyncNotification so the relink-orphan warning
+// path cannot fail silently if the dynamic chunk fetch hangs on a flaky-Wi-Fi
+// iPad. Mirrors the static-import hardening pattern from PR #18
+// (idb-migration-safety). `notification-center` has zero imports of its
+// own — no circular-dependency risk. Module is ~3 KB; trivial bundle cost.
+import { addSyncNotification as addSyncNotificationStatic } from './notification-center';
 
 /** Opaque DB row — fields vary across tables and are read/written structurally.
  *  Uses an `any` index signature so callers can structurally read/write
@@ -2651,13 +2657,17 @@ export async function relinkPhotosToNewInspectionId(
   if (result === RELINK_BOUNDARY_FAILED) {
     const warning = `[Offline Storage] relinkPhotosToNewInspectionId IDB-boundary failed for ${oldInspectionId} → ${newInspectionId}. Photos may remain under the temp id and require manual recovery via the sync diagnostics terminal.`;
     console.warn(warning);
-    void import('./notification-center')
-      .then(({ addSyncNotification }) => {
-        addSyncNotification(
-          `Could not relink offline photos to new report id (${newInspectionId.slice(0, 8)}…). The report itself synced successfully; photos may need a manual retry.`
-        );
-      })
-      .catch(() => { /* never let logging break sync */ });
+    // Audit P3: static-import (see top-of-file) — the previous dynamic
+    // `import('./notification-center')` could silently fail if the lazy
+    // chunk fetch hung on a flaky-Wi-Fi iPad, leaving the orphan condition
+    // visible only via console.warn (not observable to the user).
+    try {
+      addSyncNotificationStatic(
+        `Could not relink offline photos to new report id (${newInspectionId.slice(0, 8)}…). The report itself synced successfully; photos may need a manual retry.`
+      );
+    } catch {
+      /* never let notification dispatch break sync */
+    }
     return 0;
   }
 
