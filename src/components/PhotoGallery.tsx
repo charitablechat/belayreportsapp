@@ -534,17 +534,27 @@ export default function PhotoGallery({
     }
   }, [photos, batchMode]);
 
-  // Background progressive HEIC conversion — runs after initial render
+  // Audit L1: per-photo dedup of background HEIC inspection.
+  //
+  // Previously the effect re-fetched + magic-byte-probed *every* photo on
+  // every length change. With 30 photos, scrolling that adds 5 new ones
+  // re-fetches 35 blobs end-to-end (the original 30 + the 5 new) for
+  // network photos, even though the original 30 had already been confirmed
+  // non-HEIC. The ref below records ids we've already inspected so each
+  // photo is fetched + probed at most once per gallery instance.
+  const inspectedHeicIdsRef = useRef<Set<string>>(new Set());
+
   useEffect(() => {
     if (loading || photos.length === 0) return;
-    
+
     const abortController = new AbortController();
-    
+
     const convertInBackground = async () => {
       for (const photo of photos) {
         if (abortController.signal.aborted) return;
         if (!photo.uploaded) continue; // skip pending local uploads
-        
+        if (inspectedHeicIdsRef.current.has(photo.id)) continue; // already inspected
+
         try {
           // Get the blob to check magic bytes
           let blob: Blob | null = null;
@@ -562,22 +572,32 @@ export default function PhotoGallery({
           if (abortController.signal.aborted) return;
           
           const actuallyHeic = await isHeicBlob(blob);
-          if (!actuallyHeic) continue;
-          
+          if (!actuallyHeic) {
+            // Non-HEIC: definitely never want to re-fetch this blob.
+            inspectedHeicIdsRef.current.add(photo.id);
+            continue;
+          }
+
           if (import.meta.env.DEV) {
             console.log(`[PhotoGallery] Background converting HEIC photo: ${photo.id}`);
           }
-          
+
           const jpegBlob = await convertHeicBlobToJpeg(blob, 0.85);
+          // Audit L1 follow-up: only mark as inspected after a successful
+          // conversion AND while the effect is still alive. If the effect
+          // was torn down mid-decode (length change) we want the next run
+          // to retry the conversion, not silently skip the photo and leave
+          // it rendering as raw HEIC bytes (broken in Chrome/Firefox).
           if (!jpegBlob || abortController.signal.aborted) continue;
-          
+
           const objectUrl = URL.createObjectURL(jpegBlob);
           objectUrlsRef.current.push(objectUrl);
-          
+
           // Progressively update this single photo in state
           setPhotos(prev => prev.map(p => 
             p.id === photo.id ? { ...p, photoUrl: objectUrl, blob: jpegBlob, isHeic: false } : p
           ));
+          inspectedHeicIdsRef.current.add(photo.id);
           
           // Fire-and-forget: re-upload + re-cache
           // Find original storage path from the DB photo_url (not the signed URL)

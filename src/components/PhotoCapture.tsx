@@ -9,8 +9,9 @@ import { savePhotoReceipt } from "@/lib/photo-receipts";
 import { useNetworkStatus } from "@/hooks/useNetworkStatus";
 import { triggerHaptic } from "@/lib/haptics";
 import { compressImage } from "@/lib/image-compression";
-import { isHeicFile } from "@/lib/heic-converter";
+import { isHeicFile, isHeicBlob } from "@/lib/heic-converter";
 import { extractFileExt } from "@/lib/file-ext";
+import { validateFile } from "@/components/photo-capture-validation";
 
 import { toast } from "sonner";
 
@@ -25,30 +26,9 @@ interface PhotoCaptureProps {
   storageBucket?: string;
 }
 
-// Supported image types
-const SUPPORTED_TYPES = ['image/jpeg', 'image/png', 'image/webp', 'image/heic', 'image/heif'];
-const MAX_FILE_SIZE_MB = 20;
-
 // Timeout constants — reduced to prevent long hangs
 const PER_FILE_TIMEOUT = 15000; // 15s per file (down from 30s)
 const MAX_SAFETY_TIMEOUT = 45000; // 45s cap regardless of file count
-
-/**
- * Validate file type and size before processing
- */
-function validateFile(file: File): { valid: boolean; error?: string } {
-  if (file.size === 0) {
-    return { valid: false, error: 'File is empty (0 bytes). Please choose a different photo.' };
-  }
-  if (!SUPPORTED_TYPES.includes(file.type) && !file.type.startsWith('image/')) {
-    return { valid: false, error: `Unsupported file type: ${file.type || 'unknown'}. Please use JPEG, PNG, or WebP.` };
-  }
-  const fileSizeMB = file.size / (1024 * 1024);
-  if (fileSizeMB > MAX_FILE_SIZE_MB) {
-    return { valid: false, error: `File too large (${fileSizeMB.toFixed(1)}MB). Maximum size is ${MAX_FILE_SIZE_MB}MB.` };
-  }
-  return { valid: true };
-}
 
 export default function PhotoCapture({ 
   inspectionId, 
@@ -120,11 +100,46 @@ export default function PhotoCapture({
       return false;
     }
 
-    // Compress image (has internal timeout protection)
-    let processedFile = file;
+    // Audit O3: iOS share-sheet sometimes labels HEIC as image/jpeg (or empty),
+    // and the filename may have been renamed to `.jpg` by the share extension.
+    // `isHeicFile` checks type + name only and would miss this; the magic-byte
+    // probe is authoritative. If we detect a mislabelled HEIC, re-wrap as a
+    // proper `image/heic` File so `compressImage`'s HEIC branch fires and the
+    // bytes don't get fed into the JPEG decoder (which would silently produce
+    // a broken or unrenderable result downstream).
+    let workingFile = file;
+    if (!isHeicFile(file)) {
+      try {
+        if (await isHeicBlob(file)) {
+          if (import.meta.env.DEV) {
+            console.log(
+              `[PhotoCapture] Magic-byte HEIC detected on '${file.name}' (claimed type='${file.type || 'empty'}'); rewrapping for HEIC pipeline.`,
+            );
+          }
+          const heicName = file.name.replace(/\.(jpe?g|png|webp)$/i, '.heic');
+          workingFile = new File([file], heicName === file.name ? `${file.name}.heic` : heicName, {
+            type: 'image/heic',
+            lastModified: file.lastModified,
+          });
+        }
+      } catch (probeErr) {
+        // Magic-byte probe is best-effort; fall through to normal compression.
+        console.warn('[PhotoCapture] HEIC magic-byte probe failed:', probeErr);
+      }
+    }
+
+    // Compress image (has internal timeout protection).
+    // Audit M2 follow-up: validateFile now accepts iOS share-sheet uploads
+    // with empty `file.type` if the extension is image-shaped, so the
+    // compression gate must mirror that — otherwise a 20MB JPEG with an
+    // empty type would skip compression and balloon IndexedDB / storage.
+    let processedFile = workingFile;
+    const isImageByTypeOrName =
+      workingFile.type.startsWith('image/') ||
+      (!workingFile.type && /\.(jpe?g|png|webp|heic|heif)$/i.test(workingFile.name));
     try {
-      if (file.type.startsWith('image/')) {
-        processedFile = await compressImage(file, {
+      if (isImageByTypeOrName) {
+        processedFile = await compressImage(workingFile, {
           maxWidth: 1920,
           maxHeight: 1920,
           quality: 0.85,

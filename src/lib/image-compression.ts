@@ -268,8 +268,15 @@ export const compressImage = async (
   file: File,
   options: CompressionOptions = {}
 ): Promise<File> => {
-  // Skip compression for very small files (<100KB) - early exit
-  if (file.size < 100 * 1024) {
+  // Skip compression for very small files (<100KB) - early exit.
+  // EXCEPT for HEIC/HEIF files: small mislabelled HEIC uploads (e.g. iOS
+  // share-sheet pictures rewrapped as image/heic via magic-byte detection
+  // in PhotoCapture) must still be converted to JPEG by `compressImageInternal`,
+  // otherwise the post-compression `isHeicFile` guard in the caller would
+  // reject them with a misleading "HEIC conversion failed" toast. We keep
+  // the conversion inside the `compressImageInternal` call below so it
+  // remains bounded by the COMPRESSION_TIMEOUT race.
+  if (file.size < 100 * 1024 && !isHeicFile(file)) {
     if (import.meta.env.DEV) {
       console.log('[Image Compression] File is small, skipping compression:', file.size);
     }
