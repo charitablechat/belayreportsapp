@@ -233,30 +233,11 @@ export async function fetchPostCompletionEdits(
  * Returns empty string if there are no post-completion edits.
  */
 export function buildAdminEditBanner(
-  edits: Array<{ created_at: string; editor_name: string }>,
+  _edits: Array<{ created_at: string; editor_name: string }>,
 ): string {
-  if (!edits || edits.length === 0) return '';
-  const last = edits[0];
-  const moreText = edits.length > 1 ? ` (${edits.length} edits total)` : '';
-  return `
-    <div class="admin-edit-banner" role="note" style="
-      background: #fef3c7;
-      border: 1px solid #f59e0b;
-      border-left: 4px solid #d97706;
-      color: #78350f;
-      padding: 10px 14px;
-      margin: 0 0 14px 0;
-      border-radius: 4px;
-      font-family: Arial, sans-serif;
-      font-size: 10pt;
-      line-height: 1.4;
-      page-break-inside: avoid;
-    ">
-      <strong>⚠ This report was edited after completion.</strong><br>
-      Last modified by ${escapeHtml(last.editor_name)} on ${formatStamp(last.created_at)}${moreText}.
-      Full audit trail available in the admin panel.
-    </div>
-  `;
+  // Banner intentionally disabled — audit trail is preserved in the admin panel only.
+  // Function signature retained to avoid churn at the three edge function call sites.
+  return '';
 }
 
 /**

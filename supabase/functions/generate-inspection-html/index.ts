@@ -240,14 +240,8 @@ serve(async (req) => {
     const summary = summaryRes.data;
     const photos = photosRes.data || [];
 
-    // Fetch any post-completion edits for the admin-edit banner
-    const postEdits = await fetchPostCompletionEdits(
-      supabase,
-      'inspections',
-      inspectionId,
-      (inspection as any).attestation_signed_at,
-    );
-    const adminEditBannerHtml = buildAdminEditBanner(postEdits);
+    // Admin-edit banner intentionally disabled — audit trail lives in the admin panel only.
+    const adminEditBannerHtml = '';
 
     console.log(`[Inspection HTML] Found ${photos.length} photos for inspection ${inspectionId}`);
 
