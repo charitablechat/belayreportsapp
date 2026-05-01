@@ -11,6 +11,7 @@ import {
 } from "./offline-storage";
 import { addSyncNotification } from "./notification-center";
 import { syncLog } from "./sync-logger";
+import { extractFileExt } from "./file-ext";
 
 /**
  * S22: Classify a photo upload / DB error into a sync-policy bucket.
@@ -373,7 +374,7 @@ export async function syncPhotos(signal?: AbortSignal): Promise<{ remaining: num
         const table = photo.tableName || 'inspection_photos';
         const fkColumn = photo.foreignKeyColumn || 'inspection_id';
 
-        const fileExt = photo.fileName.split('.').pop();
+        const fileExt = extractFileExt(photo.fileName);
         // M7: Include a short random suffix to make filenames collision-resistant
         // even when two devices share Date.now() (clock skew on offline restore).
         // Combined with upsert: false below, this prevents one device's blob from
