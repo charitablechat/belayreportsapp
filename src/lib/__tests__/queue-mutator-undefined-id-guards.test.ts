@@ -105,5 +105,16 @@ describe('Audit L3 — queue-mutator undefined-id guards (DataError regression)'
       await expect(mutator()(null)).resolves.not.toThrow();
       expect(getDBSpy).not.toHaveBeenCalled();
     });
+
+    it('reaches IDB when ID is 0 (valid autoincrement key — falsy-guard regression)', async () => {
+      // The JSDoc claim ("a future falsy guard can't break the legitimate
+      // first-row case") was missing a real test. If someone changes the
+      // production guard from `id === undefined || id === null` to `!id`,
+      // `id: 0` would silently no-op — a real bug for the first row written.
+      // We swallow the spy's intentional throw because that's the marker
+      // that getDB() *did* run (i.e. the guard correctly let `id: 0` through).
+      await mutator()(0).catch(() => {});
+      expect(getDBSpy).toHaveBeenCalled();
+    });
   });
 });
