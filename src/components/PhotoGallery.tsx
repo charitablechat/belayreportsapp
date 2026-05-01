@@ -6,6 +6,7 @@ import { cachePhotoFromRemote, batchValidateCachedPhotos } from "@/lib/photo-cac
 import { getPhotoReceipts } from "@/lib/photo-receipts";
 import { useNetworkStatus } from "@/hooks/useNetworkStatus";
 import { isHeicPath, isHeicBlob, convertHeicBlobToJpeg } from "@/lib/heic-converter";
+import { processBackgroundCacheItem } from "./photo-gallery-helpers";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -307,18 +308,31 @@ export default function PhotoGallery({
               for (const { urlData, photo } of cacheWork) {
                 fetch(urlData.signedUrl!)
                   .then(r => { if (r.ok) return r.blob(); throw new Error('fetch failed'); })
-                  .then(async (blob) => {
-                    // Detect HEIC by magic bytes (catches mislabeled .jpg files too)
-                    const heicDetected = isHeicPath(photo.photo_url) || await isHeicBlob(blob);
-                    if (heicDetected) {
-                      const jpegBlob = await convertHeicBlobToJpeg(blob, 0.85);
-                      if (jpegBlob) {
-                        // Re-upload the real JPEG to storage so reports work
-                        reuploadConvertedJpeg(photo.photo_url, jpegBlob);
-                        return cachePhotoFromRemote(photo.id, jpegBlob, photo.photo_url, inspectionId, section);
-                      }
+                  .then(blob => processBackgroundCacheItem({
+                    blob,
+                    photoId: photo.id,
+                    photoStoragePath: photo.photo_url,
+                    inspectionId,
+                    section,
+                    isHeicPath,
+                    isHeicBlob,
+                    convertHeicBlobToJpeg,
+                    reuploadConvertedJpeg,
+                    cachePhotoFromRemote,
+                  }))
+                  .then(outcome => {
+                    if (outcome?.kind === 'skipped-heic-conversion-failed') {
+                      // Audit H1: HEIC conversion failed (heic2any threw or
+                      // timed out). The helper deliberately did NOT cache
+                      // the raw HEIC blob — caching would render as a black
+                      // placeholder on iOS Safari for any future <img
+                      // src={blob:…}>. The next loadPhotos() will re-fetch
+                      // from the signed URL and retry conversion.
+                      console.warn(
+                        '[PhotoGallery] HEIC conversion failed; cache skipped to avoid black-placeholder render',
+                        photo.id
+                      );
                     }
-                    return cachePhotoFromRemote(photo.id, blob, photo.photo_url, inspectionId, section);
                   })
                   .catch(e => console.warn('[PhotoGallery] Background cache failed:', e));
               }
