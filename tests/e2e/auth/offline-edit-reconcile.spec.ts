@@ -154,6 +154,52 @@ test.describe('sync: offline edit reconciles to cloud', () => {
     await expect(locationInput).toBeVisible({ timeout: 30_000 });
     await expect(locationInput).toHaveValue(marker, { timeout: 30_000 });
 
+    // ── 5a. Wait for the local autosync to fully drain ────────────────────
+    // `waitForInspectionInCloud` returns the moment the row appears on
+    // Supabase, but the autosync's atomic transaction is still in flight
+    // doing post-create work (writing back `synced_at`, releasing the
+    // record from the dirty queue, etc.). If we go offline before that
+    // finishes, Chromium cancels the in-flight fetch with `Failed to
+    // fetch`, which used to push the record toward the H5 quarantine
+    // threshold. The H5-T network-error classifier in
+    // `src/lib/sync-quarantine.ts` no longer counts those toward the
+    // 3-strike budget, but pin the spec contract anyway so a future
+    // regression is caught here too — and the spec stays meaningful even
+    // if the classifier is loosened/tightened.
+    //
+    // We poll the IDB record directly until `synced_at !== null`. 30s is
+    // generous for the post-create writeback (typically <2s); if it
+    // doesn't drain in 30s something else is wrong.
+    await page.waitForFunction(
+      async (recordId) => {
+        try {
+          const dbReq = indexedDB.open('rope-works-inspections');
+          const db = await new Promise<IDBDatabase>((resolve, reject) => {
+            dbReq.onsuccess = () => resolve(dbReq.result);
+            dbReq.onerror = () => reject(dbReq.error);
+          });
+          if (!db.objectStoreNames.contains('inspections')) {
+            db.close();
+            return false;
+          }
+          const tx = db.transaction('inspections', 'readonly');
+          const row = await new Promise<unknown>((resolve, reject) => {
+            const r = tx.objectStore('inspections').get(recordId);
+            r.onsuccess = () => resolve(r.result);
+            r.onerror = () => reject(r.error);
+          });
+          db.close();
+          if (!row || typeof row !== 'object') return false;
+          const synced = (row as { synced_at?: unknown }).synced_at;
+          return typeof synced === 'string' && synced.length > 0;
+        } catch {
+          return false;
+        }
+      },
+      serverId,
+      { timeout: 30_000, polling: 250 },
+    );
+
     // ── 6. Go offline ────────────────────────────────────────────────────
     await context.setOffline(true);
 
