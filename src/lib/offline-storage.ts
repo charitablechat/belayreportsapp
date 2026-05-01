@@ -19,6 +19,15 @@ import * as migrationSafety from './idb-migration-safety';
 // (idb-migration-safety). `notification-center` has zero imports of its
 // own — no circular-dependency risk. Module is ~3 KB; trivial bundle cost.
 import { addSyncNotification as addSyncNotificationStatic } from './notification-center';
+// Audit H1: static-import sync-quarantine for the same reason as P3 above.
+// The three getUnsynced* functions used to `await import('./sync-quarantine')`
+// on the autosync hot path. atomic-sync-manager.ts already statically imports
+// the same module (lines 22-37 there) precisely to avoid `TypeError: Failed
+// to fetch dynamically imported module` on flaky-network iPads, but the
+// fix collapsed if Vite ever code-split the chunk differently. Pinning the
+// static import here removes the latent regression cliff. `sync-quarantine`
+// only imports `sync-logger` — no circular-dependency risk. Module is ~5 KB.
+import { isQuarantined as isSessionQuarantined } from './sync-quarantine';
 
 /** Opaque DB row — fields vary across tables and are read/written structurally.
  *  Uses an `any` index signature so callers can structurally read/write
@@ -2244,7 +2253,7 @@ export async function getUnsyncedInspections(userId?: string) {
       // are not this user's sync responsibility — evaluating drift on them is
       // pure noise that drove the "295 IDB timeouts/cycle" hot loop. Keep
       // temp-ID orphans regardless of owner so cross-user recovery still works.
-      const { isQuarantined: isSessionQuarantined } = await import('./sync-quarantine');
+      // Audit H1: `isSessionQuarantined` is now a static import (file head).
       const candidates = all.filter(isNotQuarantined).filter(record => {
         if (!userId) return true;
         if (record.inspector_id === userId) return true;
@@ -3693,7 +3702,7 @@ export async function getUnsyncedDailyAssessments(userId?: string) {
       
       const all = await db.getAll('daily_assessments');
       // S40 (Fix A): Ownership filter before drift check (see getUnsyncedInspections).
-      const { isQuarantined: isSessionQuarantined } = await import('./sync-quarantine');
+      // Audit H1: `isSessionQuarantined` is now a static import (file head).
       const candidates = all.filter(isNotQuarantined).filter(record => {
         if (!userId) return true;
         if (record.inspector_id === userId) return true;
@@ -4052,7 +4061,7 @@ export async function getUnsyncedTrainings(userId?: string) {
       
       const all = await db.getAll('trainings');
       // S40 (Fix A): Ownership filter before drift check (see getUnsyncedInspections).
-      const { isQuarantined: isSessionQuarantined } = await import('./sync-quarantine');
+      // Audit H1: `isSessionQuarantined` is now a static import (file head).
       const candidates = all.filter(isNotQuarantined).filter(record => {
         if (!userId) return true;
         if (record.inspector_id === userId) return true;
