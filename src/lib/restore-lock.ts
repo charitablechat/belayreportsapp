@@ -1,6 +1,6 @@
 /**
- * Restore Lock (H2 + N-H)
- * ────────────────────────
+ * Restore Lock (H2 + N-H + audit M3)
+ * ──────────────────────────────────
  * The restore flow (DataRecoveryTool → saveInspection/Training/AssessmentOffline)
  * writes records with `synced_at = null` and `updated_at = Date.now()`. If the
  * auto-sync cycle fires while the restore is mid-flight (or 1-2s after, before
@@ -43,6 +43,28 @@
  *   • Survives reloads: React StrictMode double-mounts, visibilitychange
  *     bailouts, and the `beforeunload → reload` refresh loop all preserve
  *     sessionStorage.
+ *
+ * Audit M3 (cross-tab):
+ * The N-H mitigation is per-tab (sessionStorage). If the user opens the
+ * same app in two tabs and starts a restore in tab A, tab B's auto-sync
+ * cycle has no idea and will happily push the half-written rows that
+ * tab A has staged. The restore lock must be cross-tab.
+ *
+ * Mitigation: on each acquire/release the lock broadcasts a message via
+ * `BroadcastChannel('ropeworks-restore-lock-v1')` and tracks remote holders
+ * in an in-memory Map keyed on tab id. While held, the holding tab
+ * heartbeats every 5s; remote holders that haven't heartbeated within
+ * 15s are evicted (e.g. another tab crashed). On module load, the new
+ * tab broadcasts a `query` message; any remote holder responds with its
+ * current state so the new tab learns the lock is held without waiting
+ * for the next heartbeat. `isRestoreInProgress()` also returns true if
+ * any live remote holder is present.
+ *
+ * BroadcastChannel is available in all current Safari versions on iPad
+ * (iOS 15.4+); on older browsers it's `undefined` and the cross-tab
+ * branch silently no-ops, falling back to per-tab semantics. This is
+ * the same posture as the rest of the codebase (e.g. cached-auth
+ * handles BroadcastChannel undefined gracefully).
  */
 
 const PERSIST_KEY = "restore-lock-v1";
@@ -51,14 +73,51 @@ const PERSIST_KEY = "restore-lock-v1";
 // as stale and the lock is released.
 const CRASH_TTL_MS = 15 * 60 * 1000;
 
+// Audit M3: cross-tab signal config.
+const BROADCAST_CHANNEL_NAME = "ropeworks-restore-lock-v1";
+// Heartbeat the local hold every 5s so other tabs know we're still alive.
+const HEARTBEAT_INTERVAL_MS = 5_000;
+// Remote holders that haven't heartbeated within this window are considered
+// crashed. Slightly larger than 2x interval so a missed packet doesn't evict.
+const REMOTE_TTL_MS = 15_000;
+
 interface PersistedLockState {
   heldSince: number;
   /** Incremented each time the lock is acquired; used as a tie-breaker. */
   epoch: number;
 }
 
+interface RemoteHolder {
+  heldSince: number;
+  lastHeartbeat: number;
+}
+
+type ChannelMessage =
+  | { type: "acquired"; tabId: string; heldSince: number }
+  | { type: "released"; tabId: string }
+  | { type: "heartbeat"; tabId: string; heldSince: number }
+  | { type: "query" }
+  | { type: "state"; tabId: string; heldSince: number };
+
 let _restoreCount = 0;
 const listeners = new Set<(active: boolean) => void>();
+
+// Audit M3: per-tab cross-tab state.
+const TAB_ID = generateTabId();
+const remoteHolders = new Map<string, RemoteHolder>();
+let channel: BroadcastChannel | null = null;
+let heartbeatTimer: ReturnType<typeof setInterval> | null = null;
+
+function generateTabId(): string {
+  try {
+    if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
+      return crypto.randomUUID();
+    }
+  } catch {
+    /* fall through */
+  }
+  return `tab-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+}
 
 function notify(active: boolean) {
   listeners.forEach(l => {
@@ -99,6 +158,109 @@ function writePersisted(state: PersistedLockState | null): void {
   }
 }
 
+// Audit M3: BroadcastChannel helpers. Lazy-init so module load is cheap and
+// jsdom (where BroadcastChannel may be undefined) stays compatible.
+function getChannel(): BroadcastChannel | null {
+  if (channel) return channel;
+  try {
+    // Browser-only: gate on a real DOM environment AND skip in vitest where
+    // jsdom routes BroadcastChannel to Node's worker_threads MessagePort,
+    // whose self-dispatch emits a Node MessageEvent that fails
+    // browser-EventTarget validation (ERR_INVALID_ARG_TYPE). In real
+    // browsers `import.meta.env.MODE !== 'test'` so this guard has no
+    // production effect; tests can drive the cross-tab logic directly via
+    // mocked dependencies.
+    if (typeof window === "undefined") return null;
+    if (typeof window.BroadcastChannel === "undefined") return null;
+    if (import.meta.env?.MODE === "test") return null;
+    channel = new window.BroadcastChannel(BROADCAST_CHANNEL_NAME);
+    // Use `onmessage` setter rather than `addEventListener('message', …)` —
+    // Node's globalThis.BroadcastChannel (used by vitest jsdom) routes the
+    // message payload through a non-Event-wrapping path that triggers
+    // ERR_INVALID_ARG_TYPE on the EventTarget side. The `onmessage` setter
+    // takes the raw payload directly. Browsers honor either form.
+    channel.onmessage = handleChannelMessage;
+    // On startup, ask any other tabs that already hold the lock to identify
+    // themselves so we don't have to wait for the next heartbeat.
+    try {
+      channel.postMessage({ type: "query" } satisfies ChannelMessage);
+    } catch {
+      /* ignore */
+    }
+    return channel;
+  } catch {
+    return null;
+  }
+}
+
+function postChannel(msg: ChannelMessage): void {
+  const ch = getChannel();
+  if (!ch) return;
+  try {
+    ch.postMessage(msg);
+  } catch {
+    /* ignore — channel unavailable */
+  }
+}
+
+function pruneStaleRemoteHolders(): void {
+  const now = Date.now();
+  for (const [id, h] of remoteHolders) {
+    if (now - h.lastHeartbeat > REMOTE_TTL_MS) {
+      remoteHolders.delete(id);
+    }
+  }
+}
+
+function handleChannelMessage(ev: MessageEvent<ChannelMessage>): void {
+  const msg = ev?.data;
+  if (!msg || typeof msg !== "object") return;
+  // Ignore our own messages — most browsers don't echo back, but be safe.
+  if ("tabId" in msg && msg.tabId === TAB_ID) return;
+  switch (msg.type) {
+    case "acquired":
+    case "heartbeat":
+    case "state": {
+      remoteHolders.set(msg.tabId, {
+        heldSince: msg.heldSince,
+        lastHeartbeat: Date.now(),
+      });
+      break;
+    }
+    case "released": {
+      remoteHolders.delete(msg.tabId);
+      break;
+    }
+    case "query": {
+      // Another tab just started up. Reply with our state if we currently hold.
+      if (_restoreCount > 0) {
+        const persisted = readPersisted();
+        const heldSince = persisted?.heldSince ?? Date.now();
+        postChannel({ type: "state", tabId: TAB_ID, heldSince });
+      }
+      break;
+    }
+  }
+}
+
+function startHeartbeat(heldSince: number): void {
+  if (heartbeatTimer) return;
+  if (typeof setInterval === "undefined") return;
+  heartbeatTimer = setInterval(() => {
+    postChannel({ type: "heartbeat", tabId: TAB_ID, heldSince });
+  }, HEARTBEAT_INTERVAL_MS);
+  // Don't keep the Node event loop alive in tests / SSR.
+  const t = heartbeatTimer as unknown as { unref?: () => void };
+  if (typeof t.unref === "function") t.unref();
+}
+
+function stopHeartbeat(): void {
+  if (heartbeatTimer) {
+    clearInterval(heartbeatTimer);
+    heartbeatTimer = null;
+  }
+}
+
 /**
  * True while at least one restore is in flight. Sync cycles MUST short-circuit
  * when this returns true.
@@ -106,9 +268,18 @@ function writePersisted(state: PersistedLockState | null): void {
  * N-H: Also returns true if a stale persisted lock from a recent tab crash
  * is still within its TTL window; the next call after the window passes
  * auto-clears the stale entry.
+ *
+ * Audit M3: Also returns true if any *other* tab has signaled an active
+ * restore (heartbeat within REMOTE_TTL_MS).
  */
 export function isRestoreInProgress(): boolean {
   if (_restoreCount > 0) return true;
+  // Audit M3: cross-tab check before falling back to crash sentinel.
+  // Lazy-init the channel so a sync cycle that runs before any restore
+  // happens still discovers a sibling tab's lock.
+  getChannel();
+  pruneStaleRemoteHolders();
+  if (remoteHolders.size > 0) return true;
   const persisted = readPersisted();
   if (!persisted) return false;
   const age = Date.now() - persisted.heldSince;
@@ -141,10 +312,14 @@ export async function withRestoreLock<T>(fn: () => Promise<T>): Promise<T> {
     // N-H: persist so a tab crash between here and the finally block still
     // blocks the next launch's first sync cycle.
     const prev = readPersisted();
+    const heldSince = Date.now();
     writePersisted({
-      heldSince: Date.now(),
+      heldSince,
       epoch: (prev?.epoch ?? 0) + 1,
     });
+    // Audit M3: announce to sibling tabs and start heartbeating.
+    postChannel({ type: "acquired", tabId: TAB_ID, heldSince });
+    startHeartbeat(heldSince);
     notify(true);
   }
   try {
@@ -156,6 +331,9 @@ export async function withRestoreLock<T>(fn: () => Promise<T>): Promise<T> {
       if (import.meta.env.DEV) console.log('[RestoreLock] released (sync resumed)');
       // N-H: clear the persisted sentinel on clean release.
       writePersisted(null);
+      // Audit M3: announce release and stop heartbeating.
+      stopHeartbeat();
+      postChannel({ type: "released", tabId: TAB_ID });
       notify(false);
     }
   }
@@ -168,4 +346,60 @@ export async function withRestoreLock<T>(fn: () => Promise<T>): Promise<T> {
  */
 export function clearPersistedRestoreLock(): void {
   writePersisted(null);
+}
+
+/**
+ * Audit M3: Test-only — clear remote-holder state. Used by tests to reset
+ * cross-tab signaling between cases. Production code should never call this.
+ */
+export function _resetCrossTabStateForTesting(): void {
+  remoteHolders.clear();
+  stopHeartbeat();
+  if (channel) {
+    try {
+      channel.onmessage = null;
+      channel.close();
+    } catch {
+      /* ignore */
+    }
+    channel = null;
+  }
+}
+
+/**
+ * Audit M3: Test-only — drive the cross-tab message handler directly.
+ * Lets specs simulate sibling-tab messages without needing a real
+ * BroadcastChannel (which doesn't behave correctly under vitest jsdom —
+ * see comment on getChannel above).
+ */
+export function _handleChannelMessageForTesting(ev: { data: unknown }): void {
+  handleChannelMessage(ev as MessageEvent<ChannelMessage>);
+}
+
+/**
+ * Audit M3: Test-only — inject a mock BroadcastChannel so specs can assert
+ * on emitted messages (acquired / released / state replies).
+ */
+export function _setChannelForTesting(mock: unknown): void {
+  channel = mock as BroadcastChannel | null;
+}
+
+/**
+ * Audit M3: Test-only — seed a remote-holder entry so specs can verify
+ * pruneStaleRemoteHolders evicts aged-out tabs.
+ */
+export function _setRemoteHolderForTesting(
+  tabId: string,
+  heldSince: number,
+  lastHeartbeat: number,
+): void {
+  remoteHolders.set(tabId, { heldSince, lastHeartbeat });
+}
+
+/**
+ * Audit M3: Test-only — read the per-tab id so specs can confirm self-emitted
+ * messages are ignored.
+ */
+export function _getOwnTabIdForTesting(): string {
+  return TAB_ID;
 }
