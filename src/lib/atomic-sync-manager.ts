@@ -490,12 +490,55 @@ function notifyRegressionBlock(
     .catch(() => {});
 }
 
-function notifyRegressionRelease(): void {
+/**
+ * Audit M5: distinguish two regression-release paths so the user gets the
+ * correct signal:
+ *
+ *  - 'natural'  — the local record's field count returned to a healthy level
+ *               (the previous suspicious drop was reverted or the data was
+ *               re-entered). No user notification needed; the record is
+ *               syncing normally again. Just dispatch the event so any
+ *               subscribed UI (SyncDiagnosticsSheet, SyncPulse) refreshes.
+ *
+ *  - 'forced'   — the >50% field-count drop persisted across
+ *               MAX_REGRESSION_SKIPS sync cycles, so the safety guard let
+ *               the sync proceed anyway to avoid blocking legitimate large
+ *               deletions. The user MUST know about this: their
+ *               server-side data has just been overwritten with a
+ *               significantly smaller local row. Emits a warning
+ *               notification so the user can verify intent in
+ *               SyncDiagnosticsSheet (which shows the previous block).
+ *
+ * Best-effort — never throws into the sync hot path.
+ */
+function notifyRegressionRelease(
+  mode: 'natural' | 'forced' = 'natural',
+  kind?: 'inspection' | 'training' | 'assessment',
+  recordId?: string,
+  label?: string,
+): void {
   try {
     window.dispatchEvent(new CustomEvent('sync-records-updated'));
   } catch {
     /* ignore */
   }
+  if (mode === 'natural') return;
+  // Forced-through release — surface a warning notification so the user
+  // knows their server-side data was just overwritten with a row that
+  // dropped >50% of its fields. Dynamic import keeps the notification
+  // module out of the cold-cycle bundle path; failure is non-fatal.
+  void import('./notification-center')
+    .then(({ addWarningNotification }) => {
+      const safeLabel =
+        label?.trim() ||
+        (kind && recordId
+          ? `${kind} ${recordId.substring(0, 8)}`
+          : 'a record');
+      addWarningNotification(
+        `Sync resumed: ${safeLabel} — the large data drop persisted past ${MAX_REGRESSION_SKIPS} cycles, so the local copy was uploaded. Verify the server data matches your intent.`,
+      );
+    })
+    .catch(() => {});
 }
 
 /**
@@ -920,11 +963,16 @@ export async function syncInspectionAtomic(inspectionId: string, preValidatedUse
           skipCount,
         });
         await resetRegressionSkipCount(inspectionId);
-        notifyRegressionRelease();
+        notifyRegressionRelease(
+          'forced',
+          'inspection',
+          inspectionId,
+          inspection.organization || inspection.location || '',
+        );
       } else {
         // Field count is healthy — clear any previous skip counter
         await resetRegressionSkipCount(inspectionId);
-        notifyRegressionRelease();
+        notifyRegressionRelease('natural');
       }
     }
 
@@ -1894,10 +1942,15 @@ export async function syncTrainingAtomic(trainingId: string, preValidatedUser?: 
           skipCount,
         });
         await resetRegressionSkipCount(trainingId);
-        notifyRegressionRelease();
+        notifyRegressionRelease(
+          'forced',
+          'training',
+          trainingId,
+          training.organization || training.location || '',
+        );
       } else {
         await resetRegressionSkipCount(trainingId);
-        notifyRegressionRelease();
+        notifyRegressionRelease('natural');
       }
     }
 
@@ -2732,10 +2785,15 @@ export async function syncDailyAssessmentAtomic(assessmentId: string, preValidat
           skipCount,
         });
         await resetRegressionSkipCount(assessmentId);
-        notifyRegressionRelease();
+        notifyRegressionRelease(
+          'forced',
+          'assessment',
+          assessmentId,
+          assessment.organization || (assessment as { site?: string | null }).site || '',
+        );
       } else {
         await resetRegressionSkipCount(assessmentId);
-        notifyRegressionRelease();
+        notifyRegressionRelease('natural');
       }
     }
 
