@@ -6,7 +6,16 @@ import { logError } from '@/lib/log-error';
 import { syncPhotos } from '@/lib/sync-manager';
 import { saveInspectionOffline, saveTrainingOffline, saveDailyAssessmentOffline } from '@/lib/offline-storage';
 import { shouldPreserveLocalRecord } from '@/lib/local-data-guards';
-import { getUnsyncedInspections, getUnsyncedTrainings, getUnsyncedDailyAssessments, isIdbReadFailure, getCircuitBreakerStatus, resetCircuitBreaker, pruneOldSyncedPhotoBlobs, getQueuedOperations, removeQueuedOperation, getQueuedTrainingOperations, removeQueuedTrainingOperation, getQueuedAssessmentOperations, removeQueuedAssessmentOperation, withIDBTimeout, type DbRow } from '@/lib/offline-storage';
+import { getUnsyncedInspections, getUnsyncedTrainings, getUnsyncedDailyAssessments, isIdbReadFailure, getCircuitBreakerStatus, resetCircuitBreaker, pruneOldSyncedPhotoBlobs, getQueuedOperations, removeQueuedOperation, getQueuedTrainingOperations, removeQueuedTrainingOperation, getQueuedAssessmentOperations, removeQueuedAssessmentOperation, withIDBTimeout, evictStuckTempPhotos, maybeRunQuarantineGc, type DbRow } from '@/lib/offline-storage';
+// Audit M2: static-import the autosync drain modules so the cycle isn't gated
+// on a Vite-emitted lazy chunk that can fail to fetch on a flaky-Wi-Fi iPad.
+// Each was previously `await import(...)` on the post-sync hot path; the
+// dynamic-import failure mode silently regressed queue prune / temp-photo
+// eviction / storage-pressure work to "never runs," accumulating dead state.
+// Mirrors the H1 + P3 + #18 + #82 static-import hardening pattern.
+import { processQueuedSoftDeletes, pruneCompletedQueuedOperations } from '@/lib/queued-soft-delete-processor';
+import { manageStoragePressure } from '@/lib/storage-pressure-manager';
+import { maybeRunCycleProbe } from '@/lib/storage-rls-probe';
 import type { RealtimePostgresChangesPayload } from '@supabase/supabase-js';
 import { getUserWithCache, getCachedUserFromStorage, ensureValidSession, type CachedUser } from '@/lib/cached-auth';
 import { hasPendingOfflineAuth, verifyAndReconcileOfflineAuth } from '@/lib/offline-auth';
@@ -404,8 +413,8 @@ export const useAutoSync = () => {
           
           if (hasQueuedOps) {
             // Process any soft-delete entries first
+            // Audit M2: `processQueuedSoftDeletes` is now a static import (file head).
             try {
-              const { processQueuedSoftDeletes } = await import('@/lib/queued-soft-delete-processor');
               const deleteResult = await processQueuedSoftDeletes();
               if (deleteResult.processed > 0) {
                 syncLog.log(`[AutoSync] Processed ${deleteResult.processed} queued soft-deletes`);
@@ -424,8 +433,8 @@ export const useAutoSync = () => {
             
             // S4: Conservative state-aware prune (replaces destructive bulk-clear).
             // Only drops entries whose work is already represented in IDB state.
+            // Audit M2: `pruneCompletedQueuedOperations` is now a static import (file head).
             try {
-              const { pruneCompletedQueuedOperations } = await import('@/lib/queued-soft-delete-processor');
               const pruned = await pruneCompletedQueuedOperations();
               const total = pruned.inspections + pruned.trainings + pruned.assessments;
               if (total > 0) {
@@ -469,8 +478,8 @@ export const useAutoSync = () => {
       const syncResult = await withSyncTimeout(
         async (signal) => {
           // Process any queued offline soft-deletes before main sync
+          // Audit M2: `processQueuedSoftDeletes` is now a static import (file head).
           try {
-            const { processQueuedSoftDeletes } = await import('@/lib/queued-soft-delete-processor');
             const deleteResult = await processQueuedSoftDeletes(signal);
             if (deleteResult.processed > 0) {
               syncLog.log(`[AutoSync] Processed ${deleteResult.processed} queued soft-deletes`);
@@ -553,20 +562,18 @@ export const useAutoSync = () => {
            // S13: GC photos stuck on temp-* parents > 30 days (non-blocking).
            // Covers temp-parents that never sync (validation/RLS failures) so
            // their blobs don't accumulate forever in IDB.
-           import('@/lib/offline-storage').then(({ evictStuckTempPhotos }) => {
-             evictStuckTempPhotos(30).catch(() => {});
-           }).catch(() => {});
-           
+           // Audit M2: now a static import (file head).
+           evictStuckTempPhotos(30).catch(() => {});
+
            // Storage pressure management (non-blocking)
-           import('@/lib/storage-pressure-manager').then(({ manageStoragePressure }) => {
-             manageStoragePressure().catch(() => {});
-           }).catch(() => {});
-           
+           // Audit M2: now a static import (file head).
+           manageStoragePressure().catch(() => {});
+
            // S4: Conservative state-aware prune after sync completes.
            // Replaces previous destructive bulk-clear that wiped non-soft-delete entries.
+           // Audit M2: `pruneCompletedQueuedOperations` is now a static import (file head).
            (async () => {
              try {
-               const { pruneCompletedQueuedOperations } = await import('@/lib/queued-soft-delete-processor');
                const pruned = await pruneCompletedQueuedOperations();
                const total = pruned.inspections + pruned.trainings + pruned.assessments;
                if (total > 0) {
@@ -727,19 +734,19 @@ export const useAutoSync = () => {
       // completed cycle. Catches mid-day policy regressions without waiting
       // for the UTC rollover. Internally rate-limited and force-bypasses the
       // daily flag.
+      // Audit M2: `maybeRunCycleProbe` is now a static import (file head).
       try {
-        const { maybeRunCycleProbe } = await import('@/lib/storage-rls-probe');
         maybeRunCycleProbe();
       } catch {
-        /* probe import failure must never break sync */
+        /* probe failure must never break sync */
       }
       // M6: Periodic GC for unresolved quarantined records (>30d).
       // Cycle-throttled + rate-limited inside the helper. Fire-and-forget.
+      // Audit M2: `maybeRunQuarantineGc` is now a static import (file head).
       try {
-        const { maybeRunQuarantineGc } = await import('@/lib/offline-storage');
         maybeRunQuarantineGc();
       } catch {
-        /* gc import failure must never break sync */
+        /* gc failure must never break sync */
       }
     }
   }, [queryClient, isMobileDevice, isIOSDevice]);
@@ -775,7 +782,8 @@ export const useAutoSync = () => {
       const user = await getUserWithCache();
       if (!user) return;
 
-      const { isIdbReadFailure } = await import('@/lib/offline-storage');
+      // Audit M2: `isIdbReadFailure` is already a static import at the top of
+      // this file — the dynamic re-import here was dead code and removed.
       const [insp, train, assess] = await Promise.all([
         getUnsyncedInspections(user.id),
         getUnsyncedTrainings(user.id),
