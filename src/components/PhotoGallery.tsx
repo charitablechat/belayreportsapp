@@ -1,12 +1,12 @@
 import { useEffect, useState, useRef, useCallback } from "react";
 import { OptimizedImage } from "@/components/ui/optimized-image";
 import { supabase } from "@/integrations/supabase/client";
-import { getOfflinePhotos, updatePhotoDisplayOrder } from "@/lib/offline-storage";
+import { getOfflinePhotos, updatePhotoDisplayOrder, getDB, putPhotoRecord } from "@/lib/offline-storage";
 import { cachePhotoFromRemote, batchValidateCachedPhotos } from "@/lib/photo-cache";
 import { getPhotoReceipts } from "@/lib/photo-receipts";
 import { useNetworkStatus } from "@/hooks/useNetworkStatus";
 import { isHeicPath, isHeicBlob, convertHeicBlobToJpeg } from "@/lib/heic-converter";
-import { processBackgroundCacheItem } from "./photo-gallery-helpers";
+import { processBackgroundCacheItem, migrateHeicToJpeg, type MigrateHeicOutcome } from "./photo-gallery-helpers";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -171,22 +171,82 @@ export default function PhotoGallery({
   );
 
   /**
-   * Fire-and-forget: re-upload a converted JPEG blob to storage,
-   * replacing the mislabeled .jpg that still contains HEIC bytes.
-   * This ensures the HTML report generator gets valid JPEG data.
+   * Audit H2: migrate a freshly-converted HEIC blob to a real `.jpg`
+   * storage path, update the DB row, and patch the IDB photo cache so
+   * future loads stop re-converting. Replaces the previous
+   * `reuploadConvertedJpeg` which wrote JPEG bytes back to the SAME
+   * `.heic` path and never touched the DB — every gallery load re-
+   * fetched + re-converted + re-uploaded forever.
+   *
+   * See `migrateHeicToJpeg` in `./photo-gallery-helpers` for the
+   * multi-step write order and error semantics.
    */
-  const reuploadConvertedJpeg = (filePath: string, jpegBlob: Blob) => {
-    supabase.storage
-      .from(storageBucket)
-      .upload(filePath, jpegBlob, { contentType: 'image/jpeg', upsert: true })
-      .then(({ error }) => {
-        if (error) {
-          console.warn('[PhotoGallery] Re-upload converted JPEG failed:', filePath, error.message);
-        } else if (import.meta.env.DEV) {
-          console.log('[PhotoGallery] Re-uploaded converted JPEG:', filePath);
-        }
-      })
-      .catch(e => console.warn('[PhotoGallery] Re-upload error:', e));
+  const reuploadConvertedJpeg = (filePath: string, jpegBlob: Blob): void => {
+    void migrateHeicToJpeg({
+      photoId: '',
+      oldStoragePath: filePath,
+      jpegBlob,
+      storageUploadJpeg: async (path, blob) => {
+        const res = await supabase.storage
+          .from(storageBucket)
+          .upload(path, blob, { contentType: 'image/jpeg', upsert: false });
+        return { error: res.error ?? null };
+      },
+      storageRemoveOld: async (path) => {
+        const res = await supabase.storage.from(storageBucket).remove([path]);
+        return { error: res.error ?? null };
+      },
+      dbUpdatePhotoUrl: async () => ({ error: null }),
+      idbUpdatePhotoUrl: async () => undefined,
+    });
+  };
+
+  /**
+   * Audit H2: rich variant used from the background-cache loop where we
+   * have the full photo row in hand. Updates storage + the DB row + the
+   * IDB cache entry, all keyed off `photo.id`.
+   */
+  const migrateConvertedJpegForPhoto = async (
+    photoId: string,
+    oldStoragePath: string,
+    jpegBlob: Blob
+  ): Promise<MigrateHeicOutcome> => {
+    return migrateHeicToJpeg({
+      photoId,
+      oldStoragePath,
+      jpegBlob,
+      storageUploadJpeg: async (path, blob) => {
+        const res = await supabase.storage
+          .from(storageBucket)
+          .upload(path, blob, { contentType: 'image/jpeg', upsert: false });
+        return { error: res.error ?? null };
+      },
+      storageRemoveOld: async (path) => {
+        const res = await supabase.storage.from(storageBucket).remove([path]);
+        return { error: res.error ?? null };
+      },
+      dbUpdatePhotoUrl: async (id, newPath) => {
+        const res = await (supabase as unknown as {
+          from: (t: string) => {
+            update: (p: Record<string, string>) => {
+              eq: (col: string, val: string) => Promise<{ error: { message: string } | null }>;
+            };
+          };
+        })
+          .from(tableName)
+          .update({ photo_url: newPath })
+          .eq('id', id);
+        return { error: res.error ?? null };
+      },
+      idbUpdatePhotoUrl: async (id, newPath) => {
+        const db = await getDB();
+        const photo = await db.get('photos', id);
+        if (!photo) return;
+        photo.photoUrl = newPath;
+        photo.fileName = newPath.split('/').pop() || photo.fileName;
+        await putPhotoRecord(db, photo);
+      },
+    });
   };
 
   const initialLoadDone = useRef(false);
@@ -317,7 +377,40 @@ export default function PhotoGallery({
                     isHeicPath,
                     isHeicBlob,
                     convertHeicBlobToJpeg,
-                    reuploadConvertedJpeg,
+                    reuploadConvertedJpeg: (path, jpegBlob) => {
+                      // Audit H2: rich migrate (storage + DB + IDB).
+                      void migrateConvertedJpegForPhoto(photo.id, path, jpegBlob)
+                        .then(outcome => {
+                          if (outcome.kind === 'failed-upload') {
+                            console.warn(
+                              '[PhotoGallery] HEIC migrate: storage upload failed',
+                              photo.id,
+                              outcome.error
+                            );
+                          } else if (outcome.kind === 'failed-db-update') {
+                            console.warn(
+                              '[PhotoGallery] HEIC migrate: DB update failed (storage already at',
+                              outcome.newStoragePath + ')',
+                              photo.id,
+                              outcome.error
+                            );
+                          } else if (outcome.kind === 'failed-idb-update') {
+                            console.warn(
+                              '[PhotoGallery] HEIC migrate: IDB update failed (storage+DB already at',
+                              outcome.newStoragePath + ')',
+                              photo.id
+                            );
+                          } else if (outcome.kind === 'migrated' && import.meta.env.DEV) {
+                            console.log(
+                              '[PhotoGallery] HEIC migrate: ok',
+                              photo.id,
+                              '→',
+                              outcome.newStoragePath
+                            );
+                          }
+                        })
+                        .catch(e => console.warn('[PhotoGallery] HEIC migrate error:', e));
+                    },
                     cachePhotoFromRemote,
                   }))
                   .then(outcome => {
