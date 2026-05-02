@@ -27,6 +27,14 @@ for (const [k, v] of Object.entries(viteEnv)) {
  */
 export default defineConfig({
   testDir: './tests/e2e',
+  // Only Playwright specs use `*.spec.ts`. Any `*.test.ts` under `tests/e2e/`
+  // (e.g. `_fixtures/transient-retry.test.ts`) is a vitest unit test for a
+  // pure helper — those are picked up by `vitest.config.ts` and must NOT be
+  // imported by the Playwright runner. Importing a vitest file inside
+  // Playwright transitively loads `@vitest/expect`, which redefines
+  // `Symbol($$jest-matchers-object)` and crashes Playwright's own expect
+  // before any spec runs (`TypeError: Cannot redefine property: ...`).
+  testMatch: /.*\.spec\.ts$/,
   // Fail the build on any `test.only(...)` left in source.
   forbidOnly: !!process.env.CI,
   // CI gets one retry; local gets none so flake doesn't hide.

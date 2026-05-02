@@ -1,4 +1,5 @@
 import { type APIRequestContext, type Page, request } from '@playwright/test';
+import { withTransientRetry } from './transient-retry';
 
 /**
  * Helpers for talking to the Supabase REST API directly from Playwright
@@ -166,7 +167,10 @@ export async function waitForInspectionInCloud(
   const deadline = Date.now() + timeoutMs;
   let last: { status: number; body: string } | null = null;
   while (Date.now() < deadline) {
-    const res = await session.apiClient.get(url);
+    const res = await withTransientRetry(
+      () => session.apiClient.get(url),
+      { label: 'waitForInspectionInCloud' }
+    );
     if (res.ok()) {
       const rows = (await res.json()) as Record<string, unknown>[];
       if (Array.isArray(rows) && rows.length > 0) return rows[0];
@@ -262,7 +266,10 @@ export async function waitForCloudBackup(
   const deadline = Date.now() + timeoutMs;
   let last: { status: number; body: string } | null = null;
   while (Date.now() < deadline) {
-    const res = await session.apiClient.get(url);
+    const res = await withTransientRetry(
+      () => session.apiClient.get(url),
+      { label: 'waitForCloudBackup' }
+    );
     if (res.ok()) {
       const rows = (await res.json()) as CloudBackupRow[];
       if (Array.isArray(rows) && rows.length > 0) return rows[0];
@@ -313,7 +320,10 @@ export async function waitForCloudBackupTsAdvance(
   let lastRow: CloudBackupRow | null = null;
   let lastErr: { status: number; body: string } | null = null;
   while (Date.now() < deadline) {
-    const res = await session.apiClient.get(url);
+    const res = await withTransientRetry(
+      () => session.apiClient.get(url),
+      { label: 'waitForCloudBackupTsAdvance' }
+    );
     if (res.ok()) {
       const rows = (await res.json()) as CloudBackupRow[];
       if (Array.isArray(rows) && rows.length > 0) {
@@ -362,7 +372,10 @@ export async function waitForInspectionLocationInCloud(
   let lastRow: Record<string, unknown> | null = null;
   let lastErr: { status: number; body: string } | null = null;
   while (Date.now() < deadline) {
-    const res = await session.apiClient.get(url);
+    const res = await withTransientRetry(
+      () => session.apiClient.get(url),
+      { label: 'waitForInspectionLocationInCloud' }
+    );
     if (res.ok()) {
       const rows = (await res.json()) as Record<string, unknown>[];
       if (Array.isArray(rows) && rows.length > 0) {
@@ -578,7 +591,10 @@ export async function waitForAdminEditSnapshot(
   const deadline = Date.now() + timeoutMs;
   let last: { status: number; body: string } | null = null;
   while (Date.now() < deadline) {
-    const res = await session.apiClient.get(url);
+    const res = await withTransientRetry(
+      () => session.apiClient.get(url),
+      { label: 'waitForAdminEditSnapshot' }
+    );
     if (res.ok()) {
       const rows = (await res.json()) as AdminEditSnapshotRow[];
       if (Array.isArray(rows) && rows.length > 0) return rows[0];
@@ -642,7 +658,10 @@ export async function waitForInspectionPhotoInCloud(
   const deadline = Date.now() + timeoutMs;
   let last: { status: number; body: string } | null = null;
   while (Date.now() < deadline) {
-    const res = await session.apiClient.get(url);
+    const res = await withTransientRetry(
+      () => session.apiClient.get(url),
+      { label: 'waitForInspectionPhotoInCloud' }
+    );
     if (res.ok()) {
       const rows = (await res.json()) as InspectionPhotoRow[];
       if (Array.isArray(rows) && rows.length > 0) return rows[0];

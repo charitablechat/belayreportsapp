@@ -103,6 +103,31 @@ function maybeAbort<T>(builder: AbortableBuilder<T>, signal?: AbortSignal): PgRe
   return builder.abortSignal(signal);
 }
 
+/**
+ * Tables with a `BEFORE UPDATE` trigger (`a_skip_noop_update` calling
+ * `public.skip_noop_update()`) added in
+ * `supabase/migrations/20260501145725_*.sql`. The trigger compares
+ * `to_jsonb(OLD) = to_jsonb(NEW)` (minus bookkeeping cols) and `RETURN NULL`
+ * on no-ops, which cancels the row update entirely. PostgreSQL's `RETURNING`
+ * clause is empty for cancelled writes, so `.upsert(...).select('id')`
+ * comes back with `data.length === 0` even though the request succeeded —
+ * this is a legitimate "nothing to do" outcome, not a failure.
+ *
+ * The transaction manager's row-count sanity check below treats 0/partial
+ * returned rows as success (instead of throwing) for upsert/update on
+ * these tables. Real RLS denials and session-expired errors still surface
+ * via `result.error` and are handled by the unchanged error path.
+ *
+ * If a future migration adds the same trigger to additional tables, add
+ * them here so the row-count check stays consistent. Mode 3 fix (RC-5).
+ */
+export const TABLES_WITH_NO_OP_UPDATE_TRIGGER: ReadonlySet<string> = new Set([
+  'inspection_systems',
+  'inspection_ziplines',
+  'inspection_equipment',
+  'inspection_standards',
+]);
+
 // Tables that are NEVER allowed to have delete operations via the transaction manager
 // This is a compile-time/runtime guard against accidental data loss
 const REPORT_TABLE_BLOCKLIST = new Set([
@@ -248,12 +273,22 @@ export async function executeTransaction(
       if (step.operation !== 'delete') {
         const returnedRows = result.data?.length ?? 0;
         const expectedRows = Array.isArray(step.data) ? step.data.length : 1;
-        
-        if (returnedRows === 0) {
+        // Mode 3 fix (RC-5): the `skip_noop_update` BEFORE UPDATE trigger on
+        // the four child tables in `TABLES_WITH_NO_OP_UPDATE_TRIGGER` cancels
+        // identical-value writes, leaving `RETURNING` empty. For upsert /
+        // update on those tables, treat 0-row and partial-row outcomes as
+        // legitimate no-ops instead of throwing. Real RLS denials and
+        // session-expired errors still surface via `result.error` (handled
+        // above), so this exemption does not weaken error detection.
+        const triggerCanSkip =
+          (step.operation === 'upsert' || step.operation === 'update') &&
+          TABLES_WITH_NO_OP_UPDATE_TRIGGER.has(step.table);
+
+        if (returnedRows === 0 && !triggerCanSkip) {
           throw new Error(`Step ${i + 1} (${step.operation}:${step.table}) affected 0 rows — possible RLS block or expired session`);
         }
-        
-        if (Array.isArray(step.data) && returnedRows < expectedRows) {
+
+        if (Array.isArray(step.data) && returnedRows < expectedRows && !triggerCanSkip) {
           console.warn(`[Transaction] Step ${i + 1} (${step.operation}:${step.table}) partial write: ${returnedRows}/${expectedRows} rows`);
           throw new Error(`Step ${i + 1} (${step.operation}:${step.table}) partial write: expected ${expectedRows} rows, got ${returnedRows}`);
         }
