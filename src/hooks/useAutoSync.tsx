@@ -17,7 +17,7 @@ import { processQueuedSoftDeletes, pruneCompletedQueuedOperations } from '@/lib/
 import { manageStoragePressure } from '@/lib/storage-pressure-manager';
 import { maybeRunCycleProbe } from '@/lib/storage-rls-probe';
 import type { RealtimePostgresChangesPayload } from '@supabase/supabase-js';
-import { getUserWithCache, getCachedUserFromStorage, ensureValidSession, type CachedUser } from '@/lib/cached-auth';
+import { getUserWithCache, getCachedUserFromStorage, ensureValidSession, getLocallyValidCachedUser, type CachedUser } from '@/lib/cached-auth';
 import { hasPendingOfflineAuth, verifyAndReconcileOfflineAuth } from '@/lib/offline-auth';
 import { useQueryClient } from '@tanstack/react-query';
 import { isMobile, isIOS } from '@/lib/mobile-detection';
@@ -238,6 +238,16 @@ export const useAutoSync = () => {
     
     // Single session validation for the entire sync cycle
     // This eliminates 3 redundant LockManager calls (one per atomic sync function)
+    //
+    // Mode 7C — when `ensureValidSession()` is blocked by an unreachable
+    // supabase REST endpoint (`Failed to fetch`) during the post-online
+    // recovery window, fall back to the cached user as long as its JWT
+    // is locally still valid. supabase becomes the authority on the actual
+    // sync POST: a bad token 401s, then the H5-T classifier + atomic-sync
+    // retry budget kick in (PRs #94/#101/#102). Without this fallback,
+    // `performSync` silently no-ops for the entire window and the dirty
+    // record sits in IDB until the next periodic sync tick after refresh
+    // unblocks — typically minutes after the network returned.
     let validatedUser: CachedUser | null = null;
     try {
       validatedUser = await Promise.race([
@@ -245,12 +255,24 @@ export const useAutoSync = () => {
         new Promise<null>((_, reject) => setTimeout(() => reject(new Error('Auth timeout')), 8000))
       ]);
     } catch (e) {
-      console.warn('[AutoSync] Session validation timed out, skipping sync');
-      return;
+      const fallback = getLocallyValidCachedUser();
+      if (fallback) {
+        console.warn('[AutoSync] Session validation timed out, using cached JWT fallback (Mode 7C)');
+        validatedUser = fallback;
+      } else {
+        console.warn('[AutoSync] Session validation timed out, skipping sync');
+        return;
+      }
     }
     if (!validatedUser) {
-      console.warn('[AutoSync] No valid session, skipping sync');
-      return;
+      const fallback = getLocallyValidCachedUser();
+      if (fallback) {
+        console.warn('[AutoSync] No valid session from refresh, using cached JWT fallback (Mode 7C)');
+        validatedUser = fallback;
+      } else {
+        console.warn('[AutoSync] No valid session, skipping sync');
+        return;
+      }
     }
     
     // S21: Await the in-flight sync directly instead of polling syncInProgressRef.

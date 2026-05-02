@@ -24,13 +24,12 @@
  * the H5 hung-IDB protection (5s steady-state desktop / 8s mobile + the
  * tier-defined boundary timeouts) is restored.
  *
- * The 30s grace window is calibrated against the wedge fingerprint observed
- * in CI run 25247813479: the storage layer recovered between 08:25:25 (first
- * 5s open timeout) and 08:27:35 (drop back to 2s storage-tier timeouts) —
- * ~2:10 minutes from edge to recovery, but most of the IDB-op timeouts
- * cluster in the first 60s. 30s of grace gives the open path one solid
- * upgrade-grade attempt; if THAT still times out, we're back on the
- * steady-state recovery path with the same semantics as before.
+ * Mode 7A — calibration update. Mode 6 set the grace window to 30s based
+ * on PR #102 logs. PR #104's CI run showed the wedge can drag out for
+ * 4-5min, so the 30s ceiling let grace expire while the storage layer
+ * was still recovering. Bumped to 90s grace + 4× multiplier (was 3×) to
+ * cover the observed P95 recovery curve. Old 3× expectations were updated
+ * in-place; the 30s/3× values are no longer the contract.
  */
 
 import { describe, it, expect, beforeEach } from 'vitest';
@@ -42,7 +41,8 @@ import {
 } from '../offline-storage';
 
 const DB_VERSION = 18;
-const POST_ONLINE_RECOVERY_GRACE_MS = 30_000;
+// Mode 7A: 30_000 → 90_000
+const POST_ONLINE_RECOVERY_GRACE_MS = 90_000;
 
 describe('isInPostOnlineRecoveryGrace — Mode 6 grace-window predicate', () => {
   beforeEach(() => {
@@ -66,12 +66,12 @@ describe('isInPostOnlineRecoveryGrace — Mode 6 grace-window predicate', () => 
     expect(isInPostOnlineRecoveryGrace(1_000_001)).toBe(true);
   });
 
-  it('returns true at the lower edge (29_999ms after)', () => {
+  it('returns true at the lower edge (89_999ms after)', () => {
     setLastOnlineRecoveryAtForTests(1_000_000);
     expect(isInPostOnlineRecoveryGrace(1_000_000 + POST_ONLINE_RECOVERY_GRACE_MS - 1)).toBe(true);
   });
 
-  it('returns false at the upper edge (exactly 30_000ms after)', () => {
+  it('returns false at the upper edge (exactly 90_000ms after — Mode 7A calibration)', () => {
     // Strict-less-than semantics: at the boundary, the grace window has
     // closed. Documents the contract so a future change to `<=` would
     // surface here loudly.
@@ -79,9 +79,14 @@ describe('isInPostOnlineRecoveryGrace — Mode 6 grace-window predicate', () => 
     expect(isInPostOnlineRecoveryGrace(1_000_000 + POST_ONLINE_RECOVERY_GRACE_MS)).toBe(false);
   });
 
-  it('returns false long after (60s)', () => {
+  it('returns true 60s after the event (still inside the 90s window — Mode 7A)', () => {
     setLastOnlineRecoveryAtForTests(1_000_000);
-    expect(isInPostOnlineRecoveryGrace(1_000_000 + 60_000)).toBe(false);
+    expect(isInPostOnlineRecoveryGrace(1_000_000 + 60_000)).toBe(true);
+  });
+
+  it('returns false 120s after the event (well past the 90s window)', () => {
+    setLastOnlineRecoveryAtForTests(1_000_000);
+    expect(isInPostOnlineRecoveryGrace(1_000_000 + 120_000)).toBe(false);
   });
 
   it('does NOT consider system clock skew that produces a `now` BEFORE the stamp', () => {
@@ -109,13 +114,13 @@ describe('applyPostOnlineGraceBump — Mode 6 boundary multiplier', () => {
     expect(applyPostOnlineGraceBump(8_000)).toBe(8_000);
   });
 
-  it('returns 3× the input inside the grace window — covers all four IDB_TIMEOUTS tiers', () => {
+  it('returns 4× the input inside the grace window (Mode 7A: was 3×) — covers all four IDB_TIMEOUTS tiers', () => {
     setLastOnlineRecoveryAtForTests(1_000_000);
     // Pass `now` aligned with the stamp so the predicate fires.
-    expect(applyPostOnlineGraceBump(5_000, 1_000_000)).toBe(15_000);  // light
-    expect(applyPostOnlineGraceBump(10_000, 1_000_000)).toBe(30_000); // batch
-    expect(applyPostOnlineGraceBump(8_000, 1_000_000)).toBe(24_000);  // write
-    expect(applyPostOnlineGraceBump(15_000, 1_000_000)).toBe(45_000); // heavy
+    expect(applyPostOnlineGraceBump(5_000, 1_000_000)).toBe(20_000);  // light
+    expect(applyPostOnlineGraceBump(10_000, 1_000_000)).toBe(40_000); // batch
+    expect(applyPostOnlineGraceBump(8_000, 1_000_000)).toBe(32_000);  // write
+    expect(applyPostOnlineGraceBump(15_000, 1_000_000)).toBe(60_000); // heavy
   });
 
   it('returns the input unchanged once the grace window has expired', () => {
@@ -134,7 +139,7 @@ describe('applyPostOnlineGraceBump — Mode 6 boundary multiplier', () => {
     // hidden clamping or sign-handling. If a future refactor introduces a
     // signed budget by accident, the test will surface immediately.
     setLastOnlineRecoveryAtForTests(1_000_000);
-    expect(applyPostOnlineGraceBump(-1_000, 1_000_000)).toBe(-3_000);
+    expect(applyPostOnlineGraceBump(-1_000, 1_000_000)).toBe(-4_000);
   });
 });
 
@@ -191,7 +196,7 @@ describe('selectIdbOpenTimeout — postOnlineRecovery 4th argument (Mode 6)', ()
   });
 });
 
-describe('Mode 6 contract — boundary bump matches open-side bump', () => {
+describe('Mode 6+7A contract — boundary bump and open-side bump fire on the same predicate', () => {
   beforeEach(() => {
     setLastOnlineRecoveryAtForTests(0);
   });
@@ -201,21 +206,25 @@ describe('Mode 6 contract — boundary bump matches open-side bump', () => {
     expect(applyPostOnlineGraceBump(5_000)).toBe(5_000);
     expect(selectIdbOpenTimeout(DB_VERSION, DB_VERSION, false, isInPostOnlineRecoveryGrace())).toBe(5_000);
 
-    // Inside grace: boundary multiplies by 3; open returns upgrade-grade.
+    // Inside grace: boundary multiplies by 4 (Mode 7A); open returns upgrade-grade.
     setLastOnlineRecoveryAtForTests(Date.now());
-    expect(applyPostOnlineGraceBump(5_000)).toBe(15_000);
+    expect(applyPostOnlineGraceBump(5_000)).toBe(20_000);
     expect(selectIdbOpenTimeout(DB_VERSION, DB_VERSION, false, isInPostOnlineRecoveryGrace())).toBe(15_000);
   });
 
-  it('boundary bump (3×) and open-side bump (5_000→15_000) produce the same desktop ceiling', () => {
-    // The two independent paths converge on 15_000ms during the grace
-    // window — that's the design intent: boundary-side `light` (5s) → 15s
-    // matches the open-side steady → upgrade-grade (15s desktop). If
-    // either side drifts (e.g. a future change makes `light` 7s), this
-    // test surfaces the drift immediately.
+  it('boundary bump exceeds the open-side ceiling (Mode 7A: was 1× alignment, now 1.33×)', () => {
+    // Mode 7A intentionally widens the boundary multiplier (4×) above the
+    // open-side upgrade-grade ceiling (15s desktop). Rationale: the open
+    // call is one-shot per `dbPromise` lifetime; the boundary races every
+    // per-op call (read/write) inside that connection. Per-op slowness
+    // observed in CI persists past the moment the open completed, so the
+    // boundary needs MORE headroom than the open. The two values are no
+    // longer expected to match; this test pins the new asymmetric design.
     setLastOnlineRecoveryAtForTests(1_000_000);
-    expect(applyPostOnlineGraceBump(5_000, 1_000_000)).toBe(
-      selectIdbOpenTimeout(DB_VERSION, DB_VERSION, false, true)
-    );
+    const boundaryDuringGrace = applyPostOnlineGraceBump(5_000, 1_000_000);
+    const openDuringGrace = selectIdbOpenTimeout(DB_VERSION, DB_VERSION, false, true);
+    expect(boundaryDuringGrace).toBe(20_000);
+    expect(openDuringGrace).toBe(15_000);
+    expect(boundaryDuringGrace).toBeGreaterThan(openDuringGrace);
   });
 });

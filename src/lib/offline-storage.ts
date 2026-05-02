@@ -318,7 +318,16 @@ let storageWarningShown = false;
 // three `withIndexedDB*Boundary` helpers temporarily switch to the wider
 // upgrade-grade budget.
 let lastOnlineRecoveryAt = 0;
-const POST_ONLINE_RECOVERY_GRACE_MS = 30_000; // 30s window after `online` event
+// Mode 7A — calibration update from PR #104's CI evidence. Mode 6 set this to
+// 30s based on PR #102 logs (~2min wedge tail). PR #104's run showed the wedge
+// can drag out for 4-5min, so the 30s ceiling let the grace expire while the
+// storage layer was still recovering — every boundary fell back to the
+// steady-state 5s budget for the remaining ~3min. 90s covers the observed P95
+// recovery curve without widening the H5 hung-IDB protection beyond its
+// design point (a *real* hung DB now has 90s of spinner before the user gets
+// the "we can't read your data" signal — acceptable trade vs the
+// silent-data-loss risk Mode 6 was protecting against).
+export const POST_ONLINE_RECOVERY_GRACE_MS = 90_000; // 90s post-`online` grace
 
 if (typeof window !== 'undefined') {
   window.addEventListener('online', () => {
@@ -1105,16 +1114,21 @@ let dbConnectionVerified = false;
 // budget escalation that `selectIdbOpenTimeout` already applies to the
 // `openDB` race during the same window — without this, the boundary's outer
 // `withTimeout` would fire BEFORE the slow recovering open/op had a chance
-// to complete, re-introducing the cascade. 3× takes `light` (5s) → 15s,
-// `batch` (10s) → 30s, `write` (8s) → 24s, `heavy` (15s) → 45s, all
-// comfortably above the observed wedge tail (`mode-6-…toggle.md`).
-const POST_ONLINE_GRACE_TIMEOUT_MULTIPLIER = 3;
+// to complete, re-introducing the cascade.
+//
+// Mode 7A — bumped 3 → 4 after PR #104's CI run still showed individual
+// boundary ops timing out at the 3× ceiling. 4× takes `light` (5s) → 20s,
+// `batch` (10s) → 40s, `write` (8s) → 32s, `heavy` (15s) → 60s, comfortably
+// above the worst observed wedge tail without going so wide that a *real*
+// hung DB on a non-recovering device sits behind a 60s+ spinner.
+const POST_ONLINE_GRACE_TIMEOUT_MULTIPLIER = 4;
 
 /**
- * @returns the per-op boundary timeout, widened 3× when we're inside the
- * post-online recovery grace window (Mode 6). Pure function over the input
- * so the contract can be unit-tested via the exported
- * `setLastOnlineRecoveryAtForTests` setter.
+ * @returns the per-op boundary timeout, widened by
+ * `POST_ONLINE_GRACE_TIMEOUT_MULTIPLIER` when we're inside the post-online
+ * recovery grace window (Mode 6, calibration updated by Mode 7A). Pure
+ * function over the input so the contract can be unit-tested via the
+ * exported `setLastOnlineRecoveryAtForTests` setter.
  */
 export function applyPostOnlineGraceBump(timeoutMs: number, now: number = Date.now()): number {
   return isInPostOnlineRecoveryGrace(now) ? timeoutMs * POST_ONLINE_GRACE_TIMEOUT_MULTIPLIER : timeoutMs;
