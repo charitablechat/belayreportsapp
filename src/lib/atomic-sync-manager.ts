@@ -154,6 +154,7 @@ import {
   removeQueuedOperation,
   getQueuedAssessmentOperations,
   removeQueuedAssessmentOperation,
+  isInPostOnlineRecoveryGrace,
 } from "./offline-storage";
 import { 
   validateInspectionPackage,
@@ -245,6 +246,26 @@ function stripLocalOnlyFieldsArray<T extends Record<string, unknown>>(
  */
 export const __test_only__stripLocalOnlyFields = stripLocalOnlyFields;
 export const __test_only__stripLocalOnlyFieldsArray = stripLocalOnlyFieldsArray;
+
+// Mode 7B — outer `Promise.race` budget for the three `getUnsynced*` drain
+// pre-flights below. Steady-state 15s is a "safety net for very slow mobile
+// networks" above the inner boundary's 5-10s ceiling. Mode 6 widened the
+// inner boundary to 30s during the post-online recovery grace window, which
+// silently broke the "outer = safety net above inner" invariant — the outer
+// race fired at 15s and short-circuited the drain even though the inner op
+// was budgeted to ride for 30s. Lifting to 45s during grace restores the
+// invariant: outer (45s) > inner under Mode 7A's 4× multiplier (32-40s for
+// the relevant tiers).
+const ATOMIC_SYNC_FETCH_OUTER_TIMEOUT_MS = 15_000;
+const ATOMIC_SYNC_FETCH_OUTER_TIMEOUT_GRACE_MS = 45_000;
+function selectAtomicSyncFetchOuterTimeout(): number {
+  return isInPostOnlineRecoveryGrace()
+    ? ATOMIC_SYNC_FETCH_OUTER_TIMEOUT_GRACE_MS
+    : ATOMIC_SYNC_FETCH_OUTER_TIMEOUT_MS;
+}
+export const __test_only__selectAtomicSyncFetchOuterTimeout = selectAtomicSyncFetchOuterTimeout;
+export const __test_only__ATOMIC_SYNC_FETCH_OUTER_TIMEOUT_MS = ATOMIC_SYNC_FETCH_OUTER_TIMEOUT_MS;
+export const __test_only__ATOMIC_SYNC_FETCH_OUTER_TIMEOUT_GRACE_MS = ATOMIC_SYNC_FETCH_OUTER_TIMEOUT_GRACE_MS;
 /** Shape of the `align_synced_at` RPC response. Both branches are optional — the
  * call is advisory and can return either a normal `{ updated_at }` payload or
  * an `{ error }` envelope. */
@@ -1447,15 +1468,18 @@ export async function syncAllInspectionsAtomic(preValidatedUser?: CachedUser, si
   
   // Only get unsynced inspections for the current user (with extended timeout for mobile)
   // Note: getUnsyncedInspections has its own internal timeout via withIndexedDBReadBoundary;
-  // the outer 15s timeout here is a safety net for very slow mobile networks.
+  // the outer timeout here is a safety net for very slow mobile networks.
+  // Mode 7B: outer budget tracks `selectAtomicSyncFetchOuterTimeout()` so it
+  // stays above the inner boundary during the post-online recovery grace.
   // S11: getUnsyncedInspections now returns IdbReadFailure on failure (silent [] fallback removed).
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   type UnsyncedInspection = { id: string; organization?: string | null; location?: string | null; inspector_id?: string; updated_at?: string; synced_at?: string; [k: string]: any };
   let unsynced: UnsyncedInspection[];
   let fetchFailureReason: string | null = null;
   try {
-    const timeoutPromise = new Promise<never>((_, reject) => 
-      setTimeout(() => reject(new Error('IndexedDB timeout')), 15000)
+    const outerTimeoutMs = selectAtomicSyncFetchOuterTimeout();
+    const timeoutPromise = new Promise<never>((_, reject) =>
+      setTimeout(() => reject(new Error('IndexedDB timeout')), outerTimeoutMs)
     );
     
     const result = await Promise.race([
@@ -2448,13 +2472,16 @@ export async function syncAllTrainingsAtomic(preValidatedUser?: CachedUser, sign
   }
   
   // S11: getUnsyncedTrainings now returns IdbReadFailure on failure
+  // Mode 7B: outer budget tracks `selectAtomicSyncFetchOuterTimeout()` so it
+  // stays above the inner boundary during the post-online recovery grace.
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   type UnsyncedTraining = { id: string; organization?: string | null; location?: string | null; inspector_id?: string; updated_at?: string; synced_at?: string; [k: string]: any };
   let unsynced: UnsyncedTraining[];
   let fetchFailureReason: string | null = null;
   try {
-    const timeoutPromise = new Promise<never>((_, reject) => 
-      setTimeout(() => reject(new Error('IndexedDB timeout')), 15000)
+    const outerTimeoutMs = selectAtomicSyncFetchOuterTimeout();
+    const timeoutPromise = new Promise<never>((_, reject) =>
+      setTimeout(() => reject(new Error('IndexedDB timeout')), outerTimeoutMs)
     );
     
     const result = await Promise.race([
@@ -3312,13 +3339,16 @@ export async function syncAllDailyAssessmentsAtomic(preValidatedUser?: CachedUse
   }
   
   // S11: getUnsyncedDailyAssessments now returns IdbReadFailure on failure
+  // Mode 7B: outer budget tracks `selectAtomicSyncFetchOuterTimeout()` so it
+  // stays above the inner boundary during the post-online recovery grace.
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   type UnsyncedAssessment = { id: string; organization?: string | null; site?: string | null; inspector_id?: string; updated_at?: string; synced_at?: string; [k: string]: any };
   let unsynced: UnsyncedAssessment[];
   let fetchFailureReason: string | null = null;
   try {
-    const timeoutPromise = new Promise<never>((_, reject) => 
-      setTimeout(() => reject(new Error('IndexedDB timeout')), 15000)
+    const outerTimeoutMs = selectAtomicSyncFetchOuterTimeout();
+    const timeoutPromise = new Promise<never>((_, reject) =>
+      setTimeout(() => reject(new Error('IndexedDB timeout')), outerTimeoutMs)
     );
     
     const result = await Promise.race([

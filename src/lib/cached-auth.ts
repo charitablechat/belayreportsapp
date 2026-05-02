@@ -681,6 +681,43 @@ export function getOfflineUserId(): string | null {
 }
 
 /**
+ * Mode 7C — narrow auth-cache fallback for the autosync drain path.
+ *
+ * Reads the supabase session from localStorage and returns the cached
+ * `CachedUser` only when the embedded JWT has not yet locally expired
+ * (with `skewSeconds` pessimism subtracted from `expires_at`). Refuses
+ * to surface placeholder/synthetic tokens — those would 401 immediately
+ * on the actual sync POST and just churn the retry loop.
+ *
+ * This is the fast path for the post-online recovery window when
+ * `ensureValidSession()` itself is blocked by an unreachable supabase
+ * REST endpoint (`Failed to fetch`) — the cached JWT is still good for
+ * the next ~60min, so we let supabase be the authority on the actual
+ * sync POST. If the token is bad, the POST will 401 and the existing
+ * H5-T classifier + atomic-sync retry budget take over from there.
+ *
+ * @returns The cached user if the JWT's `expires_at` minus `skewSeconds`
+ *          is still in the future; null otherwise.
+ */
+export function getLocallyValidCachedUser(skewSeconds: number = 60): CachedUser | null {
+  try {
+    const stored = localStorage.getItem(SUPABASE_SESSION_KEY);
+    if (!stored) return null;
+    const parsed = JSON.parse(stored);
+    if (!parsed?.user?.id) return null;
+    if (!parsed?.access_token || isPlaceholderToken(parsed.access_token)) return null;
+    if (!looksLikeJwt(parsed.access_token)) return null;
+    const expiresAt = parsed?.expires_at;
+    if (!expiresAt || typeof expiresAt !== 'number') return null;
+    const nowSec = Math.floor(Date.now() / 1000);
+    if (expiresAt - skewSeconds <= nowSec) return null;
+    return parsed.user as CachedUser;
+  } catch {
+    return null;
+  }
+}
+
+/**
  * Offline-aware session check that ignores token expiry.
  * Either a real Supabase session OR a synthetic offline session counts.
  */
