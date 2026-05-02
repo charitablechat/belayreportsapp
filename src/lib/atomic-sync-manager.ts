@@ -37,6 +37,51 @@ import {
 } from "./sync-quarantine";
 
 /**
+ * Mode 4 fix: join an error and its `cause` chain into a single string so the
+ * H5-T transient-network classifier in `recordSyncFailure` can see leaf
+ * error messages even when an outer wrapper has obscured them.
+ *
+ * Background: `executeAtomicTransaction` throws
+ * `Error('Transaction failed after N/M steps. Rollback: …')` to abort the
+ * sync, but the underlying cause (e.g. `TypeError: Failed to fetch (…)`)
+ * is the only signal `isTransientNetworkError` can match against. PR #94
+ * added the classifier; the wrappers around `recordSyncFailure` strip the
+ * cause before the classifier ever sees it. By stamping `error.cause` on
+ * the wrapper at the throw sites and walking the chain here at the
+ * catch-side message extraction, transient leaves once again short-circuit
+ * the 3-strike quarantine threshold the way PR #94 intended.
+ *
+ * Bounded recursion (depth limit) prevents pathological circular
+ * cause graphs from looping. Non-Error causes are coerced via String() so
+ * regex patterns still match (some libraries throw plain objects or
+ * strings).
+ */
+export function joinErrorCauseChain(
+  err: unknown,
+  depthLimit: number = 5
+): string {
+  const parts: string[] = [];
+  const seen = new Set<unknown>();
+  let cursor: unknown = err;
+  for (let i = 0; i <= depthLimit; i++) {
+    if (cursor == null) break;
+    if (seen.has(cursor)) break;
+    seen.add(cursor);
+    if (cursor instanceof Error) {
+      if (cursor.message) parts.push(cursor.message);
+      cursor = (cursor as Error & { cause?: unknown }).cause;
+    } else if (typeof cursor === 'string') {
+      parts.push(cursor);
+      break;
+    } else {
+      parts.push(String(cursor));
+      break;
+    }
+  }
+  return parts.join(' | ');
+}
+
+/**
  * Build a user-facing label from a list of parts, skipping empty/nullish values.
  * Returns `fallback` when no usable parts remain so we never show " - " or a
  * leading separator.
@@ -1212,7 +1257,12 @@ export async function syncInspectionAtomic(inspectionId: string, preValidatedUse
     if (!result.success) {
       // H3: nothing to compensate — reconcile is now deferred until AFTER the
       // transaction commits, so a failed upsert leaves the server untouched.
-      throw new Error(`Transaction failed after ${result.completedSteps}/${result.totalSteps} steps. Rollback: ${result.rollbackSuccess ? 'successful' : 'failed'}`);
+      // Mode 4 fix: stamp `cause` on the wrapper so the H5-T transient-network
+      // classifier in `recordSyncFailure` can still see the leaf error
+      // (e.g. `TypeError: Failed to fetch`) via `joinErrorCauseChain`.
+      const wrapped = new Error(`Transaction failed after ${result.completedSteps}/${result.totalSteps} steps. Rollback: ${result.rollbackSuccess ? 'successful' : 'failed'}`);
+      (wrapped as Error & { cause?: unknown }).cause = result.error;
+      throw wrapped;
     }
 
     // H3: Now that parent + children are safely on the server, run reconcile.
@@ -1550,7 +1600,13 @@ export async function syncAllInspectionsAtomic(preValidatedUser?: CachedUser, si
         syncLog.log(`[Atomic Sync] Synced ${i + 1}/${batch.length} (${remaining} remaining):`, inspection.id);
       } catch (error: unknown) {
         retryCount++;
-        const message = error instanceof Error ? error.message : String(error);
+        // Mode 4 fix: walk the `Error.cause` chain so the H5-T transient-network
+        // classifier in `recordSyncFailure` can match leaf errors even when an
+        // outer `executeTransaction` wrapper has obscured them. PR #94 added
+        // the classifier; without this walk, the wrapper's "Transaction failed
+        // after N/M steps" string is the only thing the classifier ever sees,
+        // and transient network blips silently quarantine the record.
+        const message = joinErrorCauseChain(error);
 
         if (retryCount < maxRetries && !signal?.aborted) {
           // H5: jittered exponential backoff (1s, 4s, 12s ±20%) prevents
@@ -2187,7 +2243,11 @@ export async function syncTrainingAtomic(trainingId: string, preValidatedUser?: 
     if (!result.success) {
       // H3: nothing to compensate — reconcile is now deferred until AFTER the
       // transaction commits, so a failed upsert leaves the server untouched.
-      throw new Error(`Transaction failed after ${result.completedSteps}/${result.totalSteps} steps. Rollback: ${result.rollbackSuccess ? 'successful' : 'failed'}`);
+      // Mode 4 fix: stamp `cause` so transient leaves still short-circuit the
+      // H5-T quarantine threshold (see joinErrorCauseChain at file head).
+      const wrapped = new Error(`Transaction failed after ${result.completedSteps}/${result.totalSteps} steps. Rollback: ${result.rollbackSuccess ? 'successful' : 'failed'}`);
+      (wrapped as Error & { cause?: unknown }).cause = result.error;
+      throw wrapped;
     }
 
     // H3: parent + children are committed; run deferred reconcile now.
@@ -2495,7 +2555,13 @@ export async function syncAllTrainingsAtomic(preValidatedUser?: CachedUser, sign
         syncLog.log(`[Atomic Sync] Synced training ${i + 1}/${batch.length} (${remaining} remaining):`, training.id);
       } catch (error: unknown) {
         retryCount++;
-        const message = error instanceof Error ? error.message : String(error);
+        // Mode 4 fix: walk the `Error.cause` chain so the H5-T transient-network
+        // classifier in `recordSyncFailure` can match leaf errors even when an
+        // outer `executeTransaction` wrapper has obscured them. PR #94 added
+        // the classifier; without this walk, the wrapper's "Transaction failed
+        // after N/M steps" string is the only thing the classifier ever sees,
+        // and transient network blips silently quarantine the record.
+        const message = joinErrorCauseChain(error);
 
         if (retryCount < maxRetries && !signal?.aborted) {
           const delay = jitteredBackoffMs(retryCount); // H5
@@ -3026,7 +3092,11 @@ export async function syncDailyAssessmentAtomic(assessmentId: string, preValidat
     if (!result.success) {
       // H3: nothing to compensate — reconcile is now deferred until AFTER the
       // transaction commits, so a failed upsert leaves the server untouched.
-      throw new Error(`Transaction failed after ${result.completedSteps}/${result.totalSteps} steps. Rollback: ${result.rollbackSuccess ? 'successful' : 'failed'}`);
+      // Mode 4 fix: stamp `cause` so transient leaves still short-circuit the
+      // H5-T quarantine threshold (see joinErrorCauseChain at file head).
+      const wrapped = new Error(`Transaction failed after ${result.completedSteps}/${result.totalSteps} steps. Rollback: ${result.rollbackSuccess ? 'successful' : 'failed'}`);
+      (wrapped as Error & { cause?: unknown }).cause = result.error;
+      throw wrapped;
     }
 
     // H3: parent + children are committed; run deferred reconcile now.
@@ -3332,7 +3402,13 @@ export async function syncAllDailyAssessmentsAtomic(preValidatedUser?: CachedUse
         syncLog.log(`[Atomic Sync] Synced daily assessment ${i + 1}/${batch.length} (${remaining} remaining):`, assessment.id);
       } catch (error: unknown) {
         retryCount++;
-        const message = error instanceof Error ? error.message : String(error);
+        // Mode 4 fix: walk the `Error.cause` chain so the H5-T transient-network
+        // classifier in `recordSyncFailure` can match leaf errors even when an
+        // outer `executeTransaction` wrapper has obscured them. PR #94 added
+        // the classifier; without this walk, the wrapper's "Transaction failed
+        // after N/M steps" string is the only thing the classifier ever sees,
+        // and transient network blips silently quarantine the record.
+        const message = joinErrorCauseChain(error);
 
         if (retryCount < maxRetries && !signal?.aborted) {
           const delay = jitteredBackoffMs(retryCount); // H5
