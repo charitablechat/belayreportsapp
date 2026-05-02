@@ -306,6 +306,42 @@ interface InspectionDB extends DBSchema {
 let dbPromise: Promise<IDBPDatabase<InspectionDB>> | null = null;
 let storageWarningShown = false;
 
+// Mode 6 fix: track the most recent `online` event so the IDB-open race and
+// boundary OPERATION_TIMEOUT can widen their budgets while the storage layer
+// is still recovering from a `setOffline(true→false)` toggle (or a real
+// cell-tower handoff returning to coverage). The first `openDB(DB_NAME, 18)`
+// after such a toggle has been observed to take >5s on Playwright/Chromium
+// CI runners (see `mode-6-idb-wedge-after-offline-toggle.md`), which exceeds
+// the steady-state 5s/8s budget and triggers a 2-minute cascade where every
+// boundary read short-circuits to `IdbReadFailure`. Stamping the timestamp
+// here lets `selectIdbOpenTimeout(..., postOnlineRecovery=true)` and the
+// three `withIndexedDB*Boundary` helpers temporarily switch to the wider
+// upgrade-grade budget.
+let lastOnlineRecoveryAt = 0;
+const POST_ONLINE_RECOVERY_GRACE_MS = 30_000; // 30s window after `online` event
+
+if (typeof window !== 'undefined') {
+  window.addEventListener('online', () => {
+    lastOnlineRecoveryAt = Date.now();
+  });
+}
+
+/**
+ * @returns true if a network `online` event fired within the last
+ * `POST_ONLINE_RECOVERY_GRACE_MS`. Exported so the contract can be
+ * unit-tested without spinning up real IDB or DOM events; tests use
+ * `setLastOnlineRecoveryAtForTests` to stamp the timestamp directly.
+ */
+export function isInPostOnlineRecoveryGrace(now: number = Date.now()): boolean {
+  if (lastOnlineRecoveryAt === 0) return false;
+  return now - lastOnlineRecoveryAt < POST_ONLINE_RECOVERY_GRACE_MS;
+}
+
+/** Test-only setter — production code uses the `online` event listener above. */
+export function setLastOnlineRecoveryAtForTests(ts: number): void {
+  lastOnlineRecoveryAt = ts;
+}
+
 // Health check cache with 30-second TTL
 let healthCheckCache: { isHealthy: boolean; timestamp: number } | null = null;
 const HEALTH_CHECK_TTL = 30000; // 30 seconds
@@ -700,24 +736,36 @@ const IDB_OPEN_TIMEOUT_UPGRADE_MOBILE_MS = 20_000;
  * - `dbVersion`: the target version we're about to open at.
  * - `mobile`: caller's `isMobile()` result. Mobile gets the slightly
  *   larger budget on both branches.
+ * - `postOnlineRecovery` (Mode 6): true when a network `online` event
+ *   fired within `POST_ONLINE_RECOVERY_GRACE_MS`. The first
+ *   `openDB(DB_NAME, DB_VERSION)` call after `setOffline(true→false)`
+ *   has been observed to take >5s on Playwright/Chromium CI runners,
+ *   which exceeds the steady-state 5s/8s budget and triggers a
+ *   ~2-minute cascade. Switching to the upgrade-grade budget while in
+ *   the grace window prevents the wedge.
  *
  * Output: timeout in milliseconds for the `openDB` race.
  *
  * Exported so the contract can be unit-tested without spinning up a
- * real IDB. See `__tests__/offline-storage-idb-open-timeout.test.ts`.
+ * real IDB. See `__tests__/offline-storage-idb-open-timeout.test.ts`
+ * and `__tests__/idb-post-online-recovery.test.ts`.
  */
 export function selectIdbOpenTimeout(
   existingVersion: number,
   dbVersion: number,
   mobile: boolean,
+  postOnlineRecovery: boolean = false,
 ): number {
   // `existingVersion < dbVersion` covers both fresh-install (0) and any
   // multi-version upgrade (e.g. user on v15 opens app after the v18
   // schema lands). Negative or NaN values fall through to the upgrade
   // branch — same fail-safe shape as the `?? 0` default in `getDB`.
+  // `postOnlineRecovery` joins the upgrade branch (Mode 6): the storage
+  // layer is observably slow for ~2 minutes after a network toggle, so
+  // we want the same headroom that a multi-version upgrade gets.
   const isUpgradeExpected =
     !Number.isFinite(existingVersion) || existingVersion < dbVersion;
-  if (isUpgradeExpected) {
+  if (isUpgradeExpected || postOnlineRecovery) {
     return mobile
       ? IDB_OPEN_TIMEOUT_UPGRADE_MOBILE_MS
       : IDB_OPEN_TIMEOUT_UPGRADE_DESKTOP_MS;
@@ -1052,6 +1100,26 @@ function emergencyLocalStorageFallback(operationName: string, data: unknown): bo
 // Track if DB has been successfully opened (skip health check after first success)
 let dbConnectionVerified = false;
 
+// Mode 6: Multiplier applied to a boundary's per-op `OPERATION_TIMEOUT` when
+// inside the post-online recovery grace window. Mirrors the upgrade-grade
+// budget escalation that `selectIdbOpenTimeout` already applies to the
+// `openDB` race during the same window — without this, the boundary's outer
+// `withTimeout` would fire BEFORE the slow recovering open/op had a chance
+// to complete, re-introducing the cascade. 3× takes `light` (5s) → 15s,
+// `batch` (10s) → 30s, `write` (8s) → 24s, `heavy` (15s) → 45s, all
+// comfortably above the observed wedge tail (`mode-6-…toggle.md`).
+const POST_ONLINE_GRACE_TIMEOUT_MULTIPLIER = 3;
+
+/**
+ * @returns the per-op boundary timeout, widened 3× when we're inside the
+ * post-online recovery grace window (Mode 6). Pure function over the input
+ * so the contract can be unit-tested via the exported
+ * `setLastOnlineRecoveryAtForTests` setter.
+ */
+export function applyPostOnlineGraceBump(timeoutMs: number, now: number = Date.now()): number {
+  return isInPostOnlineRecoveryGrace(now) ? timeoutMs * POST_ONLINE_GRACE_TIMEOUT_MULTIPLIER : timeoutMs;
+}
+
 // ============================================================================
 // S11: Tagged IDB read failure sentinel.
 // The default `withIndexedDBErrorBoundary` returns `fallbackValue` on failure,
@@ -1137,6 +1205,12 @@ async function withIndexedDBReadBoundary<T>(
       OPERATION_TIMEOUT = IDB_TIMEOUTS.light;
     }
   }
+  // Mode 6: widen the boundary's per-op budget while we're inside the
+  // post-online recovery grace window. Without this, the outer
+  // `withTimeout` would fire BEFORE the slow recovering open/op had a
+  // chance to complete, re-introducing the cascade documented in
+  // `mode-6-idb-wedge-after-offline-toggle.md`.
+  OPERATION_TIMEOUT = applyPostOnlineGraceBump(OPERATION_TIMEOUT);
   const TIMEOUT_SENTINEL = Symbol('timeout');
 
   try {
@@ -1328,6 +1402,11 @@ async function withIndexedDBSaveBoundary(
   } else {
     OPERATION_TIMEOUT = IDB_TIMEOUTS.light;
   }
+  // Mode 6: widen the boundary's per-op budget while we're inside the
+  // post-online recovery grace window. Mirrors the open-side bump in
+  // `selectIdbOpenTimeout(..., postOnlineRecovery=true)` so the outer
+  // race doesn't fire before the underlying save can complete.
+  OPERATION_TIMEOUT = applyPostOnlineGraceBump(OPERATION_TIMEOUT);
   const TIMEOUT_SENTINEL = Symbol('timeout');
 
   try {
@@ -1504,6 +1583,11 @@ async function withIndexedDBErrorBoundary<T>(
   } else {
     OPERATION_TIMEOUT = IDB_TIMEOUTS.light;
   }
+  // Mode 6: widen the boundary's per-op budget while we're inside the
+  // post-online recovery grace window. Mirrors the open-side bump in
+  // `selectIdbOpenTimeout(..., postOnlineRecovery=true)` so the outer
+  // race doesn't fire before the underlying op can complete.
+  OPERATION_TIMEOUT = applyPostOnlineGraceBump(OPERATION_TIMEOUT);
   const TIMEOUT_SENTINEL = Symbol('timeout');
   
   try {
@@ -2049,7 +2133,14 @@ export async function getDB() {
     // multi-version upgrade) and the original fail-fast budget (5s
     // desktop / 8s mobile) at steady state — preserving the H5
     // hung-IDB protection in the dominant returning-user case.
-    const DB_OPEN_TIMEOUT = selectIdbOpenTimeout(existingVersion, DB_VERSION, isMobile());
+    // Mode 6: also widen the budget when we're inside the post-online recovery
+    // grace window. The first `openDB` after `setOffline(true→false)` (or a
+    // real cell-tower handoff returning to coverage) has been observed to
+    // take >5s on Playwright/Chromium CI runners; granting the upgrade-grade
+    // budget here prevents the cascade documented in
+    // `mode-6-idb-wedge-after-offline-toggle.md`.
+    const inPostOnlineGrace = isInPostOnlineRecoveryGrace();
+    const DB_OPEN_TIMEOUT = selectIdbOpenTimeout(existingVersion, DB_VERSION, isMobile(), inPostOnlineGrace);
     let db: IDBPDatabase<InspectionDB>;
     try {
       db = await Promise.race([
