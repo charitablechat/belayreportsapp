@@ -34,6 +34,7 @@ import {
   recordSyncFailure,
   recordSyncSuccess,
   jitteredBackoffMs,
+  isTransientNetworkError,
 } from "./sync-quarantine";
 
 /**
@@ -1545,7 +1546,17 @@ export async function syncAllInspectionsAtomic(preValidatedUser?: CachedUser, si
   const errors: Array<{ id: string; error: string }> = [];
   
   // Mobile devices get retry logic
-  const maxRetries = capabilities.isMobile ? 2 : 1; // Reduced retries for faster recovery
+  // Mode 5 fix: split the retry budget by error class. Persistent errors
+  // (RLS / 4xx / schema cache / non-whitelisted 0-rows) keep the original
+  // fail-fast budget so the user sees real failures quickly. Transient
+  // network blips (Failed to fetch / NetworkError / Load failed / ERR_*)
+  // get a wider budget so a single REST hiccup during a drain pass doesn't
+  // give up after one attempt — the desktop default of `1` left zero
+  // headroom for cell-tower handoffs and brief Supabase REST flakes,
+  // bottle-necking autosync drain throughput on flaky networks.
+  const persistentMaxRetries = capabilities.isMobile ? 2 : 1; // Reduced retries for faster recovery on hard failures
+  const transientMaxRetries = 3; // 3 attempts × jittered backoff (1 s → 4 s) ≈ 5 s wall-clock budget
+  const maxRetries = Math.max(persistentMaxRetries, transientMaxRetries);
   // S2: Bounded concurrency — different inspectionIds never share child rows, and
   // executeTransaction is per-record. 3 on mobile / 5 on desktop is well within Supabase
   // connection-pool headroom and dramatically reduces wall-clock for queued drains.
@@ -1608,11 +1619,21 @@ export async function syncAllInspectionsAtomic(preValidatedUser?: CachedUser, si
         // and transient network blips silently quarantine the record.
         const message = joinErrorCauseChain(error);
 
-        if (retryCount < maxRetries && !signal?.aborted) {
+        // Mode 5 fix: classifier-gated retry budget. Transient network errors
+        // (matched by H5-T `isTransientNetworkError`, walking the cause chain
+        // stamped by Mode 4) get the wider `transientMaxRetries` budget so a
+        // single REST blip doesn't fail the record on its first attempt.
+        // Persistent errors (RLS / 4xx / schema cache / non-whitelisted
+        // 0-rows) still respect `persistentMaxRetries` so the user sees real
+        // failures quickly without consuming the extended budget.
+        const transient = isTransientNetworkError(message);
+        const budget = transient ? transientMaxRetries : persistentMaxRetries;
+
+        if (retryCount < budget && !signal?.aborted) {
           // H5: jittered exponential backoff (1s, 4s, 12s ±20%) prevents
           // synchronized retry storms from concurrent items on flaky networks.
           const delay = jitteredBackoffMs(retryCount);
-          syncLog.log(`[Atomic Sync] Retry ${retryCount}/${maxRetries} for ${inspection.id} after ${delay}ms`);
+          syncLog.log(`[Atomic Sync] Retry ${retryCount}/${budget} (${transient ? 'transient' : 'persistent'}) for ${inspection.id} after ${delay}ms`);
           await new Promise(resolve => setTimeout(resolve, delay));
         } else {
           failCount++;
@@ -1620,6 +1641,7 @@ export async function syncAllInspectionsAtomic(preValidatedUser?: CachedUser, si
           // H5: increment per-item failure counter; quarantine after 3 cycles.
           recordSyncFailure(inspection.id, message || 'unknown');
           console.error('[Atomic Sync] Failed to sync inspection after retries:', inspection.id, error);
+          break; // Mode 5: terminal failure — exit retry loop (maxRetries=3 budget is for transients only)
         }
       }
     }
@@ -2509,8 +2531,13 @@ export async function syncAllTrainingsAtomic(preValidatedUser?: CachedUser, sign
   const partialRecords: Array<{ id: string; reason: string }> = [];
   const errors: Array<{ id: string; error: string }> = [];
   
-  // Reduced retries for faster recovery
-  const maxRetries = capabilities.isMobile ? 2 : 1;
+  // Mode 5 fix: split the retry budget by error class. See syncAllInspectionsAtomic
+  // for the full rationale. Persistent errors keep the original fail-fast budget;
+  // transient network errors get 3 attempts so a single REST blip during a drain
+  // pass doesn't give up after one attempt.
+  const persistentMaxRetries = capabilities.isMobile ? 2 : 1; // Reduced retries for faster recovery on hard failures
+  const transientMaxRetries = 3;
+  const maxRetries = Math.max(persistentMaxRetries, transientMaxRetries);
   // S2: Bounded concurrency — different trainingIds never share child rows.
   const itemConcurrency = capabilities.isMobile ? 3 : 5;
   let progressCounter = 0;
@@ -2563,15 +2590,26 @@ export async function syncAllTrainingsAtomic(preValidatedUser?: CachedUser, sign
         // and transient network blips silently quarantine the record.
         const message = joinErrorCauseChain(error);
 
-        if (retryCount < maxRetries && !signal?.aborted) {
+        // Mode 5 fix: classifier-gated retry budget. Transient network errors
+        // (matched by H5-T `isTransientNetworkError`, walking the cause chain
+        // stamped by Mode 4) get the wider `transientMaxRetries` budget so a
+        // single REST blip doesn't fail the record on its first attempt.
+        // Persistent errors (RLS / 4xx / schema cache / non-whitelisted
+        // 0-rows) still respect `persistentMaxRetries` so the user sees real
+        // failures quickly without consuming the extended budget.
+        const transient = isTransientNetworkError(message);
+        const budget = transient ? transientMaxRetries : persistentMaxRetries;
+
+        if (retryCount < budget && !signal?.aborted) {
           const delay = jitteredBackoffMs(retryCount); // H5
-          syncLog.log(`[Atomic Sync] Retry ${retryCount}/${maxRetries} for training ${training.id} after ${delay}ms`);
+          syncLog.log(`[Atomic Sync] Retry ${retryCount}/${budget} (${transient ? 'transient' : 'persistent'}) for training ${training.id} after ${delay}ms`);
           await new Promise(resolve => setTimeout(resolve, delay));
         } else {
           failCount++;
           errors.push({ id: training.id, error: message });
           recordSyncFailure(training.id, message || 'unknown'); // H5
           console.error('[Atomic Sync] Failed to sync training after retries:', training.id, error);
+          break; // Mode 5: terminal failure — exit retry loop (maxRetries=3 budget is for transients only)
         }
       }
     }
@@ -3356,8 +3394,13 @@ export async function syncAllDailyAssessmentsAtomic(preValidatedUser?: CachedUse
   const partialRecords: Array<{ id: string; reason: string }> = [];
   const errors: Array<{ id: string; error: string }> = [];
   
-  // Reduced retries for faster recovery
-  const maxRetries = capabilities.isMobile ? 2 : 1;
+  // Mode 5 fix: split the retry budget by error class. See syncAllInspectionsAtomic
+  // for the full rationale. Persistent errors keep the original fail-fast budget;
+  // transient network errors get 3 attempts so a single REST blip during a drain
+  // pass doesn't give up after one attempt.
+  const persistentMaxRetries = capabilities.isMobile ? 2 : 1; // Reduced retries for faster recovery on hard failures
+  const transientMaxRetries = 3;
+  const maxRetries = Math.max(persistentMaxRetries, transientMaxRetries);
   // S2: Bounded concurrency — different assessmentIds never share child rows.
   const itemConcurrency = capabilities.isMobile ? 3 : 5;
   let progressCounter = 0;
@@ -3410,15 +3453,26 @@ export async function syncAllDailyAssessmentsAtomic(preValidatedUser?: CachedUse
         // and transient network blips silently quarantine the record.
         const message = joinErrorCauseChain(error);
 
-        if (retryCount < maxRetries && !signal?.aborted) {
+        // Mode 5 fix: classifier-gated retry budget. Transient network errors
+        // (matched by H5-T `isTransientNetworkError`, walking the cause chain
+        // stamped by Mode 4) get the wider `transientMaxRetries` budget so a
+        // single REST blip doesn't fail the record on its first attempt.
+        // Persistent errors (RLS / 4xx / schema cache / non-whitelisted
+        // 0-rows) still respect `persistentMaxRetries` so the user sees real
+        // failures quickly without consuming the extended budget.
+        const transient = isTransientNetworkError(message);
+        const budget = transient ? transientMaxRetries : persistentMaxRetries;
+
+        if (retryCount < budget && !signal?.aborted) {
           const delay = jitteredBackoffMs(retryCount); // H5
-          syncLog.log(`[Atomic Sync] Retry ${retryCount}/${maxRetries} for assessment ${assessment.id} after ${delay}ms`);
+          syncLog.log(`[Atomic Sync] Retry ${retryCount}/${budget} (${transient ? 'transient' : 'persistent'}) for assessment ${assessment.id} after ${delay}ms`);
           await new Promise(resolve => setTimeout(resolve, delay));
         } else {
           failCount++;
           errors.push({ id: assessment.id, error: message });
           recordSyncFailure(assessment.id, message || 'unknown'); // H5
           console.error('[Atomic Sync] Failed to sync daily assessment after retries:', assessment.id, error);
+          break; // Mode 5: terminal failure — exit retry loop (maxRetries=3 budget is for transients only)
         }
       }
     }
