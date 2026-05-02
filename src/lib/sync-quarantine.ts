@@ -23,6 +23,68 @@ import { syncLog } from "./sync-logger";
 const STORAGE_KEY = "sync-quarantine-v1";
 const FAILURE_THRESHOLD = 3; // cycles of consecutive failure
 
+/**
+ * H5-T: Transient-vs-persistent error classifier.
+ *
+ * `recordSyncFailure` previously incremented its 3-strike counter on every
+ * error message regardless of cause, which meant a 15-30 s offline blip
+ * during three consecutive adaptive-sync cycles was enough to quarantine a
+ * record until end-of-day. The record then disappeared from
+ * `getNextBatch`/`unsyncedCount` until the day rolled over — silently in
+ * production, deterministically on CI.
+ *
+ * Network-class errors (offline, DNS, mid-flight cancellation, IDB-timeout
+ * boundary) tell us nothing about whether the record itself is bad. They
+ * only tell us the device couldn't reach the backend right now. We retry
+ * those forever and only count *persistent* failures (4xx schema mismatch,
+ * RLS denial, deserialization errors, etc.) toward the quarantine budget.
+ *
+ * Patterns are matched case-insensitively against the error message string
+ * passed to `recordSyncFailure`. This is the same surface that
+ * `atomic-sync-manager.ts` produces from `error instanceof Error ?
+ * error.message : String(error)`.
+ */
+const TRANSIENT_NETWORK_PATTERNS: readonly RegExp[] = [
+  // Chromium / Edge — fetch failed because offline or DNS unreachable.
+  /failed to fetch/i,
+  // Firefox — same condition, different copy.
+  /networkerror when attempting to fetch resource/i,
+  /networkerror/i,
+  // Safari (pre-iOS 17) — its analog of "Failed to fetch".
+  /load failed/i,
+  // Chromium net-stack error codes that bubble through `Error: …`.
+  /err_internet_disconnected/i,
+  /err_network_changed/i,
+  /err_name_not_resolved/i,
+  /err_connection_(refused|reset|closed|aborted|timed_out)/i,
+  /err_network/i,
+  // Aborted in-flight request (typically `AbortController.abort()`,
+  // tab navigation, or service-worker termination mid-fetch).
+  /aborterror/i,
+  /request was aborted/i,
+  /the operation was aborted/i,
+  // Timeouts raised by `withIDBTimeout` / `withTimeout` wrappers in the
+  // sync hot path. These mean "we couldn't get a response in time" — the
+  // record's contents aren't implicated.
+  /timeouterror/i,
+  /operation timed out/i,
+  /supabase query timed out/i,
+];
+
+/**
+ * Returns true when the error message indicates a transient network /
+ * timeout failure that should NOT count toward the quarantine threshold.
+ *
+ * Intentionally permissive: a message we can't classify falls through to
+ * "persistent" so that genuinely-bad records still quarantine after 3
+ * strikes — we'd rather over-quarantine a network blip we missed than
+ * silently swallow a real schema-mismatch loop.
+ */
+export function isTransientNetworkError(message: string | null | undefined): boolean {
+  if (!message) return false;
+  return TRANSIENT_NETWORK_PATTERNS.some((re) => re.test(message));
+}
+
 interface QuarantineEntry {
   /** Number of consecutive failed sync cycles. */
   failures: number;
@@ -117,8 +179,20 @@ function endOfDay(now: number): number {
 
 /**
  * Record a failed sync attempt. Returns true if the record is now quarantined.
+ *
+ * H5-T: Transient network/timeout errors do NOT count toward the 3-strike
+ * threshold — they short-circuit out before touching the map. See
+ * `isTransientNetworkError` above for the rationale and pattern list.
+ * Persistent errors (4xx/5xx with a body, schema mismatch, RLS denial,
+ * deserialization, …) still increment as before.
  */
 export function recordSyncFailure(recordId: string, error: string): boolean {
+  if (isTransientNetworkError(error)) {
+    // Don't count network blips toward quarantine. The record is fine; the
+    // device just couldn't reach the backend. The next adaptive-sync cycle
+    // will retry indefinitely without burning the quarantine budget.
+    return false;
+  }
   const map = readMap();
   const now = Date.now();
   const existing = map[recordId];
