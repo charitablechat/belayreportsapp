@@ -332,6 +332,18 @@ export const POST_ONLINE_RECOVERY_GRACE_MS = 90_000; // 90s post-`online` grace
 if (typeof window !== 'undefined') {
   window.addEventListener('online', () => {
     lastOnlineRecoveryAt = Date.now();
+    // Mode 8B — pre-warm getDB() so the slow first open after
+    // setOffline(true→false) (or a real cell-tower handoff returning to
+    // coverage) happens ONCE instead of cascading through 200+ boundary
+    // cycles. Each subsequent call awaits the same in-flight `dbPromise`,
+    // so this fire-and-forget call lets the upgrade-grade open race start
+    // immediately on the `online` event rather than after the first user
+    // action / autosync drain. Failure is invisible — the boundary helpers
+    // catch it via their own timeout/error paths (see
+    // `mode-8-structural-idb-wedge-diagnostic.md`).
+    try {
+      getDB().catch(() => { /* boundary will catch */ });
+    } catch { /* getDB itself can throw synchronously when storage is unavailable */ }
   });
 }
 
@@ -387,6 +399,127 @@ function newBreakerState(): BreakerState {
 
 const breakerStates = new Map<BreakerStoreKey, BreakerState>();
 let circuitBreakerProbing = false; // Prevents concurrent probe attempts (global)
+
+// ============= MODE 8A: LAYER-LEVEL QUEUE-STUCK BREAKER =============
+// The per-store breaker above is keyed by `BreakerStoreKey` and trips after
+// 3 failures within a single bucket. In practice ~60 of ~70 boundary call
+// sites in this file default to 'global' — so the per-store breaker dilutes:
+// the dominant 'global' bucket trips fast and protects most callers, but
+// the autosync drain on 'inspections'/'trainings'/'daily_assessments' (each
+// in its own bucket) still piles new opens onto an already-wedged browser
+// IDBOpenDBRequest queue while waiting for its own bucket to hit threshold.
+//
+// Mode 8A adds a layer-level counter that increments on EVERY boundary
+// timeout (any store) and trips a global "idb-queue-stuck" fast-fail window
+// once `LAYER_BREAKER_THRESHOLD` consecutive timeouts are observed. While
+// this layer breaker is open, all three boundary helpers fast-fail at the
+// top of the function — no new `getDB()` is called, no new `openDB` is
+// queued, the wedged queue gets a chance to drain naturally before more
+// callers pile on. See `mode-8-structural-idb-wedge-diagnostic.md` for
+// the full rationale.
+let layerBreakerConsecutiveTimeouts = 0;
+let layerBreakerTrippedAt: number | null = null;
+let layerBreakerResetCount = 0; // For exponential cooldown backoff (mirrors per-store breaker).
+const LAYER_BREAKER_THRESHOLD = 3;
+const LAYER_BREAKER_BASE_COOLDOWN_MS = 60_000; // 1 minute base
+const LAYER_BREAKER_MAX_COOLDOWN_MS = 240_000; // 4 minute ceiling
+
+function getLayerBreakerCooldownMs(): number {
+  return Math.min(
+    LAYER_BREAKER_BASE_COOLDOWN_MS * Math.pow(2, layerBreakerResetCount),
+    LAYER_BREAKER_MAX_COOLDOWN_MS,
+  );
+}
+
+/**
+ * @returns true if the layer-level queue-stuck breaker is currently open
+ * (within its cooldown window after `LAYER_BREAKER_THRESHOLD` consecutive
+ * boundary timeouts). When the cooldown has expired, this also performs
+ * the cleanup transition (clears `trippedAt`, escalates `resetCount` for
+ * the next trip's backoff, and resets the consecutive counter so the next
+ * boundary call gets a fresh attempt against the underlying queue).
+ *
+ * Exported for use in tests and (potentially) telemetry.
+ */
+export function isIdbLayerBreakerOpen(now: number = Date.now()): boolean {
+  if (layerBreakerTrippedAt === null) return false;
+  if (now - layerBreakerTrippedAt > getLayerBreakerCooldownMs()) {
+    // Cooldown expired — clear, escalate the reset count so the next trip
+    // backs off further, and let the next boundary call probe naturally.
+    layerBreakerTrippedAt = null;
+    layerBreakerConsecutiveTimeouts = 0;
+    layerBreakerResetCount++;
+    return false;
+  }
+  return true;
+}
+
+function recordLayerBoundaryTimeout(): void {
+  layerBreakerConsecutiveTimeouts++;
+  if (
+    layerBreakerConsecutiveTimeouts >= LAYER_BREAKER_THRESHOLD &&
+    layerBreakerTrippedAt === null
+  ) {
+    layerBreakerTrippedAt = Date.now();
+    const cooldownSec = getLayerBreakerCooldownMs() / 1000;
+    console.warn(
+      `[Offline Storage] IDB layer breaker tripped — ${LAYER_BREAKER_THRESHOLD} consecutive boundary timeouts; fast-failing for ${cooldownSec}s (backoff #${layerBreakerResetCount})`,
+    );
+  }
+}
+
+function recordLayerBoundarySuccess(): void {
+  if (
+    layerBreakerConsecutiveTimeouts > 0 ||
+    layerBreakerTrippedAt !== null ||
+    layerBreakerResetCount > 0
+  ) {
+    layerBreakerConsecutiveTimeouts = 0;
+    layerBreakerTrippedAt = null;
+    layerBreakerResetCount = 0;
+  }
+}
+
+/** Test-only state setter — production code uses the boundary helpers' record* paths. */
+export function __test_only__setLayerBreakerStateForTests(state: {
+  consecutiveTimeouts?: number;
+  trippedAt?: number | null;
+  resetCount?: number;
+}): void {
+  if (state.consecutiveTimeouts !== undefined) layerBreakerConsecutiveTimeouts = state.consecutiveTimeouts;
+  if (state.trippedAt !== undefined) layerBreakerTrippedAt = state.trippedAt;
+  if (state.resetCount !== undefined) layerBreakerResetCount = state.resetCount;
+}
+
+/** Test-only reset — returns the state to fresh-module defaults. */
+export function __test_only__resetLayerBreakerForTests(): void {
+  layerBreakerConsecutiveTimeouts = 0;
+  layerBreakerTrippedAt = null;
+  layerBreakerResetCount = 0;
+}
+
+/** Test-only inspection helper — reads internal state without exposing module-private vars. */
+export function __test_only__getLayerBreakerStateForTests(): {
+  consecutiveTimeouts: number;
+  trippedAt: number | null;
+  resetCount: number;
+  cooldownMs: number;
+} {
+  return {
+    consecutiveTimeouts: layerBreakerConsecutiveTimeouts,
+    trippedAt: layerBreakerTrippedAt,
+    resetCount: layerBreakerResetCount,
+    cooldownMs: getLayerBreakerCooldownMs(),
+  };
+}
+
+export const __test_only__LAYER_BREAKER_THRESHOLD = LAYER_BREAKER_THRESHOLD;
+export const __test_only__LAYER_BREAKER_BASE_COOLDOWN_MS = LAYER_BREAKER_BASE_COOLDOWN_MS;
+export const __test_only__LAYER_BREAKER_MAX_COOLDOWN_MS = LAYER_BREAKER_MAX_COOLDOWN_MS;
+export const __test_only__recordLayerBoundaryTimeoutForTests = recordLayerBoundaryTimeout;
+export const __test_only__recordLayerBoundarySuccessForTests = recordLayerBoundarySuccess;
+// =====================================================================
+
 
 function getBreakerState(store: BreakerStoreKey): BreakerState {
   let s = breakerStates.get(store);
@@ -1180,6 +1313,16 @@ async function withIndexedDBReadBoundary<T>(
   // M5: Per-store breaker. Default 'global' for legacy callers.
   const store: BreakerStoreKey = options?.store ?? 'global';
 
+  // Mode 8A — layer-level queue-stuck breaker. Independent of per-store
+  // dilution; protects the underlying IDBOpenDBRequest queue from
+  // additional pile-on while it drains.
+  if (isIdbLayerBreakerOpen()) {
+    if (import.meta.env.DEV) {
+      console.log(`[Offline Storage] Layer breaker open, returning IdbReadFailure for ${operationName}`);
+    }
+    return makeIdbReadFailure(operationName, 'idb_layer_breaker_open');
+  }
+
   if (isCircuitBreakerOpen(store)) {
     if (import.meta.env.DEV) {
       console.log(`[Offline Storage] Circuit breaker (${store}) open, returning IdbReadFailure for ${operationName}`);
@@ -1247,6 +1390,7 @@ async function withIndexedDBReadBoundary<T>(
       console.warn(`[Offline Storage] Read timeout for ${operationName}, resetting DB connection`);
       dbConnectionVerified = false;
       recordIndexedDBFailure(store);
+      recordLayerBoundaryTimeout();
       if (dbPromise) {
         dbPromise.then(db => db.close()).catch(() => {});
         dbPromise = null;
@@ -1255,6 +1399,7 @@ async function withIndexedDBReadBoundary<T>(
     }
 
     recordIndexedDBSuccess(store);
+    recordLayerBoundarySuccess();
     return result as T;
   } catch (err) {
     // Audit M4: iOS Safari closing-connection — surface as IdbReadFailure so
@@ -1360,6 +1505,21 @@ async function withIndexedDBSaveBoundary(
   options?: { store?: BreakerStoreKey },
 ): Promise<SaveResult> {
   const store: BreakerStoreKey = options?.store ?? 'global';
+  // Mode 8A — layer-level queue-stuck breaker. Treats a wedged IDB queue
+  // the same as a tripped per-store breaker for save-path purposes:
+  // attempt the localStorage emergency fallback, then throw so the caller
+  // still surfaces a failure (mirrors the existing per-store breaker
+  // behaviour below).
+  if (isIdbLayerBreakerOpen()) {
+    if (import.meta.env.DEV) {
+      console.log(`[Offline Storage] Layer breaker open, attempting localStorage fallback for ${operationName}`);
+    }
+    const fallbackSucceeded = parentDataForFallback
+      ? emergencyLocalStorageFallback(operationName, parentDataForFallback)
+      : false;
+    if (fallbackSucceeded) return { savedToBackup: true };
+    throw new IdbSaveError('storage_unavailable', operationName);
+  }
   // Circuit breaker open — try emergency localStorage write
   if (isCircuitBreakerOpen(store)) {
     if (import.meta.env.DEV) {
@@ -1444,6 +1604,7 @@ async function withIndexedDBSaveBoundary(
       console.warn(`[Offline Storage] Save timeout for ${operationName}, resetting DB connection`);
       dbConnectionVerified = false;
       recordIndexedDBFailure(store);
+      recordLayerBoundaryTimeout();
       if (dbPromise) {
         dbPromise.then(db => db.close()).catch(() => {});
         dbPromise = null;
@@ -1452,6 +1613,7 @@ async function withIndexedDBSaveBoundary(
     }
 
     recordIndexedDBSuccess(store);
+    recordLayerBoundarySuccess();
     return { savedToBackup: false };
   } catch (error: unknown) {
     if (isIdbSaveError(error)) {
@@ -1526,6 +1688,19 @@ async function withIndexedDBErrorBoundary<T>(
 ): Promise<T> {
   const store: BreakerStoreKey = options?.store ?? 'global';
   const criticalRead = options?.criticalRead === true;
+
+  // Mode 8A — layer-level queue-stuck breaker. Unlike the per-store breaker,
+  // this one fast-fails ALL callers (including critical reads): the layer
+  // breaker only trips when the underlying IDBOpenDBRequest queue is
+  // demonstrably wedged, in which case a critical read would also time out
+  // and return the same fallback after the full OPERATION_TIMEOUT — we just
+  // skip the wait and return now.
+  if (isIdbLayerBreakerOpen()) {
+    if (import.meta.env.DEV) {
+      console.log(`[Offline Storage] Layer breaker open, returning fallback for ${operationName}`);
+    }
+    return fallbackValue;
+  }
 
   // CIRCUIT BREAKER: If open, return fallback immediately without attempting operation
   // — UNLESS this is a critical read (see option doc above).
@@ -1630,6 +1805,7 @@ async function withIndexedDBErrorBoundary<T>(
       console.warn(`[Offline Storage] Timeout detected for ${operationName}, resetting DB connection`);
       dbConnectionVerified = false;
       recordIndexedDBFailure(store);
+      recordLayerBoundaryTimeout();
       // Close and discard the stale connection so the next operation opens a fresh one
       if (dbPromise) {
         dbPromise.then(db => db.close()).catch(() => {});
@@ -1639,6 +1815,7 @@ async function withIndexedDBErrorBoundary<T>(
     }
     
     recordIndexedDBSuccess(store);
+    recordLayerBoundarySuccess();
     return result;
   } catch (error: unknown) {
     // Audit M4: iOS Safari "database connection is closing" — bfcache /
