@@ -659,6 +659,75 @@ export const IDB_TIMEOUTS = {
 export type TimeoutTier = keyof typeof IDB_TIMEOUTS;
 
 /**
+ * Steady-state IDB-open budget. Once the schema is at the current version,
+ * `openDB` should resolve in well under a second; anything beyond this
+ * threshold means the connection is genuinely hung (closed-but-cached
+ * handle, SW holding a write transaction, OS-level lock) and we want to
+ * fail fast so the caller can recover via the boundary path.
+ *
+ * Mobile gets a slightly larger budget because Safari bfcache restore +
+ * iPad cold boot legitimately takes 5-6s in the worst case.
+ */
+const IDB_OPEN_TIMEOUT_STEADY_STATE_DESKTOP_MS = 5_000;
+const IDB_OPEN_TIMEOUT_STEADY_STATE_MOBILE_MS = 8_000;
+
+/**
+ * Heavy-upgrade IDB-open budget. A cold-start v0 → DB_VERSION upgrade
+ * chain creates ~14 stores + ~30 indexes + 3 row-by-row backfills (v17
+ * dirty-flag stamping) + a post-upgrade fingerprint validation. On a
+ * healthy local machine this completes in 200-800ms. On a busy GitHub
+ * Actions runner with disk pressure (sibling jobs, I/O contention from
+ * other PRs running concurrently on the shared physical host), the same
+ * chain can take 4-7s — which used to fall right on the edge of the 5s
+ * steady-state budget and surface as a Mode-1 flake on
+ * `offline-edit-reconcile.spec.ts:141` (the inspection never reaches
+ * IDB → autosync queue is empty → never syncs → 30s test timeout).
+ *
+ * The mobile budget gets the same 5s headroom on top of its steady-state
+ * value: iPad cold boot + a real upgrade chain compounds.
+ */
+const IDB_OPEN_TIMEOUT_UPGRADE_DESKTOP_MS = 15_000;
+const IDB_OPEN_TIMEOUT_UPGRADE_MOBILE_MS = 20_000;
+
+/**
+ * Pick the IDB-open timeout based on whether an upgrade is expected.
+ *
+ * Inputs:
+ * - `existingVersion`: the result of `detectExistingDBVersion`. 0 means
+ *   the DB does not yet exist (fresh install — full v0 → DB_VERSION
+ *   upgrade chain about to run). Any value < `dbVersion` means a
+ *   multi-version upgrade is expected. Equal means steady state.
+ * - `dbVersion`: the target version we're about to open at.
+ * - `mobile`: caller's `isMobile()` result. Mobile gets the slightly
+ *   larger budget on both branches.
+ *
+ * Output: timeout in milliseconds for the `openDB` race.
+ *
+ * Exported so the contract can be unit-tested without spinning up a
+ * real IDB. See `__tests__/offline-storage-idb-open-timeout.test.ts`.
+ */
+export function selectIdbOpenTimeout(
+  existingVersion: number,
+  dbVersion: number,
+  mobile: boolean,
+): number {
+  // `existingVersion < dbVersion` covers both fresh-install (0) and any
+  // multi-version upgrade (e.g. user on v15 opens app after the v18
+  // schema lands). Negative or NaN values fall through to the upgrade
+  // branch — same fail-safe shape as the `?? 0` default in `getDB`.
+  const isUpgradeExpected =
+    !Number.isFinite(existingVersion) || existingVersion < dbVersion;
+  if (isUpgradeExpected) {
+    return mobile
+      ? IDB_OPEN_TIMEOUT_UPGRADE_MOBILE_MS
+      : IDB_OPEN_TIMEOUT_UPGRADE_DESKTOP_MS;
+  }
+  return mobile
+    ? IDB_OPEN_TIMEOUT_STEADY_STATE_MOBILE_MS
+    : IDB_OPEN_TIMEOUT_STEADY_STATE_DESKTOP_MS;
+}
+
+/**
  * Wraps an IDB operation with a per-tier timeout.
  * Returns { data, timedOut } so callers can distinguish
  * real empties from timeout fallbacks.
@@ -1950,9 +2019,14 @@ export async function getDB() {
     // races against the subsequent `openDB(DB_NAME, DB_VERSION)` upgrade —
     // surfacing as `[Offline Storage] DB upgrade blocked` warnings followed
     // by 5s open timeouts.
+    // Tracked outside the snapshot-creation try-block so the open-race
+    // timeout decision below can see it. Defaults to 0 (= treat as
+    // upgrade path → use the longer budget) when migrationSafety is
+    // absent so we err on the side of letting the open complete.
+    let existingVersion = 0;
     try {
       if (migrationSafety) {
-        const existingVersion = await detectExistingDBVersion(DB_NAME);
+        existingVersion = await detectExistingDBVersion(DB_NAME);
         if (existingVersion > 0 && existingVersion < DB_VERSION) {
           const snap = await migrationSafety.createPreMigrationSnapshot(DB_NAME, existingVersion, DB_VERSION);
           snapshotCreated = !!snap.ok;
@@ -1964,8 +2038,18 @@ export async function getDB() {
       console.warn('[Offline Storage] pre-migration snapshot failed:', err);
     }
 
-    // RC-3: Use 8s timeout on mobile (Safari bfcache restore + iPad cold boot can take 5-6s)
-    const DB_OPEN_TIMEOUT = isMobile() ? 8000 : 5000;
+    // RC-3: 8s timeout on mobile (Safari bfcache restore + iPad cold boot
+    // can take 5-6s). RC-4: a cold-start v0 → v18 upgrade chain creates
+    // ~14 stores + ~30 indexes + 3 row-by-row dirty-flag backfills + a
+    // post-upgrade fingerprint validation. Healthy local: ~200-800ms.
+    // Busy CI runner with disk pressure: 4-7s — right on the edge of the
+    // steady-state 5s budget. `selectIdbOpenTimeout` returns the longer
+    // budget (15s desktop / 20s mobile) when an upgrade is expected
+    // (`existingVersion < DB_VERSION`, covers fresh-install at 0 and any
+    // multi-version upgrade) and the original fail-fast budget (5s
+    // desktop / 8s mobile) at steady state — preserving the H5
+    // hung-IDB protection in the dominant returning-user case.
+    const DB_OPEN_TIMEOUT = selectIdbOpenTimeout(existingVersion, DB_VERSION, isMobile());
     let db: IDBPDatabase<InspectionDB>;
     try {
       db = await Promise.race([
