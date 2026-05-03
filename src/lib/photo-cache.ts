@@ -238,9 +238,9 @@ export async function cleanupStaleCachedPhotos(): Promise<number> {
 
   // Open the transaction inside its own try so a connection that closed
   // between `await getDB()` and here aborts cleanly rather than crashing.
-  let tx: ReturnType<DbForPhotoCache['transaction']>;
+  let tx: ReturnType<DbForPhotoCache['transaction']> | undefined;
   try {
-    tx = db.transaction('photos', 'readwrite');
+    tx = db.transaction('photos', 'readwrite') as ReturnType<DbForPhotoCache['transaction']>;
   } catch (err) {
     if (isIdbClosingError(err)) {
       if (import.meta.env.DEV) {
