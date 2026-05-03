@@ -274,6 +274,10 @@ function ItemPhotoUpload({
     }, 15000);
 
     try {
+      // Resolve freshest itemName at capture time (covers rapid type→snap)
+      const liveName = (itemNameRef.current || itemName || '').trim();
+      const captionFromName = liveName || 'Item photo';
+
       // 1. Compress image
       const compressed = await compressImage(file, { maxWidth: 1200, maxHeight: 1200, quality: 0.8 });
 
