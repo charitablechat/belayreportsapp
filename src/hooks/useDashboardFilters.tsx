@@ -369,32 +369,48 @@ export function useDashboardFilters(
     }
 
     // 10. Pagination
+    // Pagination is driven ONLY by the paginatable (non-completed) groups.
+    // The Completed section is always rendered in full at the bottom and
+    // must not contribute to totalPages — otherwise Next/Previous appears
+    // to do nothing when most reports are completed.
     const pageSize = viewMode === 'grid' ? GRID_PAGE_SIZE : LIST_PAGE_SIZE;
-    const allItems = groups.flatMap(g => g.items);
-    const totalItems = allItems.length;
-    const totalPages = Math.max(1, Math.ceil(totalItems / pageSize));
-    const currentPage = Math.min(page, totalPages);
 
-    // For flat (no grouping) mode, paginate the main group items
-    // Critical items always stay on page 1
-    let paginatedGroups = groups;
-    if (groupBy === 'none' && groups.length > 0) {
-      const mainGroup = groups[0];
-      const startIdx = (currentPage - 1) * pageSize;
-      const pageItems = mainGroup.items.slice(startIdx, startIdx + pageSize);
+    const completedGroup = groups.find(g => g.label === 'Completed');
+    const paginatableGroups = groups.filter(g => g.label !== 'Completed');
+    const paginatableItems = paginatableGroups.flatMap(g => g.items);
+    const totalItems = paginatableItems.length + (completedGroup?.items.length ?? 0);
+    const totalPages = Math.max(1, Math.ceil(paginatableItems.length / pageSize));
+    const currentPage = Math.min(Math.max(1, page), totalPages);
 
-      // Force critical items onto page 1
-      if (currentPage === 1) {
-        paginatedGroups = [{ ...mainGroup, items: pageItems, count: mainGroup.count }];
-      } else {
-        // On page 2+, remove criticals from the page (they're already on page 1)
-        const nonCritical = pageItems.filter(r => tierOf(r) > 1);
-        paginatedGroups = [{ ...mainGroup, items: nonCritical, count: mainGroup.count }];
+    let paginatedGroups: GroupedReports[] = [];
+    const startIdx = (currentPage - 1) * pageSize;
+    const endIdx = startIdx + pageSize;
+
+    if (groupBy === 'none') {
+      // Flat list: slice the single main group by page.
+      const mainGroup = paginatableGroups[0];
+      if (mainGroup) {
+        const pageItems = mainGroup.items.slice(startIdx, endIdx);
+        paginatedGroups.push({ ...mainGroup, items: pageItems, count: mainGroup.count });
       }
-      // Keep completed group as-is (always collapsed at bottom)
-      if (groups.length > 1) {
-        paginatedGroups.push(groups[groups.length - 1]);
+    } else {
+      // Grouped mode: walk groups in order and slice into the page window.
+      let cursor = 0;
+      for (const g of paginatableGroups) {
+        const groupStart = cursor;
+        const groupEnd = cursor + g.items.length;
+        cursor = groupEnd;
+        if (groupEnd <= startIdx) continue;
+        if (groupStart >= endIdx) break;
+        const localStart = Math.max(0, startIdx - groupStart);
+        const localEnd = Math.min(g.items.length, endIdx - groupStart);
+        paginatedGroups.push({ ...g, items: g.items.slice(localStart, localEnd), count: g.count });
       }
+    }
+
+    // Always append the completed group unchanged, regardless of page.
+    if (completedGroup) {
+      paginatedGroups.push(completedGroup);
     }
 
     return {

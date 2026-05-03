@@ -1,37 +1,50 @@
-# Remove "Edited After Completion" Banner from Reports
+## What the video shows
 
-## Scope
+On the dashboard, the user clicks **Next** and **2** in the pagination bar repeatedly. The page indicator changes, but the visible report cards (Camp Balcones Springs, Harris County Sheriff, etc. — all `completed` + `Synced`) stay exactly the same. Effectively, pagination does nothing.
 
-The amber warning banner ("⚠ This report was edited after completion. Last modified by … on … (N edits total). Full audit trail available in the admin panel.") is rendered at the top of every generated report HTML/PDF when post-completion admin edits exist. It appears on **all three report types** via a single shared helper.
+## Root cause
 
-## What Changes
+In `src/hooks/useDashboardFilters.tsx` (the pagination block, ~lines 371–398):
 
-### 1. `supabase/functions/_shared/report-layout.ts`
-- Make `buildAdminEditBanner()` return an empty string unconditionally (keep the function exported so the three callers don't need import changes / type churn).
-- Leave `fetchPostCompletionEdits()` in place — it's harmless and its result is now just discarded by the banner. This minimizes diff and keeps the audit-trail data path available if you ever want to surface it elsewhere (admin panel only).
+1. Reports are split into two groups: a main group (Drafts / active items) and a separate **Completed** group rendered collapsed at the bottom.
+2. `totalPages` is computed from **all items combined**:
+   ```ts
+   const allItems = groups.flatMap(g => g.items);
+   const totalPages = Math.ceil(allItems.length / pageSize);
+   ```
+3. But only the **main group** is sliced by page. The Completed group is then pushed back **in full** on every page:
+   ```ts
+   if (groups.length > 1) {
+     paginatedGroups.push(groups[groups.length - 1]); // full completed group, unsliced
+   }
+   ```
 
-### 2. Three edge function call sites (no signature changes)
-- `supabase/functions/generate-inspection-html/index.ts` (line 1664)
-- `supabase/functions/generate-training-html/index.ts` (line 771)
-- `supabase/functions/generate-daily-assessment-html/index.ts` (line 860)
+Result: when a user has few drafts (≤ 24) but many completed reports, `totalPages` becomes >1 (so Previous/1/2/Next renders), but every page shows:
+- Page 1: drafts (if any) + **all** completed
+- Page 2: empty drafts slice + **all** completed (the same cards)
 
-Since `buildAdminEditBanner` will now always return `''`, the `${adminEditBannerHtml}` interpolations become no-ops automatically. **No edits needed at the call sites** — but I will also remove the now-pointless `fetchPostCompletionEdits` invocation in each to save a database round-trip per report render (small perf win, aligned with the recent I/O optimization work).
+That's exactly the symptom in the video — all visible cards are completed ones, and they don't change between pages.
 
-## What Stays Untouched
+A second, related bug: on page ≥ 2, the code filters the main-group slice to `tierOf(r) > 1` to keep criticals on page 1. Since the main group never contains tier-3 (completed) items in the first place, this just empties the slice, reinforcing the "nothing changes" feeling.
 
-- `audit_logs` table and `record_admin_edit` triggers — the audit trail itself is preserved.
-- `AuditLogPanel.tsx` admin UI — admins can still see the full edit history in the admin panel.
-- Attestation block, completion lock, and any other report metadata.
-- PDF generation pipeline — `generate-inspection-pdf` / `generate-training-pdf` consume the HTML output, so the banner disappears from PDFs automatically.
-- Cached HTML reports already stored in `*_reports.html_content` — these will continue to show the banner until regenerated. Per the **Report Output Integrity** memory we bypass regeneration if the stored HTML is unchanged. **Recommendation:** force a one-time regeneration on next view by leaving cache as-is (users who reopen will get fresh HTML the next time the underlying record is touched). If you want a hard purge of cached HTML banners now, say so and I'll add a small migration that nulls `html_content` on completed reports — flagging this as a decision point rather than assuming.
+## Fix
 
-## Risk
+Edit `src/hooks/useDashboardFilters.tsx` so pagination is driven by the **main (paginatable) group only**, and the always-on completed section is appended without affecting page count.
 
-Very low. The change is additive-removal in one helper; no schema, RLS, sync, photo, or auth surface is touched. Edge function deploys are automatic.
+Specifically, in the pagination block:
 
-## Files Modified
+1. Identify the main group vs. the always-rendered completed group up front (the completed group is the one with `label === 'Completed'`).
+2. Compute `totalPages` from `mainGroup.items.length` only, not from `allItems`.
+3. Slice the main group by `currentPage` as today.
+4. Append the completed group unchanged after the sliced main group.
+5. Drop the `tierOf(r) > 1` filter on page ≥ 2 — it has no effect now that completed items are never in the main group, and removing it makes the intent clearer. (Critical items still naturally land at the top of page 1 because of the existing sort order.)
+6. When `groupBy !== 'none'` (user picked Group By Status / Date / Assignee / Region), the same problem exists — paginated rendering currently does nothing in that branch. Apply the same approach: paginate across the flattened non-completed groups, append Completed at the bottom unchanged.
 
-- `supabase/functions/_shared/report-layout.ts` (~5 line change)
-- `supabase/functions/generate-inspection-html/index.ts` (remove fetch call + variable)
-- `supabase/functions/generate-training-html/index.ts` (same)
-- `supabase/functions/generate-daily-assessment-html/index.ts` (same)
+No UI changes are needed in `DashboardPagination.tsx` or `DashboardReportsSection.tsx`. The hook's public shape stays the same (`groups`, `totalPages`, `currentPage`).
+
+## Verification after the change
+
+1. Dashboard with 30+ completed reports and 0–5 drafts: pagination either disappears (if the main group fits on one page) or, if it shows, clicking Next visibly changes the cards in the main section.
+2. Dashboard with 50+ active drafts: Next/Previous cycles through them; the Completed section at the bottom is identical on every page.
+3. Switching tabs (Inspections / Training / Daily) still resets to page 1 (existing `clearAllFilters` on tab change).
+4. Group-By modes (Status, Date, Assignee, Region): pagination buttons reflect items in the grouped sections and actually change the visible groups/items per page.
