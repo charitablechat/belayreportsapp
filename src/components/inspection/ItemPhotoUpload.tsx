@@ -90,6 +90,10 @@ function ItemPhotoUpload({
   const localPreviewRef = useRef<string | null>(null);
   useEffect(() => { localPreviewRef.current = localPreview; }, [localPreview]);
 
+  // Track latest itemName so async upload paths pick up renames mid-flight
+  const itemNameRef = useRef<string | undefined>(itemName);
+  useEffect(() => { itemNameRef.current = itemName; }, [itemName]);
+
   // Cleanup object URLs on unmount
   useEffect(() => {
     return () => {
@@ -97,6 +101,49 @@ function ItemPhotoUpload({
       if (localPreviewRef.current) URL.revokeObjectURL(localPreviewRef.current);
     };
   }, []);
+
+  // Keep gallery caption in sync when the item is renamed after the photo
+  // was uploaded. Debounced to avoid a write per keystroke.
+  // Determine the gallery table for this section once.
+  const galleryTable = photoSection === 'systems' || photoSection === 'equipment'
+    ? 'inspection_photos'
+    : null;
+  useEffect(() => {
+    if (!galleryTable) return;
+    if (!photoUrl || photoUrl.startsWith('pending/')) return;
+    const trimmed = (itemName || '').trim();
+    if (!trimmed) return;
+    if (!inspectionId || inspectionId.startsWith('temp-')) return;
+
+    const timer = setTimeout(async () => {
+      // Update IDB-cached caption (works offline too)
+      try {
+        const photoId = `item-${itemId}`; // best-effort; offline records use deterministic id prefix + ts
+        // Walk all offline photos for this inspection and patch matching ones by photoUrl
+        const { getOfflinePhotos } = await import('@/lib/offline-storage');
+        const offline = await getOfflinePhotos(inspectionId);
+        for (const p of offline) {
+          if (p.photoUrl === photoUrl && p.caption !== trimmed) {
+            await updateOfflinePhotoCaption(p.id, trimmed);
+          }
+        }
+        void photoId;
+      } catch { /* non-critical */ }
+
+      if (!navigator.onLine) return;
+      try {
+        await supabase
+          .from(galleryTable as 'inspection_photos')
+          .update({ caption: trimmed })
+          .eq('inspection_id', inspectionId)
+          .eq('photo_url', photoUrl)
+          .is('deleted_at', null);
+        onGalleryRefresh?.();
+      } catch { /* non-critical */ }
+    }, 600);
+
+    return () => clearTimeout(timer);
+  }, [itemName, photoUrl, inspectionId, photoSection, galleryTable, itemId, onGalleryRefresh]);
 
   const loadSignedUrl = useCallback(async () => {
     if (!photoUrl) { setSignedUrl(null); setIsOfflinePhoto(false); return; }
