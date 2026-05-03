@@ -11,7 +11,7 @@ import { compressImage } from "@/lib/image-compression";
 import { toast } from "@/components/ui/sonner";
 import { getUserWithCache } from "@/lib/cached-auth";
 import { getCachedPhotoBlob, cachePhotoFromRemote } from "@/lib/photo-cache";
-import { savePhotoOffline, markPhotoAsUploaded, updatePhotoPath, getCircuitBreakerStatus } from "@/lib/offline-storage";
+import { savePhotoOffline, markPhotoAsUploaded, updatePhotoPath, getCircuitBreakerStatus, updateOfflinePhotoCaption } from "@/lib/offline-storage";
 import { savePhotoReceipt } from "@/lib/photo-receipts";
 import { saveToDevice } from "@/lib/save-to-device";
 import { useNetworkStatus } from "@/hooks/useNetworkStatus";
