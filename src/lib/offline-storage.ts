@@ -332,6 +332,28 @@ export const POST_ONLINE_RECOVERY_GRACE_MS = 90_000; // 90s post-`online` grace
 if (typeof window !== 'undefined') {
   window.addEventListener('online', () => {
     lastOnlineRecoveryAt = Date.now();
+    // Mode 9A — synchronous `dbPromise` close + reset, gated on positive
+    // wedge evidence. Symmetric with the existing `cached-auth.ts`
+    // bfcache `pageshow` handler (`softInvalidateForBfcacheRestore`).
+    // Important caveat: per the W3C IndexedDB spec there is no way to
+    // abort an in-flight `IDBOpenDBRequest`, so closing/nulling the
+    // promise here doesn't cancel any wedged open already in the
+    // browser's request queue — it only ensures the FOLLOWING `getDB()`
+    // call (8B's warm-up below) starts a brand-new request rather than
+    // awaiting the wedged one. Composed with Mode 8A this is a slight
+    // recovery-curve win without adding net queue depth: the breaker
+    // bounds the rate at which new opens are queued. We ALSO gate via
+    // `shouldResetDbOnOnline` to avoid close-churn for users
+    // reconnecting from a healthy network handoff (see
+    // `mode-9-structural-force-drain-diagnostic.md` for the full
+    // rationale + risk model).
+    if (shouldResetDbOnOnline()) {
+      const stale = dbPromise;
+      dbPromise = null;
+      if (stale) {
+        stale.then(db => db.close()).catch(() => { /* ignore */ });
+      }
+    }
     // Mode 8B — pre-warm getDB() so the slow first open after
     // setOffline(true→false) (or a real cell-tower handoff returning to
     // coverage) happens ONCE instead of cascading through 200+ boundary
@@ -424,6 +446,57 @@ const LAYER_BREAKER_THRESHOLD = 3;
 const LAYER_BREAKER_BASE_COOLDOWN_MS = 60_000; // 1 minute base
 const LAYER_BREAKER_MAX_COOLDOWN_MS = 240_000; // 4 minute ceiling
 
+// Mode 9F — autosync-resume hook. The breaker auto-clears on cooldown-expiry
+// (see `isIdbLayerBreakerOpen` below). When that happens, we want any
+// observers (e.g. `useAutoSync`) to immediately attempt a drain rather than
+// waiting up to 30s for the next `setInterval` tick. Each cooldown cycle
+// represents a probe opportunity against a (hopefully) drained IDB queue;
+// missing the opportunity by 0-30s is the difference between the
+// `offline-edit-reconcile` spec passing within its 120s budget and timing
+// out. Subscribers are fire-and-forget: their throws are caught locally so
+// one bad subscriber cannot poison the cleanup transition.
+const layerBreakerCloseSubscribers: Set<() => void> = new Set();
+
+function emitLayerBreakerClosed(): void {
+  if (layerBreakerCloseSubscribers.size === 0) return;
+  // Snapshot first so subscribers that synchronously unsubscribe do not
+  // mutate the set mid-iteration.
+  const snapshot = Array.from(layerBreakerCloseSubscribers);
+  for (const cb of snapshot) {
+    try {
+      cb();
+    } catch (err) {
+      if (import.meta.env.DEV) {
+        console.warn('[Offline Storage] Layer breaker close subscriber threw:', err);
+      }
+    }
+  }
+}
+
+/**
+ * Subscribe to the layer breaker's open→closed cooldown-expiry transition.
+ * The callback fires once per transition (not on success-recovery — the
+ * breaker can only close via cooldown expiry while it is tripped, since
+ * boundary helpers fast-fail and never reach `recordLayerBoundarySuccess`
+ * during the open window).
+ *
+ * @returns Unsubscribe function. Idempotent — safe to call multiple times.
+ */
+export function subscribeToLayerBreakerClose(cb: () => void): () => void {
+  layerBreakerCloseSubscribers.add(cb);
+  return () => {
+    layerBreakerCloseSubscribers.delete(cb);
+  };
+}
+
+// Mode 9A — last successful or failed boundary-call timestamp. Used by the
+// `online` event listener to gate the synchronous `dbPromise` reset: only
+// fire the reset when there has been recent IDB activity (suggesting a real
+// wedge candidate, not a fresh page load that happens to fire `online`
+// during initial reconciliation). Healthy reconnects on a steady-state app
+// don't increment this and therefore don't trigger close-churn.
+let lastDbActivityAt = 0;
+
 function getLayerBreakerCooldownMs(): number {
   return Math.min(
     LAYER_BREAKER_BASE_COOLDOWN_MS * Math.pow(2, layerBreakerResetCount),
@@ -449,12 +522,18 @@ export function isIdbLayerBreakerOpen(now: number = Date.now()): boolean {
     layerBreakerTrippedAt = null;
     layerBreakerConsecutiveTimeouts = 0;
     layerBreakerResetCount++;
+    // Mode 9F — notify subscribers so e.g. `useAutoSync` can `performSync`
+    // immediately instead of waiting for the next 30s interval tick.
+    emitLayerBreakerClosed();
     return false;
   }
   return true;
 }
 
 function recordLayerBoundaryTimeout(): void {
+  // Mode 9A — stamp activity timestamp so the `online` listener's gating
+  // logic can distinguish "recent wedge" from "fresh page load".
+  lastDbActivityAt = Date.now();
   layerBreakerConsecutiveTimeouts++;
   if (
     layerBreakerConsecutiveTimeouts >= LAYER_BREAKER_THRESHOLD &&
@@ -469,6 +548,9 @@ function recordLayerBoundaryTimeout(): void {
 }
 
 function recordLayerBoundarySuccess(): void {
+  // Mode 9A — stamp activity timestamp so the `online` listener's gating
+  // logic can distinguish "recent activity" from "fresh page load".
+  lastDbActivityAt = Date.now();
   if (
     layerBreakerConsecutiveTimeouts > 0 ||
     layerBreakerTrippedAt !== null ||
@@ -480,15 +562,42 @@ function recordLayerBoundarySuccess(): void {
   }
 }
 
+/**
+ * Mode 9A — gating predicate for the `online` event's synchronous
+ * `dbPromise` close + reset. Returns true ONLY when we have positive
+ * evidence the IDB queue may be wedged: recent boundary activity AND
+ * either the layer breaker is currently tripped or at least one
+ * boundary timeout has accumulated since the last success. Field
+ * workers reconnecting from a healthy network handoff (no recent
+ * boundary activity, or successful steady-state reads) skip the reset.
+ *
+ * Exported so the gating contract can be unit-tested without spinning
+ * up real IDB or DOM events.
+ */
+export function shouldResetDbOnOnline(
+  now: number = Date.now(),
+  options?: { recentActivityWindowMs?: number },
+): boolean {
+  // No activity ever — fresh page load that happened to fire `online`. Skip.
+  if (lastDbActivityAt === 0) return false;
+  const window = options?.recentActivityWindowMs ?? 5_000;
+  if (now - lastDbActivityAt > window) return false;
+  // Recent activity present. Reset only when there's positive wedge
+  // evidence: breaker is open OR at least one timeout has been recorded.
+  return isIdbLayerBreakerOpen(now) || layerBreakerConsecutiveTimeouts >= 1;
+}
+
 /** Test-only state setter — production code uses the boundary helpers' record* paths. */
 export function __test_only__setLayerBreakerStateForTests(state: {
   consecutiveTimeouts?: number;
   trippedAt?: number | null;
   resetCount?: number;
+  lastDbActivityAt?: number;
 }): void {
   if (state.consecutiveTimeouts !== undefined) layerBreakerConsecutiveTimeouts = state.consecutiveTimeouts;
   if (state.trippedAt !== undefined) layerBreakerTrippedAt = state.trippedAt;
   if (state.resetCount !== undefined) layerBreakerResetCount = state.resetCount;
+  if (state.lastDbActivityAt !== undefined) lastDbActivityAt = state.lastDbActivityAt;
 }
 
 /** Test-only reset — returns the state to fresh-module defaults. */
@@ -496,6 +605,8 @@ export function __test_only__resetLayerBreakerForTests(): void {
   layerBreakerConsecutiveTimeouts = 0;
   layerBreakerTrippedAt = null;
   layerBreakerResetCount = 0;
+  lastDbActivityAt = 0;
+  layerBreakerCloseSubscribers.clear();
 }
 
 /** Test-only inspection helper — reads internal state without exposing module-private vars. */
@@ -518,6 +629,14 @@ export const __test_only__LAYER_BREAKER_BASE_COOLDOWN_MS = LAYER_BREAKER_BASE_CO
 export const __test_only__LAYER_BREAKER_MAX_COOLDOWN_MS = LAYER_BREAKER_MAX_COOLDOWN_MS;
 export const __test_only__recordLayerBoundaryTimeoutForTests = recordLayerBoundaryTimeout;
 export const __test_only__recordLayerBoundarySuccessForTests = recordLayerBoundarySuccess;
+/** Test-only inspection — returns the count of registered subscribers. */
+export function __test_only__getLayerBreakerCloseSubscriberCount(): number {
+  return layerBreakerCloseSubscribers.size;
+}
+/** Test-only inspection — returns the lastDbActivityAt timestamp. */
+export function __test_only__getLastDbActivityAt(): number {
+  return lastDbActivityAt;
+}
 // =====================================================================
 
 

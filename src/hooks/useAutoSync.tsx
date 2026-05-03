@@ -6,7 +6,7 @@ import { logError } from '@/lib/log-error';
 import { syncPhotos } from '@/lib/sync-manager';
 import { saveInspectionOffline, saveTrainingOffline, saveDailyAssessmentOffline } from '@/lib/offline-storage';
 import { shouldPreserveLocalRecord } from '@/lib/local-data-guards';
-import { getUnsyncedInspections, getUnsyncedTrainings, getUnsyncedDailyAssessments, isIdbReadFailure, getCircuitBreakerStatus, resetCircuitBreaker, pruneOldSyncedPhotoBlobs, getQueuedOperations, removeQueuedOperation, getQueuedTrainingOperations, removeQueuedTrainingOperation, getQueuedAssessmentOperations, removeQueuedAssessmentOperation, withIDBTimeout, evictStuckTempPhotos, maybeRunQuarantineGc, type DbRow } from '@/lib/offline-storage';
+import { getUnsyncedInspections, getUnsyncedTrainings, getUnsyncedDailyAssessments, isIdbReadFailure, getCircuitBreakerStatus, resetCircuitBreaker, pruneOldSyncedPhotoBlobs, getQueuedOperations, removeQueuedOperation, getQueuedTrainingOperations, removeQueuedTrainingOperation, getQueuedAssessmentOperations, removeQueuedAssessmentOperation, withIDBTimeout, evictStuckTempPhotos, maybeRunQuarantineGc, subscribeToLayerBreakerClose, type DbRow } from '@/lib/offline-storage';
 // Audit M2: static-import the autosync drain modules so the cycle isn't gated
 // on a Vite-emitted lazy chunk that can fail to fetch on a flaky-Wi-Fi iPad.
 // Each was previously `await import(...)` on the post-sync hot path; the
@@ -1255,6 +1255,26 @@ export const useAutoSync = () => {
         }, 250);
       }
     });
+
+    // Mode 9F: When the IDB layer-level queue-stuck breaker auto-clears
+    // after its cooldown (60s/120s/240s exponential), immediately attempt
+    // a drain instead of waiting up to 30s for the next periodic tick.
+    // Each cooldown cycle is a probe opportunity against a (hopefully)
+    // drained IDB queue; for the offline→online recovery scenario every
+    // probe attempt counts (the e2e spec budget is 120s — a missed
+    // 30-second tick is a missed pass). The breaker itself bounds the
+    // call rate (next trip raises cooldown), so this cannot busy-loop.
+    const unsubscribeLayerBreakerClose = subscribeToLayerBreakerClose(() => {
+      if (!navigator.onLine) return;
+      syncLog.log('[AutoSync] IDB layer breaker cleared — triggering immediate drain attempt');
+      // Defer one tick so the breaker's transition completes before any
+      // performSync-driven boundary call re-checks state.
+      setTimeout(() => {
+        if (navigator.onLine && !syncInProgressRef.current) {
+          performSync(true);
+        }
+      }, 0);
+    });
     
     {
       const currentInterval = unsyncedCountRef.current > 0 ? activeSyncInterval : idleSyncInterval;
@@ -1382,6 +1402,7 @@ export const useAutoSync = () => {
       window.removeEventListener('sync-photos-updated', handleSyncPhotosUpdated);
       window.removeEventListener('sync-records-updated', handleSyncRecordsUpdated);
       unsubscribeRestoreLock();
+      unsubscribeLayerBreakerClose();
       document.removeEventListener('visibilitychange', handleVisibilityChange);
 
       // H1: tear down resume-triggered Realtime resubscribers
