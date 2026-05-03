@@ -233,7 +233,7 @@ function ItemPhotoUpload({
             inspection_id: inspectionId,
             photo_url: filePath,
             photo_section: photoSection,
-            caption: itemName || 'Item photo',
+            caption: (itemNameRef.current || itemName || '').trim() || 'Item photo',
           });
 
           if (galleryError) throw galleryError;
