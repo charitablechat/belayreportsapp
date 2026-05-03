@@ -255,7 +255,7 @@ export async function cleanupStaleCachedPhotos(): Promise<number> {
   }
 
   try {
-    let cursor = await tx.store.openCursor();
+    let cursor = await tx.objectStore('photos').openCursor();
     while (cursor) {
       const photo = cursor.value;
       if (photo.cachedAt && photo.uploaded) {
