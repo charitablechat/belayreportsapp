@@ -252,11 +252,20 @@ test.describe('sync: offline edit reconciles to cloud', () => {
     }
 
     // ── 10. Wait for the edit to reach the server ────────────────────────
+    // Mode 10A: 120s → 150s. The Mode 8/9 stack reduced the post-online
+    // IDB wedge tail from 4-6 min (PR #108) to ~2 min (PR #110). On the
+    // GitHub Actions runner that produced the failing run on PR #110,
+    // the layer recovered at 134s — about 14s past the previous 120s
+    // budget. Per W3C IDB (no `IDBOpenDBRequest` abort), the wedge tail
+    // can't be reduced further without an alternate read path (deferred
+    // as Mode 11 / 9C). Bumping to 150s captures the post-Mode-9
+    // distribution; the outer `test.setTimeout(180_000)` (line 53)
+    // still has 30s of headroom. See `mode-10-residual-wedge-diagnostic.md`
+    // for the full timeline + recovery-margin analysis.
     const edited = await waitForInspectionLocationInCloud(session, {
       id: serverId,
       expectedLocation: editedMarker,
-      // Same CI-latency rationale as the create-side wait above.
-      timeoutMs: 120_000,
+      timeoutMs: 150_000,
     });
     expect(edited.location).toBe(editedMarker);
 
