@@ -473,6 +473,50 @@ export async function syncPhotos(signal?: AbortSignal): Promise<{ remaining: num
           .maybeSingle();
 
         if (!existing) {
+          // Resolve a caption: prefer the queued caption, but if it is empty
+          // or a generic placeholder, look up the parent item's current name
+          // (covers photos captured before the user typed a name, or rows
+          // renamed after capture but before sync).
+          let caption: string = (photo.caption || '').trim();
+          const generic = !caption
+            || caption === 'Item photo'
+            || caption === 'Photo'
+            || caption === photo.section
+            || caption === (photo.section || '').replace(/-/g, ' ');
+          if (generic) {
+            const itemMatch = (photo.photoUrl || '').match(/\/items\/([0-9a-f-]{36})\./i);
+            const itemId = itemMatch?.[1];
+            if (itemId) {
+              try {
+                if (photo.section === 'systems') {
+                  const { data: sys } = await supabase
+                    .from('inspection_systems')
+                    .select('name, system_name')
+                    .eq('id', itemId)
+                    .maybeSingle();
+                  const sysName = (sys?.name || sys?.system_name || '').trim();
+                  if (sysName) caption = sysName;
+                  if (!caption) {
+                    const { data: zip } = await supabase
+                      .from('inspection_ziplines')
+                      .select('zipline_name')
+                      .eq('id', itemId)
+                      .maybeSingle();
+                    if (zip?.zipline_name) caption = zip.zipline_name.trim();
+                  }
+                } else if (photo.section === 'equipment') {
+                  const { data: eq } = await supabase
+                    .from('inspection_equipment')
+                    .select('equipment_type')
+                    .eq('id', itemId)
+                    .maybeSingle();
+                  if (eq?.equipment_type) caption = eq.equipment_type.trim();
+                }
+              } catch { /* non-critical, fall back to generic */ }
+            }
+          }
+          if (!caption) caption = photo.section || 'Photo';
+
           // Save to database with file path (signed URLs generated on read)
           const { error: dbError } = await (supabase.from(
             table as never,
@@ -483,7 +527,7 @@ export async function syncPhotos(signal?: AbortSignal): Promise<{ remaining: num
               [fkColumn]: photo.inspectionId,
               photo_url: fileName,
               photo_section: photo.section,
-              caption: photo.caption || photo.section || 'Photo',
+              caption,
             });
 
           if (dbError) {

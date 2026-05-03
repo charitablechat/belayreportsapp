@@ -1,50 +1,57 @@
 ## What the video shows
 
-On the dashboard, the user clicks **Next** and **2** in the pagination bar repeatedly. The page indicator changes, but the visible report cards (Camp Balcones Springs, Harris County Sheriff, etc. — all `completed` + `Synced`) stay exactly the same. Effectively, pagination does nothing.
+In the inspection form, item rows (Operating Systems, Ziplines, Equipment) each have a small camera control that uploads a photo and inserts a row into the corresponding `*_photos` gallery table with a `caption`. Later, the same photo appears under "Photos – Systems & Ziplines" but with a label that doesn't match the row's current name — e.g. a shed/cargo-bay photo captioned **"Cargo Net"** sitting next to a row currently named **"Multiline"**, and similar mismatches across Platform 1/2/7/8 rows.
 
 ## Root cause
 
-In `src/hooks/useDashboardFilters.tsx` (the pagination block, ~lines 371–398):
+In `src/components/inspection/ItemPhotoUpload.tsx`:
 
-1. Reports are split into two groups: a main group (Drafts / active items) and a separate **Completed** group rendered collapsed at the bottom.
-2. `totalPages` is computed from **all items combined**:
-   ```ts
-   const allItems = groups.flatMap(g => g.items);
-   const totalPages = Math.ceil(allItems.length / pageSize);
-   ```
-3. But only the **main group** is sliced by page. The Completed group is then pushed back **in full** on every page:
-   ```ts
-   if (groups.length > 1) {
-     paginatedGroups.push(groups[groups.length - 1]); // full completed group, unsliced
-   }
-   ```
+1. The caption is captured **once at upload time** from the `itemName` prop:
+   - `caption: itemName || 'Item photo'` is sent into both `inspection_photos` (line ~189) and `savePhotoOffline` (line ~275).
+2. After that, the caption is **never refreshed**. If the user:
+   - Took the photo *before* typing a name (so `itemName` was empty → caption stored as "Item photo" or stale auto-name), or
+   - Renamed the row later (e.g. typed "Multiline" over what used to be "Cargo Net"), or
+   - Reordered/edited rows so the same row now displays a different name,
+   …the gallery still shows the original caption because `inspection_photos.caption` is frozen.
+3. `PhotoGallery.tsx` renders `photo.caption` from the DB row directly (line 324, 949, 1051), with no fallback to the parent row's current name.
 
-Result: when a user has few drafts (≤ 24) but many completed reports, `totalPages` becomes >1 (so Previous/1/2/Next renders), but every page shows:
-- Page 1: drafts (if any) + **all** completed
-- Page 2: empty drafts slice + **all** completed (the same cards)
-
-That's exactly the symptom in the video — all visible cards are completed ones, and they don't change between pages.
-
-A second, related bug: on page ≥ 2, the code filters the main-group slice to `tierOf(r) > 1` to keep criticals on page 1. Since the main group never contains tier-3 (completed) items in the first place, this just empties the slice, reinforcing the "nothing changes" feeling.
+There's no link from `inspection_photos` back to the parent `inspection_systems` / `inspection_ziplines` / `inspection_equipment` row beyond the shared storage `photo_url`, so we can't currently re-derive the caption at read time without help.
 
 ## Fix
 
-Edit `src/hooks/useDashboardFilters.tsx` so pagination is driven by the **main (paginatable) group only**, and the always-on completed section is appended without affecting page count.
+Do three things, in this order:
 
-Specifically, in the pagination block:
+### 1. Keep the caption in sync when the item is renamed (`ItemPhotoUpload.tsx`)
 
-1. Identify the main group vs. the always-rendered completed group up front (the completed group is the one with `label === 'Completed'`).
-2. Compute `totalPages` from `mainGroup.items.length` only, not from `allItems`.
-3. Slice the main group by `currentPage` as today.
-4. Append the completed group unchanged after the sliced main group.
-5. Drop the `tierOf(r) > 1` filter on page ≥ 2 — it has no effect now that completed items are never in the main group, and removing it makes the intent clearer. (Critical items still naturally land at the top of page 1 because of the existing sort order.)
-6. When `groupBy !== 'none'` (user picked Group By Status / Date / Assignee / Region), the same problem exists — paginated rendering currently does nothing in that branch. Apply the same approach: paginate across the flattened non-completed groups, append Completed at the bottom unchanged.
+Add an effect that, when `itemName` changes *and* `photoUrl` exists, updates the matching row in the gallery table:
+- Match on `inspection_id = inspectionId AND photo_url = photoUrl AND photo_section = photoSection`.
+- Set `caption = <new itemName>` (debounce ~600 ms to avoid a write per keystroke).
+- Also update the IDB-cached photo record's `caption` via a small new helper in `offline-storage.ts` so offline gallery views match.
+- No-op when `itemName` is empty/whitespace, when offline (the next online sync will carry the latest name — see step 3), or when the row is still on a temp/offline `photo_url`.
 
-No UI changes are needed in `DashboardPagination.tsx` or `DashboardReportsSection.tsx`. The hook's public shape stays the same (`groups`, `totalPages`, `currentPage`).
+### 2. Use the freshest `itemName` at capture time (`ItemPhotoUpload.tsx`)
 
-## Verification after the change
+Hold `itemName` in a ref (`itemNameRef.current = itemName`) and read from the ref inside `handleUpload` / `uploadInBackground` so a photo captured during typing still picks up the latest value rather than the value bound when the callback was memoized.
 
-1. Dashboard with 30+ completed reports and 0–5 drafts: pagination either disappears (if the main group fits on one page) or, if it shows, clicking Next visibly changes the cards in the main section.
-2. Dashboard with 50+ active drafts: Next/Previous cycles through them; the Completed section at the bottom is identical on every page.
-3. Switching tabs (Inspections / Training / Daily) still resets to page 1 (existing `clearAllFilters` on tab change).
-4. Group-By modes (Status, Date, Assignee, Region): pagination buttons reflect items in the grouped sections and actually change the visible groups/items per page.
+### 3. Server-side fallback at insert time (`sync-manager.ts`, ~line 482)
+
+When the offline-queued photo finally syncs and `inspection_photos` is inserted, if the queued `caption` is empty or one of the generic placeholders (`'Item photo'`, `'equipment'`, `'systems'`, `photoSection`), look up the current parent row name (`inspection_systems.name` / `inspection_ziplines.zipline_name` / `inspection_equipment.equipment_type`) using the IDs we already track on the photo record (`itemId` is encoded in the deterministic `photoId = item-<itemId>-<ts>` and in `pending/<inspectionId>/items/<itemId>.jpg`). Use that as the caption. This ensures any photos already in the queue with stale captions get the right label on first successful sync.
+
+### 4. One-time backfill for already-mismatched DB rows (migration)
+
+Add a SQL migration that re-derives captions for existing rows where the current caption is empty, equals the section name, or equals "Item photo":
+- For `inspection_photos`, parse the `item-<uuid>-...` segment out of `photo_url` (paths look like `<userId>/<inspectionId>/items/<itemId>.jpg`) and join to the matching `inspection_systems` / `inspection_ziplines` / `inspection_equipment` row to copy its current name into `caption`. Only updates rows where the caption is currently generic — never overwrites a user-edited caption.
+
+## Files touched
+
+- `src/components/inspection/ItemPhotoUpload.tsx` — sync-on-rename effect + freshest-name ref
+- `src/lib/offline-storage.ts` — small `updatePhotoCaption(photoId, caption)` helper
+- `src/lib/sync-manager.ts` — caption fallback when inserting into `*_photos`
+- `supabase/migrations/<new>.sql` — one-time caption backfill for the three gallery tables
+
+## Verification
+
+1. Take a photo on a row before typing the name → type the name → photo appears in the gallery with the correct name (within ~1s).
+2. Rename an existing row that already has a photo → gallery caption updates after the debounce.
+3. Take a photo offline before naming → name the row → go online → the synced gallery row inserts with the correct caption (step 3).
+4. After deploy, run the migration and confirm that the existing "Cargo Net"/"Platform 1"/etc. mismatches in the user's report now show the correct row names. User-edited captions are untouched.
