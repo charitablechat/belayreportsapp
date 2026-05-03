@@ -238,9 +238,11 @@ export async function cleanupStaleCachedPhotos(): Promise<number> {
 
   // Open the transaction inside its own try so a connection that closed
   // between `await getDB()` and here aborts cleanly rather than crashing.
-  let tx: ReturnType<DbForCleanup['transaction']>;
+  // Typed via the generic call to db.transaction so tx.store is correctly inferred.
+  let tx!: ReturnType<DbForPhotoCache['transaction']>;
   try {
-    tx = db.transaction('photos', 'readwrite');
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    tx = (db as any).transaction('photos', 'readwrite');
   } catch (err) {
     if (isIdbClosingError(err)) {
       if (import.meta.env.DEV) {
@@ -253,7 +255,7 @@ export async function cleanupStaleCachedPhotos(): Promise<number> {
   }
 
   try {
-    let cursor = await tx.store.openCursor();
+    let cursor = await tx.objectStore('photos').openCursor();
     while (cursor) {
       const photo = cursor.value;
       if (photo.cachedAt && photo.uploaded) {
