@@ -323,7 +323,7 @@ function ItemPhotoUpload({
         tableName: 'inspection_photos',
         storageBucket: 'inspection-photos',
         foreignKeyColumn: 'inspection_id',
-        caption: itemName || 'Item photo',
+        caption: captionFromName,
       });
 
       // 6. Save receipt (always, regardless of IDB success)
