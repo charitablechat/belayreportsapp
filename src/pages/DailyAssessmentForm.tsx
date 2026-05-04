@@ -721,7 +721,7 @@ export default function DailyAssessmentForm() {
         }
         const { error } = await supabase
           .from('daily_assessments')
-          .update(updatePayload)
+          .update(updatePayload as never)
           .eq('id', id);
 
         if (error) throw error;
