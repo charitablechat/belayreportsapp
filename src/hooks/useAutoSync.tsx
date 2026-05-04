@@ -43,8 +43,9 @@ type TableSyncResult = {
   success: number;
   failed: number;
   remaining?: number;
+  changed?: number;
   errors?: unknown[];
-} | null | undefined | void;
+};
 
 // Sync configuration with mobile optimization
 // Tuned for fast user-driven sync (S5/S6/S7) — duplicate prevention is handled by syncInProgressRef
