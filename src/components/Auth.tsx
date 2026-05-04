@@ -238,6 +238,16 @@ export default function Auth() {
               Go to Dashboard <ArrowRight className="ml-2 h-4 w-4" />
             </GradientButton>
           )}
+          {!isOnline && (
+            <Button
+              type="button"
+              variant="outline"
+              onClick={handleGuestMode}
+              className="w-full mb-4"
+            >
+              Continue offline as Guest
+            </Button>
+          )}
           <form onSubmit={isForgotPassword ? handleForgotPassword : handleAuth} className="space-y-4">
             <div className="space-y-2">
               <Label htmlFor="email">Email</Label>
