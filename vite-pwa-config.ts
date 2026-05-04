@@ -3,13 +3,12 @@ import { VitePWA } from 'vite-plugin-pwa';
 /**
  * VitePWA configuration — Phase 2 (autoUpdate).
  *
- * Why autoUpdate + injectRegister:'auto'?
+ * Why autoUpdate + manual guarded registration?
  * - autoUpdate: VitePWA's runtime auto-activates new SWs without user prompt
  *   once installed. Combined with our soft-refresh banner (StaleVersionBanner)
  *   this delivers updates reliably across iOS/Android/Windows.
- * - injectRegister:'auto': lets the plugin inject the SW registration script,
- *   so we don't have to manually call register('/sw.js') in main.tsx (which
- *   was the source of the previous self-destroying-SW conflict).
+ * - injectRegister:false: src/main.tsx registers the SW only on real production
+ *   pages, never in Lovable preview iframes.
  *
  * updateViaCache:'none' is critical for iOS Safari, which otherwise pins the
  * SW script in HTTP cache for 24h delaying every update. With 'none', the
@@ -21,7 +20,6 @@ import { VitePWA } from 'vite-plugin-pwa';
 export const pwaConfig = VitePWA({
   registerType: 'autoUpdate',
   injectRegister: false,
-  injectRegister: 'auto',
   devOptions: {
     enabled: false,
   },
