@@ -23,7 +23,7 @@ export const pwaConfig = VitePWA({
   devOptions: {
     enabled: false,
   },
-  includeAssets: ['favicon.ico', 'db-config.js', 'sw-push.js', 'sw-sync.js', 'offline.html', 'rope-works-logo.avif'],
+  includeAssets: ['favicon.ico', 'db-config.js', 'sw-push.js', 'sw-sync.js', 'sw-offline-navigation.js', 'offline.html', 'rope-works-logo.avif'],
   manifest: {
     id: '/',
     name: 'Rope Works Inspection',
@@ -93,7 +93,7 @@ export const pwaConfig = VitePWA({
     // /offline.html (a branded page) instead of the browser's default screen.
     navigateFallback: 'index.html',
     navigateFallbackDenylist: [/^\/api/, /offline\.html$/, /^\/version\.json$/],
-    importScripts: ['/db-config.js', '/sw-push.js', '/sw-sync.js'],
+    importScripts: ['/sw-offline-navigation.js', '/db-config.js', '/sw-push.js', '/sw-sync.js'],
     runtimeCaching: [
       {
         // version.json: never cache — always go to network
