@@ -223,29 +223,29 @@ export default function Auth() {
               <WifiOff className="h-4 w-4 text-orange-500" />
               <AlertDescription className="text-sm">
                 <span className="font-semibold">You're offline.</span>{" "}
-                {hasCachedSessionForOffline() 
-                  ? "Tap below to access your cached reports."
-                  : "You can sign in offline. Your credentials will be verified when you reconnect."}
+                {hasCachedSessionForOffline()
+                  ? "Tap below to access your cached reports, or continue as a Guest."
+                  : "Continue as a Guest to start using the app right now, or sign in offline if you have an account."}
               </AlertDescription>
             </Alert>
           )}
-          {!isOnline && hasCachedSessionForOffline() && (
+          {!isOnline && (
             <GradientButton
               type="button"
-              onClick={handleGoToDashboard}
-              className="w-full mb-4"
+              onClick={handleGuestMode}
+              className="w-full mb-3"
             >
-              Go to Dashboard <ArrowRight className="ml-2 h-4 w-4" />
+              Continue offline as Guest <ArrowRight className="ml-2 h-4 w-4" />
             </GradientButton>
           )}
-          {!isOnline && (
+          {!isOnline && hasCachedSessionForOffline() && (
             <Button
               type="button"
               variant="outline"
-              onClick={handleGuestMode}
+              onClick={handleGoToDashboard}
               className="w-full mb-4"
             >
-              Continue offline as Guest
+              Open my cached reports
             </Button>
           )}
           <form onSubmit={isForgotPassword ? handleForgotPassword : handleAuth} className="space-y-4">
