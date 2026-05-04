@@ -1440,7 +1440,7 @@ export default function TrainingForm() {
           if (attestation) Object.assign(trainingUpdate, attestation);
           const { error: trainingError } = await supabase
             .from('trainings')
-            .update(trainingUpdate)
+            .update(trainingUpdate as never)
             .eq('id', id);
 
           if (trainingError) throw trainingError;
@@ -1462,19 +1462,19 @@ export default function TrainingForm() {
 
           if (deliveryApproaches.length > 0) {
             parallelOps.push(
-              dbOp(supabase.from('training_delivery_approaches').upsert(prepareItems(deliveryApproaches, 'training_id'), { onConflict: 'id' }))
+              dbOp(supabase.from('training_delivery_approaches').upsert(prepareItems(deliveryApproaches, 'training_id') as never, { onConflict: 'id' }))
             );
           }
 
           if (operatingSystems.length > 0) {
             parallelOps.push(
-              dbOp(supabase.from('training_operating_systems').upsert(prepareItems(operatingSystems, 'training_id'), { onConflict: 'id' }))
+              dbOp(supabase.from('training_operating_systems').upsert(prepareItems(operatingSystems, 'training_id') as never, { onConflict: 'id' }))
             );
           }
 
           if (immediateAttention.length > 0) {
             parallelOps.push(
-              dbOp(supabase.from('training_immediate_attention').upsert(prepareItems(immediateAttention, 'training_id'), { onConflict: 'id' }))
+              dbOp(supabase.from('training_immediate_attention').upsert(prepareItems(immediateAttention, 'training_id') as never, { onConflict: 'id' }))
             );
           }
 
