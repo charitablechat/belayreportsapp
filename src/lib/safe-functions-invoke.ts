@@ -59,6 +59,22 @@ export async function safeFunctionsInvoke<T = unknown>(
 ): Promise<SafeInvokeResult<T>> {
   const ctx = options.ctx ?? `functions.invoke:${functionName}`;
 
+  // Hard guard: a guest session must NEVER invoke an edge function. There's
+  // no real auth.users row, so JWT verification will 401; surfacing a typed
+  // error here lets callers show a "Sign in to use this feature" message.
+  try {
+    const { readGuestSession } = await import('@/lib/guest-session');
+    if (readGuestSession()) {
+      return {
+        data: null,
+        error: {
+          name: 'GuestSessionForbidden',
+          message: 'This action requires signing in. Guest mode is offline-only.',
+        },
+      };
+    }
+  } catch { /* non-critical */ }
+
   let token: string | undefined;
   try {
     const { data: { session } } = await supabase.auth.getSession();

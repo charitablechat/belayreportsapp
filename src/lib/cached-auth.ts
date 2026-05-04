@@ -7,6 +7,7 @@ import {
 } from "@/lib/offline-auth";
 import { isPlaceholderToken, looksLikeJwt } from "@/lib/synthetic-session-guard";
 import { safeSetItem } from "@/lib/safe-local-storage";
+import { readGuestSession } from "@/lib/guest-session";
 
 export interface CachedUser {
   id: string;
@@ -638,6 +639,11 @@ export function getCachedUserFromStorage(): CachedUser | null {
       if (synthetic?.user?.id) {
         return synthetic.user as CachedUser;
       }
+      // Last-resort fallback: a guest session is offline-only.
+      const guest = readGuestSession();
+      if (guest) {
+        return { id: guest.id, email: undefined, isGuest: true } as CachedUser;
+      }
     }
 
     return null;
@@ -674,7 +680,9 @@ export function getOfflineUserId(): string | null {
       }
     }
     const synthetic = readSyntheticSession();
-    return synthetic?.user?.id || null;
+    if (synthetic?.user?.id) return synthetic.user.id;
+    const guest = readGuestSession();
+    return guest?.id || null;
   } catch {
     return null;
   }
@@ -730,7 +738,8 @@ export function hasCachedSessionForOffline(): boolean {
         return true;
       }
     }
-    return !!readSyntheticSession();
+    if (readSyntheticSession()) return true;
+    return !!readGuestSession();
   } catch {
     return false;
   }

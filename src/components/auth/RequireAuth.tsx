@@ -16,6 +16,7 @@ import {
   isOfflineWindowExpiringSoon,
   getOfflineWindowRemainingMs,
 } from "@/lib/offline-auth";
+import { readGuestSession } from "@/lib/guest-session";
 
 interface RequireAuthProps {
   children: ReactNode;
@@ -68,7 +69,7 @@ export function RequireAuth({ children }: RequireAuthProps) {
     // IndexedDB credentials might not have promoted us yet.
     if (
       !navigator.onLine &&
-      (hasCachedSessionForOffline() || getOfflineUserId())
+      (hasCachedSessionForOffline() || getOfflineUserId() || readGuestSession())
     ) {
       // Promote the FSM so we don't keep redirecting.
       transition({
