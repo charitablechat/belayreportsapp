@@ -174,7 +174,7 @@ describe('Mode 11A — snapshotToDbRow / listUnsyncedDbRowsFromLedger', () => {
       v: 1,
       ts: 1234,
       synced: false,
-      device: 'd',
+      device: 'desktop',
       parent: {
         organization: 'Acme',
         inspector_id: 'user-1',
@@ -198,7 +198,7 @@ describe('Mode 11A — snapshotToDbRow / listUnsyncedDbRowsFromLedger', () => {
       v: 1,
       ts: 1234,
       synced: false,
-      device: 'd',
+      device: 'desktop',
       parent: { id: 'stale-id', inspector_id: 'user-1' },
       children: {},
     });

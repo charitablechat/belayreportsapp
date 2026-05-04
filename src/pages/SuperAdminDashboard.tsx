@@ -418,8 +418,6 @@ export default function SuperAdminDashboard() {
   const { data: resetTimestamp } = useQuery({
     queryKey: ["admin-settings", "avg_completion_time_reset_at"],
     queryFn: async () => {
-      // admin_settings isn't in the generated Supabase types.
-      // @ts-expect-error untyped admin_settings table
       const { data, error } = await supabase
         .from("admin_settings")
         .select("value, updated_at")
@@ -663,8 +661,6 @@ export default function SuperAdminDashboard() {
   // Reset avg completion time metric
   const handleResetCompletionTime = async () => {
     try {
-      // admin_settings isn't in the generated Supabase types.
-      // @ts-expect-error untyped admin_settings table
       const { error } = await supabase
         .from("admin_settings")
         .update({ value: new Date().toISOString(), updated_at: new Date().toISOString() })

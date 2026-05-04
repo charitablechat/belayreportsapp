@@ -871,7 +871,7 @@ export default function TrainingForm() {
         if (isIdbSaveError(offlineError)) {
           setSaveError({
             message: 'Local save failed — your changes are NOT stored. Tap to retry.',
-            code: (offlineError as { code?: string })?.code,
+            code: offlineError.code,
           });
           toast.error("Save failed — your changes are NOT stored", {
             description: "Tap Save again to retry. Do not close this page.",
@@ -922,7 +922,7 @@ export default function TrainingForm() {
           // Update main training record WITHOUT synced_at (deferred pattern)
           const { data: updateResult, error: trainingError } = await supabase
             .from('trainings')
-            .update(sanitizedTraining)
+            .update(sanitizedTraining as never)
             .eq('id', id)
             .select('id');
 
@@ -933,7 +933,7 @@ export default function TrainingForm() {
             console.warn('[Training Save] Update returned 0 rows — falling back to upsert');
             const { error: upsertError } = await supabase
               .from('trainings')
-              .upsert({ id, ...sanitizedTraining });
+              .upsert({ id, ...sanitizedTraining } as never);
             if (upsertError) throw upsertError;
           }
 
@@ -984,31 +984,31 @@ export default function TrainingForm() {
 
           if (preparedApproaches.length > 0) {
             parallelOps.push(
-              dbOp(supabase.from('training_delivery_approaches').upsert(preparedApproaches, { onConflict: 'id' }))
+              dbOp(supabase.from('training_delivery_approaches').upsert(preparedApproaches as never, { onConflict: 'id' }))
             );
           }
 
           if (preparedSystems.length > 0) {
             parallelOps.push(
-              dbOp(supabase.from('training_operating_systems').upsert(preparedSystems, { onConflict: 'id' }))
+              dbOp(supabase.from('training_operating_systems').upsert(preparedSystems as never, { onConflict: 'id' }))
             );
           }
 
           if (preparedAttention.length > 0) {
             parallelOps.push(
-              dbOp(supabase.from('training_immediate_attention').upsert(preparedAttention, { onConflict: 'id' }))
+              dbOp(supabase.from('training_immediate_attention').upsert(preparedAttention as never, { onConflict: 'id' }))
             );
           }
 
           if (preparedVerifiable.length > 0) {
             parallelOps.push(
-              dbOp(supabase.from('training_verifiable_items').upsert(preparedVerifiable, { onConflict: 'id' }))
+              dbOp(supabase.from('training_verifiable_items').upsert(preparedVerifiable as never, { onConflict: 'id' }))
             );
           }
 
           if (preparedSystemsPlace.length > 0) {
             parallelOps.push(
-              dbOp(supabase.from('training_systems_in_place').upsert(preparedSystemsPlace, { onConflict: 'id' }))
+              dbOp(supabase.from('training_systems_in_place').upsert(preparedSystemsPlace as never, { onConflict: 'id' }))
             );
           }
 
@@ -1020,7 +1020,7 @@ export default function TrainingForm() {
               training_id: id
             };
             parallelOps.push(
-              dbOp(supabase.from('training_summary').upsert(preparedSummary, { onConflict: 'training_id' }))
+              dbOp(supabase.from('training_summary').upsert(preparedSummary as never, { onConflict: 'training_id' }))
             );
           }
 
@@ -1440,7 +1440,7 @@ export default function TrainingForm() {
           if (attestation) Object.assign(trainingUpdate, attestation);
           const { error: trainingError } = await supabase
             .from('trainings')
-            .update(trainingUpdate)
+            .update(trainingUpdate as never)
             .eq('id', id);
 
           if (trainingError) throw trainingError;
@@ -1462,31 +1462,31 @@ export default function TrainingForm() {
 
           if (deliveryApproaches.length > 0) {
             parallelOps.push(
-              dbOp(supabase.from('training_delivery_approaches').upsert(prepareItems(deliveryApproaches, 'training_id'), { onConflict: 'id' }))
+              dbOp(supabase.from('training_delivery_approaches').upsert(prepareItems(deliveryApproaches, 'training_id') as never, { onConflict: 'id' }))
             );
           }
 
           if (operatingSystems.length > 0) {
             parallelOps.push(
-              dbOp(supabase.from('training_operating_systems').upsert(prepareItems(operatingSystems, 'training_id'), { onConflict: 'id' }))
+              dbOp(supabase.from('training_operating_systems').upsert(prepareItems(operatingSystems, 'training_id') as never, { onConflict: 'id' }))
             );
           }
 
           if (immediateAttention.length > 0) {
             parallelOps.push(
-              dbOp(supabase.from('training_immediate_attention').upsert(prepareItems(immediateAttention, 'training_id'), { onConflict: 'id' }))
+              dbOp(supabase.from('training_immediate_attention').upsert(prepareItems(immediateAttention, 'training_id') as never, { onConflict: 'id' }))
             );
           }
 
           if (verifiableItems.length > 0) {
             parallelOps.push(
-              dbOp(supabase.from('training_verifiable_items').upsert(prepareItems(verifiableItems, 'training_id'), { onConflict: 'id' }))
+              dbOp(supabase.from('training_verifiable_items').upsert(prepareItems(verifiableItems, 'training_id') as never, { onConflict: 'id' }))
             );
           }
 
           if (systemsInPlace.length > 0) {
             parallelOps.push(
-              dbOp(supabase.from('training_systems_in_place').upsert(prepareItems(systemsInPlace, 'training_id'), { onConflict: 'id' }))
+              dbOp(supabase.from('training_systems_in_place').upsert(prepareItems(systemsInPlace, 'training_id') as never, { onConflict: 'id' }))
             );
           }
 
@@ -1498,7 +1498,7 @@ export default function TrainingForm() {
               training_id: id
             };
             parallelOps.push(
-              dbOp(supabase.from('training_summary').upsert(preparedSummary, { onConflict: 'training_id' }))
+              dbOp(supabase.from('training_summary').upsert(preparedSummary as never, { onConflict: 'training_id' }))
             );
           }
 
@@ -1945,8 +1945,8 @@ export default function TrainingForm() {
                   training={training} 
                   onUpdate={effectiveReadOnly ? () => {} : updateTrainingField} 
                   isReadOnly={effectiveReadOnly}
-                  userProfile={inspectorProfile}
-                  modifiedByProfile={modifiedByProfile}
+                  userProfile={inspectorProfile as { first_name?: string; last_name?: string } | null}
+                  modifiedByProfile={modifiedByProfile as { first_name?: string; last_name?: string } | null}
                 />
                 {id && currentUser?.id && (
                   <CollaboratorPresence

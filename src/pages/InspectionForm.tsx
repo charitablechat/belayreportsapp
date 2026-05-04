@@ -45,6 +45,7 @@ import {
   getRelatedDataOffline,
   getOfflinePhotos,
   type DbRow,
+  type IdbSaveErrorCode,
 } from "@/lib/offline-storage";
 import { validateInspectionPackage } from "@/lib/validation-schemas";
 import { AttestationDialog } from "@/components/AttestationDialog";
@@ -117,10 +118,10 @@ function errorMessage(error: unknown, fallback: string): string {
   return fallback;
 }
 
-function errorCode(error: unknown): string | undefined {
+function errorCode(error: unknown): IdbSaveErrorCode | undefined {
   if (error && typeof error === 'object' && 'code' in error) {
     const code = (error as { code?: unknown }).code;
-    if (typeof code === 'string') return code;
+    if (typeof code === 'string') return code as IdbSaveErrorCode;
   }
   return undefined;
 }
@@ -1240,7 +1241,7 @@ export default function InspectionForm() {
           await withQueryTimeout(
             supabase
               .from("inspections")
-              .update(updateFields)
+              .update(updateFields as never)
               .eq("id", id),
             5000
           ).catch(e => console.warn('[InspectionForm] last_opened_at/started_at update failed:', e));
@@ -1759,7 +1760,7 @@ export default function InspectionForm() {
         // localStorage snapshot above is still the user's safety net.
         const { isIdbSaveError } = await import('@/lib/offline-storage');
         if (isIdbSaveError(offlineError)) {
-          setSaveError({ message: 'Local save failed — your changes are NOT stored. Tap to retry.', code: (offlineError as { code?: string })?.code });
+          setSaveError({ message: 'Local save failed — your changes are NOT stored. Tap to retry.', code: offlineError.code });
           throw offlineError;
         }
         if (!silent) {
@@ -1819,6 +1820,8 @@ export default function InspectionForm() {
                 created_at,
                 child_count_hint,
                 dirty,
+                inspection_id,
+                user_id,
                 ...rest
               } = insp;
               return {
@@ -1831,7 +1834,7 @@ export default function InspectionForm() {
             const sanitized = sanitizeInspection(inspectionToSave);
             const { data: updateResult, error: inspectionError } = await supabase
               .from("inspections")
-              .update(sanitized)
+              .update(sanitized as never)
               .eq("id", id)
               .select("id");
             
@@ -1845,7 +1848,7 @@ export default function InspectionForm() {
               console.warn('[InspectionForm Sync] Update returned 0 rows — falling back to upsert');
               const { error: upsertError } = await supabase
                 .from("inspections")
-                .upsert({ id, ...sanitized });
+                .upsert({ id, ...sanitized } as never);
               if (upsertError) {
                 console.error('[InspectionForm Sync] Upsert fallback failed:', upsertError);
                 throw upsertError;
@@ -1925,7 +1928,7 @@ export default function InspectionForm() {
             // Systems operations
             if (existingSystems.length > 0) {
               parallelOperations.push(
-                dbOp(supabase.from("inspection_systems").upsert(existingSystems.map(s => ({ ...s, inspection_id: id })), { onConflict: 'id' }))
+                dbOp(supabase.from("inspection_systems").upsert(existingSystems.map(s => ({ ...s, inspection_id: id })) as never, { onConflict: 'id' }))
               );
             }
             if (newSystems.length > 0) {
@@ -1938,7 +1941,7 @@ export default function InspectionForm() {
               });
               
               parallelOperations.push(
-                dbOp(supabase.from("inspection_systems").insert(newSystems))
+                dbOp(supabase.from("inspection_systems").insert(newSystems as never))
               );
               
               // Replace temp items in-place, preserving position (no reordering)
@@ -1957,7 +1960,7 @@ export default function InspectionForm() {
             // Ziplines operations
             if (existingZiplines.length > 0) {
               parallelOperations.push(
-                dbOp(supabase.from("inspection_ziplines").upsert(existingZiplines.map(z => ({ ...z, inspection_id: id })), { onConflict: 'id' }))
+                dbOp(supabase.from("inspection_ziplines").upsert(existingZiplines.map(z => ({ ...z, inspection_id: id })) as never, { onConflict: 'id' }))
               );
             }
             if (newZiplines.length > 0) {
@@ -1970,7 +1973,7 @@ export default function InspectionForm() {
               });
               
               parallelOperations.push(
-                dbOp(supabase.from("inspection_ziplines").insert(newZiplines))
+                dbOp(supabase.from("inspection_ziplines").insert(newZiplines as never))
               );
               
               // Replace temp items in-place, preserving position (no reordering)
@@ -1988,7 +1991,7 @@ export default function InspectionForm() {
             // Equipment operations
             if (existingEquipment.length > 0) {
               parallelOperations.push(
-                dbOp(supabase.from("inspection_equipment").upsert(existingEquipment.map(e => ({ ...e, inspection_id: id })), { onConflict: 'id' }))
+                dbOp(supabase.from("inspection_equipment").upsert(existingEquipment.map(e => ({ ...e, inspection_id: id })) as never, { onConflict: 'id' }))
               );
             }
             if (newEquipment.length > 0) {
@@ -2001,7 +2004,7 @@ export default function InspectionForm() {
               });
               
               parallelOperations.push(
-                dbOp(supabase.from("inspection_equipment").insert(newEquipment))
+                dbOp(supabase.from("inspection_equipment").insert(newEquipment as never))
               );
               
               // Replace temp items in-place, preserving position (no reordering)
@@ -2018,12 +2021,12 @@ export default function InspectionForm() {
             
             // Standards - use upsert instead of delete+insert for atomicity
             parallelOperations.push(
-              dbOp(supabase.from("inspection_standards").upsert(standardsWithIds, { onConflict: 'id', ignoreDuplicates: false }))
+              dbOp(supabase.from("inspection_standards").upsert(standardsWithIds as never, { onConflict: 'id', ignoreDuplicates: false }))
             );
             
             // Summary
             parallelOperations.push(
-              dbOp(supabase.from("inspection_summary").upsert(sanitizeSummary({ ...currentSummary, inspection_id: id }), { onConflict: 'inspection_id' }))
+              dbOp(supabase.from("inspection_summary").upsert(sanitizeSummary({ ...currentSummary, inspection_id: id }) as never, { onConflict: 'inspection_id' }))
             );
 
             // Execute all in parallel
@@ -2072,7 +2075,7 @@ export default function InspectionForm() {
           } catch (error) {
             // Detect network-related errors for retry
             const errMsg = errorMessage(error, '').toLowerCase();
-            const code = errorCode(error);
+            const code: string | undefined = errorCode(error);
             const errName = error instanceof Error ? error.name : undefined;
             const isNetworkError =
               errMsg.includes('network') ||
@@ -2354,7 +2357,7 @@ export default function InspectionForm() {
       if (isOnline) {
         const { error } = await supabase
           .from("inspections")
-          .update(updatePayload)
+          .update(updatePayload as never)
           .eq("id", id);
 
         if (error) throw error;
@@ -3202,7 +3205,7 @@ export default function InspectionForm() {
         <InspectionHeader
           inspection={inspection}
           userProfile={inspectorProfile}
-          modifiedByProfile={modifiedByProfile}
+          modifiedByProfile={modifiedByProfile as { first_name?: string; last_name?: string } | null}
           onUpdate={effectiveReadOnly ? () => {} : handleHeaderUpdate} 
           onImmediateSave={effectiveReadOnly ? undefined : stableTriggerImmediateSave}
           isReadOnly={effectiveReadOnly}

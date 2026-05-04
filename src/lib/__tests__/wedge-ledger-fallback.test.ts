@@ -130,7 +130,7 @@ describe('Mode 11A — withWedgeLedgerFallback for getUnsyncedInspections', () =
         };
         setTimeout(() => {
           (req as { error: Error }).error = new Error('synthetic IDB open failure');
-          req.onerror?.(new Event('error'));
+          req.onerror?.call(req as IDBOpenDBRequest, new Event('error'));
         }, 0);
         return req as IDBOpenDBRequest;
       },

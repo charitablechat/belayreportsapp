@@ -20,7 +20,7 @@
 import { quarantineRecord, type QuarantineTable } from "./offline-storage";
 
 interface ReconcileRow {
-  id: string;
+  id?: string;
   inspector_id?: string | null;
   synced_at?: string | null;
   dirty?: boolean;
