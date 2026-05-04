@@ -45,6 +45,7 @@ import {
   getRelatedDataOffline,
   getOfflinePhotos,
   type DbRow,
+  type IdbSaveErrorCode,
 } from "@/lib/offline-storage";
 import { validateInspectionPackage } from "@/lib/validation-schemas";
 import { AttestationDialog } from "@/components/AttestationDialog";
@@ -117,10 +118,10 @@ function errorMessage(error: unknown, fallback: string): string {
   return fallback;
 }
 
-function errorCode(error: unknown): string | undefined {
+function errorCode(error: unknown): IdbSaveErrorCode | undefined {
   if (error && typeof error === 'object' && 'code' in error) {
     const code = (error as { code?: unknown }).code;
-    if (typeof code === 'string') return code;
+    if (typeof code === 'string') return code as IdbSaveErrorCode;
   }
   return undefined;
 }
