@@ -1333,7 +1333,7 @@ export default function DailyAssessmentForm() {
           if (attestation) Object.assign(assessmentUpdate, attestation);
           await supabase
             .from('daily_assessments')
-            .update(assessmentUpdate)
+            .update(assessmentUpdate as never)
             .eq('id', id);
           console.log('[Submit] Assessment status updated');
 
@@ -1936,8 +1936,8 @@ export default function DailyAssessmentForm() {
           assessment={assessment} 
           onUpdate={effectiveReadOnly ? () => {} : handleUpdateAssessment} 
           isReadOnly={effectiveReadOnly}
-          userProfile={inspectorProfile}
-          modifiedByProfile={modifiedByProfile}
+          userProfile={inspectorProfile as { first_name?: string; last_name?: string } | null}
+          modifiedByProfile={modifiedByProfile as { first_name?: string; last_name?: string } | null}
         />
         {id && currentUser?.id && (
           <CollaboratorPresence
