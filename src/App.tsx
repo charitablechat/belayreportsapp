@@ -193,11 +193,60 @@ const RootLayout = () => {
   );
 };
 
+const OfflineRouteError = () => {
+  const error = useRouteError();
+
+  useEffect(() => {
+    console.error('[Router] Route render failed:', error);
+  }, [error]);
+
+  const continueOffline = () => {
+    createGuestSession();
+    window.location.replace('/dashboard');
+  };
+
+  return (
+    <div className="min-h-screen bg-background text-foreground flex items-center justify-center px-6 py-10">
+      <main className="w-full max-w-sm text-center space-y-5">
+        <img
+          src="/rope-works-logo.avif"
+          alt="Rope Works"
+          className="mx-auto h-24 w-24 rounded-full object-contain bg-background"
+        />
+        <div className="space-y-2">
+          <h1 className="text-2xl font-semibold">Open Rope Works offline</h1>
+          <p className="text-sm text-muted-foreground">
+            The app shell is available. Continue offline and your work will stay on this device until you reconnect.
+          </p>
+        </div>
+        <div className="space-y-3">
+          <button
+            type="button"
+            onClick={continueOffline}
+            className="w-full bg-primary text-primary-foreground px-4 py-3 font-semibold hover:bg-primary/90 transition-colors"
+          >
+            Continue offline
+          </button>
+          <button
+            type="button"
+            onClick={() => window.location.replace('/')}
+            className="w-full border border-border px-4 py-3 font-semibold hover:bg-muted transition-colors"
+          >
+            Try opening again
+          </button>
+        </div>
+      </main>
+    </div>
+  );
+};
+
 const router = createBrowserRouter([
   {
     element: <RootLayout />,
+    errorElement: <OfflineRouteError />,
     children: [
       { path: "/", element: <Index /> },
+      { path: "/index", element: <Index /> },
       { path: "/welcome", element: <AuroraLanding /> },
       { path: "/dashboard", element: <RequireAuth><Dashboard /></RequireAuth> },
       { path: "/inspection/new", element: <RequireAuth><NewInspection /></RequireAuth> },
