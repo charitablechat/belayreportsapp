@@ -277,6 +277,47 @@ function selectAtomicSyncFetchOuterTimeout(): number {
 export const __test_only__selectAtomicSyncFetchOuterTimeout = selectAtomicSyncFetchOuterTimeout;
 export const __test_only__ATOMIC_SYNC_FETCH_OUTER_TIMEOUT_MS = ATOMIC_SYNC_FETCH_OUTER_TIMEOUT_MS;
 export const __test_only__ATOMIC_SYNC_FETCH_OUTER_TIMEOUT_GRACE_MS = ATOMIC_SYNC_FETCH_OUTER_TIMEOUT_GRACE_MS;
+
+// Mode 11B (A+B composed) — defense-in-depth ledger fallback at the
+// atomic-sync drain catch block. Mode 11A's `withWedgeLedgerFallback`
+// wrapper sits inside `getUnsynced*` and only fires when the inner
+// boundary returns `IdbReadFailure`. PR #119's CI evidence showed neither
+// the wrapper NOR the drain itself were running during the wedge window:
+// no `[Atomic Sync] Starting sync for unsynced inspections` log appears
+// during the 02:12-02:14 wedge, only after recovery at 02:15. Whatever
+// upstream gate is preventing the drain from ticking, the IdbReadFailure
+// branch in this catch block is the wider safety net — if we EVER reach
+// it (whether via inner timeout, outer race, or any other rejection),
+// we now consult the ledger before giving up.
+//
+// The ledger is system-of-record (every IDB write mirrored via
+// `saveReportSnapshot`, unsynced snapshots explicitly never evicted), so
+// returning ledger rows is strictly more useful than `unsynced = []`.
+type LedgerReportType = 'inspection' | 'training' | 'daily_assessment';
+async function ledgerFallbackRows<T extends { id: string }>(
+  reportType: LedgerReportType,
+  userId: string | undefined,
+  context: string,
+): Promise<T[]> {
+  try {
+    const { listUnsyncedDbRowsFromLedger } = await import('./local-backup-ledger');
+    const rows = listUnsyncedDbRowsFromLedger(reportType, userId) as unknown as T[];
+    console.warn('[Atomic Sync] Mode 11B catch-block ledger fallback active', {
+      context,
+      reportType,
+      ledgerCount: rows.length,
+    });
+    return rows;
+  } catch (err) {
+    console.warn('[Atomic Sync] Mode 11B catch-block ledger fallback failed', {
+      context,
+      reportType,
+      err,
+    });
+    return [];
+  }
+}
+export const __test_only__ledgerFallbackRows = ledgerFallbackRows;
 /** Shape of the `align_synced_at` RPC response. Both branches are optional — the
  * call is advisory and can return either a normal `{ updated_at }` payload or
  * an `{ error }` envelope. */
@@ -1442,6 +1483,18 @@ export async function syncInspectionAtomic(inspectionId: string, preValidatedUse
  * Sync all unsynced inspections atomically
  */
 export async function syncAllInspectionsAtomic(preValidatedUser?: CachedUser, signal?: AbortSignal) {
+  // Mode 11B observability — unconditional log at every entry so we can
+  // see whether the drain is being called during the post-online wedge
+  // window. PR #119 CI traces showed no `[Atomic Sync] Starting sync` log
+  // during the wedge, but the existing `syncLog.log` is gated on a
+  // production-stripped flag — we couldn't tell if the drain was being
+  // skipped upstream or just silenced. This log is `console.warn` so it
+  // survives the prod build and shows up in Playwright traces.
+  console.warn('[Atomic Sync] syncAllInspectionsAtomic invoked', {
+    online: navigator.onLine,
+    hasPreValidatedUser: !!preValidatedUser,
+    aborted: !!signal?.aborted,
+  });
   const capabilities = getMobileCapabilities();
   const ITEM_SYNC_TIMEOUT = 25000; // 25 seconds per item max (increased for mobile networks)
   
@@ -1499,21 +1552,44 @@ export async function syncAllInspectionsAtomic(preValidatedUser?: CachedUser, si
     ]);
     const { isIdbReadFailure } = await import('./offline-storage');
     if (isIdbReadFailure(result)) {
-      fetchFailureReason = result.error;
-      unsynced = [];
+      // Mode 11B (A+B): consult the ledger before giving up. The Mode 11A
+      // wrapper inside `getUnsynced*` should already have done this, but
+      // belt-and-braces in case it gets bypassed (e.g. dynamic import
+      // failed silently, future refactor moves the wrapper).
+      const ledgerRows = await ledgerFallbackRows<UnsyncedInspection>(
+        'inspection', user.id, 'syncAllInspectionsAtomic.idbReadFailure',
+      );
+      if (ledgerRows.length > 0) {
+        unsynced = ledgerRows;
+      } else {
+        fetchFailureReason = result.error;
+        unsynced = [];
+      }
     } else {
       unsynced = result as UnsyncedInspection[];
     }
   } catch (e: unknown) {
     const message = e instanceof Error ? e.message : String(e);
-    if (message === 'IndexedDB timeout') {
-      console.warn('[Atomic Sync] IndexedDB timeout getting unsynced inspections - will retry next cycle');
-      fetchFailureReason = 'idb_outer_timeout';
+    // Mode 11B (A+B): outer Promise.race fired (or any other unexpected
+    // rejection). Consult the ledger before giving up. This is the path
+    // that A alone couldn't reach — when the inner boundary hangs past
+    // the outer 120s grace budget, control jumps here and previously
+    // we'd just `unsynced = []`.
+    const ledgerRows = await ledgerFallbackRows<UnsyncedInspection>(
+      'inspection', user.id, 'syncAllInspectionsAtomic.outerCatch',
+    );
+    if (ledgerRows.length > 0) {
+      unsynced = ledgerRows;
     } else {
-      console.warn('[Atomic Sync] Failed to get unsynced inspections:', e);
-      fetchFailureReason = message || 'unknown';
+      if (message === 'IndexedDB timeout') {
+        console.warn('[Atomic Sync] IndexedDB timeout getting unsynced inspections - will retry next cycle');
+        fetchFailureReason = 'idb_outer_timeout';
+      } else {
+        console.warn('[Atomic Sync] Failed to get unsynced inspections:', e);
+        fetchFailureReason = message || 'unknown';
+      }
+      unsynced = [];
     }
-    unsynced = [];
   }
   
   // Don't report success if we failed to fetch data (total: -1 signals fetch failure)
@@ -2448,6 +2524,12 @@ export async function syncTrainingAtomic(trainingId: string, preValidatedUser?: 
  * Sync all unsynced trainings atomically
  */
 export async function syncAllTrainingsAtomic(preValidatedUser?: CachedUser, signal?: AbortSignal) {
+  // Mode 11B observability — see syncAllInspectionsAtomic.
+  console.warn('[Atomic Sync] syncAllTrainingsAtomic invoked', {
+    online: navigator.onLine,
+    hasPreValidatedUser: !!preValidatedUser,
+    aborted: !!signal?.aborted,
+  });
   const capabilities = getMobileCapabilities();
   const ITEM_SYNC_TIMEOUT = 25000; // 25 seconds per item max (increased for mobile networks)
   
@@ -2501,21 +2583,37 @@ export async function syncAllTrainingsAtomic(preValidatedUser?: CachedUser, sign
     ]);
     const { isIdbReadFailure } = await import('./offline-storage');
     if (isIdbReadFailure(result)) {
-      fetchFailureReason = result.error;
-      unsynced = [];
+      // Mode 11B (A+B): see syncAllInspectionsAtomic.idbReadFailure.
+      const ledgerRows = await ledgerFallbackRows<UnsyncedTraining>(
+        'training', user.id, 'syncAllTrainingsAtomic.idbReadFailure',
+      );
+      if (ledgerRows.length > 0) {
+        unsynced = ledgerRows;
+      } else {
+        fetchFailureReason = result.error;
+        unsynced = [];
+      }
     } else {
       unsynced = result as UnsyncedTraining[];
     }
   } catch (e: unknown) {
     const message = e instanceof Error ? e.message : String(e);
-    if (message === 'IndexedDB timeout') {
-      console.warn('[Atomic Sync] IndexedDB timeout getting unsynced trainings - will retry next cycle');
-      fetchFailureReason = 'idb_outer_timeout';
+    // Mode 11B (A+B): see syncAllInspectionsAtomic.outerCatch.
+    const ledgerRows = await ledgerFallbackRows<UnsyncedTraining>(
+      'training', user.id, 'syncAllTrainingsAtomic.outerCatch',
+    );
+    if (ledgerRows.length > 0) {
+      unsynced = ledgerRows;
     } else {
-      console.warn('[Atomic Sync] Failed to get unsynced trainings:', e);
-      fetchFailureReason = message || 'unknown';
+      if (message === 'IndexedDB timeout') {
+        console.warn('[Atomic Sync] IndexedDB timeout getting unsynced trainings - will retry next cycle');
+        fetchFailureReason = 'idb_outer_timeout';
+      } else {
+        console.warn('[Atomic Sync] Failed to get unsynced trainings:', e);
+        fetchFailureReason = message || 'unknown';
+      }
+      unsynced = [];
     }
-    unsynced = [];
   }
   
   // Don't report success if we failed to fetch data (total: -1 signals fetch failure)
@@ -3315,6 +3413,12 @@ export async function syncDailyAssessmentAtomic(assessmentId: string, preValidat
  * Sync all unsynced daily assessments atomically
  */
 export async function syncAllDailyAssessmentsAtomic(preValidatedUser?: CachedUser, signal?: AbortSignal) {
+  // Mode 11B observability — see syncAllInspectionsAtomic.
+  console.warn('[Atomic Sync] syncAllDailyAssessmentsAtomic invoked', {
+    online: navigator.onLine,
+    hasPreValidatedUser: !!preValidatedUser,
+    aborted: !!signal?.aborted,
+  });
   const capabilities = getMobileCapabilities();
   const ITEM_SYNC_TIMEOUT = 25000; // 25 seconds per item max (increased for mobile networks)
   
@@ -3368,21 +3472,37 @@ export async function syncAllDailyAssessmentsAtomic(preValidatedUser?: CachedUse
     ]);
     const { isIdbReadFailure } = await import('./offline-storage');
     if (isIdbReadFailure(result)) {
-      fetchFailureReason = result.error;
-      unsynced = [];
+      // Mode 11B (A+B): see syncAllInspectionsAtomic.idbReadFailure.
+      const ledgerRows = await ledgerFallbackRows<UnsyncedAssessment>(
+        'daily_assessment', user.id, 'syncAllDailyAssessmentsAtomic.idbReadFailure',
+      );
+      if (ledgerRows.length > 0) {
+        unsynced = ledgerRows;
+      } else {
+        fetchFailureReason = result.error;
+        unsynced = [];
+      }
     } else {
       unsynced = result as UnsyncedAssessment[];
     }
   } catch (e: unknown) {
     const message = e instanceof Error ? e.message : String(e);
-    if (message === 'IndexedDB timeout') {
-      console.warn('[Atomic Sync] IndexedDB timeout getting unsynced assessments - will retry next cycle');
-      fetchFailureReason = 'idb_outer_timeout';
+    // Mode 11B (A+B): see syncAllInspectionsAtomic.outerCatch.
+    const ledgerRows = await ledgerFallbackRows<UnsyncedAssessment>(
+      'daily_assessment', user.id, 'syncAllDailyAssessmentsAtomic.outerCatch',
+    );
+    if (ledgerRows.length > 0) {
+      unsynced = ledgerRows;
     } else {
-      console.warn('[Atomic Sync] Failed to get unsynced assessments:', e);
-      fetchFailureReason = message || 'unknown';
+      if (message === 'IndexedDB timeout') {
+        console.warn('[Atomic Sync] IndexedDB timeout getting unsynced assessments - will retry next cycle');
+        fetchFailureReason = 'idb_outer_timeout';
+      } else {
+        console.warn('[Atomic Sync] Failed to get unsynced assessments:', e);
+        fetchFailureReason = message || 'unknown';
+      }
+      unsynced = [];
     }
-    unsynced = [];
   }
   
   if (fetchFailureReason) {
