@@ -90,6 +90,27 @@ describe("H5-T — isTransientNetworkError classifier", () => {
     ).toBe(true);
   });
 
+  // Mode 12 — `Error("Cannot sync while offline")` is what
+  // `syncInspectionAtomic` / `syncTrainingAtomic` /
+  // `syncDailyAssessmentAtomic` historically threw from the per-record
+  // `if (!navigator.onLine)` gate. When `navigator.onLine` briefly flaps to
+  // false during a retry — e.g. Chromium's NetworkChangeNotifier reacting
+  // to a transient Supabase REST flake — the retry loop catches this
+  // freshly-thrown Error (no cause chain), classifies it persistent, and
+  // collapses the retry budget to `persistentMaxRetries=1`, terminal-failing
+  // the record after one attempt. PR #119 (run 25297495407) showed this
+  // happening deterministically in CI: the per-record sync hit the gate
+  // 880 ms after the first attempt and exited the retry loop instantly,
+  // even though `navigator.onLine` flipped back to true 4 s later.
+  it("Mode 12: matches per-record offline gate string", () => {
+    expect(isTransientNetworkError("Cannot sync while offline")).toBe(true);
+    expect(
+      isTransientNetworkError("Error: Cannot sync while offline"),
+    ).toBe(true);
+    // Case-insensitivity — defensive, in case copy ever drifts.
+    expect(isTransientNetworkError("cannot sync while offline")).toBe(true);
+  });
+
   it("does NOT match persistent server / schema errors", () => {
     expect(
       isTransientNetworkError(
