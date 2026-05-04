@@ -88,11 +88,11 @@ export const pwaConfig = VitePWA({
     // Exclude version.json from precache — it must always be fresh
     globPatterns: ['**/*.{js,css,html,ico,png,svg,woff,woff2,avif}'],
     globIgnores: ['**/version.json'],
-    // Serve the precached index.html for any in-app navigation. If the shell
-    // itself is missing for any reason, the runtime route below falls back to
-    // /offline.html (a branded page) instead of the browser's default screen.
-    navigateFallback: 'index.html',
-    navigateFallbackDenylist: [/^\/api/, /offline\.html$/, /^\/version\.json$/],
+    // Keep index.html in the precache, but let sw-offline-navigation.js own
+    // document requests. That script is imported before Workbox, avoids lazy
+    // route gaps, and has its own last-resort offline fallback for cold starts.
+    navigateFallback: '/index.html',
+    navigateFallbackDenylist: [/./],
     importScripts: ['/sw-offline-navigation.js', '/db-config.js', '/sw-push.js', '/sw-sync.js'],
     runtimeCaching: [
       {
