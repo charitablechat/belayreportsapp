@@ -1002,13 +1002,13 @@ export default function TrainingForm() {
 
           if (preparedVerifiable.length > 0) {
             parallelOps.push(
-              dbOp(supabase.from('training_verifiable_items').upsert(preparedVerifiable, { onConflict: 'id' }))
+              dbOp(supabase.from('training_verifiable_items').upsert(preparedVerifiable as never, { onConflict: 'id' }))
             );
           }
 
           if (preparedSystemsPlace.length > 0) {
             parallelOps.push(
-              dbOp(supabase.from('training_systems_in_place').upsert(preparedSystemsPlace, { onConflict: 'id' }))
+              dbOp(supabase.from('training_systems_in_place').upsert(preparedSystemsPlace as never, { onConflict: 'id' }))
             );
           }
 
@@ -1020,7 +1020,7 @@ export default function TrainingForm() {
               training_id: id
             };
             parallelOps.push(
-              dbOp(supabase.from('training_summary').upsert(preparedSummary, { onConflict: 'training_id' }))
+              dbOp(supabase.from('training_summary').upsert(preparedSummary as never, { onConflict: 'training_id' }))
             );
           }
 
