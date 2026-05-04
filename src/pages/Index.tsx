@@ -2,10 +2,43 @@ import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import Auth from "@/components/Auth";
-import { hasPendingOfflineAuth } from "@/lib/offline-auth";
+import {
+  hasPendingOfflineAuth,
+  readSyntheticSession,
+  createOfflineSession,
+} from "@/lib/offline-auth";
+import { readGuestSession } from "@/lib/guest-session";
+import { openDB } from "idb";
 
-// H8: Derive Supabase auth-token storage key from env (project ref) instead of hardcoding.
 const SUPABASE_SESSION_KEY = `sb-${import.meta.env.VITE_SUPABASE_PROJECT_ID}-auth-token`;
+
+/**
+ * Best-effort lookup of any captured offline_auth entries (refresh-tokens
+ * saved on a previous successful online sign-in). Used to auto-resume
+ * offline sessions for users who have signed in on this device before but
+ * whose Supabase session-storage has been cleared (cache wipe, browser
+ * data reset, new tab in private window, etc.).
+ */
+async function findSingleCapturedOfflineEntry(): Promise<
+  { email: string; userId: string } | null
+> {
+  try {
+    const db = await openDB('offline-auth-store', 2);
+    if (!db.objectStoreNames.contains('offline_auth')) {
+      db.close();
+      return null;
+    }
+    const all = (await db.getAll('offline_auth')) as Array<{
+      email: string;
+      userId: string;
+    }>;
+    db.close();
+    if (all.length === 1) return { email: all[0].email, userId: all[0].userId };
+    return null;
+  } catch {
+    return null;
+  }
+}
 
 const Index = () => {
   const navigate = useNavigate();
@@ -15,78 +48,81 @@ const Index = () => {
   useEffect(() => {
     const checkAuth = async () => {
       try {
-        // If offline, check cached session immediately without Supabase call
+        // ── OFFLINE PATH ─────────────────────────────────────────────
         if (!navigator.onLine) {
-          console.log('[Auth] Offline detected, checking cached session');
+          // 1. Real cached Supabase session
           const cachedSession = localStorage.getItem(SUPABASE_SESSION_KEY);
-          
           if (cachedSession) {
             try {
               const parsed = JSON.parse(cachedSession);
-              // Offline: only require a user identity — ignore token expiry
               if (parsed && (parsed.user?.id || parsed.access_token)) {
-                console.log('[Auth] Cached session found (offline), navigating to dashboard');
                 setSession(parsed);
-                navigate("/dashboard", { replace: true });
+                navigate('/dashboard', { replace: true });
                 return;
               }
-            } catch (e) {
-              console.error('[Auth] Error parsing cached session:', e);
-            }
+            } catch {/* fall through */}
           }
-          
-          // Check for pending offline auth (user previously signed in offline)
-          if (hasPendingOfflineAuth()) {
-            console.log('[Auth] Pending offline auth found, navigating to dashboard');
+
+          // 2. Synthetic offline session
+          if (readSyntheticSession() || hasPendingOfflineAuth()) {
             setSession({ offline: true });
-            navigate("/dashboard", { replace: true });
+            navigate('/dashboard', { replace: true });
             return;
           }
-          
-          // No cached session at all while offline - show login form (allows offline sign-in)
+
+          // 3. Captured refresh-token (auto-resume) — single user only.
+          const captured = await findSingleCapturedOfflineEntry();
+          if (captured) {
+            try {
+              await createOfflineSession(captured.email, '');
+              setSession({ offline: true });
+              navigate('/dashboard', { replace: true });
+              return;
+            } catch {/* show sign-in form */}
+          }
+
+          // 4. Guest session
+          if (readGuestSession()) {
+            setSession({ guest: true });
+            navigate('/dashboard', { replace: true });
+            return;
+          }
+
+          // No way in offline — render the Auth screen so the user can pick.
           setLoading(false);
           return;
         }
 
-        // Online: verify with Supabase (with timeout)
-        const timeoutPromise = new Promise((_, reject) => 
+        // ── ONLINE PATH (unchanged) ─────────────────────────────────
+        const timeoutPromise = new Promise((_, reject) =>
           setTimeout(() => reject(new Error('Auth check timeout')), 5000)
         );
-        
         const authPromise = supabase.auth.getSession();
-        
         try {
-          const { data: { session }, error } = await Promise.race([
+          const { data: { session }, error } = (await Promise.race([
             authPromise,
-            timeoutPromise
-          ]) as any;
-
-        if (!error && session) {
+            timeoutPromise,
+          ])) as any;
+          if (!error && session) {
             setSession(session);
-            navigate("/dashboard", { replace: true });
+            navigate('/dashboard', { replace: true });
             return;
           }
         } catch (authError) {
-          console.log('[Auth] Supabase verification failed or timed out, checking cache:', authError);
-          
-          // Fallback to cached session only if Supabase request truly failed
+          console.log('[Auth] Supabase verification failed, checking cache:', authError);
           const cachedSession = localStorage.getItem(SUPABASE_SESSION_KEY);
-          
           if (cachedSession) {
             try {
               const parsed = JSON.parse(cachedSession);
-              if (parsed && parsed.access_token) {
-                // Verify the token hasn't expired
+              if (parsed?.access_token) {
                 const expiresAt = parsed.expires_at;
                 if (expiresAt && expiresAt * 1000 > Date.now()) {
                   setSession(parsed);
-                  navigate("/dashboard", { replace: true });
+                  navigate('/dashboard', { replace: true });
                   return;
                 }
               }
-            } catch (e) {
-              console.error('[Auth] Error parsing cached session:', e);
-            }
+            } catch {/* ignore */}
           }
         }
       } catch (error) {
@@ -96,18 +132,14 @@ const Index = () => {
       }
     };
 
-    // Set up auth state listener
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       (_event, session) => {
         setSession(session);
-        if (session) {
-          navigate("/dashboard", { replace: true });
-        }
+        if (session) navigate('/dashboard', { replace: true });
       }
     );
 
     checkAuth();
-
     return () => subscription.unsubscribe();
   }, [navigate]);
 
@@ -119,10 +151,7 @@ const Index = () => {
     );
   }
 
-  if (session) {
-    return null; // Will redirect to dashboard
-  }
-
+  if (session) return null;
   return <Auth />;
 };
 
