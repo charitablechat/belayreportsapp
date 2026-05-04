@@ -4,6 +4,7 @@ import "./index.css";
 import { isPreviewOrIframeEnvironment, isServiceWorkerAllowed } from "@/lib/environment";
 import { initSentry } from "@/lib/sentry";
 import { logError } from "@/lib/log-error";
+import { registerSW } from "virtual:pwa-register";
 
 // Initialize error monitoring as early as possible (production-only, lazy-loaded).
 void initSentry();
@@ -61,9 +62,11 @@ function sendAuthTokenToSW() {
 }
 
 // Auth-token bridge for sw-sync.js (the actual SW registration is now
-// owned by VitePWA's auto-injected register script — we only listen for
-// readiness so we can ship the JWT to it).
+// owned here so preview/iframe contexts never receive a service worker while
+// production installs always do, even after previous stale SW history).
 if (isServiceWorkerAllowed()) {
+  registerSW({ immediate: true });
+
   navigator.serviceWorker.ready.then(() => {
     if (import.meta.env.DEV) {
       console.log('[SW] Service Worker ready — sending auth token');

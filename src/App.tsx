@@ -2,20 +2,26 @@ import { MobileAwareToaster, MobileAwareSonner } from "@/components/ui/mobile-aw
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { ThemeProvider } from "next-themes";
-import { createBrowserRouter, RouterProvider, useNavigate, Outlet, useLocation } from "react-router-dom";
+import { createBrowserRouter, RouterProvider, useNavigate, Outlet, useLocation, useRouteError } from "react-router-dom";
 import { lazy, Suspense, useEffect, useRef } from "react";
 import { trackNavigation, getNavigationDepth, decrementNavigation, isOverlayActive, isReportTabActive } from "@/lib/navigation";
 import Index from "./pages/Index";
 import { AppErrorBoundary } from "@/components/AppErrorBoundary";
+import { createGuestSession } from "@/lib/guest-session";
 
-// Lazy-loaded routes for code splitting
-const Dashboard = lazy(() => import("./pages/Dashboard"));
-const NewInspection = lazy(() => import("./pages/NewInspection"));
-const InspectionForm = lazy(() => import("./pages/InspectionForm"));
-const TrainingForm = lazy(() => import("./pages/TrainingForm"));
-const NewTraining = lazy(() => import("./pages/NewTraining"));
-const NewDailyAssessment = lazy(() => import("./pages/NewDailyAssessment"));
-const DailyAssessmentForm = lazy(() => import("./pages/DailyAssessmentForm"));
+// Keep offline-critical routes in the app shell. If a user launches the
+// installed app offline on /dashboard or a report URL, lazy chunk fetches can
+// fail before the service worker has warmed every chunk; these imports make the
+// core field workflow available from the precached main bundle.
+import Dashboard from "./pages/Dashboard";
+import NewInspection from "./pages/NewInspection";
+import InspectionForm from "./pages/InspectionForm";
+import TrainingForm from "./pages/TrainingForm";
+import NewTraining from "./pages/NewTraining";
+import NewDailyAssessment from "./pages/NewDailyAssessment";
+import DailyAssessmentForm from "./pages/DailyAssessmentForm";
+
+// Lazy-loaded non-critical routes for code splitting
 const Install = lazy(() => import("./pages/Install"));
 const Capabilities = lazy(() => import("./pages/Capabilities"));
 const AuroraLanding = lazy(() => import("./pages/AuroraLanding"));
@@ -187,11 +193,61 @@ const RootLayout = () => {
   );
 };
 
+const OfflineRouteError = () => {
+  const error = useRouteError();
+
+  useEffect(() => {
+    console.error('[Router] Route render failed:', error);
+  }, [error]);
+
+  const continueOffline = () => {
+    createGuestSession();
+    window.location.replace('/dashboard');
+  };
+
+  return (
+    <div className="min-h-screen bg-background text-foreground flex items-center justify-center px-6 py-10">
+      <main className="w-full max-w-sm text-center space-y-5">
+        <img
+          src="/rope-works-logo.avif"
+          alt="Rope Works"
+          className="mx-auto h-24 w-24 rounded-full object-contain bg-background"
+        />
+        <div className="space-y-2">
+          <h1 className="text-2xl font-semibold">Open Rope Works offline</h1>
+          <p className="text-sm text-muted-foreground">
+            The app shell is available. Continue offline and your work will stay on this device until you reconnect.
+          </p>
+        </div>
+        <div className="space-y-3">
+          <button
+            type="button"
+            onClick={continueOffline}
+            className="w-full bg-primary text-primary-foreground px-4 py-3 font-semibold hover:bg-primary/90 transition-colors"
+          >
+            Continue offline
+          </button>
+          <button
+            type="button"
+            onClick={() => window.location.replace('/')}
+            className="w-full border border-border px-4 py-3 font-semibold hover:bg-muted transition-colors"
+          >
+            Try opening again
+          </button>
+        </div>
+      </main>
+    </div>
+  );
+};
+
 const router = createBrowserRouter([
   {
     element: <RootLayout />,
+    errorElement: <OfflineRouteError />,
     children: [
       { path: "/", element: <Index /> },
+      { path: "/index", element: <Index /> },
+      { path: "/index.html", element: <Index /> },
       { path: "/welcome", element: <AuroraLanding /> },
       { path: "/dashboard", element: <RequireAuth><Dashboard /></RequireAuth> },
       { path: "/inspection/new", element: <RequireAuth><NewInspection /></RequireAuth> },
