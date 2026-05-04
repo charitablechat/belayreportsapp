@@ -247,6 +247,7 @@ const router = createBrowserRouter([
     children: [
       { path: "/", element: <Index /> },
       { path: "/index", element: <Index /> },
+      { path: "/index.html", element: <Index /> },
       { path: "/welcome", element: <AuroraLanding /> },
       { path: "/dashboard", element: <RequireAuth><Dashboard /></RequireAuth> },
       { path: "/inspection/new", element: <RequireAuth><NewInspection /></RequireAuth> },
