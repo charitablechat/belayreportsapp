@@ -804,13 +804,25 @@ async function handleRemoteDeleted(
 }
 
 /**
- * Sync inspection with all related data atomically
+ * Sync inspection with all related data atomically.
+ *
+ * Mode 12: the per-record `navigator.onLine` gate that used to live here
+ * was removed. The per-batch entry gate at the top of
+ * `syncAllInspectionsAtomic` already short-circuits the drain when the
+ * tab is offline. The per-record gate was only meaningful when
+ * `navigator.onLine` flapped to false mid-drain (e.g. Chromium's
+ * NetworkChangeNotifier reacting to a transient Supabase REST flake) —
+ * but in that case it threw `Error("Cannot sync while offline")` which
+ * the H5-T classifier didn't recognise as transient (PR #119 trace, run
+ * 25297495407), collapsing the retry budget to `persistentMaxRetries=1`
+ * and quarantining the record after a single attempt. With the gate
+ * gone, an offline flap during retry just lets the actual fetch fail
+ * with `TypeError: Failed to fetch`, which IS classified transient — so
+ * the record stays in the wider `transientMaxRetries=3` budget and the
+ * next retry (or next drain cycle) gets a chance to land.
  */
 export async function syncInspectionAtomic(inspectionId: string, preValidatedUser?: CachedUser, signal?: AbortSignal) {
   if (signal?.aborted) return { success: false, skipped: true, reason: 'aborted' as const };
-  if (!navigator.onLine) {
-    throw new Error("Cannot sync while offline");
-  }
   
   // Track temp-to-UUID mapping for post-sync IndexedDB cleanup
   let inspectionIdMapping: { oldId: string; newId: string } | null = null;
@@ -1870,13 +1882,12 @@ async function rewriteAssessmentChildrenIdb(oldId: string, newId: string): Promi
 }
 
 /**
- * Sync training with all related data atomically
+ * Sync training with all related data atomically.
+ * Mode 12: per-record `navigator.onLine` gate removed; see
+ * `syncInspectionAtomic` above for rationale.
  */
 export async function syncTrainingAtomic(trainingId: string, preValidatedUser?: CachedUser, signal?: AbortSignal) {
   if (signal?.aborted) return { success: false, skipped: true, reason: 'aborted' as const };
-  if (!navigator.onLine) {
-    throw new Error("Cannot sync while offline");
-  }
   
   // Track temp-to-UUID mapping for post-sync IndexedDB cleanup
   let trainingIdMapping: { oldId: string; newId: string } | null = null;
@@ -2775,13 +2786,12 @@ export async function syncAllTrainingsAtomic(preValidatedUser?: CachedUser, sign
 }
 
 /**
- * Sync daily assessment with all related data atomically
+ * Sync daily assessment with all related data atomically.
+ * Mode 12: per-record `navigator.onLine` gate removed; see
+ * `syncInspectionAtomic` above for rationale.
  */
 export async function syncDailyAssessmentAtomic(assessmentId: string, preValidatedUser?: CachedUser, signal?: AbortSignal) {
   if (signal?.aborted) return { success: false, skipped: true, reason: 'aborted' as const };
-  if (!navigator.onLine) {
-    throw new Error("Cannot sync while offline");
-  }
   
   // Track temp-to-UUID mapping for post-sync IndexedDB cleanup
   let assessmentIdMapping: { oldId: string; newId: string } | null = null;

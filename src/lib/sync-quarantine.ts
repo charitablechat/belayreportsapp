@@ -69,6 +69,19 @@ const TRANSIENT_NETWORK_PATTERNS: readonly RegExp[] = [
   /timeouterror/i,
   /operation timed out/i,
   /supabase query timed out/i,
+  // Mode 12: per-record `if (!navigator.onLine)` gate inside the atomic
+  // sync functions throws this exact string. The condition is by definition
+  // transient — `navigator.onLine` only reads false when Chromium's
+  // NetworkChangeNotifier (or a CDP override) reports offline, both of
+  // which resolve on their own when network is restored. Without this
+  // pattern the retry loop sees a freshly-thrown `Error("Cannot sync while
+  // offline")` (no cause chain to walk), classifies it persistent, and
+  // collapses the budget to `persistentMaxRetries=1` mid-retry — which
+  // deterministically quarantines a record any time `navigator.onLine`
+  // briefly flaps during a transient REST flake. Production users on
+  // flaky cell networks have been silently hitting this; CI made it
+  // reproducible (PR #119 trace, run 25297495407).
+  /cannot sync while offline/i,
 ];
 
 /**
