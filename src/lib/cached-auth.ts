@@ -638,6 +638,16 @@ export function getCachedUserFromStorage(): CachedUser | null {
       if (synthetic?.user?.id) {
         return synthetic.user as CachedUser;
       }
+      // Last-resort fallback: a guest session is offline-only.
+      try {
+        // Lazy require to avoid a module cycle on cold starts.
+        // eslint-disable-next-line @typescript-eslint/no-require-imports, @typescript-eslint/no-var-requires
+        const { readGuestSession } = require('@/lib/guest-session') as typeof import('@/lib/guest-session');
+        const guest = readGuestSession();
+        if (guest) {
+          return { id: guest.id, email: undefined, isGuest: true } as CachedUser;
+        }
+      } catch { /* ignore */ }
     }
 
     return null;
