@@ -632,7 +632,7 @@ export function CloudSnapshotsPanel({ allowDelete = true }: CloudSnapshotsPanelP
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    const org = data?.parent?.organization || row.facility || 'snapshot';
+    const org = String(data?.parent?.organization || row.facility || 'snapshot');
     a.download = formatReportFilename(org, toFilenameReportType(row.report_type), 'json');
     a.click();
     URL.revokeObjectURL(url);
