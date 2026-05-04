@@ -1240,7 +1240,7 @@ export default function InspectionForm() {
           await withQueryTimeout(
             supabase
               .from("inspections")
-              .update(updateFields)
+              .update(updateFields as never)
               .eq("id", id),
             5000
           ).catch(e => console.warn('[InspectionForm] last_opened_at/started_at update failed:', e));
@@ -1759,7 +1759,7 @@ export default function InspectionForm() {
         // localStorage snapshot above is still the user's safety net.
         const { isIdbSaveError } = await import('@/lib/offline-storage');
         if (isIdbSaveError(offlineError)) {
-          setSaveError({ message: 'Local save failed — your changes are NOT stored. Tap to retry.', code: (offlineError as { code?: string })?.code });
+          setSaveError({ message: 'Local save failed — your changes are NOT stored. Tap to retry.', code: offlineError.code });
           throw offlineError;
         }
         if (!silent) {
@@ -1819,6 +1819,8 @@ export default function InspectionForm() {
                 created_at,
                 child_count_hint,
                 dirty,
+                inspection_id,
+                user_id,
                 ...rest
               } = insp;
               return {
@@ -1831,7 +1833,7 @@ export default function InspectionForm() {
             const sanitized = sanitizeInspection(inspectionToSave);
             const { data: updateResult, error: inspectionError } = await supabase
               .from("inspections")
-              .update(sanitized)
+              .update(sanitized as never)
               .eq("id", id)
               .select("id");
             
@@ -1845,7 +1847,7 @@ export default function InspectionForm() {
               console.warn('[InspectionForm Sync] Update returned 0 rows — falling back to upsert');
               const { error: upsertError } = await supabase
                 .from("inspections")
-                .upsert({ id, ...sanitized });
+                .upsert({ id, ...sanitized } as never);
               if (upsertError) {
                 console.error('[InspectionForm Sync] Upsert fallback failed:', upsertError);
                 throw upsertError;
