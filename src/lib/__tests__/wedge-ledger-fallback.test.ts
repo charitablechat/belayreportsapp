@@ -3,14 +3,21 @@ import 'fake-indexeddb/auto';
 import { IDBFactory } from 'fake-indexeddb';
 
 /**
- * Mode 11A — `withWedgeLedgerFallback` wrapper contract.
+ * Mode 11A/B — `withWedgeLedgerFallback` wrapper contract.
  *
  * `getUnsynced{Inspections,Trainings,DailyAssessments}` route through this
- * wrapper. When the inner `withIndexedDBReadBoundary` returns `IdbReadFailure`
- * AND the Mode 8A layer breaker is open (= confirmed structural wedge),
- * the wrapper substitutes a `LocalBackupLedger`-sourced row list. When the
- * breaker is closed (transient error path), the failure propagates so
- * callers can preserve last-known counts.
+ * wrapper. The wrapper substitutes a `LocalBackupLedger`-sourced row list
+ * whenever the inner `withIndexedDBReadBoundary` returns `IdbReadFailure`.
+ *
+ * Mode 11B (PR #118 follow-up): the original Mode 11A predicate gated the
+ * fallback on `isIdbLayerBreakerOpen()` (= confirmed structural wedge).
+ * In CI we observed the autosync drain calling `getUnsynced*` BEFORE the
+ * breaker had accumulated 3 consecutive timeouts; the wrapper saw
+ * `IdbReadFailure` from the inner timeout, checked the breaker (still
+ * closed), and propagated the failure unchanged — autosync set
+ * `unsynced = []` and never consulted the ledger. The breaker gate was
+ * over-conservative (the ledger is system-of-record so returning ledger
+ * rows is strictly more useful than the sentinel), so we removed it.
  *
  * Real `fake-indexeddb` for the IDB side, in-memory `localStorage` shim for
  * the ledger side. `vi.resetModules()` per test so `dbPromise` and the
@@ -100,10 +107,11 @@ describe('Mode 11A — withWedgeLedgerFallback for getUnsyncedInspections', () =
     expect(rows.map(r => r.id).sort()).toEqual(['led-1', 'led-2']);
   });
 
-  it('propagates IdbReadFailure when breaker is closed (transient error path)', async () => {
+  it('Mode 11B: falls back to ledger even when breaker is closed (any IdbReadFailure)', async () => {
     const offlineStorage = await import('../offline-storage');
     const {
       __test_only__resetLayerBreakerForTests,
+      isIdbLayerBreakerOpen,
       getUnsyncedInspections,
       isIdbReadFailure,
     } = offlineStorage;
@@ -111,7 +119,7 @@ describe('Mode 11A — withWedgeLedgerFallback for getUnsyncedInspections', () =
 
     // Force IDB to throw by stubbing indexedDB.open. fake-indexeddb's open
     // requires an actual call; we replace globalThis.indexedDB with a
-    // failing factory.
+    // failing factory so withIndexedDBReadBoundary returns IdbReadFailure.
     (globalThis as { indexedDB?: unknown }).indexedDB = {
       open() {
         const req: Partial<IDBOpenDBRequest> = {
@@ -128,14 +136,20 @@ describe('Mode 11A — withWedgeLedgerFallback for getUnsyncedInspections', () =
       },
     };
 
-    // Even though the ledger has data, the fallback must NOT fire because
-    // the breaker is closed (= transient error, not a structural wedge).
-    writeLedgerSnapshot('inspection', 'should-not-be-returned', {
+    // Pre-condition: breaker should still be closed.
+    expect(isIdbLayerBreakerOpen()).toBe(false);
+
+    // Mode 11B: the fallback must fire on ANY IdbReadFailure — the breaker
+    // gate was removed because the ledger is system-of-record.
+    writeLedgerSnapshot('inspection', 'transient-recovery', {
       inspector_id: 'user-1',
       organization: 'Acme',
+      dirty: true,
     });
     const result = await getUnsyncedInspections('user-1');
-    expect(isIdbReadFailure(result)).toBe(true);
+    expect(isIdbReadFailure(result)).toBe(false);
+    const rows = result as Array<{ id: string }>;
+    expect(rows.map(r => r.id)).toEqual(['transient-recovery']);
   }, 10_000);
 
   it('falls back even when ledger is empty (returns []) — wedge masks IDB regardless', async () => {

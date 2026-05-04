@@ -253,11 +253,22 @@ export const __test_only__stripLocalOnlyFieldsArray = stripLocalOnlyFieldsArray;
 // inner boundary to 30s during the post-online recovery grace window, which
 // silently broke the "outer = safety net above inner" invariant — the outer
 // race fired at 15s and short-circuited the drain even though the inner op
-// was budgeted to ride for 30s. Lifting to 45s during grace restores the
+// was budgeted to ride for 30s. Lifting to 45s during grace restored the
 // invariant: outer (45s) > inner under Mode 7A's 4× multiplier (32-40s for
 // the relevant tiers).
+//
+// Mode 11B (PR #118 follow-up): bumped from 45s → 120s. The Mode 11A
+// `withWedgeLedgerFallback` wrapper sits *inside* `getUnsyncedInspections`
+// et al. and only gets to inspect the breaker after the inner 32s timeout
+// fires. With outer=45s the wrapper fired exactly once per autosync cycle,
+// and only landed ledger rows if the breaker had already tripped (3
+// consecutive timeouts ≈ 96s into the wedge — past the 90s recovery-grace
+// window). 120s gives the wrapper room to fire on the 1st timeout (32s),
+// fall back to the ledger, and return rows well within the outer race.
+// Once the breaker fast-fails (subsequent cycles), the wrapper returns in
+// milliseconds and the outer is irrelevant.
 const ATOMIC_SYNC_FETCH_OUTER_TIMEOUT_MS = 15_000;
-const ATOMIC_SYNC_FETCH_OUTER_TIMEOUT_GRACE_MS = 45_000;
+const ATOMIC_SYNC_FETCH_OUTER_TIMEOUT_GRACE_MS = 120_000;
 function selectAtomicSyncFetchOuterTimeout(): number {
   return isInPostOnlineRecoveryGrace()
     ? ATOMIC_SYNC_FETCH_OUTER_TIMEOUT_GRACE_MS

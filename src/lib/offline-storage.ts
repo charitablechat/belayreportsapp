@@ -1414,7 +1414,7 @@ function makeIdbReadFailure(context: string, error: unknown): IdbReadFailure {
 }
 
 /**
- * Mode 11A — alternate-read fallback when the IDB layer breaker is open.
+ * Mode 11A/B — alternate-read fallback whenever IDB returns `IdbReadFailure`.
  *
  * The browser-internal `IDBOpenDBRequest` queue can wedge for 4-6 minutes
  * after an offline→online toggle on Playwright/Chromium CI runners (W3C
@@ -1424,14 +1424,27 @@ function makeIdbReadFailure(context: string, error: unknown): IdbReadFailure {
  * progress until the queue drains naturally.
  *
  * `LocalBackupLedger` is a parallel system-of-record (every IDB write is
- * mirrored via `saveReportSnapshot`), and localStorage reads are
- * synchronous and structurally cannot wedge. When the breaker is open we
- * route the unsynced-records read through the ledger so the drain can
- * complete despite the wedge.
+ * mirrored via `saveReportSnapshot`, unsynced snapshots explicitly never
+ * evicted), and localStorage reads are synchronous and structurally cannot
+ * wedge. We route the unsynced-records read through the ledger so the
+ * drain can complete despite the wedge.
  *
- * The fallback ONLY fires when the breaker is open — transient `IdbReadFailure`
- * results outside of a confirmed wedge still propagate normally so callers
- * can preserve last-known state for non-structural failures.
+ * Mode 11B (PR #118 follow-up) — the fallback now fires on ANY
+ * `IdbReadFailure`, not just when the layer breaker is confirmed open.
+ * Rationale: in CI we observed the autosync drain calling
+ * `getUnsynced{Inspections,Trainings,DailyAssessments}` BEFORE the breaker
+ * had accumulated 3 consecutive timeouts (the threshold to trip). The
+ * wrapper saw `IdbReadFailure` from the inner timeout, checked the
+ * breaker (still closed, only 1-2 timeouts in), and propagated the
+ * failure unchanged. The autosync caller then set `unsynced = []` and
+ * exited without ever consulting the ledger. By the time the breaker
+ * tripped (~96s into the wedge), the spec budget had elapsed.
+ *
+ * The breaker gate was over-conservative: the ledger is a system-of-record
+ * so returning ledger rows is strictly more useful than the sentinel even
+ * for transient failures. Callers that want to preserve last-known counts
+ * can still detect the empty-ledger / failed-fallback path via the
+ * `idbError` log line.
  */
 type LedgerReportType = 'inspection' | 'training' | 'daily_assessment';
 async function withWedgeLedgerFallback<T extends { id: string }>(
@@ -1443,16 +1456,13 @@ async function withWedgeLedgerFallback<T extends { id: string }>(
   const result = await reader();
   if (!isIdbReadFailure(result)) return result;
 
-  if (!isIdbLayerBreakerOpen()) {
-    return result;
-  }
-
   try {
     const { listUnsyncedDbRowsFromLedger } = await import('./local-backup-ledger');
     const ledgerRows = listUnsyncedDbRowsFromLedger(reportType, userId) as unknown as T[];
     console.warn('[Offline Storage] Mode 11A ledger fallback active', {
       context,
       reportType,
+      breakerOpen: isIdbLayerBreakerOpen(),
       ledgerCount: ledgerRows.length,
       idbError: result.error,
     });
