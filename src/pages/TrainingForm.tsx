@@ -50,7 +50,6 @@ import {
   saveTrainingDataOffline,
   queueTrainingOperation,
   type DbRow,
-  type IdbSaveErrorCode,
 } from "@/lib/offline-storage";
 
 // `saveTrainingDataOffline` accepts a fixed set of section keys.
@@ -985,19 +984,19 @@ export default function TrainingForm() {
 
           if (preparedApproaches.length > 0) {
             parallelOps.push(
-              dbOp(supabase.from('training_delivery_approaches').upsert(preparedApproaches, { onConflict: 'id' }))
+              dbOp(supabase.from('training_delivery_approaches').upsert(preparedApproaches as never, { onConflict: 'id' }))
             );
           }
 
           if (preparedSystems.length > 0) {
             parallelOps.push(
-              dbOp(supabase.from('training_operating_systems').upsert(preparedSystems, { onConflict: 'id' }))
+              dbOp(supabase.from('training_operating_systems').upsert(preparedSystems as never, { onConflict: 'id' }))
             );
           }
 
           if (preparedAttention.length > 0) {
             parallelOps.push(
-              dbOp(supabase.from('training_immediate_attention').upsert(preparedAttention, { onConflict: 'id' }))
+              dbOp(supabase.from('training_immediate_attention').upsert(preparedAttention as never, { onConflict: 'id' }))
             );
           }
 
