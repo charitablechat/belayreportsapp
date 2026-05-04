@@ -71,6 +71,19 @@
         });
       })();
     </script>
+    <script>
+      (function() {
+        if (!('serviceWorker' in navigator)) return;
+        var h = window.location.hostname;
+        var isPreviewHost = h.indexOf('id-preview--') !== -1 || h.indexOf('lovableproject.com') !== -1;
+        var isIframe = false;
+        try { isIframe = window.self !== window.top; } catch(e) { isIframe = true; }
+        if (isPreviewHost || isIframe) return;
+        window.addEventListener('load', function() {
+          navigator.serviceWorker.register('/sw.js', { scope: '/', updateViaCache: 'none' }).catch(function() {});
+        });
+      })();
+    </script>
   </head>
 
   <body>
