@@ -738,7 +738,8 @@ export function hasCachedSessionForOffline(): boolean {
         return true;
       }
     }
-    return !!readSyntheticSession();
+    if (readSyntheticSession()) return true;
+    return !!readGuestSession();
   } catch {
     return false;
   }
