@@ -7,7 +7,7 @@ import {
   readSyntheticSession,
   createOfflineSession,
 } from "@/lib/offline-auth";
-import { readGuestSession } from "@/lib/guest-session";
+import { readGuestSession, createGuestSession } from "@/lib/guest-session";
 import { openDB } from "idb";
 
 const SUPABASE_SESSION_KEY = `sb-${import.meta.env.VITE_SUPABASE_PROJECT_ID}-auth-token`;
@@ -48,6 +48,20 @@ const Index = () => {
   useEffect(() => {
     const checkAuth = async () => {
       try {
+        // ── ?guest=1 SHORTCUT ───────────────────────────────────────
+        // Honoured even when online so the offline.html fallback link
+        // (and any deep-link a user shares) drops straight into a
+        // local-only guest session.
+        try {
+          const params = new URLSearchParams(window.location.search);
+          if (params.get('guest') === '1') {
+            createGuestSession();
+            setSession({ guest: true });
+            navigate('/dashboard', { replace: true });
+            return;
+          }
+        } catch {/* ignore */}
+
         // ── OFFLINE PATH ─────────────────────────────────────────────
         if (!navigator.onLine) {
           // 1. Real cached Supabase session
@@ -123,6 +137,28 @@ const Index = () => {
                 }
               }
             } catch {/* ignore */}
+          }
+          // Captive-portal / airplane-mode race: navigator.onLine is true
+          // but the auth request hung. Fall through to the offline-recovery
+          // chain so the user is never stranded on the loading screen.
+          if (readSyntheticSession() || hasPendingOfflineAuth()) {
+            setSession({ offline: true });
+            navigate('/dashboard', { replace: true });
+            return;
+          }
+          const captured = await findSingleCapturedOfflineEntry();
+          if (captured) {
+            try {
+              await createOfflineSession(captured.email, '');
+              setSession({ offline: true });
+              navigate('/dashboard', { replace: true });
+              return;
+            } catch {/* show sign-in form */}
+          }
+          if (readGuestSession()) {
+            setSession({ guest: true });
+            navigate('/dashboard', { replace: true });
+            return;
           }
         }
       } catch (error) {

@@ -24,7 +24,7 @@ export const pwaConfig = VitePWA({
   devOptions: {
     enabled: false,
   },
-  includeAssets: ['favicon.ico', 'db-config.js', 'sw-push.js', 'sw-sync.js'],
+  includeAssets: ['favicon.ico', 'db-config.js', 'sw-push.js', 'sw-sync.js', 'offline.html', 'rope-works-logo.avif'],
   manifest: {
     id: '/',
     name: 'Rope Works Inspection',
@@ -80,10 +80,19 @@ export const pwaConfig = VitePWA({
   },
   workbox: {
     maximumFileSizeToCacheInBytes: 5 * 1024 * 1024,
+    // Take control of all clients immediately so the very first install
+    // can serve the app shell offline without requiring a second navigation.
+    clientsClaim: true,
+    skipWaiting: true,
+    cleanupOutdatedCaches: true,
+    navigationPreload: true,
     // Exclude version.json from precache — it must always be fresh
-    globPatterns: ['**/*.{js,css,html,ico,png,svg,woff,woff2}'],
+    globPatterns: ['**/*.{js,css,html,ico,png,svg,woff,woff2,avif}'],
     globIgnores: ['**/version.json'],
-    navigateFallback: '/',
+    // Serve the precached index.html for any in-app navigation. If the shell
+    // itself is missing for any reason, the runtime route below falls back to
+    // /offline.html (a branded page) instead of the browser's default screen.
+    navigateFallback: 'index.html',
     navigateFallbackDenylist: [/^\/api/, /offline\.html$/, /^\/version\.json$/],
     importScripts: ['/db-config.js', '/sw-push.js', '/sw-sync.js'],
     runtimeCaching: [
