@@ -35,7 +35,7 @@ import { isQuarantined as isSessionQuarantined } from './sync-quarantine';
  *  as required `string` for the few that the sync pipeline always relies on. */
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export type DbRow = { [key: string]: any } & {
-  id: string;
+  id?: string;
   updated_at?: string;
   synced_at?: string;
   created_at?: string;
