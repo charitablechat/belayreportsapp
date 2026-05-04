@@ -76,7 +76,7 @@ export const PushNotificationManager = () => {
         .upsert({
           user_id: user.id,
           [key]: value,
-        }, {
+        } as never, {
           onConflict: 'user_id'
         });
 
@@ -100,7 +100,7 @@ export const PushNotificationManager = () => {
         .upsert({
           user_id: user.id,
           [key]: value,
-        }, {
+        } as never, {
           onConflict: 'user_id'
         });
 
