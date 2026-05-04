@@ -356,6 +356,106 @@ export function getBackupStorageInfo(): {
   }
 }
 
+// ─── Mode 11A: alternate read path during IDB wedge ─────────────────────────
+//
+// `getUnsynced{Inspections,Trainings,DailyAssessments}` in offline-storage.ts
+// fall back to these helpers when the IDB layer breaker (Mode 8A) is open —
+// localStorage reads are synchronous and cannot wedge, so the autosync drain
+// pipeline can complete during the wedge tail instead of waiting up to 4-6
+// minutes for the browser-internal `IDBOpenDBRequest` queue to drain
+// naturally. The ledger is system-of-record alongside IDB (every successful
+// IDB write is mirrored via `saveReportSnapshot`), so during a wedge it
+// has every unsynced edit. See `mode-11-localbackupledger-alt-read-diagnostic.md`.
+
+/**
+ * Iterate `localStorage` and return full snapshot data for entries matching
+ * `reportType` whose `synced === false` flag is set.
+ *
+ * Owner filter follows the same contract as `getUnsynced*` in offline-storage:
+ * - `userId == null` → no filter (super-admin / cross-user recovery)
+ * - `parent.inspector_id === userId` → owned by this user
+ * - `reportId.startsWith('temp-')` → orphaned local create, recover regardless
+ *   of stored owner (matches IDB orphan-recovery rule).
+ *
+ * Does NOT apply quarantine filters — caller is responsible for layering
+ * those (matches IDB call sites' `.filter(isNotQuarantined)` etc.).
+ */
+export function listUnsyncedSnapshots(
+  reportType: ReportType,
+  userId?: string,
+): Array<{ reportId: string; snapshot: ReportSnapshot }> {
+  try {
+    const out: Array<{ reportId: string; snapshot: ReportSnapshot }> = [];
+    const keyPrefix = `${BACKUP_PREFIX}${reportType}_`;
+
+    for (let i = 0; i < localStorage.length; i++) {
+      const key = localStorage.key(i);
+      if (!key || !key.startsWith(keyPrefix)) continue;
+
+      try {
+        const raw = localStorage.getItem(key);
+        if (!raw) continue;
+
+        const snapshot: ReportSnapshot = JSON.parse(raw);
+        if (snapshot.synced) continue;
+
+        const reportId = key.slice(keyPrefix.length);
+
+        if (userId != null) {
+          const ownerId = (snapshot.parent?.inspector_id as string | undefined) ?? null;
+          const isOrphan = reportId.startsWith('temp-');
+          if (ownerId !== userId && !isOrphan) continue;
+        }
+
+        out.push({ reportId, snapshot });
+      } catch {
+        // Skip corrupt entries
+      }
+    }
+
+    return out;
+  } catch (error) {
+    console.error('[Backup Ledger] Failed to list unsynced snapshots:', error);
+    return [];
+  }
+}
+
+/**
+ * Adapt a `ReportSnapshot` to a `DbRow`-shaped object that mirrors what
+ * `getUnsynced{Inspections,Trainings,DailyAssessments}` returns from IDB.
+ *
+ * `parent` already has the same field shape as the IDB row (it IS the IDB
+ * row at the moment of `saveReportSnapshot`). We layer the canonical `id`
+ * field on top in case it was stripped from `parent` during serialization
+ * (defensive — shouldn't happen but cheap to enforce).
+ */
+export function snapshotToDbRow(
+  reportId: string,
+  snapshot: ReportSnapshot,
+): Record<string, unknown> & { id: string } {
+  return {
+    ...snapshot.parent,
+    id: reportId,
+  };
+}
+
+/**
+ * Convenience: list unsynced rows for a report type in `DbRow` shape, ready
+ * to be passed to `atomic-sync-manager` directly. Caller is still
+ * responsible for any drift / dirty-flag re-check matching the IDB filter
+ * (see `getUnsynced{Inspections,Trainings,DailyAssessments}` in
+ * offline-storage.ts) — this function returns ALL unsynced ledger entries
+ * that match `reportType` + `userId`.
+ */
+export function listUnsyncedDbRowsFromLedger(
+  reportType: ReportType,
+  userId?: string,
+): Array<Record<string, unknown> & { id: string }> {
+  return listUnsyncedSnapshots(reportType, userId).map(({ reportId, snapshot }) =>
+    snapshotToDbRow(reportId, snapshot),
+  );
+}
+
 /**
  * Download a single report's snapshot as a JSON file to the user's device.
  * Returns true on success, false if no snapshot exists.
