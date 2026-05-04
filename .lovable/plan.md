@@ -1,57 +1,96 @@
-## What the video shows
+# Fix offline access + add Guest Mode
 
-In the inspection form, item rows (Operating Systems, Ziplines, Equipment) each have a small camera control that uploads a photo and inserts a row into the corresponding `*_photos` gallery table with a `caption`. Later, the same photo appears under "Photos – Systems & Ziplines" but with a label that doesn't match the row's current name — e.g. a shed/cargo-bay photo captioned **"Cargo Net"** sitting next to a row currently named **"Multiline"**, and similar mismatches across Platform 1/2/7/8 rows.
+## What's broken today
 
-## Root cause
+When a user opens the app offline they hit a dead-end: the sign-in screen with an orange "You're offline" banner and no usable path forward. Three independent gaps cause this:
 
-In `src/components/inspection/ItemPhotoUpload.tsx`:
+1. **Refresh-token capture is fragile.** `saveUserMapping(email, userId, refreshToken)` only fires inside `onAuthStateChange` on `SIGNED_IN` / `TOKEN_REFRESHED` (cached-auth.ts L269) and inside `Auth.tsx` after a fresh login (L110). Users who signed in before this code shipped, or who are restored from a session refresh that didn't fire those events on this device, have **no `offline_auth` IDB entry** — so `createOfflineSession()` throws "No offline credentials available."
+2. **No "Go to Dashboard" button when nothing is cached.** `Auth.tsx` only shows the offline shortcut when `hasCachedSessionForOffline()` is true. If both the Supabase session key (`sb-*-auth-token`) and the synthetic-session slot are empty, the user sees the offline banner but can't enter — typing a password just produces the "No offline credentials" error.
+3. **No guest fallback.** A user who has truly never signed in on this device has no way in at all.
 
-1. The caption is captured **once at upload time** from the `itemName` prop:
-   - `caption: itemName || 'Item photo'` is sent into both `inspection_photos` (line ~189) and `savePhotoOffline` (line ~275).
-2. After that, the caption is **never refreshed**. If the user:
-   - Took the photo *before* typing a name (so `itemName` was empty → caption stored as "Item photo" or stale auto-name), or
-   - Renamed the row later (e.g. typed "Multiline" over what used to be "Cargo Net"), or
-   - Reordered/edited rows so the same row now displays a different name,
-   …the gallery still shows the original caption because `inspection_photos.caption` is frozen.
-3. `PhotoGallery.tsx` renders `photo.caption` from the DB row directly (line 324, 949, 1051), with no fallback to the parent row's current name.
+You confirmed the symptom matches #1/#2: "Just says I'm offline with a ropeworks logo. Couldn't do anything else."
 
-There's no link from `inspection_photos` back to the parent `inspection_systems` / `inspection_ziplines` / `inspection_equipment` row beyond the shared storage `photo_url`, so we can't currently re-derive the caption at read time without help.
+## Solution overview
 
-## Fix
+```text
+┌──────────────────────────────────────────────────────────┐
+│  Open app OFFLINE                                        │
+│      │                                                   │
+│      ▼                                                   │
+│  Index.tsx                                               │
+│      ├─ cached SB session?       ───► /dashboard         │
+│      ├─ synthetic session?       ───► /dashboard         │
+│      ├─ ANY offline_auth entry?  ───► /dashboard (auto   │
+│      │                                  rebuild synthetic)│
+│      └─ guest session in LS?     ───► /dashboard (guest) │
+│                                                          │
+│  Auth.tsx (no auto path)                                 │
+│      ├─ enter email+pwd → createOfflineSession           │
+│      │     └─ if entry → synthetic session, go           │
+│      │     └─ if no entry → offer Guest Mode button      │
+│      └─ "Continue offline as Guest" button (always shown │
+│            when offline)                                 │
+└──────────────────────────────────────────────────────────┘
+```
 
-Do three things, in this order:
+## Changes
 
-### 1. Keep the caption in sync when the item is renamed (`ItemPhotoUpload.tsx`)
+### 1. Capture refresh tokens opportunistically (closes gap #1)
+- **`src/lib/cached-auth.ts`** — in `getUserWithCache()` and `ensureValidSession()`, after a successful Supabase fetch, read `supabase.auth.getSession()` once and call `saveUserMapping(email, id, refresh_token)` if a refresh token exists. Idempotent; only re-writes when the captured token differs.
+- **`src/main.tsx`** — on boot, if online and a real Supabase session exists in localStorage, ensure an `offline_auth` IDB entry exists for that user. Backfills any user who signed in before refresh-token capture was wired up.
 
-Add an effect that, when `itemName` changes *and* `photoUrl` exists, updates the matching row in the gallery table:
-- Match on `inspection_id = inspectionId AND photo_url = photoUrl AND photo_section = photoSection`.
-- Set `caption = <new itemName>` (debounce ~600 ms to avoid a write per keystroke).
-- Also update the IDB-cached photo record's `caption` via a small new helper in `offline-storage.ts` so offline gallery views match.
-- No-op when `itemName` is empty/whitespace, when offline (the next online sync will carry the latest name — see step 3), or when the row is still on a temp/offline `photo_url`.
+### 2. Auto-promote any captured offline_auth entry (closes gap #2)
+- **`src/pages/Index.tsx`** — when offline, after the existing `localStorage[SUPABASE_SESSION_KEY]` check, also scan `offline_auth` IDB. If exactly one entry exists, silently call `createOfflineSession(entry.email, '')` (the function already ignores password) and navigate to `/dashboard`. If multiple entries exist, leave the user on the sign-in screen so they can pick which account.
+- **`src/components/Auth.tsx`** — when offline AND `hasCachedSessionForOffline()` is false, asynchronously check if any `offline_auth` entry exists. If yes, show a "Resume offline session" shortcut listing the captured email(s).
 
-### 2. Use the freshest `itemName` at capture time (`ItemPhotoUpload.tsx`)
+### 3. Add Guest Mode (offline-only, local-only)
+- **New file `src/lib/guest-session.ts`**
+  - `createGuestSession()` — generates a deterministic UUID (`guest-<crypto.randomUUID>`), stores `{ id, email: null, isGuest: true, createdAt }` in a dedicated `guest_session` localStorage slot.
+  - `readGuestSession()` / `clearGuestSession()` / `isGuestSession(user)`.
+  - Guest sessions are **never** sent to the network. The existing `assertRealSessionForSync` / `safeFunctionsInvoke` guards already block the `offline_placeholder_token`; we extend them to also reject any user whose id starts with `guest-`.
+- **`src/lib/cached-auth.ts`** — `getCachedUserFromStorage()` and `getOfflineUserId()` fall back to the guest session when offline and no real/synthetic session exists.
+- **`src/components/Auth.tsx`** — when offline, always render a secondary "Continue offline as Guest" button under the main form. Clicking it creates a guest session and navigates to `/dashboard`.
+- **`src/components/auth/RequireAuth.tsx`** — accept a guest session as authenticated (for offline only). Online, guest sessions are ignored and the user is redirected to sign in.
+- **Visual marker** — `AuthenticatedHeader` shows a small "GUEST — OFFLINE ONLY" pill while a guest session is active so the user can't forget what mode they're in.
 
-Hold `itemName` in a ref (`itemNameRef.current = itemName`) and read from the ref inside `handleUpload` / `uploadInBackground` so a photo captured during typing still picks up the latest value rather than the value bound when the callback was memoized.
+### 4. Block guest data from leaking online (security)
+- **`src/lib/atomic-sync-manager.ts`** — `assertRealSessionForSync` rejects when the current cached user `id` starts with `guest-`. Sync becomes a no-op for guests; reports stay in IndexedDB only.
+- **`src/lib/safe-functions-invoke.ts`** — same pre-flight: refuse to invoke any edge function under a guest identity.
+- **Photo upload paths** — `pending/` photos captured as guest get the prefix `guest/<guestId>/...`; the existing storage RLS already blocks writes to any prefix that isn't `auth.uid()`, so even if a sync slipped through it would 401.
 
-### 3. Server-side fallback at insert time (`sync-manager.ts`, ~line 482)
+### 5. Claim guest data after a real sign-in
+- **New file `src/components/auth/ClaimGuestDataDialog.tsx`** — when a real user signs in (online) and `readGuestSession()` is non-null AND the local IDB contains rows tagged with that guest id, show a one-time dialog:
+  > "Found 3 reports created in Guest mode. Move them to your account?"
+  - On **Yes**: rewrite `inspector_id` from the guest id to the real user id across `inspections`, `trainings`, `daily_assessments` (reuse the existing `migrateUserData` helper from `offline-auth.ts`), then `clearGuestSession()`. The next sync uploads them under the real user.
+  - On **Discard**: hard-delete the rows from IDB and clear the guest session.
+- Mounted from `RootLayout` so it runs once per session promotion.
 
-When the offline-queued photo finally syncs and `inspection_photos` is inserted, if the queued `caption` is empty or one of the generic placeholders (`'Item photo'`, `'equipment'`, `'systems'`, `photoSection`), look up the current parent row name (`inspection_systems.name` / `inspection_ziplines.zipline_name` / `inspection_equipment.equipment_type`) using the IDs we already track on the photo record (`itemId` is encoded in the deterministic `photoId = item-<itemId>-<ts>` and in `pending/<inspectionId>/items/<itemId>.jpg`). Use that as the caption. This ensures any photos already in the queue with stale captions get the right label on first successful sync.
+### 6. Boot path resilience
+- **`src/pages/Index.tsx`** — collapse the dual offline-detection logic into a single `resolveOfflineEntry()` helper that returns `{ kind: 'real' | 'synthetic' | 'capturedToken' | 'guest' | 'none' }` and routes accordingly. Easier to reason about and to add tests.
 
-### 4. One-time backfill for already-mismatched DB rows (migration)
+### Out of scope
+- Native HIBP or password-strength changes.
+- Online guest mode (would require anonymous Supabase sign-in and is a different security model — explicitly not doing it).
+- Touching the SW registration / version-check stack.
 
-Add a SQL migration that re-derives captions for existing rows where the current caption is empty, equals the section name, or equals "Item photo":
-- For `inspection_photos`, parse the `item-<uuid>-...` segment out of `photo_url` (paths look like `<userId>/<inspectionId>/items/<itemId>.jpg`) and join to the matching `inspection_systems` / `inspection_ziplines` / `inspection_equipment` row to copy its current name into `caption`. Only updates rows where the caption is currently generic — never overwrites a user-edited caption.
+## Risks & mitigations
+
+| Risk | Mitigation |
+|------|------------|
+| Guest data accidentally syncs to a different real user | Sync guards (#4) reject any user id starting with `guest-`. Photo paths use `guest/` prefix that storage RLS will reject. |
+| Auto-promote in Index.tsx grants the wrong user access on a shared device with multiple captured emails | Auto-promote only fires when there is exactly **one** `offline_auth` entry. Two or more → manual sign-in. |
+| Backfilled refresh-token capture writes to IDB on every boot | Write only when the stored `refreshToken` differs from the live one. |
 
 ## Files touched
-
-- `src/components/inspection/ItemPhotoUpload.tsx` — sync-on-rename effect + freshest-name ref
-- `src/lib/offline-storage.ts` — small `updatePhotoCaption(photoId, caption)` helper
-- `src/lib/sync-manager.ts` — caption fallback when inserting into `*_photos`
-- `supabase/migrations/<new>.sql` — one-time caption backfill for the three gallery tables
-
-## Verification
-
-1. Take a photo on a row before typing the name → type the name → photo appears in the gallery with the correct name (within ~1s).
-2. Rename an existing row that already has a photo → gallery caption updates after the debounce.
-3. Take a photo offline before naming → name the row → go online → the synced gallery row inserts with the correct caption (step 3).
-4. After deploy, run the migration and confirm that the existing "Cargo Net"/"Platform 1"/etc. mismatches in the user's report now show the correct row names. User-edited captions are untouched.
+- `src/lib/cached-auth.ts`
+- `src/lib/offline-auth.ts` (small helper export)
+- `src/lib/atomic-sync-manager.ts`
+- `src/lib/safe-functions-invoke.ts`
+- `src/pages/Index.tsx`
+- `src/components/Auth.tsx`
+- `src/components/auth/RequireAuth.tsx`
+- `src/components/layout/AuthenticatedHeader.tsx` (guest pill)
+- `src/main.tsx` (boot backfill)
+- **NEW** `src/lib/guest-session.ts`
+- **NEW** `src/components/auth/ClaimGuestDataDialog.tsx`
+- Memory: new `mem://auth/guest-mode-and-offline-resume` + index update
