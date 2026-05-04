@@ -144,7 +144,7 @@ export const useFormManagement = () => {
     mutationFn: async ({ fieldId, updates }: { fieldId: string; updates: Partial<FormField> }) => {
       const { error } = await supabase
         .from('form_fields')
-        .update(updates)
+        .update(updates as never)
         .eq('id', fieldId);
 
       if (error) throw error;
