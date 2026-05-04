@@ -5,7 +5,8 @@ type: feature
 ---
 
 **App shell offline delivery** is owned by `vite-pwa-config.ts`:
-- Workbox precaches `index.html` and serves it as `navigateFallback` for every in-app route, with `clientsClaim: true` + `skipWaiting: true` so a fresh install controls its tab on first navigation.
+- Workbox precaches `index.html`, with `clientsClaim: true` + `skipWaiting: true` so a fresh install controls its tab on first navigation.
+- `public/sw-offline-navigation.js` is imported before Workbox in the generated SW. It network-first caches `/`, `/index.html`, and `/offline.html`, then serves any cached shell for offline navigation cold starts. Keep this redundancy; Chrome's native offline page means the SW did not intercept navigation.
 - `public/offline.html` is a branded last-resort fallback (Rope Works logo + "Open the app" + "Continue as Guest" links). It exists so that if the precached shell is somehow missing, users see Rope Works branding instead of Chrome's native "You're offline" surf-game page. It is included via `includeAssets`.
 - `?guest=1` query param on `/` is honoured by `src/pages/Index.tsx` even when online — the offline.html "Continue as Guest" link uses it to drop straight into a local-only guest session.
 
