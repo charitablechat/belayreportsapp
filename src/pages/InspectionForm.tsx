@@ -1927,7 +1927,7 @@ export default function InspectionForm() {
             // Systems operations
             if (existingSystems.length > 0) {
               parallelOperations.push(
-                dbOp(supabase.from("inspection_systems").upsert(existingSystems.map(s => ({ ...s, inspection_id: id })), { onConflict: 'id' }))
+                dbOp(supabase.from("inspection_systems").upsert(existingSystems.map(s => ({ ...s, inspection_id: id })) as never, { onConflict: 'id' }))
               );
             }
             if (newSystems.length > 0) {
@@ -1940,7 +1940,7 @@ export default function InspectionForm() {
               });
               
               parallelOperations.push(
-                dbOp(supabase.from("inspection_systems").insert(newSystems))
+                dbOp(supabase.from("inspection_systems").insert(newSystems as never))
               );
               
               // Replace temp items in-place, preserving position (no reordering)
@@ -1959,7 +1959,7 @@ export default function InspectionForm() {
             // Ziplines operations
             if (existingZiplines.length > 0) {
               parallelOperations.push(
-                dbOp(supabase.from("inspection_ziplines").upsert(existingZiplines.map(z => ({ ...z, inspection_id: id })), { onConflict: 'id' }))
+                dbOp(supabase.from("inspection_ziplines").upsert(existingZiplines.map(z => ({ ...z, inspection_id: id })) as never, { onConflict: 'id' }))
               );
             }
             if (newZiplines.length > 0) {
@@ -1972,7 +1972,7 @@ export default function InspectionForm() {
               });
               
               parallelOperations.push(
-                dbOp(supabase.from("inspection_ziplines").insert(newZiplines))
+                dbOp(supabase.from("inspection_ziplines").insert(newZiplines as never))
               );
               
               // Replace temp items in-place, preserving position (no reordering)
