@@ -360,6 +360,19 @@ type DynamicSupabaseClient = {
  */
 async function assertRealSessionForSync(ctx: string): Promise<boolean> {
   try {
+    // Hard guard: a guest session must NEVER attempt to sync. The id has no
+    // corresponding `auth.users` row, so every Supabase request would 401
+    // and dead-letter the local rows. Block at the boundary.
+    try {
+      const { readGuestSession } = await import('@/lib/guest-session');
+      if (readGuestSession()) {
+        if (import.meta.env.DEV) {
+          console.warn(`[Atomic Sync] ${ctx}: guest session active — sync skipped`);
+        }
+        return false;
+      }
+    } catch { /* non-critical */ }
+
     const { data: { session } } = await supabase.auth.getSession();
     const token = session?.access_token;
     if (!token) {
