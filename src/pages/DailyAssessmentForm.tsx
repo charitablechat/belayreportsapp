@@ -928,7 +928,7 @@ export default function DailyAssessmentForm() {
           if (isIdbSaveError(offlineError)) {
             setSaveError({
               message: 'Local save failed — your changes are NOT stored. Tap to retry.',
-              code: (offlineError as { code?: string })?.code,
+              code: (offlineError as { code?: import("@/lib/offline-storage").IdbSaveErrorCode })?.code,
             });
             toast.error("Save failed — your changes are NOT stored", {
               description: "Tap Save again to retry. Do not close this page.",
