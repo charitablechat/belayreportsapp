@@ -340,7 +340,7 @@ export default function DailyAssessmentForm() {
         .select('avatar_url, first_name, last_name')
         .eq('id', inspectorId)
         .maybeSingle();
-      setInspectorProfile(profile);
+      setInspectorProfile(profile as DbRow | null);
     };
     fetchInspectorProfile();
   }, [inspectorId]);
@@ -721,7 +721,7 @@ export default function DailyAssessmentForm() {
         }
         const { error } = await supabase
           .from('daily_assessments')
-          .update(updatePayload)
+          .update(updatePayload as never)
           .eq('id', id);
 
         if (error) throw error;
@@ -928,7 +928,7 @@ export default function DailyAssessmentForm() {
           if (isIdbSaveError(offlineError)) {
             setSaveError({
               message: 'Local save failed — your changes are NOT stored. Tap to retry.',
-              code: (offlineError as { code?: string })?.code,
+              code: (offlineError as { code?: import("@/lib/offline-storage").IdbSaveErrorCode })?.code,
             });
             toast.error("Save failed — your changes are NOT stored", {
               description: "Tap Save again to retry. Do not close this page.",
@@ -984,7 +984,7 @@ export default function DailyAssessmentForm() {
                     ...item, 
                     assessment_id: id,
                     id: item.id || crypto.randomUUID()
-                  })),
+                  })) as never,
                   { onConflict: 'assessment_id,item_key' }
                 )
               : { error: null, data: null },
@@ -994,7 +994,7 @@ export default function DailyAssessmentForm() {
                     ...item, 
                     assessment_id: id,
                     id: item.id || crypto.randomUUID()
-                  })),
+                  })) as never,
                   { onConflict: 'assessment_id,item_key' }
                 )
               : { error: null, data: null },
@@ -1004,7 +1004,7 @@ export default function DailyAssessmentForm() {
                     ...item, 
                     assessment_id: id,
                     id: item.id || crypto.randomUUID()
-                  })),
+                  })) as never,
                   { onConflict: 'assessment_id,system_name' }
                 )
               : { error: null, data: null },
@@ -1014,7 +1014,7 @@ export default function DailyAssessmentForm() {
                     ...item, 
                     assessment_id: id,
                     id: item.id || crypto.randomUUID()
-                  })),
+                  })) as never,
                   { onConflict: 'assessment_id,item_key' }
                 )
               : { error: null, data: null },
@@ -1024,7 +1024,7 @@ export default function DailyAssessmentForm() {
                     ...item, 
                     assessment_id: id,
                     id: item.id || crypto.randomUUID()
-                  })),
+                  })) as never,
                   { onConflict: 'assessment_id,item_key' }
                 )
               : { error: null, data: null },
@@ -1034,7 +1034,7 @@ export default function DailyAssessmentForm() {
                     ...item, 
                     assessment_id: id,
                     id: item.id || crypto.randomUUID()
-                  })),
+                  })) as never,
                   { onConflict: 'assessment_id,item_key' }
                 )
               : { error: null, data: null },
@@ -1253,7 +1253,7 @@ export default function DailyAssessmentForm() {
                   ...item, 
                   assessment_id: id,
                   id: item.id || crypto.randomUUID()
-                })),
+                })) as never,
                 { onConflict: 'assessment_id,item_key' }
               )
             );
@@ -1265,7 +1265,7 @@ export default function DailyAssessmentForm() {
                   ...item, 
                   assessment_id: id,
                   id: item.id || crypto.randomUUID()
-                })),
+                })) as never,
                 { onConflict: 'assessment_id,item_key' }
               )
             );
@@ -1277,7 +1277,7 @@ export default function DailyAssessmentForm() {
                   ...item, 
                   assessment_id: id,
                   id: item.id || crypto.randomUUID()
-                })),
+                })) as never,
                 { onConflict: 'assessment_id,system_name' }
               )
             );
@@ -1289,7 +1289,7 @@ export default function DailyAssessmentForm() {
                   ...item, 
                   assessment_id: id,
                   id: item.id || crypto.randomUUID()
-                })),
+                })) as never,
                 { onConflict: 'assessment_id,item_key' }
               )
             );
@@ -1301,7 +1301,7 @@ export default function DailyAssessmentForm() {
                   ...item, 
                   assessment_id: id,
                   id: item.id || crypto.randomUUID()
-                })),
+                })) as never,
                 { onConflict: 'assessment_id,item_key' }
               )
             );
@@ -1313,7 +1313,7 @@ export default function DailyAssessmentForm() {
                   ...item, 
                   assessment_id: id,
                   id: item.id || crypto.randomUUID()
-                })),
+                })) as never,
                 { onConflict: 'assessment_id,item_key' }
               )
             );

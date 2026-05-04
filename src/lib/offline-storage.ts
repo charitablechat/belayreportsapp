@@ -35,7 +35,7 @@ import { isQuarantined as isSessionQuarantined } from './sync-quarantine';
  *  as required `string` for the few that the sync pipeline always relies on. */
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export type DbRow = { [key: string]: any } & {
-  id: string;
+  id?: string;
   updated_at?: string;
   synced_at?: string;
   created_at?: string;
@@ -1447,7 +1447,7 @@ function makeIdbReadFailure(context: string, error: unknown): IdbReadFailure {
  * `idbError` log line.
  */
 type LedgerReportType = 'inspection' | 'training' | 'daily_assessment';
-async function withWedgeLedgerFallback<T extends { id: string }>(
+async function withWedgeLedgerFallback<T extends { id?: string }>(
   reader: () => Promise<T[] | IdbReadFailure>,
   reportType: LedgerReportType,
   userId: string | undefined,

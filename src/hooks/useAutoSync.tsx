@@ -43,8 +43,9 @@ type TableSyncResult = {
   success: number;
   failed: number;
   remaining?: number;
+  changed?: number;
   errors?: unknown[];
-} | null | undefined | void;
+};
 
 // Sync configuration with mobile optimization
 // Tuned for fast user-driven sync (S5/S6/S7) — duplicate prevention is handled by syncInProgressRef
@@ -1126,7 +1127,7 @@ export const useAutoSync = () => {
     // our own recent transaction or align_synced_at write, skip the sync re-trigger
     // entirely. IDB persist + query invalidation above still ran (it's a no-op for
     // self-writes since shouldPreserveLocalRecord short-circuits).
-    const recordId = payload?.new?.id || payload?.old?.id;
+    const recordId = (payload?.new as { id?: string } | undefined)?.id || (payload?.old as { id?: string } | undefined)?.id;
     if (recordId && isRecentSelfWrite(recordId)) {
               syncLog.log('[AutoSync] Skipping Realtime-triggered sync (self-write suppression)', { recordId });
       return;
