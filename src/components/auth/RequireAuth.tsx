@@ -16,6 +16,7 @@ import {
   isOfflineWindowExpiringSoon,
   getOfflineWindowRemainingMs,
 } from "@/lib/offline-auth";
+import { readGuestSession } from "@/lib/guest-session";
 
 interface RequireAuthProps {
   children: ReactNode;
