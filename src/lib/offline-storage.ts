@@ -1447,7 +1447,7 @@ function makeIdbReadFailure(context: string, error: unknown): IdbReadFailure {
  * `idbError` log line.
  */
 type LedgerReportType = 'inspection' | 'training' | 'daily_assessment';
-async function withWedgeLedgerFallback<T extends { id: string }>(
+async function withWedgeLedgerFallback<T extends { id?: string }>(
   reader: () => Promise<T[] | IdbReadFailure>,
   reportType: LedgerReportType,
   userId: string | undefined,
