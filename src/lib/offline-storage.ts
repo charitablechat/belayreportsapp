@@ -1414,6 +1414,59 @@ function makeIdbReadFailure(context: string, error: unknown): IdbReadFailure {
 }
 
 /**
+ * Mode 11A — alternate-read fallback when the IDB layer breaker is open.
+ *
+ * The browser-internal `IDBOpenDBRequest` queue can wedge for 4-6 minutes
+ * after an offline→online toggle on Playwright/Chromium CI runners (W3C
+ * spec has no abort path; see `mode-11-localbackupledger-alt-read-diagnostic.md`).
+ * Mode 8A bounds the blast radius via fast-fail when the layer breaker
+ * trips, but the autosync drain still can't read its work queue → no
+ * progress until the queue drains naturally.
+ *
+ * `LocalBackupLedger` is a parallel system-of-record (every IDB write is
+ * mirrored via `saveReportSnapshot`), and localStorage reads are
+ * synchronous and structurally cannot wedge. When the breaker is open we
+ * route the unsynced-records read through the ledger so the drain can
+ * complete despite the wedge.
+ *
+ * The fallback ONLY fires when the breaker is open — transient `IdbReadFailure`
+ * results outside of a confirmed wedge still propagate normally so callers
+ * can preserve last-known state for non-structural failures.
+ */
+type LedgerReportType = 'inspection' | 'training' | 'daily_assessment';
+async function withWedgeLedgerFallback<T extends { id: string }>(
+  reader: () => Promise<T[] | IdbReadFailure>,
+  reportType: LedgerReportType,
+  userId: string | undefined,
+  context: string,
+): Promise<T[] | IdbReadFailure> {
+  const result = await reader();
+  if (!isIdbReadFailure(result)) return result;
+
+  if (!isIdbLayerBreakerOpen()) {
+    return result;
+  }
+
+  try {
+    const { listUnsyncedDbRowsFromLedger } = await import('./local-backup-ledger');
+    const ledgerRows = listUnsyncedDbRowsFromLedger(reportType, userId) as unknown as T[];
+    console.warn('[Offline Storage] Mode 11A ledger fallback active', {
+      context,
+      reportType,
+      ledgerCount: ledgerRows.length,
+      idbError: result.error,
+    });
+    return ledgerRows;
+  } catch (err) {
+    console.warn(
+      '[Offline Storage] Mode 11A ledger fallback failed; propagating IdbReadFailure',
+      { context, err },
+    );
+    return result;
+  }
+}
+
+/**
  * Strict read boundary for sync-gating reads. Unlike `withIndexedDBErrorBoundary`
  * (which silently swallows errors and returns `fallbackValue`), this returns
  * `IdbReadFailure` so the caller can preserve last-known state and surface
@@ -2724,7 +2777,12 @@ function shouldLogDrift(id: string, driftMs: number): boolean {
 }
 
 export async function getUnsyncedInspections(userId?: string) {
-  return withIndexedDBReadBoundary(
+  // Mode 11A: route through `withWedgeLedgerFallback` so that when the
+  // IDB layer breaker is open (= confirmed structural wedge), the drain
+  // pipeline reads from `LocalBackupLedger` (synchronous localStorage)
+  // instead of waiting for the wedged queue. See diagnostic.
+  return withWedgeLedgerFallback(
+    () => withIndexedDBReadBoundary(
     async () => {
       const db = await getDB();
       
@@ -2791,6 +2849,10 @@ export async function getUnsyncedInspections(userId?: string) {
     },
     'getUnsyncedInspections',
     { tier: 'batch', store: 'inspections' }
+  ),
+    'inspection',
+    userId,
+    'getUnsyncedInspections',
   );
 }
 
@@ -4197,7 +4259,9 @@ export async function deleteOfflineDailyAssessment(id: string) {
 }
 
 export async function getUnsyncedDailyAssessments(userId?: string) {
-  return withIndexedDBReadBoundary(
+  // Mode 11A: see `getUnsyncedInspections` above.
+  return withWedgeLedgerFallback(
+    () => withIndexedDBReadBoundary(
     async () => {
       const db = await getDB();
       
@@ -4240,6 +4304,10 @@ export async function getUnsyncedDailyAssessments(userId?: string) {
     },
     'getUnsyncedDailyAssessments',
     { tier: 'batch', store: 'daily_assessments' }
+  ),
+    'daily_assessment',
+    userId,
+    'getUnsyncedDailyAssessments',
   );
 }
 
@@ -4556,7 +4624,9 @@ export async function deleteOfflineTraining(id: string) {
 }
 
 export async function getUnsyncedTrainings(userId?: string) {
-  return withIndexedDBReadBoundary(
+  // Mode 11A: see `getUnsyncedInspections` above.
+  return withWedgeLedgerFallback(
+    () => withIndexedDBReadBoundary(
     async () => {
       const db = await getDB();
       
@@ -4599,6 +4669,10 @@ export async function getUnsyncedTrainings(userId?: string) {
     },
     'getUnsyncedTrainings',
     { tier: 'batch', store: 'trainings' }
+  ),
+    'training',
+    userId,
+    'getUnsyncedTrainings',
   );
 }
 
