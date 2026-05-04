@@ -680,7 +680,9 @@ export function getOfflineUserId(): string | null {
       }
     }
     const synthetic = readSyntheticSession();
-    return synthetic?.user?.id || null;
+    if (synthetic?.user?.id) return synthetic.user.id;
+    const guest = readGuestSession();
+    return guest?.id || null;
   } catch {
     return null;
   }
