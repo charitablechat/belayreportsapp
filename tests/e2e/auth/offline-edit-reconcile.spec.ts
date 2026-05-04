@@ -49,8 +49,21 @@ test.describe('sync: offline edit reconciles to cloud', () => {
 
   // Full round-trip: build (cached across specs) + login + online create +
   // cloud round-trip + form load + offline edit + sync-now + second cloud
-  // round-trip + cleanup. 3min is generous but safer than a flaky 90s.
-  test.setTimeout(180_000);
+  // round-trip + cleanup.
+  //
+  // Mode 10A: 180s → 240s so the inner step-10 reconcile-wait (150s, line
+  // 268) is always the first timeout to fire on slow CI runners, producing
+  // a clear "waitForInspectionLocationInCloud" diagnostic instead of a
+  // confusing Playwright outer-timeout error. Steps 1-9 carry their own
+  // sub-budgets (step 4 cloud poll = 120s, step 5 form-hydrate = 30s × 2,
+  // step 5a IDB-drain poll = 30s, step 7 fill assertion = 5s, step 9
+  // sync-now visibility = 5s). The earlier steps run concurrently with
+  // the network being healthy (the wedge only manifests post-`setOffline`
+  // at step 8), so they typically consume <30s on green-path runs and
+  // <60s on degraded runs. 240s = 150s (step 10) + 90s for everything
+  // else preserves a meaningful inner-first failure ordering even on the
+  // slowest GitHub Actions runners.
+  test.setTimeout(240_000);
 
   // STATUS: ACTIVE. Originally quarantined under `.fixme()` while four
   // app-side blockers were investigated and fixed across PRs #15-#22:
@@ -252,11 +265,22 @@ test.describe('sync: offline edit reconciles to cloud', () => {
     }
 
     // ── 10. Wait for the edit to reach the server ────────────────────────
+    // Mode 10A: 120s → 150s. The Mode 8/9 stack reduced the post-online
+    // IDB wedge tail from 4-6 min (PR #108) to ~2 min (PR #110). On the
+    // GitHub Actions runner that produced the failing run on PR #110,
+    // the layer recovered at 134s — about 14s past the previous 120s
+    // budget. Per W3C IDB (no `IDBOpenDBRequest` abort), the wedge tail
+    // can't be reduced further without an alternate read path (deferred
+    // as Mode 11 / 9C). Bumping to 150s captures the post-Mode-9
+    // distribution; the outer `test.setTimeout(240_000)` above keeps
+    // a 90s buffer for steps 1-9 + cleanup, so this inner timeout is
+    // always the first to fire on a wedge. See
+    // `mode-10-residual-wedge-diagnostic.md` for the full timeline +
+    // recovery-margin analysis.
     const edited = await waitForInspectionLocationInCloud(session, {
       id: serverId,
       expectedLocation: editedMarker,
-      // Same CI-latency rationale as the create-side wait above.
-      timeoutMs: 120_000,
+      timeoutMs: 150_000,
     });
     expect(edited.location).toBe(editedMarker);
 
