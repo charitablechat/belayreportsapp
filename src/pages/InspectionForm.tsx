@@ -1991,7 +1991,7 @@ export default function InspectionForm() {
             // Equipment operations
             if (existingEquipment.length > 0) {
               parallelOperations.push(
-                dbOp(supabase.from("inspection_equipment").upsert(existingEquipment.map(e => ({ ...e, inspection_id: id })), { onConflict: 'id' }))
+                dbOp(supabase.from("inspection_equipment").upsert(existingEquipment.map(e => ({ ...e, inspection_id: id })) as never, { onConflict: 'id' }))
               );
             }
             if (newEquipment.length > 0) {
@@ -2004,7 +2004,7 @@ export default function InspectionForm() {
               });
               
               parallelOperations.push(
-                dbOp(supabase.from("inspection_equipment").insert(newEquipment))
+                dbOp(supabase.from("inspection_equipment").insert(newEquipment as never))
               );
               
               // Replace temp items in-place, preserving position (no reordering)
@@ -2021,12 +2021,12 @@ export default function InspectionForm() {
             
             // Standards - use upsert instead of delete+insert for atomicity
             parallelOperations.push(
-              dbOp(supabase.from("inspection_standards").upsert(standardsWithIds, { onConflict: 'id', ignoreDuplicates: false }))
+              dbOp(supabase.from("inspection_standards").upsert(standardsWithIds as never, { onConflict: 'id', ignoreDuplicates: false }))
             );
             
             // Summary
             parallelOperations.push(
-              dbOp(supabase.from("inspection_summary").upsert(sanitizeSummary({ ...currentSummary, inspection_id: id }), { onConflict: 'inspection_id' }))
+              dbOp(supabase.from("inspection_summary").upsert(sanitizeSummary({ ...currentSummary, inspection_id: id }) as never, { onConflict: 'inspection_id' }))
             );
 
             // Execute all in parallel
@@ -2075,7 +2075,7 @@ export default function InspectionForm() {
           } catch (error) {
             // Detect network-related errors for retry
             const errMsg = errorMessage(error, '').toLowerCase();
-            const code = errorCode(error);
+            const code: string | undefined = errorCode(error);
             const errName = error instanceof Error ? error.name : undefined;
             const isNetworkError =
               errMsg.includes('network') ||
@@ -2357,7 +2357,7 @@ export default function InspectionForm() {
       if (isOnline) {
         const { error } = await supabase
           .from("inspections")
-          .update(updatePayload)
+          .update(updatePayload as never)
           .eq("id", id);
 
         if (error) throw error;
@@ -3205,7 +3205,7 @@ export default function InspectionForm() {
         <InspectionHeader
           inspection={inspection}
           userProfile={inspectorProfile}
-          modifiedByProfile={modifiedByProfile}
+          modifiedByProfile={modifiedByProfile as { first_name?: string; last_name?: string } | null}
           onUpdate={effectiveReadOnly ? () => {} : handleHeaderUpdate} 
           onImmediateSave={effectiveReadOnly ? undefined : stableTriggerImmediateSave}
           isReadOnly={effectiveReadOnly}
