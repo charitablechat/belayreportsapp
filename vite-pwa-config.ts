@@ -20,6 +20,7 @@ import { VitePWA } from 'vite-plugin-pwa';
  */
 export const pwaConfig = VitePWA({
   registerType: 'autoUpdate',
+  injectRegister: false,
   injectRegister: 'auto',
   devOptions: {
     enabled: false,
