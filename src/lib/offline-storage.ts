@@ -37,8 +37,6 @@ import { isQuarantined as isSessionQuarantined } from './sync-quarantine';
 export type DbRow = { [key: string]: any } & {
   id?: string;
   inspector_id?: string;
-  first_name?: string;
-  last_name?: string;
   updated_at?: string;
   synced_at?: string;
   created_at?: string;
