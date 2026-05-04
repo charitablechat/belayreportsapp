@@ -340,7 +340,7 @@ export default function DailyAssessmentForm() {
         .select('avatar_url, first_name, last_name')
         .eq('id', inspectorId)
         .maybeSingle();
-      setInspectorProfile(profile);
+      setInspectorProfile(profile as DbRow | null);
     };
     fetchInspectorProfile();
   }, [inspectorId]);
