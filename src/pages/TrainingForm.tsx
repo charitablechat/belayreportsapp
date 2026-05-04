@@ -50,6 +50,7 @@ import {
   saveTrainingDataOffline,
   queueTrainingOperation,
   type DbRow,
+  type IdbSaveErrorCode,
 } from "@/lib/offline-storage";
 
 // `saveTrainingDataOffline` accepts a fixed set of section keys.
@@ -871,7 +872,7 @@ export default function TrainingForm() {
         if (isIdbSaveError(offlineError)) {
           setSaveError({
             message: 'Local save failed — your changes are NOT stored. Tap to retry.',
-            code: (offlineError as { code?: string })?.code,
+            code: offlineError.code,
           });
           toast.error("Save failed — your changes are NOT stored", {
             description: "Tap Save again to retry. Do not close this page.",
@@ -922,7 +923,7 @@ export default function TrainingForm() {
           // Update main training record WITHOUT synced_at (deferred pattern)
           const { data: updateResult, error: trainingError } = await supabase
             .from('trainings')
-            .update(sanitizedTraining)
+            .update(sanitizedTraining as never)
             .eq('id', id)
             .select('id');
 
@@ -933,7 +934,7 @@ export default function TrainingForm() {
             console.warn('[Training Save] Update returned 0 rows — falling back to upsert');
             const { error: upsertError } = await supabase
               .from('trainings')
-              .upsert({ id, ...sanitizedTraining });
+              .upsert({ id, ...sanitizedTraining } as never);
             if (upsertError) throw upsertError;
           }
 
