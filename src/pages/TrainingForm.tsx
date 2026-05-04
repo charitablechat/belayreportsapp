@@ -1480,13 +1480,13 @@ export default function TrainingForm() {
 
           if (verifiableItems.length > 0) {
             parallelOps.push(
-              dbOp(supabase.from('training_verifiable_items').upsert(prepareItems(verifiableItems, 'training_id'), { onConflict: 'id' }))
+              dbOp(supabase.from('training_verifiable_items').upsert(prepareItems(verifiableItems, 'training_id') as never, { onConflict: 'id' }))
             );
           }
 
           if (systemsInPlace.length > 0) {
             parallelOps.push(
-              dbOp(supabase.from('training_systems_in_place').upsert(prepareItems(systemsInPlace, 'training_id'), { onConflict: 'id' }))
+              dbOp(supabase.from('training_systems_in_place').upsert(prepareItems(systemsInPlace, 'training_id') as never, { onConflict: 'id' }))
             );
           }
 
@@ -1498,7 +1498,7 @@ export default function TrainingForm() {
               training_id: id
             };
             parallelOps.push(
-              dbOp(supabase.from('training_summary').upsert(preparedSummary, { onConflict: 'training_id' }))
+              dbOp(supabase.from('training_summary').upsert(preparedSummary as never, { onConflict: 'training_id' }))
             );
           }
 
@@ -1945,8 +1945,8 @@ export default function TrainingForm() {
                   training={training} 
                   onUpdate={effectiveReadOnly ? () => {} : updateTrainingField} 
                   isReadOnly={effectiveReadOnly}
-                  userProfile={inspectorProfile}
-                  modifiedByProfile={modifiedByProfile}
+                  userProfile={inspectorProfile as { first_name?: string; last_name?: string } | null}
+                  modifiedByProfile={modifiedByProfile as { first_name?: string; last_name?: string } | null}
                 />
                 {id && currentUser?.id && (
                   <CollaboratorPresence
