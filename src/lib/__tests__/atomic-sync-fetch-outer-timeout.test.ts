@@ -12,10 +12,15 @@
  *
  * Mode 7B fix: the outer race budget tracks
  * `selectAtomicSyncFetchOuterTimeout()`, which returns 15s steady-state
- * but lifts to 45s during the post-online recovery grace window. 45s sits
- * above the inner `batch` (40s) and `write` (32s) tier ceilings under
- * Mode 7A's 4× multiplier, restoring the "outer = safety net above inner"
- * invariant.
+ * but lifts to a wider value during the post-online recovery grace window.
+ *
+ * Mode 11B (PR #118 follow-up): the grace-window value was further bumped
+ * from 45s to 120s. Mode 11A's `withWedgeLedgerFallback` wrapper sits
+ * inside `getUnsynced*` and only inspects the breaker after the inner
+ * 32s timeout fires; with outer=45s the wrapper had a tight 13s margin
+ * and frequently lost the race to the outer cutoff. 120s gives the
+ * wrapper room to fire on the 1st boundary timeout, fall back to the
+ * ledger, and return rows well within the outer race.
  *
  * The implementation is a pure function over `isInPostOnlineRecoveryGrace()`,
  * so we can test it deterministically by stamping the recovery timestamp
@@ -41,11 +46,13 @@ describe('selectAtomicSyncFetchOuterTimeout — Mode 7B grace-aware outer race b
     expect(__test_only__selectAtomicSyncFetchOuterTimeout()).toBe(15_000);
   });
 
-  it('returns 45_000ms during the post-online recovery grace window', () => {
-    // Mode 7B: outer budget tracks the inner widening so the safety net
-    // sits above the per-op ceiling instead of cutting it off.
+  it('returns 120_000ms during the post-online recovery grace window', () => {
+    // Mode 7B + 11B: outer budget tracks the inner widening so the safety
+    // net sits above the per-op ceiling instead of cutting it off, and
+    // gives the Mode 11A ledger-fallback wrapper room to fire on the
+    // first boundary timeout.
     setLastOnlineRecoveryAtForTests(Date.now());
-    expect(__test_only__selectAtomicSyncFetchOuterTimeout()).toBe(45_000);
+    expect(__test_only__selectAtomicSyncFetchOuterTimeout()).toBe(120_000);
   });
 
   it('returns 15_000ms once the grace window has expired (90s after `online`)', () => {
@@ -61,7 +68,7 @@ describe('selectAtomicSyncFetchOuterTimeout — Mode 7B grace-aware outer race b
     // 7A's 4× multiplier (40s/32s respectively). If a future change drops
     // the outer below the inner, this test surfaces the invariant break.
     expect(__test_only__ATOMIC_SYNC_FETCH_OUTER_TIMEOUT_MS).toBe(15_000);
-    expect(__test_only__ATOMIC_SYNC_FETCH_OUTER_TIMEOUT_GRACE_MS).toBe(45_000);
+    expect(__test_only__ATOMIC_SYNC_FETCH_OUTER_TIMEOUT_GRACE_MS).toBe(120_000);
 
     // Inner boundary ceilings under Mode 7A's 4× multiplier:
     //   light:  5_000 × 4 = 20_000
@@ -70,9 +77,12 @@ describe('selectAtomicSyncFetchOuterTimeout — Mode 7B grace-aware outer race b
     //   heavy: 15_000 × 4 = 60_000
     // The outer race only needs to stay above the tiers actually used by
     // the three drain pre-flights (which use the boundary's default
-    // OPERATION_TIMEOUT, i.e. the `light` 5_000 case). 45_000 > 20_000 ✓.
+    // OPERATION_TIMEOUT, i.e. the `light` 5_000 case). 120_000 > 20_000 ✓.
     // It also stays above `batch` (40_000) and `write` (32_000), so any
-    // future tier reassignment of the drain reads stays safe.
+    // future tier reassignment of the drain reads stays safe. Mode 11B
+    // raised the floor from 45_000 to 120_000 to give the ledger-fallback
+    // wrapper room to fire on the first boundary timeout (32s) before the
+    // outer race cuts the call off.
     expect(__test_only__ATOMIC_SYNC_FETCH_OUTER_TIMEOUT_GRACE_MS).toBeGreaterThan(40_000);
     expect(__test_only__ATOMIC_SYNC_FETCH_OUTER_TIMEOUT_GRACE_MS).toBeGreaterThan(32_000);
     expect(__test_only__ATOMIC_SYNC_FETCH_OUTER_TIMEOUT_GRACE_MS).toBeGreaterThan(20_000);
@@ -84,7 +94,7 @@ describe('selectAtomicSyncFetchOuterTimeout — Mode 7B grace-aware outer race b
 
     // Stamp now: inside grace → grace-window value.
     setLastOnlineRecoveryAtForTests(Date.now());
-    expect(__test_only__selectAtomicSyncFetchOuterTimeout()).toBe(45_000);
+    expect(__test_only__selectAtomicSyncFetchOuterTimeout()).toBe(120_000);
 
     // Move stamp backwards past expiry → back to steady-state.
     setLastOnlineRecoveryAtForTests(Date.now() - 90_001);
@@ -92,7 +102,7 @@ describe('selectAtomicSyncFetchOuterTimeout — Mode 7B grace-aware outer race b
 
     // Stamp again → back to grace-window value.
     setLastOnlineRecoveryAtForTests(Date.now());
-    expect(__test_only__selectAtomicSyncFetchOuterTimeout()).toBe(45_000);
+    expect(__test_only__selectAtomicSyncFetchOuterTimeout()).toBe(120_000);
   });
 
   it('is independent of system clock skew — does not consult any external time source beyond Date.now()', () => {
@@ -101,6 +111,6 @@ describe('selectAtomicSyncFetchOuterTimeout — Mode 7B grace-aware outer race b
     // < 90_000). Documents that the selector does not over-correct or
     // clamp negative values.
     setLastOnlineRecoveryAtForTests(Date.now() + 60_000);
-    expect(__test_only__selectAtomicSyncFetchOuterTimeout()).toBe(45_000);
+    expect(__test_only__selectAtomicSyncFetchOuterTimeout()).toBe(120_000);
   });
 });
