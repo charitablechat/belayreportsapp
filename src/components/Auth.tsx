@@ -13,6 +13,7 @@ const ropeWorksLogo = "/rope-works-logo.avif";
 import authVideo from "@/assets/auth-background.mp4";
 import { hasCachedSessionForOffline } from "@/lib/cached-auth";
 import { createOfflineSession } from "@/lib/offline-auth";
+import { createGuestSession } from "@/lib/guest-session";
 import { isCredentialsDamaged, clearCredentialsDamagedFlag } from "@/lib/auth-resilience";
 import { triggerHaptic } from "@/lib/haptics";
 import { toast } from "sonner";
@@ -63,6 +64,15 @@ export default function Auth() {
 
   const handleGoToDashboard = () => {
     navigate("/dashboard");
+  };
+
+  const handleGuestMode = () => {
+    triggerHaptic('medium');
+    createGuestSession();
+    toast.success("Continuing as Guest. Your work stays on this device until you sign in.", {
+      duration: 7000,
+    });
+    navigate('/dashboard', { replace: true });
   };
 
   const handleAuth = async (e: React.FormEvent) => {
