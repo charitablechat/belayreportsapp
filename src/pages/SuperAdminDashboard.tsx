@@ -32,6 +32,7 @@ import { toast } from "sonner";
 import { parseLocalDate } from "@/lib/date-utils";
 import { getSessionBackground } from "@/lib/background-manager";
 import { getUserWithCache } from "@/lib/cached-auth";
+import { E2E_MARKER_PREFIX } from "@/lib/e2e-fixture-filter";
 
 // Local types — admin payloads aren't in the generated Supabase types.
 type ManagedUserRole = {
@@ -320,6 +321,10 @@ export default function SuperAdminDashboard() {
           organizations(name),
           inspector:profiles!inspections_inspector_id_profiles_fkey(first_name, last_name)
         `)
+        // Hide e2e Playwright fixture residue from the admin inspection
+        // table. See `src/lib/e2e-fixture-filter.ts` for context.
+        .not('location', 'ilike', `${E2E_MARKER_PREFIX}%`)
+        .not('organization', 'ilike', `${E2E_MARKER_PREFIX}%`)
         .order("created_at", { ascending: false })
         .limit(100);
 
