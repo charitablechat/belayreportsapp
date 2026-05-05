@@ -1,51 +1,83 @@
-## Problem
+# Disk Space Audit + Cleanup + Resize
 
-The PDF reports use logical sections wrapped in `<div class="page">`, each containing its own in-page header (logos + title) and footer (disclaimer). My previous "tighten whitespace" change switched `page-break-after: always` → `auto` on `.page` to kill a trailing blank sheet. That had a side effect: multiple `.page` blocks now flow onto the same physical sheet, so:
+I queried your database and storage buckets. Here is exactly where your 26.7 GB is going, what to clean up, and the order to do it in.
 
-- Section headers (logo bar) appear **mid-sheet** instead of at the top.
-- Section footers (disclaimer) get pushed to the **top of the next sheet** with the rest blank.
-- A new section starting near the bottom no longer moves to the next sheet.
+## What's actually consuming your disk
 
-This is visible in the uploaded `Solid_Rock_Camps_05_2026-5.pdf`.
+**Database tables (~22.6 GB):**
 
-## Fix
+| Table | Size | Notes |
+|---|---|---|
+| `audit_logs` | **22 GB** | The whole problem. ~110k rows. |
+| `trainings` | 132 MB | Normal. |
+| `admin_edit_snapshots` | 91 MB | Normal. |
+| `report_cloud_backups` | 19 MB | Normal. |
+| Everything else | < 10 MB each | Normal. |
 
-Treat each `<div class="page">` as exactly one physical sheet again — header at top, content middle, footer pinned to bottom — and solve the trailing-blank-page problem differently.
+Inside `audit_logs`, **21 GB comes from just 4,899 rows of `trainings.update`** — every training update is storing the entire old + new row as JSON, and training rows are huge (cached HTML, summaries, etc.). Another 192 MB is `inspections.update` (96k rows) and 157 MB is `daily_assessments.update`.
 
-### 1. `supabase/functions/generate-inspection-html/index.ts` (and the matching changes in `generate-training-html` and `generate-daily-assessment-html`)
+**Storage buckets (~11.7 GB):**
 
-**Print CSS for `.page`:**
-- Restore `page-break-after: always` (so a new logical section = new physical page; logo header is always at top of sheet).
-- Keep `page-break-inside: auto` (long sections like big tables still flow across sheets, and the table-row break rules already in place handle that gracefully).
-- Add `display: flex; flex-direction: column; min-height: 10.5in;` (letter height – `@page` margins) so the footer sits at the bottom of the sheet via `.page-content { flex: 1 1 auto }` and `.page-footer { margin-top: auto }`.
-- Keep `.page:last-child { page-break-after: avoid }`.
+| Bucket | Size | Notes |
+|---|---|---|
+| `database-backups` | **7.3 GB** | 7,746 daily backup files since April 2 (~33 days). No retention policy. |
+| `inspection-photos` | 2.0 GB | Real user data. |
+| `inspection-reports` (cached HTML) | 1.6 GB | Regenerable. |
+| `training-photos` | 745 MB | Real user data. |
+| Others | < 60 MB | Fine. |
 
-**Header/footer:**
-- `.page-header` stays at top (already first child).
-- `.page-footer { margin-top: auto }` pushes it to the bottom of the flex column on each sheet.
+**Bottom line:** ~28 GB of the ~29 GB you're using is `audit_logs` + old daily backups. Both are safely prunable.
 
-### 2. Eliminate the trailing blank page without breaking pagination
+## Plan
 
-Root cause of the prior blank trailing sheet was an empty `.page` block being emitted (or `page-break-after: always` on the last `.page` forcing an extra sheet). Two safeguards instead of disabling page breaks globally:
+### Step 1 — Audit (already done above)
 
-- Already have `.page:last-child { page-break-after: avoid }` — keep it and bump it to `!important` in print.
-- In the HTML builders, audit the conditional sections so we never emit a `<div class="page">` whose `.page-content` has no rendered children (e.g. summary, standards, photos pages). Wrap each optional page in the same `if (hasContent)` guard already used elsewhere.
+Findings shown in the table. No further action needed for this step; the numbers are the audit.
 
-### 3. Long sections that genuinely need to span multiple sheets
+### Step 2 — Add retention / cleanup policies
 
-When content inside one `.page` overflows a single sheet (e.g. a 50-row equipment table), the browser will paginate inside the section. Header/footer of that section will only appear on the first/last sheet of that span — that's expected and correct (same behavior as a Word document). Existing `thead { display: table-header-group }` already repeats column headers on continuation sheets.
+**A. Trim `audit_logs` aggressively.**
+- Strip the bulky `old_values` / `new_values` JSON from `*.update` rows older than 14 days, keeping the metadata (who/when/what action). This preserves the audit trail but drops the giant payloads.
+- Hard-delete `client.error` rows older than 30 days.
+- Hard-delete any `*.update` audit rows older than 90 days entirely.
+- Expected reclaim: **~21 GB**.
 
-## Files to edit
+**B. Stop `trainings.update` from logging full row snapshots going forward.**
+The `fn_audit_table_change` trigger writes `to_jsonb(NEW)` for every update. For `trainings` (and `inspections`, `daily_assessments`), strip the heavy fields (`latest_report_html`, `summary`, `narrative`, etc.) before storing. Keeps the audit useful, prevents regrowth.
 
-- `supabase/functions/generate-inspection-html/index.ts` (print `@media` block ~lines 1017–1050, plus any conditional `.page` emitters)
-- `supabase/functions/generate-training-html/index.ts` (same two areas)
-- `supabase/functions/generate-daily-assessment-html/index.ts` (same two areas)
+**C. Add a 14-day retention on `database-backups/daily/`.**
+A scheduled cleanup (daily pg_cron job) deletes any object under `daily/` older than 14 days. Offsite mirror already keeps long-term copies. Leaves `pdfs/` (64 MB, persistent) untouched.
+- Expected reclaim: **~5 GB now, prevents future regrowth**.
 
-## Verification
+**D. (Optional) Prune cached report HTML for completed reports older than 6 months.**
+HTML is regenerated on demand when a user opens the report. Reclaim: ~1 GB. Skipping unless you want it — small impact.
 
-After deploying the three edge functions, regenerate the same Solid Rock Camps inspection PDF and confirm:
+### Step 3 — Resize the disk
 
-- Every logo header sits flush with the top margin of its sheet.
-- Every disclaimer footer sits flush with the bottom margin of its sheet.
-- No sheet has a footer at the top followed by blank space.
-- No trailing blank sheet at the end of the document.
+After Steps 2A–2C run, you should be at roughly **3–4 GB used out of 40 GB**. At that point a resize is optional, but I recommend bumping to **60 GB** as a safety buffer (you can only ever increase, never decrease) so future growth doesn't trigger this alert again.
+
+That's done by you in the screen you're already on: **New disk size (GB) → 60 → Increase disk size**. I cannot click that button — only you can.
+
+## Order of operations
+
+1. I run a migration that:
+   - Adds the audit-log pruning SQL (one-shot delete + null-out of old payloads).
+   - Updates `fn_audit_table_change` to strip heavy fields before snapshotting.
+   - Adds a pg_cron job that nightly: (a) prunes audit_logs older than 14d/90d, (b) deletes `database-backups/daily/` objects older than 14d.
+2. You watch the disk usage drop in the same Advanced screen (give it a few minutes for vacuum to release space, possibly an hour).
+3. You bump the disk to 60 GB for headroom.
+
+## Technical details
+
+- Audit log pruning uses `UPDATE audit_logs SET old_values=NULL, new_values=NULL WHERE action_type LIKE '%.update' AND created_at < NOW() - INTERVAL '14 days'` followed by targeted `DELETE`s. Run inside a transaction with `VACUUM (FULL, ANALYZE) audit_logs` after to actually return pages to the OS.
+- Trigger change: edit `fn_audit_table_change` to compute `v_new := to_jsonb(NEW) - 'latest_report_html' - 'summary' - 'narrative' - 'cached_html' - 'report_html'` (and same for `v_old`). Same for inspections/daily_assessments.
+- Backup retention: pg_cron job calls a SECURITY DEFINER function that uses `storage.objects` DELETE filtered on `bucket_id='database-backups' AND name LIKE 'daily/%' AND created_at < NOW() - INTERVAL '14 days'`. This removes both the storage rows and the underlying files (Supabase storage trigger handles the file deletion).
+- Nothing in this plan touches: photos, real report data, soft-deleted records (already on a separate 60-day cleanup), or your offsite mirror.
+
+## What this does NOT do
+
+- Does not delete a single inspection, training, daily assessment, or photo.
+- Does not affect anyone's ability to view, edit, or generate reports.
+- Does not break the audit trail — actor, timestamp, table, record id, and action stay intact for everything; only old bulky JSON snapshots get dropped.
+
+Approve and I'll implement Steps 2A–2C in one migration. Then you do Step 3 in the UI.
