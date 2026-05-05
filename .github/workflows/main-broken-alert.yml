@@ -80,7 +80,6 @@ jobs:
             // actionable signal — every PR's e2e is currently red until
             // the wedge fix lands. Ignore advisory-only jobs too.
             const IGNORED_JOBS = new Set([
-              'playwright e2e (smoke)',
               'playwright e2e (auth — manual only)',
               'bun audit (high — advisory only)',
             ]);
