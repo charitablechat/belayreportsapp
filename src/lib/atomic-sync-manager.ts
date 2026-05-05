@@ -1495,10 +1495,26 @@ export async function syncInspectionAtomic(inspectionId: string, preValidatedUse
     
   } catch (error: unknown) {
     console.error('[Atomic Sync] Failed to sync inspection:', inspectionId, error);
-    void import('@/lib/log-error')
-      .then(({ logError }) =>
-        logError(error, { scope: 'atomic-sync.syncInspection', extra: { inspectionId } }),
-      )
+    // Mode 13: classify recoverable rollback errors as warning so they
+    // stop triggering high-priority Sentry alerts. The transaction was
+    // rolled back cleanly and the next periodic sync tick will retry;
+    // the inspector loses nothing. Hard / inconsistent failures (rollback
+    // failed, RLS, schema, etc.) still surface as `error`.
+    void Promise.all([
+      import('@/lib/log-error'),
+      import('@/lib/sync-error-severity'),
+    ])
+      .then(([{ logError }, { isRecoverableRollback, rollbackFingerprint }]) => {
+        const recoverable = isRecoverableRollback(error);
+        logError(error, {
+          scope: 'atomic-sync.syncInspection',
+          extra: { inspectionId },
+          level: recoverable ? 'warning' : 'error',
+          fingerprint: recoverable
+            ? rollbackFingerprint('atomic-sync.syncInspection', error)
+            : undefined,
+        });
+      })
       .catch(() => { /* swallow — logging must never throw */ });
     throw error;
   }
@@ -1691,7 +1707,20 @@ export async function syncAllInspectionsAtomic(preValidatedUser?: CachedUser, si
   // headroom for cell-tower handoffs and brief Supabase REST flakes,
   // bottle-necking autosync drain throughput on flaky networks.
   const persistentMaxRetries = capabilities.isMobile ? 2 : 1; // Reduced retries for faster recovery on hard failures
-  const transientMaxRetries = 3; // 3 attempts × jittered backoff (1 s → 4 s) ≈ 5 s wall-clock budget
+  // Mode 13C: 3 → 5 attempts. On flaky cell handoffs and CI runner network
+  // blips we routinely see ~30-60s outages where every supabase.co call dies
+  // in parallel (PR #129 trace, production "Step timeout" alert May 2026).
+  // The previous 3-attempt budget with jittered backoff 1s/3s/9s ±20%
+  // exhausts the inter-attempt wall in ~13s — shorter than the underlying
+  // outage — so the per-record loop terminal-fails on its first cycle
+  // and the dirty record sits unsynced until the next periodic tick
+  // (30-60s away). Bumping to 5 attempts (1s/3s/9s/12s/12s ±20%, capped
+  // at 12s by `jitteredBackoffMs`) widens the inter-attempt wall to ~37s,
+  // which combined with the per-attempt ITEM_SYNC_TIMEOUT covers the
+  // long tail of real-world transient outages within a single sync
+  // cycle. Persistent errors still respect `persistentMaxRetries` so
+  // the user sees real failures quickly.
+  const transientMaxRetries = 5;
   const maxRetries = Math.max(persistentMaxRetries, transientMaxRetries);
   // S2: Bounded concurrency — different inspectionIds never share child rows, and
   // executeTransaction is per-record. 3 on mobile / 5 on desktop is well within Supabase
@@ -2535,10 +2564,22 @@ export async function syncTrainingAtomic(trainingId: string, preValidatedUser?: 
     
   } catch (error: unknown) {
     console.error('[Atomic Sync] Failed to sync training:', trainingId, error);
-    void import('@/lib/log-error')
-      .then(({ logError }) =>
-        logError(error, { scope: 'atomic-sync.syncTraining', extra: { trainingId } }),
-      )
+    // Mode 13: see syncInspection catch site for rationale.
+    void Promise.all([
+      import('@/lib/log-error'),
+      import('@/lib/sync-error-severity'),
+    ])
+      .then(([{ logError }, { isRecoverableRollback, rollbackFingerprint }]) => {
+        const recoverable = isRecoverableRollback(error);
+        logError(error, {
+          scope: 'atomic-sync.syncTraining',
+          extra: { trainingId },
+          level: recoverable ? 'warning' : 'error',
+          fingerprint: recoverable
+            ? rollbackFingerprint('atomic-sync.syncTraining', error)
+            : undefined,
+        });
+      })
       .catch(() => { /* swallow — logging must never throw */ });
     throw error;
   }
@@ -2693,10 +2734,11 @@ export async function syncAllTrainingsAtomic(preValidatedUser?: CachedUser, sign
   
   // Mode 5 fix: split the retry budget by error class. See syncAllInspectionsAtomic
   // for the full rationale. Persistent errors keep the original fail-fast budget;
-  // transient network errors get 3 attempts so a single REST blip during a drain
-  // pass doesn't give up after one attempt.
+  // transient network errors get the wider Mode-13C budget so a single REST blip
+  // during a drain pass doesn't give up after one attempt.
   const persistentMaxRetries = capabilities.isMobile ? 2 : 1; // Reduced retries for faster recovery on hard failures
-  const transientMaxRetries = 3;
+  // Mode 13C: 3 → 5 attempts. See syncAllInspectionsAtomic for full rationale.
+  const transientMaxRetries = 5;
   const maxRetries = Math.max(persistentMaxRetries, transientMaxRetries);
   // S2: Bounded concurrency — different trainingIds never share child rows.
   const itemConcurrency = capabilities.isMobile ? 3 : 5;
@@ -3423,10 +3465,22 @@ export async function syncDailyAssessmentAtomic(assessmentId: string, preValidat
     
   } catch (error: unknown) {
     console.error('[Atomic Sync] Failed to sync daily assessment:', assessmentId, error);
-    void import('@/lib/log-error')
-      .then(({ logError }) =>
-        logError(error, { scope: 'atomic-sync.syncDailyAssessment', extra: { assessmentId } }),
-      )
+    // Mode 13: see syncInspection catch site for rationale.
+    void Promise.all([
+      import('@/lib/log-error'),
+      import('@/lib/sync-error-severity'),
+    ])
+      .then(([{ logError }, { isRecoverableRollback, rollbackFingerprint }]) => {
+        const recoverable = isRecoverableRollback(error);
+        logError(error, {
+          scope: 'atomic-sync.syncDailyAssessment',
+          extra: { assessmentId },
+          level: recoverable ? 'warning' : 'error',
+          fingerprint: recoverable
+            ? rollbackFingerprint('atomic-sync.syncDailyAssessment', error)
+            : undefined,
+        });
+      })
       .catch(() => { /* swallow — logging must never throw */ });
     throw error;
   }
@@ -3580,10 +3634,11 @@ export async function syncAllDailyAssessmentsAtomic(preValidatedUser?: CachedUse
   
   // Mode 5 fix: split the retry budget by error class. See syncAllInspectionsAtomic
   // for the full rationale. Persistent errors keep the original fail-fast budget;
-  // transient network errors get 3 attempts so a single REST blip during a drain
-  // pass doesn't give up after one attempt.
+  // transient network errors get the wider Mode-13C budget so a single REST blip
+  // during a drain pass doesn't give up after one attempt.
   const persistentMaxRetries = capabilities.isMobile ? 2 : 1; // Reduced retries for faster recovery on hard failures
-  const transientMaxRetries = 3;
+  // Mode 13C: 3 → 5 attempts. See syncAllInspectionsAtomic for full rationale.
+  const transientMaxRetries = 5;
   const maxRetries = Math.max(persistentMaxRetries, transientMaxRetries);
   // S2: Bounded concurrency — different assessmentIds never share child rows.
   const itemConcurrency = capabilities.isMobile ? 3 : 5;

@@ -9,10 +9,23 @@
  * Do not mass-replace existing `console.error` calls.
  */
 
+export type LogLevel = 'fatal' | 'error' | 'warning' | 'info' | 'debug';
+
 export interface LogContext {
   scope?: string;
   userId?: string;
   extra?: Record<string, unknown>;
+  /**
+   * Mode 13: Severity hint forwarded to Sentry. Defaults to `error`.
+   * Use `warning` for handled / recoverable failures so they don't
+   * trigger high-priority alerts but stay visible for trend analysis.
+   */
+  level?: LogLevel;
+  /**
+   * Mode 13: Optional Sentry fingerprint for issue grouping. See
+   * `sentry.ts#CaptureOptions.fingerprint` for usage.
+   */
+  fingerprint?: string[];
 }
 
 export function logError(err: unknown, ctx: LogContext = {}): void {
@@ -22,12 +35,18 @@ export function logError(err: unknown, ctx: LogContext = {}): void {
     scope: ctx.scope,
     userId: ctx.userId,
     extra: ctx.extra,
+    level: ctx.level,
     ts: new Date().toISOString(),
     appVersion: (import.meta as any).env?.APP_VERSION,
   };
 
-  // Always log locally first
-  console.error("[logError]", payload);
+  // Always log locally first. Use console.warn for warnings so the
+  // local DevTools view matches the severity we forward to Sentry.
+  if (ctx.level === 'warning' || ctx.level === 'info' || ctx.level === 'debug') {
+    console.warn("[logError]", payload);
+  } else {
+    console.error("[logError]", payload);
+  }
 
   // Forward to Sentry (best-effort; production-only inside the helper).
   // Both `.then` and `.catch` swallow so a synchronous throw inside
@@ -37,11 +56,18 @@ export function logError(err: unknown, ctx: LogContext = {}): void {
     void import("@/lib/sentry")
       .then(({ captureException }) => {
         try {
-          captureException(err, {
-            scope: ctx.scope,
-            userId: ctx.userId,
-            ...(ctx.extra ?? {}),
-          });
+          captureException(
+            err,
+            {
+              scope: ctx.scope,
+              userId: ctx.userId,
+              ...(ctx.extra ?? {}),
+            },
+            {
+              level: ctx.level,
+              fingerprint: ctx.fingerprint,
+            },
+          );
         } catch {
           /* swallow */
         }

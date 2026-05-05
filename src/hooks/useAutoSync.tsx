@@ -496,7 +496,31 @@ export const useAutoSync = () => {
 
       // H5: install fresh abort controller for this run; visibility-hidden
       // handler aborts it so the tab stops holding stuck I/O.
-      activeSyncAbortRef.current?.abort();
+      //
+      // Mode 13B: do NOT pre-emptively abort `activeSyncAbortRef.current`
+      // here. The previous run's controller can still be live (e.g. its
+      // per-record retry backoff is mid-sleep, or runWithConcurrency is
+      // draining one of its remaining slots) when the safety timeout at
+      // the top of `performSync` force-resets `syncInProgressRef` without
+      // also aborting the inner work. Calling `.abort()` here in that
+      // window cascades down to `transaction-manager.withStepTimeout`
+      // and surfaces as a fresh `AbortError: Step aborted: <op>:<table>`
+      // mid-step (PR #129 CI trace, run 25297867x — `Step aborted:
+      // update:inspections` at 02:58:00 immediately following an
+      // overlapping-tick race). The error is classified transient by
+      // the H5-T classifier so it doesn't quarantine the record, but
+      // it eats one slot of the per-record retry budget — which then
+      // exhausts faster than the underlying network outage clears.
+      //
+      // The gate at the top of `performSync` (`if (syncInProgressRef &&
+      // inFlightSyncRef)`) already prevents normal overlap. The only
+      // overlap path is the safety-timeout race described above; the
+      // right fix is to *not* abort a still-live previous run, and let
+      // it finish on its own (its outer withSyncTimeout owns a timeout
+      // budget; its inner per-record loops own jittered backoff +
+      // `maxRetries` budgets). The new run installs its own fresh
+      // controller below; the old controller is GC'd once the old
+      // run resolves.
       activeSyncAbortRef.current = new AbortController();
       const syncResult = await withSyncTimeout(
         async (signal) => {

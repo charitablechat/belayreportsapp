@@ -16,10 +16,12 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 
 // Mock the Sentry module to throw — proves logError swallows downstream errors.
+const captureExceptionMock = vi.fn(() => {
+  throw new Error("simulated sentry failure");
+});
+
 vi.mock("@/lib/sentry", () => ({
-  captureException: vi.fn(() => {
-    throw new Error("simulated sentry failure");
-  }),
+  captureException: captureExceptionMock,
 }));
 
 // Mock the supabase client so the audit_logs RPC path is exercised but
@@ -37,12 +39,22 @@ import { logError } from "../log-error";
 describe("logError", () => {
   let consoleErrorSpy: ReturnType<typeof vi.spyOn>;
 
+  let consoleWarnSpy: ReturnType<typeof vi.spyOn>;
+
   beforeEach(() => {
     consoleErrorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    consoleWarnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+    captureExceptionMock.mockClear();
+    // Reset the mock impl back to the default (throws) so each test starts
+    // from the same severity-swallowing baseline.
+    captureExceptionMock.mockImplementation(() => {
+      throw new Error("simulated sentry failure");
+    });
   });
 
   afterEach(() => {
     consoleErrorSpy.mockRestore();
+    consoleWarnSpy.mockRestore();
   });
 
   it("returns synchronously without throwing on a real Error", () => {
@@ -72,6 +84,63 @@ describe("logError", () => {
     // return cleanly. This is the key contract: a logging crash inside
     // a `catch` block must not mask the original failure.
     expect(() => logError(new Error("boom"))).not.toThrow();
+  });
+
+  it("Mode 13: forwards level='warning' to Sentry and uses console.warn locally", async () => {
+    captureExceptionMock.mockImplementation(() => {});
+    logError(new Error("recoverable"), {
+      scope: "atomic-sync.syncInspection",
+      level: "warning",
+    });
+    // Local DevTools view matches Sentry severity: warning → console.warn.
+    expect(consoleWarnSpy).toHaveBeenCalledWith(
+      "[logError]",
+      expect.objectContaining({ level: "warning" }),
+    );
+    expect(consoleErrorSpy).not.toHaveBeenCalled();
+    // Flush the dynamic-import microtasks so the captureException forward
+    // has a chance to run.
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    expect(captureExceptionMock).toHaveBeenCalledWith(
+      expect.any(Error),
+      expect.any(Object),
+      expect.objectContaining({ level: "warning" }),
+    );
+  });
+
+  it("Mode 13: forwards fingerprint array to Sentry capture options", async () => {
+    captureExceptionMock.mockImplementation(() => {});
+    const fingerprint = [
+      "atomic-sync.syncInspection",
+      "rollback-successful",
+      "upsert:inspection_ziplines",
+      "{{default}}",
+    ];
+    logError(new Error("recoverable"), {
+      scope: "atomic-sync.syncInspection",
+      level: "warning",
+      fingerprint,
+    });
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    expect(captureExceptionMock).toHaveBeenCalledWith(
+      expect.any(Error),
+      expect.any(Object),
+      expect.objectContaining({ fingerprint }),
+    );
+  });
+
+  it("Mode 13: defaults to console.error + no level option when level is omitted (back-compat)", async () => {
+    captureExceptionMock.mockImplementation(() => {});
+    logError(new Error("hard fail"), { scope: "atomic-sync.syncInspection" });
+    expect(consoleErrorSpy).toHaveBeenCalled();
+    expect(consoleWarnSpy).not.toHaveBeenCalled();
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    // Without an explicit level, the third argument's level field is undefined
+    // (the SDK then uses its `error` default).
+    const lastCall = captureExceptionMock.mock.calls.at(-1);
+    expect(lastCall?.[2]).toEqual(
+      expect.objectContaining({ level: undefined }),
+    );
   });
 
   it("swallows rejections from both forward paths so the global unhandledrejection handler cannot recurse", async () => {
