@@ -1,56 +1,51 @@
+## Problem
 
-## Diagnosis
+The PDF reports use logical sections wrapped in `<div class="page">`, each containing its own in-page header (logos + title) and footer (disclaimer). My previous "tighten whitespace" change switched `page-break-after: always` → `auto` on `.page` to kill a trailing blank sheet. That had a side effect: multiple `.page` blocks now flow onto the same physical sheet, so:
 
-The screenshot is **not** an in-app screen. It is the browser's native "no network" error page (Chrome shows the Rope Works app icon because it's an installed PWA, then renders its own "You're offline" string and the surf-game icons). React never mounts — meaning the **service worker never intercepted the navigation request**.
+- Section headers (logo bar) appear **mid-sheet** instead of at the top.
+- Section footers (disclaimer) get pushed to the **top of the next sheet** with the rest blank.
+- A new section starting near the bottom no longer moves to the next sheet.
 
-The previous round added a guest-mode path inside `Index.tsx`, but that only helps once the React bundle has loaded. If the SW isn't serving the app shell when offline, no in-app code runs at all.
-
-Three concrete root causes in the current setup:
-
-1. **App shell never reaches the user offline.** `vite-pwa-config.ts` sets `navigateFallback: '/'` and precaches JS/CSS/HTML, but in practice users hit `/` while installed and the precached document for `/` isn't always populated for them — particularly on iOS/Android installed PWAs whose first launch happened before VitePWA was wired this way (the old self-destroying SW history). Result: navigation falls through to the browser's offline page.
-2. **Index-page boot does an `await supabase.auth.getSession()` even before the offline branch resolves.** When `navigator.onLine` is true but the request hangs (captive portal / airplane-mode race), the 5 s timeout is reached but the screen sits on "Loading…". Combined with #1, many users never see anything.
-3. **No public, no-auth route exists.** Every meaningful URL is wrapped in `RequireAuth`. If a user lands offline with no cached session, no captured `offline_auth` entry, and no guest session, the only option is the sign-in screen — and that screen is gated by the React bundle loading first.
+This is visible in the uploaded `Solid_Rock_Camps_05_2026-5.pdf`.
 
 ## Fix
 
-### 1. Guarantee the app shell is served offline
+Treat each `<div class="page">` as exactly one physical sheet again — header at top, content middle, footer pinned to bottom — and solve the trailing-blank-page problem differently.
 
-In `vite-pwa-config.ts`:
-- Switch the workbox config so the `index.html` document itself is precached and served as the navigation fallback for **every** route, including `/`. Add `cleanupOutdatedCaches: true` and `navigationPreload: true`.
-- Add an explicit **`offline.html`** in `public/` (Rope Works logo + "Open the app" button that links to `/`). Add it to `includeAssets` and configure a Workbox `runtimeCaching` rule + `navigateFallback: '/offline.html'` denylist exception so that *if* the precached shell is missing for any reason, we still serve our branded page instead of Chrome's.
-- Set `clientsClaim: true` and `skipWaiting: true` in workbox so a freshly-installed SW takes over the page immediately on first install (currently the user has to navigate twice before the SW controls them).
+### 1. `supabase/functions/generate-inspection-html/index.ts` (and the matching changes in `generate-training-html` and `generate-daily-assessment-html`)
 
-### 2. Make `Index.tsx` resilient on cold offline boot
+**Print CSS for `.page`:**
+- Restore `page-break-after: always` (so a new logical section = new physical page; logo header is always at top of sheet).
+- Keep `page-break-inside: auto` (long sections like big tables still flow across sheets, and the table-row break rules already in place handle that gracefully).
+- Add `display: flex; flex-direction: column; min-height: 10.5in;` (letter height – `@page` margins) so the footer sits at the bottom of the sheet via `.page-content { flex: 1 1 auto }` and `.page-footer { margin-top: auto }`.
+- Keep `.page:last-child { page-break-after: avoid }`.
 
-In `src/pages/Index.tsx`:
-- Reorder the offline branch to the **very top** of `checkAuth`, before any `supabase.auth.getSession()` race. Currently the offline branch already runs first when `!navigator.onLine`, but the timeout-Promise still fires for online-but-no-network devices (iOS reports `onLine === true` on planes/captive portals). Add a hard short-circuit: if the 5 s race rejects AND `localStorage` has no Supabase session, fall through to the same offline-recovery chain (cached → synthetic → captured → guest).
-- Render the `Auth` screen unconditionally if every fallback is empty, so the user always reaches a usable surface.
+**Header/footer:**
+- `.page-header` stays at top (already first child).
+- `.page-footer { margin-top: auto }` pushes it to the bottom of the flex column on each sheet.
 
-### 3. Surface a one-tap offline entry on the splash
+### 2. Eliminate the trailing blank page without breaking pagination
 
-In `src/components/Auth.tsx`:
-- The "Continue offline as Guest" button already exists, but it's hidden behind the form. Promote it to render at the top of the card whenever `!isOnline` (and even when `isOnline` is true but the user clicks a new "Use app offline" link), with prominent styling, so a user who lands offline can get into the dashboard with zero friction.
-- Add a small "Open offline" link from the `offline.html` fallback that deep-links to `/?guest=1`; `Index.tsx` honours that query param by auto-creating a guest session and redirecting to `/dashboard`.
+Root cause of the prior blank trailing sheet was an empty `.page` block being emitted (or `page-break-after: always` on the last `.page` forcing an extra sheet). Two safeguards instead of disabling page breaks globally:
 
-### 4. Sanity checks
+- Already have `.page:last-child { page-break-after: avoid }` — keep it and bump it to `!important` in print.
+- In the HTML builders, audit the conditional sections so we never emit a `<div class="page">` whose `.page-content` has no rendered children (e.g. summary, standards, photos pages). Wrap each optional page in the same `if (hasContent)` guard already used elsewhere.
 
-- Verify `RequireAuth` keeps accepting `readGuestSession()` while offline (already does).
-- Verify SW registration is allowed on production hostnames (it is — `isPreviewOrIframeEnvironment` only strips it inside the Lovable editor).
-- Bump the PWA cache version so existing installs pick up the new `offline.html` and the precache change on next launch.
+### 3. Long sections that genuinely need to span multiple sheets
+
+When content inside one `.page` overflows a single sheet (e.g. a 50-row equipment table), the browser will paginate inside the section. Header/footer of that section will only appear on the first/last sheet of that span — that's expected and correct (same behavior as a Word document). Existing `thead { display: table-header-group }` already repeats column headers on continuation sheets.
 
 ## Files to edit
 
-- `vite-pwa-config.ts` — workbox precache + skipWaiting/clientsClaim + offline.html fallback
-- `public/offline.html` (new) — branded fallback page
-- `src/pages/Index.tsx` — hardened offline boot + `?guest=1` handling
-- `src/components/Auth.tsx` — promote guest-mode button when offline
-- `.lovable/memory/auth/offline-access-and-guest-mode.md` — note the new shell-precache + offline.html behaviour
+- `supabase/functions/generate-inspection-html/index.ts` (print `@media` block ~lines 1017–1050, plus any conditional `.page` emitters)
+- `supabase/functions/generate-training-html/index.ts` (same two areas)
+- `supabase/functions/generate-daily-assessment-html/index.ts` (same two areas)
 
-## What the user will see after the fix
+## Verification
 
-When offline, opening the installed app (or the URL in any browser):
-1. SW serves the cached app shell → React mounts.
-2. `Index.tsx` finds no session, finds no captured offline-auth, finds no guest session → renders `Auth` with a prominent "Continue offline as Guest" button at the top.
-3. Tapping it creates a local guest session and routes to `/dashboard`. All inspection/training/photo features work; sync is silently disabled until reconnect.
+After deploying the three edge functions, regenerate the same Solid Rock Camps inspection PDF and confirm:
 
-If, in some catastrophic case, the SW shell isn't available (first-ever launch with no network), the `offline.html` Rope Works fallback shows with a "Try again" button instead of Chrome's generic page.
+- Every logo header sits flush with the top margin of its sheet.
+- Every disclaimer footer sits flush with the bottom margin of its sheet.
+- No sheet has a footer at the top followed by blank space.
+- No trailing blank sheet at the end of the document.
