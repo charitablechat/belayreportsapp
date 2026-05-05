@@ -2629,6 +2629,7 @@ export type Database = {
         }
         Returns: number
       }
+      run_retention_cleanup: { Args: never; Returns: Json }
       set_bulk_delete_opt_in: { Args: never; Returns: undefined }
       soft_delete_record: {
         Args: {
