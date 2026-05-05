@@ -1242,36 +1242,36 @@ serve(async (req) => {
       
       /* Section spacing optimization */
       .key-section {
-        margin-bottom: 10px !important;
-        padding: 10px !important;
+        margin-bottom: 6px !important;
+        padding: 6px 8px !important;
       }
       
       .critical-box {
-        margin: 10px 0 !important;
-        padding: 10px !important;
+        margin: 6px 0 !important;
+        padding: 8px !important;
         border: 2px solid #ef4444 !important;
       }
       
       /* Info grid spacing */
       .info-grid {
-        margin-bottom: 8px !important;
+        margin-bottom: 4px !important;
       }
       
       .info-cell {
-        padding: 6px !important;
-        margin-bottom: 4px !important;
+        padding: 4px 6px !important;
+        margin-bottom: 2px !important;
       }
       
       /* Ensure proper spacing around tables */
       table {
-        margin: 8px 0 !important;
+        margin: 4px 0 !important;
       }
       
       /* Section headers */
       .section-header {
         background-color: #f1f5f9 !important;
-        padding: 8px !important;
-        margin: 10px 0 6px 0 !important;
+        padding: 5px 8px !important;
+        margin: 6px 0 4px 0 !important;
         border-left: 4px solid #3b82f6 !important;
       }
       
