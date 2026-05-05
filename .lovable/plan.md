@@ -1,36 +1,39 @@
-# Reclaim 22 GB of TOAST bloat on `audit_logs`
+The SQL editor is failing because `VACUUM FULL` is a privileged database maintenance command, and this SQL editor only runs ordinary SQL/data queries. There is no expandable error because the UI is hiding the underlying permission/maintenance restriction. You are not doing anything wrong.
 
-## Context
+I re-checked the database and found an important update: the problem is no longer only dead TOAST bloat. The current live data in `audit_logs` is still huge:
 
-Earlier cleanup deleted ~111k bulky audit-log payload rows, but the table's **TOAST segment is still 22 GB** because regular autovacuum only marks dead pages as reusable — it does not return space to the OS. Only `VACUUM FULL` rewrites the table and releases disk back.
+- `audit_logs` table total: about 23 GB
+- Live JSON audit payloads: about 18 GB
+- Biggest source: `trainings.update` audit rows
+- Some recent `trainings.update` rows are still storing `latest_report_html`, which should have been stripped but is not being stripped in the currently deployed audit trigger
 
-The previous attempt failed because `VACUUM FULL` needs roughly the table's own size in free disk to rewrite it (~22 GB), and only ~10 GB was free.
+So the next move should not be trying the same `VACUUM FULL` again. We need to stop the table from continuing to grow, trim the oversized live payloads, then let normal database maintenance reuse space or have Lovable Cloud support run the final physical compaction if needed.
 
-## Your part (do this first)
+## Plan
 
-1. In the Cloud Advanced settings screen, set **New disk size (GB) → 70 → Increase disk size**.
-2. Wait for the resize to complete (a few minutes; the UI will show when it's done). Disk can only ever go up, so 70 GB is the long-term ceiling.
+1. Fix the audit trigger so this does not keep happening
+   - Update the deployed audit trigger/function so `latest_report_html` is always removed from audit payloads for `trainings`, `inspections`, and daily assessments.
+   - Keep useful audit metadata like action type, table name, record id, operation, user, timestamps, status transitions, and ownership changes.
+   - Avoid storing full generated HTML/report bodies in audit logs.
 
-## My part (after resize finishes — you tell me to go)
+2. Trim the existing oversized audit rows
+   - Run a safe SQL migration that sets `old_values = NULL` and `new_values = NULL` for high-volume update audit rows, especially `trainings.update`.
+   - Keep the audit rows themselves, so the activity history remains: who/what/when/table/action/record.
+   - Remove only the giant before/after JSON snapshots that are consuming the space.
 
-1. Run `VACUUM (FULL, ANALYZE) public.audit_logs`.
-   - Takes 15–45 minutes.
-   - Locks the table for writes during that window. Audit writes are async (fire-and-forget from triggers) so users see no impact; any audit rows queued during the lock just land after it finishes.
-   - No other tables touched.
-2. Re-query sizes and report back:
-   - `audit_logs` total: **22 GB → ~200 MB** expected.
-   - Database total: **25 GB → ~3 GB** expected.
-   - Disk usage: **28.83 GB → ~6 GB out of 70 GB** (~9% used) expected.
+3. Verify the logical size drop
+   - Re-query `audit_logs` row count and live JSON size.
+   - Expected result: live JSON payload size drops from about 18 GB to a small fraction of that.
 
-## What this does NOT do
+4. Physical disk space reclamation path
+   - Because `VACUUM FULL` cannot be run from the SQL editor, there are two possible outcomes after trimming:
+     - Normal maintenance/autovacuum gradually makes the freed pages reusable inside the database, preventing new disk growth even if the Cloud usage graph does not immediately drop.
+     - If you need the Cloud disk usage number to visibly fall, Lovable Cloud support will need to run the privileged table compaction on their side.
 
-- Does not delete any audit rows beyond what was already cleaned.
-- Does not touch user data, photos, reports, backups, or storage buckets.
-- Does not change any application code.
-- Does not affect the nightly retention cron that prevents this from recurring.
+5. Optional follow-up after the cleanup
+   - Add a lightweight admin/backend diagnostic query or view so we can quickly see audit-log payload growth by table/action in the future.
+   - This helps catch regressions before they turn into another 20+ GB growth event.
 
-## If something goes wrong
+## What you should do now
 
-`VACUUM FULL` is transactional — if it fails partway (e.g. unexpected disk pressure), the original table is left intact and no data is lost. Worst case: we're back where we started and try again with more headroom.
-
-Reply "go" once the disk shows 70 GB and I'll run the vacuum.
+Approve this plan and I will run the safe migrations that are available from here: fixing the audit trigger and trimming the oversized audit payloads. After that I will re-check the sizes and tell you whether support still needs to run the final physical compaction.
