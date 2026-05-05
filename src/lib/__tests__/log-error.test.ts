@@ -137,7 +137,7 @@ describe("logError", () => {
     await new Promise((resolve) => setTimeout(resolve, 50));
     // Without an explicit level, the third argument's level field is undefined
     // (the SDK then uses its `error` default).
-    const lastCall = captureExceptionMock.mock.calls.at(-1);
+    const lastCall = captureExceptionMock.mock.calls.at(-1) as unknown[] | undefined;
     expect(lastCall?.[2]).toEqual(
       expect.objectContaining({ level: undefined }),
     );
