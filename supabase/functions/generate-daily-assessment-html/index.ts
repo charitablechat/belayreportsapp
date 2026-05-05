@@ -592,18 +592,19 @@ serve(async (req) => {
         margin: 0.3in 0.3in 0.45in 0.3in;
       }
 
+      /* Each .page = one physical sheet. Flex column pins footer to bottom. */
       .page {
-        display: block !important;
+        display: flex !important;
+        flex-direction: column !important;
         position: relative !important;
-        /* CRITICAL FIX: Allow content to flow naturally */
+        min-height: 10.5in !important;
         height: auto !important;
-        min-height: auto !important;
         max-height: none !important;
         overflow: visible !important;
         padding: 0 !important;
-        margin: 0 0 4px 0 !important;
+        margin: 0 !important;
         box-shadow: none !important;
-        page-break-after: auto !important;
+        page-break-after: always !important;
         page-break-inside: auto !important;
       }
 
