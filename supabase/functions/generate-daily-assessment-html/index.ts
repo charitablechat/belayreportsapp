@@ -589,7 +589,7 @@ serve(async (req) => {
       /* Reserve space for content - prevents footer overlap */
       @page {
         size: letter portrait;
-        margin: 0.4in 0.35in 0.6in 0.35in;
+        margin: 0.3in 0.3in 0.45in 0.3in;
       }
 
       .page {
@@ -601,9 +601,9 @@ serve(async (req) => {
         max-height: none !important;
         overflow: visible !important;
         padding: 0 !important;
-        margin: 0 0 10px 0 !important;
+        margin: 0 0 4px 0 !important;
         box-shadow: none !important;
-        page-break-after: always !important;
+        page-break-after: auto !important;
         page-break-inside: auto !important;
       }
 

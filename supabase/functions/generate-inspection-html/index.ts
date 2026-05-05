@@ -453,7 +453,7 @@ serve(async (req) => {
   <style>
     @page {
       size: letter;
-      margin: 0.4in;
+      margin: 0.3in;
     }
 
     @viewport {
@@ -1023,10 +1023,10 @@ serve(async (req) => {
         min-height: auto !important;
         height: auto !important;
         max-height: none !important;
-        padding: 0.2in !important;
+        padding: 0.1in !important;
         margin: 0 !important;
         box-sizing: border-box !important;
-        page-break-after: always !important;
+        page-break-after: auto !important;
         page-break-inside: auto !important;
         overflow: visible !important;
       }
@@ -1042,7 +1042,7 @@ serve(async (req) => {
       
       .page-footer {
         flex-shrink: 0 !important;
-        margin-top: auto !important;
+        margin-top: 12px !important;
       }
 
       .page:last-child {
@@ -1055,14 +1055,14 @@ serve(async (req) => {
         -webkit-print-color-adjust: exact;
         background: white;
         color: black;
-        font-size: 10pt;
-        line-height: 1.4;
+        font-size: 9.5pt;
+        line-height: 1.3;
       }
 
       /* Page setup */
       @page {
         size: letter portrait;
-        margin: 0.3in;
+        margin: 0.25in;
       }
 
       /* Prevent breaks within critical elements */
@@ -1242,36 +1242,36 @@ serve(async (req) => {
       
       /* Section spacing optimization */
       .key-section {
-        margin-bottom: 10px !important;
-        padding: 10px !important;
+        margin-bottom: 6px !important;
+        padding: 6px 8px !important;
       }
       
       .critical-box {
-        margin: 10px 0 !important;
-        padding: 10px !important;
+        margin: 6px 0 !important;
+        padding: 8px !important;
         border: 2px solid #ef4444 !important;
       }
       
       /* Info grid spacing */
       .info-grid {
-        margin-bottom: 8px !important;
+        margin-bottom: 4px !important;
       }
       
       .info-cell {
-        padding: 6px !important;
-        margin-bottom: 4px !important;
+        padding: 4px 6px !important;
+        margin-bottom: 2px !important;
       }
       
       /* Ensure proper spacing around tables */
       table {
-        margin: 8px 0 !important;
+        margin: 4px 0 !important;
       }
       
       /* Section headers */
       .section-header {
         background-color: #f1f5f9 !important;
-        padding: 8px !important;
-        margin: 10px 0 6px 0 !important;
+        padding: 5px 8px !important;
+        margin: 6px 0 4px 0 !important;
         border-left: 4px solid #3b82f6 !important;
       }
       
