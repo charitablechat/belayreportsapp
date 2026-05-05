@@ -74,13 +74,13 @@ jobs:
 
             // Filter: only alert when a *deterministic* CI gate fails
             // (tsc / vitest / lint / build / bundle / audit-critical).
-            // The `e2e-offline` job exercises a known-flaky offline→online
-            // IDB-wedge scenario tracked by Modes 9-11; alerting on it
+            // The auth-gated e2e job exercises known-flaky offline→online
+            // IDB-wedge / sync-engine paths (Modes 8-13); alerting on it
             // generates noise (issues #113, #116, #120) without
             // actionable signal — every PR's e2e is currently red until
             // the wedge fix lands. Ignore advisory-only jobs too.
             const IGNORED_JOBS = new Set([
-              'playwright e2e (smoke + auth + offline-edit-reconcile)',
+              'playwright e2e (auth — manual only)',
               'bun audit (high — advisory only)',
             ]);
             const jobsResp = await github.rest.actions.listJobsForWorkflowRun({

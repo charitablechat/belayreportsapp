@@ -13,6 +13,10 @@ on:
   pull_request:
   push:
     branches: [main]
+  # Allow manually re-enabling the auth-gated e2e suite once a separate
+  # Supabase project has been provisioned (so spec runs can no longer
+  # leak `[E2E DEVIN]` rows into production).
+  workflow_dispatch:
 
 # Cancel previous runs on the same PR when a new commit lands (saves CI
 # minutes on rapid feature-branch pushes), but NEVER cancel an in-progress
@@ -142,36 +146,65 @@ jobs:
             echo '```'
           } >> "$GITHUB_STEP_SUMMARY"
 
-  e2e-offline:
-    name: playwright e2e (smoke + auth + offline-edit-reconcile)
+  # Unauthenticated smoke specs — always run. These specs (`tests/e2e/smoke/**`)
+  # don't talk to Supabase at all, so they can't leak `[E2E DEVIN]` fixture
+  # rows into production. They exercise the build + preview-server boot path
+  # and the unauthenticated UI surface (sign-in form, 404 page, PWA manifest)
+  # on every PR / push.
+  e2e-smoke:
+    name: playwright e2e (smoke)
     runs-on: ubuntu-latest
-    # 12 min covers worst-case cold-cache build (~100s) + Chromium download
-    # (~60s) + 3 specs (~120s with retries) with headroom.
-    timeout-minutes: 12
+    # 8 min covers cold-cache build (~100s) + Chromium download (~60s) +
+    # smoke specs (~30s with retries) with headroom.
+    timeout-minutes: 8
     steps:
       - uses: actions/checkout@v4
       - uses: oven-sh/setup-bun@v2
         with:
           bun-version: latest
       - run: bun install --frozen-lockfile
-      # Playwright manages its own Chromium binary; pinned to the
-      # version in package.json's @playwright/test dep.
       - run: bunx playwright install --with-deps chromium
-      # Single combined run for all three e2e scopes:
-      #   - tests/e2e/smoke/**         (scope A — no creds, always runs)
-      #   - tests/e2e/auth/login-*     (scope B — auth-gated golden path,
-      #                                 skipped at runtime when E2E_TEST_*
-      #                                 are unset)
-      #   - tests/e2e/auth/offline-*   (scope C — offline-edit-reconcile,
-      #                                 same skip behaviour)
-      # Combined keeps wall time down (one build, one preview server, one
-      # Chromium install). The smoke job's `playwright.config.ts` webServer
-      # block runs `bun run build && bun run preview` automatically.
-      #
+      # Pass the explicit smoke directory so the auth-gated specs don't even
+      # get loaded (and can't accidentally run if a future change weakens
+      # their `test.skip` guards).
+      - run: bunx playwright test tests/e2e/smoke --reporter=list
+        env:
+          CI: 'true'
+      - if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report-smoke
+          path: |
+            playwright-report/
+            test-results/
+          retention-days: 14
+
+  # Auth-gated specs (login-and-dashboard, offline-edit-reconcile,
+  # cloud-backup-snapshot-upload, inspection-photo-upload-and-sync,
+  # admin-pre-edit-override) point at the SAME Supabase project as
+  # production because no separate e2e project has been provisioned yet.
+  # Each spec creates `[E2E DEVIN] <ts>` rows under a dedicated test-user
+  # account; when a spec fails before its post-flight cleanup, the rows
+  # linger and surface to admin users whose RLS view spans all inspectors.
+  # Until we provision a staging Supabase project (and repoint
+  # E2E_TEST_* / E2E_ADMIN_* at it) we run the auth-gated suite manually
+  # via `workflow_dispatch` only — keeping `e2e-smoke` above on every push
+  # so the build / preview-server boot is still deterministically exercised.
+  e2e-auth:
+    name: playwright e2e (auth — manual only)
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    if: ${{ github.event_name == 'workflow_dispatch' }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+      - run: bun install --frozen-lockfile
+      - run: bunx playwright install --with-deps chromium
       # E2E_TEST_EMAIL / E2E_TEST_PASSWORD must be set as GitHub Actions
-      # repo secrets for the auth-gated specs to actually run; without
-      # them those specs `test.skip` at runtime (the smoke scope still
-      # runs unconditionally).
+      # repo secrets for the auth-gated specs to actually run; without them
+      # those specs `test.skip` at runtime.
       #
       # E2E_ADMIN_EMAIL / E2E_ADMIN_PASSWORD are required by the
       # `admin-pre-edit-override` spec (Tier-2 #5c). The admin user must
@@ -179,19 +212,17 @@ jobs:
       # super_admin — super-admins are strictly read-only and don't trigger
       # the snapshot capture path). Spec test.skip's at runtime when these
       # are unset.
-      - run: bunx playwright test --reporter=list
+      - run: bunx playwright test tests/e2e/auth --reporter=list
         env:
           E2E_TEST_EMAIL: ${{ secrets.E2E_TEST_EMAIL }}
           E2E_TEST_PASSWORD: ${{ secrets.E2E_TEST_PASSWORD }}
           E2E_ADMIN_EMAIL: ${{ secrets.E2E_ADMIN_EMAIL }}
           E2E_ADMIN_PASSWORD: ${{ secrets.E2E_ADMIN_PASSWORD }}
           CI: 'true'
-      # Always upload the Playwright HTML report + trace zips on failure
-      # so we can diff a CI-only flake against a green local run.
       - if: failure()
         uses: actions/upload-artifact@v4
         with:
-          name: playwright-report
+          name: playwright-report-auth
           path: |
             playwright-report/
             test-results/
