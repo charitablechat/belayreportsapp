@@ -1023,10 +1023,10 @@ serve(async (req) => {
         min-height: auto !important;
         height: auto !important;
         max-height: none !important;
-        padding: 0.2in !important;
+        padding: 0.1in !important;
         margin: 0 !important;
         box-sizing: border-box !important;
-        page-break-after: always !important;
+        page-break-after: auto !important;
         page-break-inside: auto !important;
         overflow: visible !important;
       }
@@ -1055,14 +1055,14 @@ serve(async (req) => {
         -webkit-print-color-adjust: exact;
         background: white;
         color: black;
-        font-size: 10pt;
-        line-height: 1.4;
+        font-size: 9.5pt;
+        line-height: 1.3;
       }
 
       /* Page setup */
       @page {
         size: letter portrait;
-        margin: 0.3in;
+        margin: 0.25in;
       }
 
       /* Prevent breaks within critical elements */
