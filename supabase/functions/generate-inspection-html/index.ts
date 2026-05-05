@@ -1018,31 +1018,40 @@ serve(async (req) => {
        * PRINT: Page structure - content flows naturally
        * Browser handles pagination automatically
        */
+      /*
+       * Each .page = one physical sheet.
+       * Use flex column + min-height matching the printable area so
+       * .page-header sits at top and .page-footer is pushed to bottom.
+       * @page margin is 0.25in => printable height = 11in - 0.5in = 10.5in.
+       */
       .page {
-        display: block !important;
-        min-height: auto !important;
+        display: flex !important;
+        flex-direction: column !important;
+        min-height: 10.5in !important;
         height: auto !important;
         max-height: none !important;
-        padding: 0.1in !important;
+        padding: 0 !important;
         margin: 0 !important;
         box-sizing: border-box !important;
-        page-break-after: auto !important;
+        page-break-after: always !important;
         page-break-inside: auto !important;
         overflow: visible !important;
       }
 
       .page-content {
         display: block !important;
+        flex: 1 1 auto !important;
         overflow: visible !important;
       }
       
       .page-header {
-        flex-shrink: 0 !important;
+        flex: 0 0 auto !important;
       }
       
       .page-footer {
-        flex-shrink: 0 !important;
-        margin-top: 12px !important;
+        flex: 0 0 auto !important;
+        margin-top: auto !important;
+        padding-top: 12px !important;
       }
 
       .page:last-child {
