@@ -42,6 +42,7 @@ import { UpdateNotification } from "@/components/pwa/UpdateNotification";
 import { StaleVersionBanner } from "@/components/pwa/StaleVersionBanner";
 import { NetworkStatusBanner } from "@/components/pwa/NetworkStatusBanner";
 import { InstallSuccessNotification } from "@/components/pwa/InstallSuccessNotification";
+import { RouteFallback } from "@/components/RouteFallback";
 import { MinVersionEnforcer } from "@/components/pwa/MinVersionEnforcer";
 import { AuthenticatedHeader } from "@/components/AuthenticatedHeader";
 import { RemoteDeletedConflictDialog } from "@/components/RemoteDeletedConflictDialog";
@@ -185,7 +186,7 @@ const RootLayout = () => {
             <AuthenticatedHeader />
             <GlobalEnterToBlur />
             <RemoteDeletedConflictDialog />
-            <Suspense fallback={null}>
+            <Suspense fallback={<RouteFallback />}>
               <Outlet />
             </Suspense>
           </TooltipProvider>

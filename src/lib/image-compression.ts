@@ -22,6 +22,29 @@ const COMPRESSION_TIMEOUT = 15000; // 15 seconds max — accommodates HEIC conve
 const IMAGE_LOAD_TIMEOUT = 4000; // 4 seconds max to load/decode image
 const BLOB_CREATION_TIMEOUT = 3000; // 3 seconds max for canvas.toBlob
 
+/**
+ * Audit C2.7 — pixel threshold above which we re-decode the source via
+ * `createImageBitmap`'s hardware-accelerated resize path before drawing
+ * onto the work canvas. A 50MP Android camera shot otherwise materialises
+ * a ~200MB raster during `drawImage(50MP, → 1600×1600)`, which OOMs
+ * low-RAM Android tablets (3-4 GB total). 16MP (~4900×3266) is the cut
+ * above which `drawImage` reliably triggers the OOM in field reports.
+ *
+ * Exported for tests so `shouldPreScaleSource` can be exercised without
+ * needing a real ImageBitmap.
+ */
+export const LARGE_SOURCE_PIXEL_THRESHOLD = 16_000_000;
+
+/**
+ * Audit C2.7 — pure predicate: does this source warrant a hardware-
+ * accelerated pre-scale before the canvas blit?
+ */
+export function shouldPreScaleSource(width: number, height: number): boolean {
+  if (!Number.isFinite(width) || !Number.isFinite(height)) return false;
+  if (width <= 0 || height <= 0) return false;
+  return width * height > LARGE_SOURCE_PIXEL_THRESHOLD;
+}
+
 /** Detect mobile/tablet for reduced canvas dimensions */
 const isMobileDevice = () =>
   typeof navigator !== 'undefined' &&
@@ -195,10 +218,47 @@ const compressImageInternal = async (
       throw new Error('Failed to get canvas context');
     }
 
-    ctx.drawImage(source, 0, 0, newWidth, newHeight);
-    
+    // Audit C2.7: on >16MP sources, re-decode via createImageBitmap's
+    // hardware-accelerated resize path before the drawImage blit. Without
+    // this, drawImage(50MP source, 0, 0, 1600, 1600) materialises a full
+    // ~200MB intermediate raster on Chrome/Android and reliably OOMs
+    // low-RAM tablets. The original ImageBitmap is GPU-backed so the
+    // probe decode itself is bounded; the rescaled bitmap is small
+    // (≤newWidth × newHeight) so the subsequent canvas blit is safe.
+    let drawSource: ImageBitmap | HTMLImageElement = source;
+    let drawCleanup: () => void = cleanup;
+    if (
+      source instanceof ImageBitmap &&
+      typeof createImageBitmap === 'function' &&
+      shouldPreScaleSource(width, height)
+    ) {
+      try {
+        const rescaled = await createImageBitmap(source, 0, 0, width, height, {
+          resizeWidth: newWidth,
+          resizeHeight: newHeight,
+          resizeQuality: 'high',
+        });
+        cleanup();
+        drawSource = rescaled;
+        drawCleanup = () => rescaled.close();
+        imageData = { source: rescaled, cleanup: drawCleanup };
+        if (import.meta.env.DEV) {
+          console.log(
+            `[Image Compression] Pre-scaled ${width}x${height} source via HW path → ${newWidth}x${newHeight} to avoid canvas OOM`,
+          );
+        }
+      } catch (rescaleErr) {
+        console.warn(
+          '[Image Compression] HW-accelerated pre-scale failed, falling back to canvas resize:',
+          rescaleErr,
+        );
+      }
+    }
+
+    ctx.drawImage(drawSource, 0, 0, newWidth, newHeight);
+
     // Clean up image source immediately after drawing
-    cleanup();
+    drawCleanup();
     imageData = null;
 
     // Create blob with timeout - ALWAYS outputs JPEG
