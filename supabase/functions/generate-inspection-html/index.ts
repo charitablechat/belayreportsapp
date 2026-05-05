@@ -624,6 +624,11 @@ serve(async (req) => {
       font-weight: bold;
       line-height: 1.4;
       page-break-after: avoid;
+      break-after: avoid;
+      /* Universal rule: never let a section header start near the bottom of a page.
+         Reserve enough vertical space so the header + a few lines move to next page. */
+      page-break-inside: avoid;
+      break-inside: avoid;
     }
     
     /* Major sections that should start on new page if needed */
