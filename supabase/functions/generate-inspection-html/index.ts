@@ -1042,7 +1042,7 @@ serve(async (req) => {
       
       .page-footer {
         flex-shrink: 0 !important;
-        margin-top: auto !important;
+        margin-top: 12px !important;
       }
 
       .page:last-child {
