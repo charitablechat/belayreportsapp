@@ -16,7 +16,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 
 // Mock the Sentry module to throw — proves logError swallows downstream errors.
-const captureExceptionMock = vi.fn(() => {
+const captureExceptionMock = vi.fn((..._args: unknown[]): unknown => {
   throw new Error("simulated sentry failure");
 });
 
