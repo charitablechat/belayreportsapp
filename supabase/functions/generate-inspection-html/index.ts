@@ -623,12 +623,21 @@ serve(async (req) => {
       padding: 6px 10px;
       font-weight: bold;
       line-height: 1.4;
+      /* Universal: every section header starts at the top of a new page */
+      page-break-before: always;
+      break-before: page;
       page-break-after: avoid;
       break-after: avoid;
-      /* Universal rule: never let a section header start near the bottom of a page.
-         Reserve enough vertical space so the header + a few lines move to next page. */
       page-break-inside: avoid;
       break-inside: avoid;
+    }
+    /* Suppress forced page break for the first h2 of each .page wrapper
+       to avoid blank leading pages */
+    .page-content > h2:first-child,
+    .page-content > *:first-child + h2,
+    .page > h2:first-child {
+      page-break-before: auto;
+      break-before: auto;
     }
     
     /* Major sections that should start on new page if needed */
