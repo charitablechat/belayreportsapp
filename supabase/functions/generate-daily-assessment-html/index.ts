@@ -653,13 +653,15 @@ serve(async (req) => {
 
       .page-content {
         display: block !important;
+        flex: 1 1 auto !important;
         height: auto !important;
         overflow: visible !important;
       }
 
       .page-footer {
         display: block !important;
-        margin-top: 15px !important;
+        flex: 0 0 auto !important;
+        margin-top: auto !important;
         padding-top: 10px !important;
         page-break-inside: avoid !important;
       }
