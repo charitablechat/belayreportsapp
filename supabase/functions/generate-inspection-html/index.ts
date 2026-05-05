@@ -453,7 +453,7 @@ serve(async (req) => {
   <style>
     @page {
       size: letter;
-      margin: 0.4in;
+      margin: 0.3in;
     }
 
     @viewport {
