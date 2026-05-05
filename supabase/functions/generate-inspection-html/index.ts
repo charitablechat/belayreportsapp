@@ -419,8 +419,10 @@ serve(async (req) => {
       ziplinesRowCount > 0 &&
       systemsRowCount <= COMBINE_THRESHOLD &&
       ziplinesRowCount <= COMBINE_THRESHOLD;
-    const canCombineEquipmentStandards =
-      equipmentRowCount > 0 && standardsRowCount > 0 && equipmentRowCount <= 6 && standardsRowCount <= 6;
+    // Standards must always start on its own page (universal rule: section headers
+    // never start mid-page). Disable combined equipment+standards layout.
+    const canCombineEquipmentStandards = false;
+    void equipmentRowCount; void standardsRowCount;
 
     // Calculate page count with consolidation
     // Pages: Cover + Reminders+Categories(combined) + Results Key = 3 base pages
@@ -622,6 +624,11 @@ serve(async (req) => {
       font-weight: bold;
       line-height: 1.4;
       page-break-after: avoid;
+      break-after: avoid;
+      /* Universal rule: never let a section header start near the bottom of a page.
+         Reserve enough vertical space so the header + a few lines move to next page. */
+      page-break-inside: avoid;
+      break-inside: avoid;
     }
     
     /* Major sections that should start on new page if needed */

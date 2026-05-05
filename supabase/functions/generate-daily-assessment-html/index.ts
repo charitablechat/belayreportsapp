@@ -236,6 +236,14 @@ serve(async (req) => {
       padding: 10px;
     }
 
+    /* Universal: section headers never start mid-page; push to next page if needed. */
+    h2 {
+      page-break-after: avoid;
+      break-after: avoid;
+      page-break-inside: avoid;
+      break-inside: avoid;
+    }
+
     /* 
      * Page structure - NO FIXED HEIGHTS, NO OVERFLOW HIDDEN
      * Content flows naturally and browser handles pagination
