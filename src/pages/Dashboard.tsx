@@ -54,6 +54,7 @@ import { shouldPreserveLocalRecord } from "@/lib/local-data-guards";
 import { reconcileServerDeletions } from "@/lib/reconcile-server-deletions";
 import { ContactDeveloperSheet } from "@/components/ContactDeveloperSheet";
 import { onSyncComplete, isSyncInProgress, consumePendingDashboardRefresh, consumeDashboardStaleTimestamp } from "@/lib/sync-events";
+import { E2E_INSPECTION_MARKER_COLUMNS, E2E_MARKER_PREFIX, filterOutE2EFixtures } from "@/lib/e2e-fixture-filter";
 import { InspectionsEmptyState, TrainingsEmptyState, DailyAssessmentsEmptyState } from "@/components/EmptyState";
 import { getUserWithCache, getSuperAdminStatusWithCache, invalidateSuperAdminCache, ensureValidSession, getOfflineUserId, getAdminCacheKey } from "@/lib/cached-auth";
 /* Holiday Theme Components - DISABLED */
@@ -805,6 +806,11 @@ export default function Dashboard() {
                   inspector:profiles!inspections_inspector_id_profiles_fkey(first_name, last_name, avatar_url)
                 `)
                 .is('deleted_at', null)
+                // Hide e2e-suite fixture residue from the dashboard. Marker
+                // rows leak when a Playwright spec fails before its
+                // post-flight cleanup; admins should never see them.
+                .not('location', 'ilike', `${E2E_MARKER_PREFIX}%`)
+                .not('organization', 'ilike', `${E2E_MARKER_PREFIX}%`)
                 .order("last_opened_at", { ascending: false, nullsFirst: false })
                 .order("created_at", { ascending: false })
                 .range(from, to)
@@ -823,8 +829,12 @@ export default function Dashboard() {
         new Promise<DbRow[]>((resolve) => setTimeout(() => resolve([]), 4000))
       ]);
       
-      // Show offline/cached data immediately (stale-while-revalidate)
-      const offlineData = await offlineWithTimeout;
+      // Show offline/cached data immediately (stale-while-revalidate).
+      // Defensive client-side filter on top of the server-side `.not.ilike`
+      // — IDB-sourced rows haven't been through the server filter and may
+      // include leaked e2e fixture rows from a prior pre-filter session.
+      const offlineDataRaw = await offlineWithTimeout;
+      const offlineData = filterOutE2EFixtures(offlineDataRaw, E2E_INSPECTION_MARKER_COLUMNS);
       if (offlineData.length > 0) {
         setInspections(offlineData);
         writeDashboardCache('dashboard-cache-inspections', offlineData);
@@ -887,7 +897,15 @@ export default function Dashboard() {
                 // treated as orphans and silently deleted from IDB.
                 let serverIds: Set<string>;
                 try {
-                  const idQuery = supabase.from('inspections').select('id').is('deleted_at', null);
+                  const idQuery = supabase
+                    .from('inspections')
+                    .select('id')
+                    .is('deleted_at', null)
+                    // Mirror the display-time e2e fixture filter — keeps
+                    // serverIds consistent so any marker rows lingering in
+                    // local IDB are correctly flagged as orphans and reaped.
+                    .not('location', 'ilike', `${E2E_MARKER_PREFIX}%`)
+                    .not('organization', 'ilike', `${E2E_MARKER_PREFIX}%`);
                   if (!isSuperAdmin) idQuery.eq('inspector_id', userId);
                   const { data: idRows, error: idErr } = await idQuery;
                   if (idErr) throw idErr;
