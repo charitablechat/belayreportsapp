@@ -28,7 +28,14 @@ interface PhotoCaptureProps {
 
 // Timeout constants — reduced to prevent long hangs
 const PER_FILE_TIMEOUT = 15000; // 15s per file (down from 30s)
+// Sprint 1 / C2.4: HEIC decode budget is 25s on iOS + 1 retry = up to 50s
+// (heic-converter.ts:74-86). The standard PER_FILE_TIMEOUT was too tight and
+// would trip mid-HEIC-conversion, surfacing a misleading
+// "Photo format not supported" toast for what was actually a transient
+// timeout. 60s gives ~10s headroom over the worst-case heic-converter budget.
+const PER_FILE_TIMEOUT_HEIC = 60000;
 const MAX_SAFETY_TIMEOUT = 45000; // 45s cap regardless of file count
+const MAX_SAFETY_TIMEOUT_HEIC = 180000; // 3min cap when any HEIC is in the batch
 
 export default function PhotoCapture({ 
   inspectionId, 
@@ -313,8 +320,21 @@ export default function PhotoCapture({
     triggerHaptic('light');
     setUploading(true);
 
-    // Cap safety timeout at MAX_SAFETY_TIMEOUT
-    const safetyTimeoutMs = Math.min(MAX_SAFETY_TIMEOUT, Math.max(15000, files.length * PER_FILE_TIMEOUT));
+    // Sprint 1 / C2.4: detect HEIC-shaped files in the batch and tune both the
+    // per-file race and the outer safety timeout accordingly. We can't probe
+    // magic bytes here (that's async and would block the upload kick-off), so
+    // we use the cheap synchronous type/extension check; the worst case is a
+    // mislabelled-as-jpeg HEIC slipping through, which then gets the
+    // shorter budget — but the per-record post-decode `isHeicFile` re-check
+    // at line 158 catches the mislabelled survivor and surfaces a clean
+    // unsupported-format error rather than a false timeout.
+    const fileArrayInit = Array.from(files);
+    const batchHasHeic = fileArrayInit.some(isHeicFile);
+    const perFileTimeout = batchHasHeic ? PER_FILE_TIMEOUT_HEIC : PER_FILE_TIMEOUT;
+    const safetyCap = batchHasHeic ? MAX_SAFETY_TIMEOUT_HEIC : MAX_SAFETY_TIMEOUT;
+
+    // Cap safety timeout at safetyCap
+    const safetyTimeoutMs = Math.min(safetyCap, Math.max(15000, fileArrayInit.length * perFileTimeout));
     const safetyTimeout = setTimeout(() => {
       if (uploadMutexRef.current) {
         console.warn('[PhotoCapture] Safety timeout reached - force releasing mutex');
@@ -330,7 +350,7 @@ export default function PhotoCapture({
     let errorCount = 0;
 
     try {
-      const fileArray = Array.from(files);
+      const fileArray = fileArrayInit;
       for (let i = 0; i < fileArray.length; i++) {
         // Check cancel flag
         if (cancelledRef.current) {
@@ -344,10 +364,14 @@ export default function PhotoCapture({
         if (i > 0) await new Promise(r => setTimeout(r, 0));
 
         try {
+          // Sprint 1 / C2.4: per-file timeout is HEIC-aware. HEIC files use
+          // a 60s budget to cover the heic-converter's iOS retry path
+          // (25s × 2 = 50s + 10s headroom). Non-HEIC stays at 15s.
+          const fileBudget = isHeicFile(fileArray[i]) ? PER_FILE_TIMEOUT_HEIC : PER_FILE_TIMEOUT;
           const success = await Promise.race([
             processSingleFile(fileArray[i]),
             new Promise<boolean>((_, reject) =>
-              setTimeout(() => reject(new Error('Per-file timeout')), PER_FILE_TIMEOUT)
+              setTimeout(() => reject(new Error('Per-file timeout')), fileBudget)
             )
           ]);
           
