@@ -419,10 +419,8 @@ serve(async (req) => {
       ziplinesRowCount > 0 &&
       systemsRowCount <= COMBINE_THRESHOLD &&
       ziplinesRowCount <= COMBINE_THRESHOLD;
-    // Standards must always start on its own page (universal rule: section headers
-    // never start mid-page). Disable combined equipment+standards layout.
-    const canCombineEquipmentStandards = false;
-    void equipmentRowCount; void standardsRowCount;
+    const canCombineEquipmentStandards =
+      equipmentRowCount > 0 && standardsRowCount > 0 && equipmentRowCount <= 6 && standardsRowCount <= 6;
 
     // Calculate page count with consolidation
     // Pages: Cover + Reminders+Categories(combined) + Results Key = 3 base pages
@@ -623,19 +621,7 @@ serve(async (req) => {
       padding: 6px 10px;
       font-weight: bold;
       line-height: 1.4;
-      /* Universal: every section header starts at the top of a new page */
-      page-break-before: always;
-      break-before: page;
       page-break-after: avoid;
-      break-after: avoid;
-      page-break-inside: avoid;
-      break-inside: avoid;
-    }
-    /* Only exempt the very first h2 of the entire document to avoid a blank leading page */
-    .page:first-of-type .page-content > h2:first-child,
-    .page:first-of-type > h2:first-child {
-      page-break-before: auto;
-      break-before: auto;
     }
     
     /* Major sections that should start on new page if needed */

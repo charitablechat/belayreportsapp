@@ -191,21 +191,6 @@ serve(async (req) => {
       background: #ffffff;
       padding: 10px;
     }
-
-    /* Universal: every section header starts at the top of a new page */
-    h2 {
-      page-break-before: always;
-      break-before: page;
-      page-break-after: avoid;
-      break-after: avoid;
-      page-break-inside: avoid;
-      break-inside: avoid;
-    }
-    .page:first-of-type .page-content > h2:first-child,
-    .page:first-of-type > h2:first-child {
-      page-break-before: auto;
-      break-before: auto;
-    }
     
     /* 
      * Page structure - NO FIXED HEIGHTS, NO OVERFLOW HIDDEN
