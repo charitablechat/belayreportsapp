@@ -1,32 +1,46 @@
-## Goal
-Universal rule across all PDF reports: a major section header (h2) should never start midway through a page. If it would, it must move to the top of the next page. Specific symptom: ACCT Operations Standards header appearing low on the Equipment page.
+## Problem
 
-## Changes
+Even after the previous tightening pass, blue `<h2>` headers are still landing partway down a PDF page (visible in the Solid Rock Camps PDF: "INSPECTION RESULTS KEY", "ACCT OPERATIONS STANDARDS", and the second table batch under "SYSTEMS - OPERATING SYSTEMS"). The current `page-break-after: avoid` / `page-break-inside: avoid` rule on `h2` only prevents the header itself from being split — it does not push the header to a new page when it would otherwise begin mid-sheet.
 
-### 1. Inspection PDF (`supabase/functions/generate-inspection-html/index.ts`)
-- Disable the equipment+standards page-combination so Standards always starts on its own page:
-  - Force `canCombineEquipmentStandards = false` and emit Equipment + Standards as separate `<div class="page">` blocks (existing separate branch already exists).
-  - Update `pageCount` math accordingly.
-- Add a universal CSS rule applied to all section headers (`h2`, `.combined-section > h2`, `.page-content > h2`):
-  ```css
-  h2 { break-before: auto; page-break-after: avoid; break-after: avoid; }
-  .section-divider + .combined-section { break-before: page; page-break-before: always; }
-  ```
-- For any future combined-section pattern, apply `page-break-before: always` to the second `.combined-section` so its header lands at the top of a new sheet.
+## Fix
 
-### 2. Training PDF (`supabase/functions/generate-training-html/index.ts`)
-Add the same universal h2 / section-break rule so any section header that would land mid-page is pushed to the next page.
+Apply a single universal CSS rule in each of the 3 HTML/PDF generators: every `<h2>` starts a fresh printed page. Acceptable trade-off per user — "some white space is okay, too much white space is not" — and matches the request exactly: "If they fall in the middle of a page, I want them to start on a new page instead."
 
-### 3. Daily Assessment PDF (`supabase/functions/generate-daily-assessment-html/index.ts`)
-Same universal rule.
+### Files to change
 
-## Universal mechanism
-The CSS rule is applied to the shared `h2` selector inside `.page-content`. Combined with `page-break-after: avoid` on preceding elements where appropriate, this guarantees a section header starts on a fresh page if there isn't enough room for it (and a few lines of body) on the current page.
+1. **`supabase/functions/generate-inspection-html/index.ts`** (around the existing `h2 { ... }` block at ~line 618):
+   ```css
+   h2 {
+     /* existing styling */
+     page-break-before: always;
+     break-before: page;
+     page-break-after: avoid;
+     break-after: avoid;
+     page-break-inside: avoid;
+     break-inside: avoid;
+   }
+   /* Suppress the forced break on the very first h2 of the document
+      so we don't get a blank leading page. */
+   .page:first-of-type h2:first-of-type,
+   .page-content > h2:first-child {
+     page-break-before: auto;
+     break-before: auto;
+   }
+   ```
 
-We keep prior tightened margins from the previous pass — only page-break behavior changes.
+2. **`supabase/functions/generate-training-html/index.ts`** — same rule appended to its style block.
 
-## Verification
-After deploy, regenerate the Solid Rock Camps inspection report and confirm:
-- Equipment ends on its page; ACCT Operations Standards starts at the top of the next page.
-- No empty pages and no excessive white space elsewhere.
-- Training and Daily Assessment reports still render normally.
+3. **`supabase/functions/generate-daily-assessment-html/index.ts`** — same rule appended.
+
+### Side-effects considered
+
+- Pages that intentionally combine two h2 sections (e.g. `REMINDERS AND REQUIREMENTS` + `INSPECTION CATEGORIES` on page 2 of inspection reports) will now split into two pages. This is consistent with the rule the user asked for and removes the current orphan-header problem everywhere with one change.
+- The `:first-child` override ensures the very first heading per page-wrapper does not introduce an extra blank page in front of itself.
+- Existing `h2.new-page-section` and the `canCombineEquipmentStandards = false` change from the previous pass remain compatible (no-ops under the stronger universal rule).
+
+### Deploy + verify
+
+After edits, deploy the 3 edge functions and regenerate the Solid Rock Camps inspection PDF. Confirm:
+- "INSPECTION RESULTS KEY", "SYSTEMS - OPERATING SYSTEMS" (each table batch), "ACCT OPERATIONS STANDARDS", "EQUIPMENT INSPECTION", "INSPECTION SUMMARY", "INSPECTION PHOTOS" all appear at the top of a printed page.
+- No blank leading page.
+- Training and Daily Assessment PDFs still render normally.
