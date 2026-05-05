@@ -70,10 +70,14 @@ export function useUnsavedChanges({
   const saveAndLeave = useCallback(async (): Promise<{ ok: boolean; error?: unknown }> => {
     if (onSaveAndLeave) {
       try {
-        await Promise.race([
-          onSaveAndLeave(),
-          new Promise((_, reject) => setTimeout(() => reject(new Error('Save timeout')), 5000)),
-        ]);
+        // Sprint 1 / C1.1: no inner timeout race here. The wrapped
+        // `performSave` already owns a 30s deadlock-recovery timer
+        // (InspectionForm.tsx, TrainingForm.tsx, DailyAssessmentForm.tsx) and
+        // the dialog renders an "Saving…" state for UI feedback. A 5s ceiling
+        // here was shorter than a single Supabase round-trip on flaky cell
+        // and aborted otherwise-successful saves with a misleading "Save
+        // timeout" surface.
+        await onSaveAndLeave();
       } catch (e) {
         // Gap 2.1: do NOT navigate away on save failure — that would silently
         // discard the user's data. Surface the failure to the dialog so it can

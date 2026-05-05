@@ -40,6 +40,7 @@ import { RequireAuth } from "@/components/auth/RequireAuth";
 import { InstallBanner } from "@/components/pwa/InstallBanner";
 import { UpdateNotification } from "@/components/pwa/UpdateNotification";
 import { StaleVersionBanner } from "@/components/pwa/StaleVersionBanner";
+import { NetworkStatusBanner } from "@/components/pwa/NetworkStatusBanner";
 import { InstallSuccessNotification } from "@/components/pwa/InstallSuccessNotification";
 import { MinVersionEnforcer } from "@/components/pwa/MinVersionEnforcer";
 import { AuthenticatedHeader } from "@/components/AuthenticatedHeader";
@@ -178,6 +179,7 @@ const RootLayout = () => {
             <InstallBanner />
             <UpdateNotification />
             <StaleVersionBanner />
+            <NetworkStatusBanner />
             <InstallSuccessNotification />
             <MinVersionEnforcer />
             <AuthenticatedHeader />
