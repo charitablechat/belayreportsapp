@@ -631,11 +631,9 @@ serve(async (req) => {
       page-break-inside: avoid;
       break-inside: avoid;
     }
-    /* Suppress forced page break for the first h2 of each .page wrapper
-       to avoid blank leading pages */
-    .page-content > h2:first-child,
-    .page-content > *:first-child + h2,
-    .page > h2:first-child {
+    /* Only exempt the very first h2 of the entire document to avoid a blank leading page */
+    .page:first-of-type .page-content > h2:first-child,
+    .page:first-of-type > h2:first-child {
       page-break-before: auto;
       break-before: auto;
     }

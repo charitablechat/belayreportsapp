@@ -245,8 +245,8 @@ serve(async (req) => {
       page-break-inside: avoid;
       break-inside: avoid;
     }
-    .page-content > h2:first-child,
-    .page > h2:first-child {
+    .page:first-of-type .page-content > h2:first-child,
+    .page:first-of-type > h2:first-child {
       page-break-before: auto;
       break-before: auto;
     }
