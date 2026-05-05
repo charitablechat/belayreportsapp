@@ -13,6 +13,10 @@ on:
   pull_request:
   push:
     branches: [main]
+  # Allow manually re-enabling the auth-gated e2e suite once a separate
+  # Supabase project has been provisioned (so spec runs can no longer
+  # leak `[E2E DEVIN]` rows into production).
+  workflow_dispatch:
 
 # Cancel previous runs on the same PR when a new commit lands (saves CI
 # minutes on rapid feature-branch pushes), but NEVER cancel an in-progress
@@ -148,6 +152,20 @@ jobs:
     # 12 min covers worst-case cold-cache build (~100s) + Chromium download
     # (~60s) + 3 specs (~120s with retries) with headroom.
     timeout-minutes: 12
+    # The auth-gated specs (login-and-dashboard, offline-edit-reconcile,
+    # cloud-backup-snapshot-upload, inspection-photo-upload-and-sync,
+    # admin-pre-edit-override) point at the SAME Supabase project as
+    # production because no separate e2e project has been provisioned
+    # yet. Each spec creates `[E2E DEVIN] <ts>` rows under a dedicated
+    # test-user account; when a spec fails before its post-flight
+    # cleanup, the rows linger and surface to admin users whose RLS
+    # view spans all inspectors. Until we provision a staging Supabase
+    # project (and repoint E2E_TEST_* / E2E_ADMIN_* at it) we run the
+    # auth-gated suite manually via `workflow_dispatch` only — keeping
+    # the unauthenticated `tests/e2e/smoke/**` scope on every push so
+    # the build / preview-server boot is still deterministically
+    # exercised.
+    if: ${{ github.event_name == 'workflow_dispatch' }}
     steps:
       - uses: actions/checkout@v4
       - uses: oven-sh/setup-bun@v2

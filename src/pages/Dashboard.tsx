@@ -54,7 +54,7 @@ import { shouldPreserveLocalRecord } from "@/lib/local-data-guards";
 import { reconcileServerDeletions } from "@/lib/reconcile-server-deletions";
 import { ContactDeveloperSheet } from "@/components/ContactDeveloperSheet";
 import { onSyncComplete, isSyncInProgress, consumePendingDashboardRefresh, consumeDashboardStaleTimestamp } from "@/lib/sync-events";
-import { E2E_INSPECTION_MARKER_COLUMNS, E2E_MARKER_PREFIX, filterOutE2EFixtures } from "@/lib/e2e-fixture-filter";
+import { E2E_INSPECTION_MARKER_COLUMNS, E2E_MARKER_PREFIX, filterOutE2EFixtures, isE2EFixtureRecord } from "@/lib/e2e-fixture-filter";
 import { InspectionsEmptyState, TrainingsEmptyState, DailyAssessmentsEmptyState } from "@/components/EmptyState";
 import { getUserWithCache, getSuperAdminStatusWithCache, invalidateSuperAdminCache, ensureValidSession, getOfflineUserId, getAdminCacheKey } from "@/lib/cached-auth";
 /* Holiday Theme Components - DISABLED */
@@ -663,6 +663,15 @@ export default function Dashboard() {
         if (!row?.id) return;
         if (row.deleted_at) {
           setInspections((prev) => removeRow(prev, row.id));
+          return;
+        }
+        // Drop e2e fixture residue (rows authored by Playwright that
+        // leaked because a spec failed before its post-flight cleanup).
+        // The server-side `.not.ilike` on the initial fetch hides them
+        // from the bulk read, but realtime INSERT/UPDATE events bypass
+        // that filter and were causing flicker between filtered and
+        // unfiltered states for admin users.
+        if (isE2EFixtureRecord(row, E2E_INSPECTION_MARKER_COLUMNS)) {
           return;
         }
         setInspections((prev) => mergeRow(prev, row));
