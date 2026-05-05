@@ -9,6 +9,7 @@ import { savePhotoReceipt } from "@/lib/photo-receipts";
 import { useNetworkStatus } from "@/hooks/useNetworkStatus";
 import { triggerHaptic } from "@/lib/haptics";
 import { compressImage } from "@/lib/image-compression";
+import { acquireCompressionSlot } from "@/lib/photo-upload-pool";
 import { isHeicFile, isHeicBlob } from "@/lib/heic-converter";
 import { extractFileExt } from "@/lib/file-ext";
 import { validateFile } from "@/components/photo-capture-validation";
@@ -146,12 +147,22 @@ export default function PhotoCapture({
       (!workingFile.type && /\.(jpe?g|png|webp|heic|heif)$/i.test(workingFile.name));
     try {
       if (isImageByTypeOrName) {
-        processedFile = await compressImage(workingFile, {
-          maxWidth: 1920,
-          maxHeight: 1920,
-          quality: 0.85,
-          maxSizeMB: 3,
-        });
+        // Audit C2.1: throttle global concurrent compressions across all
+        // <PhotoCapture /> instances (one per inspection section). Without
+        // this, tapping "Camera" in N sections runs N compressions in
+        // parallel — each holding tens of MB of bitmap + canvas memory —
+        // which OOMs low-RAM Android tablets.
+        const releaseCompressionSlot = await acquireCompressionSlot();
+        try {
+          processedFile = await compressImage(workingFile, {
+            maxWidth: 1920,
+            maxHeight: 1920,
+            quality: 0.85,
+            maxSizeMB: 3,
+          });
+        } finally {
+          releaseCompressionSlot();
+        }
         if (import.meta.env.DEV) {
           const savedKB = ((file.size - processedFile.size) / 1024).toFixed(1);
           console.log(`[PhotoCapture] Compressed ${file.name}: saved ${savedKB}KB`);
