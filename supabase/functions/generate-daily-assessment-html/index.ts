@@ -236,12 +236,19 @@ serve(async (req) => {
       padding: 10px;
     }
 
-    /* Universal: section headers never start mid-page; push to next page if needed. */
+    /* Universal: every section header starts at the top of a new page */
     h2 {
+      page-break-before: always;
+      break-before: page;
       page-break-after: avoid;
       break-after: avoid;
       page-break-inside: avoid;
       break-inside: avoid;
+    }
+    .page-content > h2:first-child,
+    .page > h2:first-child {
+      page-break-before: auto;
+      break-before: auto;
     }
 
     /* 
