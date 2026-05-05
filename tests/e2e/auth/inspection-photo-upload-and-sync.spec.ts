@@ -1,5 +1,6 @@
 import { expect, test } from '@playwright/test';
 import { signIn } from '../_fixtures/auth';
+import { requireE2EAuthAllowed } from '../_fixtures/safety';
 import {
   MARKER_PREFIX,
   captureSupabaseSession,
@@ -80,6 +81,7 @@ const TINY_JPEG_BASE64 =
   'AAAAAAAAAP/EABQRAQAAAAAAAAAAAAAAAAAAAAD/2gAMAwEAAhEDEQA/AL+AB//Z';
 
 test.describe('inspection photo: upload + sync golden path', () => {
+  requireE2EAuthAllowed();
   test.skip(
     !EMAIL || !PASSWORD,
     'Skipping inspection-photo e2e: set E2E_TEST_EMAIL and E2E_TEST_PASSWORD to run.'
