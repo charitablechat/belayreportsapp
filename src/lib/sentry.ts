@@ -53,11 +53,51 @@ export async function initSentry(): Promise<void> {
   }
 }
 
+/** Sentry severity levels we forward. `error` is the SDK default. */
+export type CaptureLevel = 'fatal' | 'error' | 'warning' | 'info' | 'debug';
+
+export interface CaptureOptions {
+  /**
+   * Severity hint forwarded to `Sentry.captureException`. Defaults to
+   * `error`. Use `warning` for handled / recoverable failures (e.g.
+   * `Transaction failed after N/M steps. Rollback: successful` — the
+   * system already rolled back cleanly and the next periodic sync
+   * tick will retry, so the inspector loses nothing) so they don't
+   * trigger high-priority alerts in the user's inbox.
+   */
+  level?: CaptureLevel;
+  /**
+   * Optional fingerprint for issue grouping. Pass an array of stable
+   * tokens (e.g. `['atomic-sync', 'rollback-successful', 'upsert:inspection_ziplines']`)
+   * so all step-timeout rollbacks for the same step name collapse into
+   * a single Sentry issue you can review weekly, instead of one issue
+   * per occurrence. The literal `'{{default}}'` token expands to the
+   * SDK's default fingerprint and can be appended to keep
+   * stack-trace-based de-duplication alongside the manual grouping.
+   */
+  fingerprint?: string[];
+}
+
 /** Best-effort capture; never throws. No-op until initSentry() resolves. */
-export function captureException(err: unknown, ctx?: Record<string, unknown>): void {
+export function captureException(
+  err: unknown,
+  ctx?: Record<string, unknown>,
+  options?: CaptureOptions,
+): void {
   if (!sentryModule) return;
   try {
-    sentryModule.captureException(err, ctx ? { extra: ctx } : undefined);
+    const captureCtx: Record<string, unknown> = {};
+    if (ctx && Object.keys(ctx).length > 0) captureCtx.extra = ctx;
+    if (options?.level) captureCtx.level = options.level;
+    if (options?.fingerprint && options.fingerprint.length > 0) {
+      captureCtx.fingerprint = options.fingerprint;
+    }
+    sentryModule.captureException(
+      err,
+      Object.keys(captureCtx).length > 0
+        ? (captureCtx as Parameters<typeof sentryModule.captureException>[1])
+        : undefined,
+    );
   } catch {
     /* ignore */
   }

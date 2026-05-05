@@ -79,10 +79,10 @@ describe("Mode 5 — desktop retry budget bumped to 3 at all three sync sites", 
     expect(occurrences).toBe(3);
   });
 
-  it("declares transientMaxRetries = 3 at all 3 sites (parity across inspection / training / assessment)", () => {
+  it("declares transientMaxRetries = 5 at all 3 sites (Mode 13C — widened from 3 → 5 for ~30-60s real-world transient outages)", () => {
     const occurrences = countOccurrences(
       ATOMIC_SYNC_SRC,
-      "const transientMaxRetries = 3"
+      "const transientMaxRetries = 5"
     );
     expect(occurrences).toBe(3);
   });

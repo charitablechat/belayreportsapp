@@ -61,7 +61,28 @@ describe('retryingFetch', () => {
 
       await expect(retryingFetch('https://example.com/data')).rejects.toBe(err);
 
-      expect(fetchSpy).toHaveBeenCalledTimes(3);
+      // Mode 13A: budget widened from 3 → 5 attempts so a ~30-60s outage
+      // (real-world flaky cell handoff, CI runner network blip) doesn't
+      // exhaust before the underlying network clears.
+      expect(fetchSpy).toHaveBeenCalledTimes(5);
+    });
+
+    it('Mode 13A: recovers when the outage clears within the widened 5-attempt budget', async () => {
+      // Simulates a longer transient outage that the previous 3-attempt
+      // budget would have terminal-failed on.
+      const ok = new Response('ok', { status: 200 });
+      const fetchSpy = vi.fn<typeof fetch>();
+      fetchSpy
+        .mockRejectedValueOnce(new TypeError('Failed to fetch'))
+        .mockRejectedValueOnce(new TypeError('Failed to fetch'))
+        .mockRejectedValueOnce(new TypeError('Failed to fetch'))
+        .mockResolvedValueOnce(ok);
+      globalThis.fetch = fetchSpy as unknown as typeof fetch;
+
+      const res = await retryingFetch('https://example.com/data');
+
+      expect(res).toBe(ok);
+      expect(fetchSpy).toHaveBeenCalledTimes(4);
     });
 
     it('does NOT retry on non-network errors (e.g. AbortError)', async () => {

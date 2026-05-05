@@ -27,9 +27,16 @@
  *
  * - **Bounded retry budget** with jittered exponential backoff so a
  *   prolonged outage doesn't turn a single user action into a 30s
- *   stall. Total worst-case latency for the slow path is roughly
- *   250ms + 500ms + 1000ms ≈ 1.75s on top of the original failed
- *   attempts.
+ *   stall. Mode 13A widened the budget from 3 attempts to 5 to cover
+ *   the longer end of real-world cell-handoff and CI-runner network
+ *   blips (PR #129's CI run-25297867x showed five distinct supabase.co
+ *   callers all hitting `Failed to fetch` within a single ~40s window —
+ *   the previous 3×~250ms ceiling exhausted faster than the underlying
+ *   outage cleared). Total worst-case latency for the slow path is
+ *   now ~250 + 500 + 1000 + 2000 + 4000 ≈ 7.75s on top of the original
+ *   failed attempt; jitter widened to ±250ms so concurrent callers
+ *   don't synchronise their retry storms against the same recovering
+ *   endpoint.
  *
  * Read paths benefiting from this layer (the ones we observed flake
  * most often in CI):
@@ -41,9 +48,15 @@
 
 const IDEMPOTENT_METHODS = new Set(['GET', 'HEAD', 'OPTIONS']);
 
-const MAX_ATTEMPTS = 3;       // 1 initial + 2 retries
-const BASE_DELAY_MS = 250;    // first retry waits ~250-350ms
-const MAX_JITTER_MS = 100;
+// Mode 13A: 3 → 5 attempts. The previous ~1.75s ceiling was sized for a
+// "single transient blip in an otherwise-healthy connection" but in CI
+// (and on flaky cell handoffs in production) we routinely see ~30-60s
+// outages where every supabase.co call dies in parallel. Widening to 5
+// attempts brings the worst-case slow path to ~7.75s while keeping the
+// healthy path unchanged (first attempt succeeds → zero overhead).
+const MAX_ATTEMPTS = 5;       // 1 initial + 4 retries
+const BASE_DELAY_MS = 250;    // first retry waits ~250-500ms
+const MAX_JITTER_MS = 250;
 
 function resolveMethod(input: RequestInfo | URL, init?: RequestInit): string {
   if (init?.method) return init.method.toUpperCase();
