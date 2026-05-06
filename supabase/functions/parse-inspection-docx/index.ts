@@ -35,10 +35,17 @@ serve(async (req) => {
     }
 
     const contentType = req.headers.get("content-type") || "";
-    let fileBuffer: ArrayBuffer;
+    let fileBuffer: ArrayBuffer | null = null;
     let fileName = "document";
+    let extractedText = "";
 
-    if (contentType.includes("multipart/form-data")) {
+    if (contentType.includes("application/json")) {
+      // Fast path: client extracted text in the browser. No file size limit.
+      const body = await req.json();
+      fileName = body.fileName || "document";
+      extractedText = typeof body.text === "string" ? body.text : "";
+      console.log(`[parse-inspection-docx] JSON path: ${extractedText.length} chars from ${fileName}`);
+    } else if (contentType.includes("multipart/form-data")) {
       const formData = await req.formData();
       const file = formData.get("file") as File | null;
       if (!file) {
@@ -55,25 +62,26 @@ serve(async (req) => {
     }
 
     const ext = fileName.toLowerCase().split(".").pop();
-    let extractedText = "";
 
-    if (ext === "docx") {
-      const result = await mammoth.extractRawText({ buffer: Buffer.from(fileBuffer) });
-      extractedText = result.value;
-    } else if (ext === "doc") {
-      const extractor = new WordExtractor();
-      const doc = await extractor.extract(Buffer.from(fileBuffer));
-      extractedText = doc.getBody();
-    } else if (ext === "pdf") {
-      const data = await pdfParse(Buffer.from(fileBuffer));
-      extractedText = data.text;
-    } else if (ext === "md" || ext === "markdown") {
-      extractedText = extractTextFromMarkdown(fileBuffer);
-    } else {
-      return new Response(
-        JSON.stringify({ error: "Unsupported file type. Please upload a .docx, .doc, .pdf, or .md file." }),
-        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-      );
+    if (!extractedText && fileBuffer) {
+      if (ext === "docx") {
+        const result = await mammoth.extractRawText({ buffer: Buffer.from(fileBuffer) });
+        extractedText = result.value;
+      } else if (ext === "doc") {
+        const extractor = new WordExtractor();
+        const doc = await extractor.extract(Buffer.from(fileBuffer));
+        extractedText = doc.getBody();
+      } else if (ext === "pdf") {
+        const data = await pdfParse(Buffer.from(fileBuffer));
+        extractedText = data.text;
+      } else if (ext === "md" || ext === "markdown") {
+        extractedText = extractTextFromMarkdown(fileBuffer);
+      } else {
+        return new Response(
+          JSON.stringify({ error: "Unsupported file type. Please upload a .docx, .doc, .pdf, or .md file." }),
+          { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+      }
     }
 
     if (!extractedText || extractedText.length < 50) {

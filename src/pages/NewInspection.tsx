@@ -202,13 +202,8 @@ export default function NewInspection() {
       return;
     }
 
-    if (file.size > 20 * 1024 * 1024) {
-      toast.error("File too large", { description: "Maximum file size is 20 MB." });
-      return;
-    }
-
     if (!navigator.onLine) {
-      toast.error("You're offline", { description: "DOCX import requires an internet connection. Please try again when online." });
+      toast.error("You're offline", { description: "Document import requires an internet connection. Please try again when online." });
       return;
     }
 
@@ -216,8 +211,7 @@ export default function NewInspection() {
     triggerHaptic('medium');
 
     try {
-      const formPayload = new FormData();
-      formPayload.append("file", file);
+      const { extractTextFromFile, isClientExtractable } = await import("@/lib/import-text-extractor");
 
       const { data: sessionData } = await supabase.auth.getSession();
       const token = sessionData?.session?.access_token;
@@ -225,20 +219,37 @@ export default function NewInspection() {
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), 120_000);
 
+      const url = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/parse-inspection-docx`;
+      const baseHeaders: Record<string, string> = {
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        apikey: import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY,
+      };
+
       let res: Response;
       try {
-        res = await fetch(
-          `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/parse-inspection-docx`,
-          {
+        if (isClientExtractable(ext!)) {
+          // Fast path: extract text in the browser → send JSON. No file size limit.
+          const text = await extractTextFromFile(file);
+          res = await fetch(url, {
             method: "POST",
             signal: controller.signal,
-            headers: {
-              ...(token ? { Authorization: `Bearer ${token}` } : {}),
-              apikey: import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY,
-            },
-            body: formPayload,
+            headers: { ...baseHeaders, "Content-Type": "application/json" },
+            body: JSON.stringify({ fileName: file.name, text }),
+          });
+        } else {
+          // Legacy .doc fallback: server-side extraction. Keep modest size guard.
+          if (file.size > 20 * 1024 * 1024) {
+            throw new Error("Legacy .doc files must be under 20 MB. Please save as .docx and try again.");
           }
-        );
+          const formPayload = new FormData();
+          formPayload.append("file", file);
+          res = await fetch(url, {
+            method: "POST",
+            signal: controller.signal,
+            headers: baseHeaders,
+            body: formPayload,
+          });
+        }
       } catch (fetchErr: any) {
         clearTimeout(timeoutId);
         if (fetchErr.name === "AbortError") {
@@ -646,7 +657,7 @@ export default function NewInspection() {
                     Import from Previous Report
                   </p>
                   <p className="text-xs text-muted-foreground">
-                    Drop a .docx, .doc, .pdf, or .md file here (Google Docs: export as .docx)
+                    Drop a .docx, .pdf, or .md file (any size — only text is read; photos are ignored)
                   </p>
                 </div>
               )}
