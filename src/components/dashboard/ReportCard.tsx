@@ -72,6 +72,14 @@ export function ReportCard({ report, type, onDelete, onClick, getStatusBadge, co
   const { sparkles, triggerSparkles, handleMouseMove } = useClickAndHoverSparkles();
   const isInspection = type === 'inspection';
   const isDaily = type === 'daily';
+
+  // F3: Surface pending-photo state on the per-card sync badge so a green
+  // "Synced ✓" never appears while photos are still uploading. The hook
+  // preserves last-known counts on transient IDB read failures (S11).
+  const { status: photoStatus } = useUnsyncedPhotos();
+  const pendingPhotoCount = isInspection
+    ? (photoStatus.photosByInspection?.[report.id] ?? 0)
+    : 0;
   
   const getReportDate = () => {
     if (isInspection) return report.inspection_date;
