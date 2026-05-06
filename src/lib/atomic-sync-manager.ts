@@ -1504,15 +1504,16 @@ export async function syncInspectionAtomic(inspectionId: string, preValidatedUse
       import('@/lib/log-error'),
       import('@/lib/sync-error-severity'),
     ])
-      .then(([{ logError }, { isRecoverableRollback, rollbackFingerprint }]) => {
-        const recoverable = isRecoverableRollback(error);
+      .then(([{ logError }, { classifyAtomicSyncError }]) => {
+        const { level, fingerprint } = classifyAtomicSyncError(
+          'atomic-sync.syncInspection',
+          error,
+        );
         logError(error, {
           scope: 'atomic-sync.syncInspection',
           extra: { inspectionId },
-          level: recoverable ? 'warning' : 'error',
-          fingerprint: recoverable
-            ? rollbackFingerprint('atomic-sync.syncInspection', error)
-            : undefined,
+          level,
+          fingerprint,
         });
       })
       .catch(() => { /* swallow — logging must never throw */ });
@@ -2569,15 +2570,16 @@ export async function syncTrainingAtomic(trainingId: string, preValidatedUser?: 
       import('@/lib/log-error'),
       import('@/lib/sync-error-severity'),
     ])
-      .then(([{ logError }, { isRecoverableRollback, rollbackFingerprint }]) => {
-        const recoverable = isRecoverableRollback(error);
+      .then(([{ logError }, { classifyAtomicSyncError }]) => {
+        const { level, fingerprint } = classifyAtomicSyncError(
+          'atomic-sync.syncTraining',
+          error,
+        );
         logError(error, {
           scope: 'atomic-sync.syncTraining',
           extra: { trainingId },
-          level: recoverable ? 'warning' : 'error',
-          fingerprint: recoverable
-            ? rollbackFingerprint('atomic-sync.syncTraining', error)
-            : undefined,
+          level,
+          fingerprint,
         });
       })
       .catch(() => { /* swallow — logging must never throw */ });
@@ -3470,15 +3472,16 @@ export async function syncDailyAssessmentAtomic(assessmentId: string, preValidat
       import('@/lib/log-error'),
       import('@/lib/sync-error-severity'),
     ])
-      .then(([{ logError }, { isRecoverableRollback, rollbackFingerprint }]) => {
-        const recoverable = isRecoverableRollback(error);
+      .then(([{ logError }, { classifyAtomicSyncError }]) => {
+        const { level, fingerprint } = classifyAtomicSyncError(
+          'atomic-sync.syncDailyAssessment',
+          error,
+        );
         logError(error, {
           scope: 'atomic-sync.syncDailyAssessment',
           extra: { assessmentId },
-          level: recoverable ? 'warning' : 'error',
-          fingerprint: recoverable
-            ? rollbackFingerprint('atomic-sync.syncDailyAssessment', error)
-            : undefined,
+          level,
+          fingerprint,
         });
       })
       .catch(() => { /* swallow — logging must never throw */ });
