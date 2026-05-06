@@ -1830,24 +1830,19 @@ async function withIndexedDBSaveBoundary(
       ? emergencyLocalStorageFallback(operationName, parentDataForFallback)
       : false;
 
-    // Show toast once per session like the silent boundary
+    // Only surface a toast when the emergency localStorage fallback failed.
+    // The "data was saved to backup storage" path is intentionally silent —
+    // it's recoverable and used to spam users with a scary banner on every save.
     try {
       const cbWarningKey = 'circuit-breaker-warning-shown';
-      if (typeof sessionStorage !== 'undefined' && !sessionStorage.getItem(cbWarningKey)) {
+      if (!fallbackSucceeded && typeof sessionStorage !== 'undefined' && !sessionStorage.getItem(cbWarningKey)) {
         sessionStorage.setItem(cbWarningKey, 'true');
         import('@/hooks/use-toast').then(({ toast }) => {
-          if (fallbackSucceeded) {
-            toast({
-              title: 'Using backup storage',
-              description: "Your changes are saved locally. They'll sync when storage recovers.",
-            });
-          } else {
-            toast({
-              title: 'Storage unavailable',
-              description: 'Your changes are NOT saved. Stay on this page until storage recovers.',
-              variant: 'destructive',
-            });
-          }
+          toast({
+            title: 'Storage unavailable',
+            description: 'Your changes are NOT saved. Stay on this page until storage recovers.',
+            variant: 'destructive',
+          });
         }).catch(() => {});
         const resetTime = getCircuitBreakerResetTime(store);
         setTimeout(() => sessionStorage.removeItem(cbWarningKey), resetTime + 1000);
