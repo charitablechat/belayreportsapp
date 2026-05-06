@@ -626,15 +626,15 @@ export default function DailyAssessmentForm() {
           const { getCircuitBreakerStatus } = await import('@/lib/offline-storage');
           const idbDegraded = getCircuitBreakerStatus().open;
           if (serverInconclusive || idbDegraded) {
-            console.warn('[DailyAssessmentForm] Skipping not-found redirect — inconclusive lookup', { serverInconclusive, idbDegraded });
-          } else {
-            console.warn('[DailyAssessmentForm] Assessment not found:', id);
-            toast.error("Assessment not found", {
-              description: "This assessment may have been deleted or doesn't exist.",
-            });
-            navigate('/dashboard');
-            return;
+            console.warn('[DailyAssessmentForm] Skipping not-found redirect — inconclusive lookup; staying mounted', { serverInconclusive, idbDegraded, id });
+            return; // keep form mounted; next refetch/online recovery will reconcile
           }
+          console.warn('[DailyAssessmentForm] Assessment not found:', id);
+          toast.error("Assessment not found", {
+            description: "This assessment may have been deleted or doesn't exist.",
+          });
+          navigate('/dashboard');
+          return;
         }
 
         if (assessmentError) throw assessmentError;
