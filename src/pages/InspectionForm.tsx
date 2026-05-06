@@ -8,7 +8,7 @@ import {
 } from "@/components/ui/alert-dialog";
 import { toast } from "@/components/ui/sonner";
 import { addSaveNotification, addSyncNotification } from "@/lib/notification-center";
-import { onSyncComplete, markPendingDashboardRefresh, markDashboardStaleTimestamp, registerActiveFormRecord, unregisterActiveFormRecord, onPendingRemoteUpdate } from "@/lib/sync-events";
+import { onSyncComplete, markPendingDashboardRefresh, markDashboardStaleTimestamp, registerActiveFormRecord, unregisterActiveFormRecord, onPendingRemoteUpdate, isRecentSelfWrite } from "@/lib/sync-events";
 import { useFormRecordRealtime } from "@/hooks/useFormRecordRealtime";
 import { useNavigate, useParams } from "react-router-dom";
 import { goBack } from "@/lib/navigation";
@@ -389,6 +389,7 @@ export default function InspectionForm() {
     }
     try {
       await performSaveRef.current?.(true);
+      hasUnsavedRef.current = false;
       setHasUnsavedChanges(false);
       console.log('[InspectionForm] Save-before-leave completed');
     } catch (e) {
@@ -619,12 +620,23 @@ export default function InspectionForm() {
         if (import.meta.env.DEV) console.log('[InspectionForm] Skipping remote refresh — unsaved local changes');
         return;
       }
+      // Defence-in-depth: even with no `hasUnsavedRef`, suppress refreshes
+      // for ~15 s after our own atomic-sync writes this record (S6 self-write
+      // registry). The form's debounced save can flush IDB + Supabase a few
+      // seconds before the user's React state stabilises; without this guard
+      // the round-trip Realtime UPDATE from our own write can still bounce a
+      // stale server payload back into `setInspection`.
+      if (id && isRecentSelfWrite(id)) {
+        if (import.meta.env.DEV) console.log('[InspectionForm] Skipping remote refresh — recent self-write');
+        return;
+      }
       if (import.meta.env.DEV) console.log('[InspectionForm] Remote update detected — reloading');
       loadInspection();
     },
     onResumeOrDegraded: () => {
-      // Same hasUnsaved guard — never clobber the user's in-flight edits.
+      // Same hasUnsaved + self-write guards — never clobber in-flight edits.
       if (hasUnsavedRef.current) return;
+      if (id && isRecentSelfWrite(id)) return;
       loadInspection();
     },
   });
@@ -638,6 +650,11 @@ export default function InspectionForm() {
     registerActiveFormRecord('inspections', id);
     const unsub = onPendingRemoteUpdate((p) => {
       if (p.table !== 'inspections' || p.recordId !== id) return;
+      // Suppress reload prompts for our own atomic-sync round-trips.
+      if (isRecentSelfWrite(id)) {
+        if (import.meta.env.DEV) console.log('[InspectionForm] Suppressing pending-update toast — recent self-write');
+        return;
+      }
       if (!hasUnsavedRef.current) {
         // Safe path — no unsaved edits, just reload from server.
         if (import.meta.env.DEV) console.log('[InspectionForm] Pending remote update — reloading (no unsaved changes)');
@@ -777,10 +794,13 @@ export default function InspectionForm() {
         clearTimeout(saveDebounceTimerRef.current);
       }
       
-      // Set new debounce timer for 1.5 seconds (optimized for near-instant feel)
+      // Set new debounce timer for 1.5 seconds (optimized for near-instant feel).
+      // Do NOT clear `hasUnsavedRef` here — that has to wait until the save
+      // actually completes, otherwise the form-scoped Realtime UPDATE handler
+      // can fire during the in-flight save and overwrite the user's edits with
+      // stale server data. Clearing now lives next to every `setHasUnsavedChanges(false)`.
       saveDebounceTimerRef.current = setTimeout(() => {
         autoSaveProgress();
-        hasUnsavedRef.current = false;
       }, 1500);
     }
   }, [systems, ziplines, equipment, standards, summary, isOwner]);
@@ -1033,6 +1053,14 @@ export default function InspectionForm() {
         value,
       );
 
+      // Sync-mirror the unsaved flag onto the ref BEFORE setInspection so the
+      // form-scoped Realtime UPDATE handler (`useFormRecordRealtime.onUpdate`)
+      // sees the in-flight edit even if a remote update lands inside the
+      // 500 ms debounce window. Without this, header-field edits (e.g.
+      // `onsite_contact`) get clobbered when atomic-sync's `refetchInspectionPackage`
+      // round-trip emits a Realtime UPDATE before the user's debounced save
+      // has flushed to Supabase.
+      hasUnsavedRef.current = true;
       setInspection(updatedInspection);
       setHasUnsavedChanges(true);
 
@@ -1531,6 +1559,7 @@ export default function InspectionForm() {
         // Refresh photo galleries to pick up any imported photo metadata
         setPhotoRefreshKey(prev => prev + 1);
 
+        hasUnsavedRef.current = true;
         setHasUnsavedChanges(true);
         toast.success("Imported data loaded into form");
       } catch (e) {
@@ -2188,6 +2217,7 @@ export default function InspectionForm() {
     try {
       await performSave(true); // Silent immediate save
       setLastSaved(new Date());
+      hasUnsavedRef.current = false;
       setHasUnsavedChanges(false);
       // Non-intrusive success feedback (routes to notification center on mobile)
       toast.success("Changes saved");
@@ -2231,6 +2261,7 @@ export default function InspectionForm() {
     try {
       await performSave(true); // Silent auto-save
       setLastSaved(new Date());
+      hasUnsavedRef.current = false;
       setHasUnsavedChanges(false);
       if (import.meta.env.DEV) {
         console.log("Auto-saved successfully at", new Date().toLocaleTimeString());
@@ -2285,6 +2316,7 @@ export default function InspectionForm() {
       await performSave(false); // Show warnings on manual save
       setLastSaved(new Date());
       setLastManuallySaved(new Date());
+      hasUnsavedRef.current = false;
       setHasUnsavedChanges(false);
       if (import.meta.env.DEV) {
         console.log('[InspectionForm] Progress saved:', isOnline ? 'online' : 'offline');

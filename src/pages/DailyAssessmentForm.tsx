@@ -5,7 +5,7 @@ import { isLocalDataNewer } from "@/lib/local-data-guards";
 import { applyTrackedFieldWrite } from "@/lib/field-merge";
 import { useParams, useNavigate } from "react-router-dom";
 import { goBack } from "@/lib/navigation";
-import { markPendingDashboardRefresh, markDashboardStaleTimestamp, registerActiveFormRecord, unregisterActiveFormRecord, onPendingRemoteUpdate } from "@/lib/sync-events";
+import { markPendingDashboardRefresh, markDashboardStaleTimestamp, registerActiveFormRecord, unregisterActiveFormRecord, onPendingRemoteUpdate, isRecentSelfWrite } from "@/lib/sync-events";
 import { useFormRecordRealtime } from "@/hooks/useFormRecordRealtime";
 import { supabase } from "@/integrations/supabase/client";
 import type { RealtimePostgresChangesPayload } from "@supabase/supabase-js";
@@ -425,11 +425,19 @@ export default function DailyAssessmentForm() {
         if (import.meta.env.DEV) console.log('[DailyAssessmentForm] Skipping remote refresh — unsaved local changes');
         return;
       }
+      // Defence-in-depth: suppress refreshes for ~15 s after our own
+      // atomic-sync writes (S6 self-write registry). See InspectionForm
+      // for full rationale.
+      if (id && isRecentSelfWrite(id)) {
+        if (import.meta.env.DEV) console.log('[DailyAssessmentForm] Skipping remote refresh — recent self-write');
+        return;
+      }
       if (import.meta.env.DEV) console.log('[DailyAssessmentForm] Remote update detected — reloading');
       loadAssessment();
     },
     onResumeOrDegraded: () => {
       if (hasUnsavedRef.current) return;
+      if (id && isRecentSelfWrite(id)) return;
       loadAssessment();
     },
   });
@@ -442,6 +450,10 @@ export default function DailyAssessmentForm() {
     registerActiveFormRecord('daily_assessments', id);
     const unsub = onPendingRemoteUpdate((p) => {
       if (p.table !== 'daily_assessments' || p.recordId !== id) return;
+      if (isRecentSelfWrite(id)) {
+        if (import.meta.env.DEV) console.log('[DailyAssessmentForm] Suppressing pending-update toast — recent self-write');
+        return;
+      }
       if (!hasUnsavedRef.current) {
         if (import.meta.env.DEV) console.log('[DailyAssessmentForm] Pending remote update — reloading (no unsaved changes)');
         loadAssessment();
@@ -698,6 +710,15 @@ export default function DailyAssessmentForm() {
   const handleUpdateAssessment = async (field: string, value: unknown) => {
     // PR-A: route every header-field write through `applyTrackedFieldWrite`
     // so tracked fields populate `field_timestamps` for cross-device merge.
+    //
+    // Sync-mirror the unsaved flag onto the ref BEFORE setAssessment so the
+    // form-scoped Realtime UPDATE handler sees the in-flight edit during
+    // the IDB-write + Supabase-update window below. Without this, our own
+    // immediate Supabase update emits a Realtime UPDATE that races back
+    // into `setAssessment(serverData)` and clobbers fields the local React
+    // state has already advanced.
+    hasUnsavedRef.current = true;
+    if (!hasUnsavedChanges) setHasUnsavedChanges(true);
     const updatedAssessment = applyTrackedFieldWrite(assessment, 'daily_assessment', field, value);
     setAssessment(updatedAssessment);
     try {
@@ -798,6 +819,7 @@ export default function DailyAssessmentForm() {
         // Refresh photo galleries to pick up any imported photo metadata
         setPhotoRefreshKey(prev => prev + 1);
 
+        hasUnsavedRef.current = true;
         setHasUnsavedChanges(true);
         toast.success("Imported data loaded into form");
       } catch (e) {
@@ -1368,6 +1390,7 @@ export default function DailyAssessmentForm() {
         }
       }
 
+      hasUnsavedRef.current = false;
       setHasUnsavedChanges(false);
       toast.success("Assessment submitted successfully");
       navigate('/dashboard');

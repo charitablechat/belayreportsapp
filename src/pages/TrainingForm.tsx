@@ -10,7 +10,7 @@ import { isLocalDataNewer } from "@/lib/local-data-guards";
 import { applyTrackedFieldWrite } from "@/lib/field-merge";
 import { useParams, useNavigate } from "react-router-dom";
 import { goBack } from "@/lib/navigation";
-import { markPendingDashboardRefresh, markDashboardStaleTimestamp, registerActiveFormRecord, unregisterActiveFormRecord, onPendingRemoteUpdate } from "@/lib/sync-events";
+import { markPendingDashboardRefresh, markDashboardStaleTimestamp, registerActiveFormRecord, unregisterActiveFormRecord, onPendingRemoteUpdate, isRecentSelfWrite } from "@/lib/sync-events";
 import { useFormRecordRealtime } from "@/hooks/useFormRecordRealtime";
 import { supabase } from "@/integrations/supabase/client";
 import type { PostgrestError, RealtimePostgresChangesPayload } from "@supabase/supabase-js";
@@ -647,11 +647,19 @@ export default function TrainingForm() {
         if (import.meta.env.DEV) console.log('[TrainingForm] Skipping remote refresh — unsaved local changes');
         return;
       }
+      // Defence-in-depth: suppress refreshes for ~15 s after our own
+      // atomic-sync writes (S6 self-write registry). See InspectionForm
+      // for full rationale.
+      if (id && isRecentSelfWrite(id)) {
+        if (import.meta.env.DEV) console.log('[TrainingForm] Skipping remote refresh — recent self-write');
+        return;
+      }
       if (import.meta.env.DEV) console.log('[TrainingForm] Remote update detected — reloading');
       loadTraining();
     },
     onResumeOrDegraded: () => {
       if (hasUnsavedRef.current) return;
+      if (id && isRecentSelfWrite(id)) return;
       loadTraining();
     },
   });
@@ -664,6 +672,10 @@ export default function TrainingForm() {
     registerActiveFormRecord('trainings', id);
     const unsub = onPendingRemoteUpdate((p) => {
       if (p.table !== 'trainings' || p.recordId !== id) return;
+      if (isRecentSelfWrite(id)) {
+        if (import.meta.env.DEV) console.log('[TrainingForm] Suppressing pending-update toast — recent self-write');
+        return;
+      }
       if (!hasUnsavedRef.current) {
         if (import.meta.env.DEV) console.log('[TrainingForm] Pending remote update — reloading (no unsaved changes)');
         loadTraining();
@@ -721,6 +733,7 @@ export default function TrainingForm() {
         // Refresh photo galleries to pick up any imported photo metadata
         setPhotoRefreshKey(prev => prev + 1);
 
+        hasUnsavedRef.current = true;
         setHasUnsavedChanges(true);
         toast.success("Imported data loaded into form");
       } catch (e) {
@@ -1551,6 +1564,16 @@ export default function TrainingForm() {
   const updateTrainingField = (field: string, value: unknown) => {
     // PR-A: route every header-field write through `applyTrackedFieldWrite`
     // so tracked fields populate `field_timestamps` for cross-device merge.
+    //
+    // Sync-mirror the unsaved flag onto the ref BEFORE setTraining so the
+    // form-scoped Realtime UPDATE handler sees the in-flight edit. The
+    // change-tracker `useEffect` is keyed on child-data deps only, so a
+    // header-only edit (e.g. `trainer_name`) wouldn't otherwise flip
+    // `hasUnsavedRef` until a child-data change happened. Without this,
+    // atomic-sync's `refetchTrainingPackage` round-trip can fire a Realtime
+    // UPDATE inside the debounce window and clobber the in-memory edit.
+    hasUnsavedRef.current = true;
+    if (!hasUnsavedChanges) setHasUnsavedChanges(true);
     setTraining(applyTrackedFieldWrite(training, 'training', field, value));
   };
 
