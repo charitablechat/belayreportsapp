@@ -277,6 +277,42 @@ export function ReportCard({ report, type, onDelete, onClick, getStatusBadge, co
           {getReportLocation() && (
             <p className="text-muted-foreground line-clamp-1">{getReportLocation()}</p>
           )}
+          {(() => {
+            const createdAt = report.created_at;
+            const createdRel = createdAt ? formatDistanceToNow(new Date(createdAt), { addSuffix: true }) : null;
+            const completedAtRaw = report.attestation_signed_at || (getReportStatus() === 'completed' ? report.updated_at : null);
+            const completedAt = completedAtRaw ? new Date(completedAtRaw) : null;
+            return (
+              <>
+                {createdRel && (
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <p className="text-muted-foreground/80 font-mono text-[11px] tracking-wide cursor-help w-fit">
+                        <span className="uppercase tracking-[0.14em] text-muted-foreground/60 mr-1.5">Created:</span>
+                        {createdRel}
+                      </p>
+                    </TooltipTrigger>
+                    <TooltipContent side="top">
+                      {format(new Date(createdAt), 'PPpp')}
+                    </TooltipContent>
+                  </Tooltip>
+                )}
+                {completedAt && (
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <p className="text-muted-foreground/80 font-mono text-[11px] tracking-wide cursor-help w-fit">
+                        <span className="uppercase tracking-[0.14em] text-muted-foreground/60 mr-1.5">Completed:</span>
+                        {format(completedAt, 'PP')}
+                      </p>
+                    </TooltipTrigger>
+                    <TooltipContent side="top">
+                      {format(completedAt, 'PPpp')}
+                    </TooltipContent>
+                  </Tooltip>
+                )}
+              </>
+            );
+          })()}
           <p className="text-muted-foreground" title={dateInfo?.full}>
             {dateInfo ? dateInfo.relative : 'No date'}
           </p>
