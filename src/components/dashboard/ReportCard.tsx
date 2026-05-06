@@ -76,7 +76,7 @@ export function ReportCard({ report, type, onDelete, onClick, getStatusBadge, co
   // F3: Surface pending-photo state on the per-card sync badge so a green
   // "Synced ✓" never appears while photos are still uploading. The hook
   // preserves last-known counts on transient IDB read failures (S11).
-  const { status: photoStatus } = useUnsyncedPhotos();
+  const photoStatus = useUnsyncedPhotos();
   const pendingPhotoCount = isInspection
     ? (photoStatus.photosByInspection?.[report.id] ?? 0)
     : 0;
@@ -311,12 +311,19 @@ export function ReportCard({ report, type, onDelete, onClick, getStatusBadge, co
               {getReportStatus()}
             </Badge>
             
-            {/* Universal Sync Status Badge */}
+            {/* Universal Sync Status Badge — 3-state: Local / Syncing photos / Synced */}
             {report.synced_at ? (
-              <Badge variant="outline" className="gap-1 text-xs px-2 py-0.5 text-green-600 border-green-300">
-                <Check className="w-3 h-3" />
-                Synced
-              </Badge>
+              pendingPhotoCount > 0 ? (
+                <Badge variant="outline" className="gap-1 text-xs px-2 py-0.5 text-amber-600 border-amber-300">
+                  <UploadCloud className="w-3 h-3" />
+                  Synced — {pendingPhotoCount} photo{pendingPhotoCount === 1 ? '' : 's'} uploading
+                </Badge>
+              ) : (
+                <Badge variant="outline" className="gap-1 text-xs px-2 py-0.5 text-green-600 border-green-300">
+                  <Check className="w-3 h-3" />
+                  Synced
+                </Badge>
+              )
             ) : (
               <Badge variant="secondary" className="gap-1 text-xs px-2 py-0.5">
                 <Cloud className="w-3 h-3" />
