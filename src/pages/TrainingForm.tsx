@@ -534,7 +534,17 @@ export default function TrainingForm() {
               setInspectorId(trainingData.inspector_id);
             }
           } else if (trainingData) {
-            setTraining(trainingData);
+            // Race-fix: per-field merge so any locally-newer tracked-field
+            // edit survives a refetch even when the server payload doesn't
+            // yet reflect that edit.
+            setTraining(prev => {
+              if (!prev) return trainingData;
+              return mergeRecordFields(
+                prev as typeof trainingData & { field_timestamps?: Record<string, string> | null },
+                trainingData as typeof trainingData & { field_timestamps?: Record<string, string> | null },
+                TRACKED_FIELDS.training,
+              );
+            });
             setInspectorId(trainingData.inspector_id);
             saveTrainingOffline({ ...trainingData, synced_at: trainingData.synced_at || new Date().toISOString() }).catch(e =>
               console.warn('[TrainingForm] Non-critical: failed to cache training', e)
