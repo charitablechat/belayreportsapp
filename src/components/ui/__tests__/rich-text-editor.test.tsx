@@ -60,7 +60,12 @@ const fakeEditor = {
 
 vi.mock('@tiptap/react', () => ({
   useEditor: (config: any) => {
-    fake.html = config.content ?? '';
+    // Real useEditor initializes content ONCE on mount; subsequent renders
+    // do not overwrite editor state from the config object. Mirror that:
+    // only seed `fake.html` if it has not been set yet for this mount.
+    if (!fake.handlers.onUpdate && !fake.handlers.onBlur) {
+      fake.html = config.content ?? '';
+    }
     fake.handlers.onUpdate = config.onUpdate;
     fake.handlers.onBlur = config.onBlur;
     return fakeEditor;
