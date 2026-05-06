@@ -17,7 +17,7 @@ import { parseLocalDate } from "@/lib/date-utils";
 import { triggerSuccessConfetti } from "@/lib/confetti";
 import { cn } from "@/lib/utils";
 import { useClickAndHoverSparkles, SparkleContainer } from "@/components/christmas/Sparkles";
-import { useUnsyncedPhotos } from "@/hooks/useUnsyncedPhotos";
+import { usePWA } from "@/hooks/usePWA";
 
 // F2: Module-level minute-tick subscriber so we share ONE setInterval across all
 // ReportCard instances on the page (not N intervals for N cards).
@@ -73,12 +73,13 @@ export function ReportCard({ report, type, onDelete, onClick, getStatusBadge, co
   const isInspection = type === 'inspection';
   const isDaily = type === 'daily';
 
-  // F3: Surface pending-photo state on the per-card sync badge so a green
-  // "Synced ✓" never appears while photos are still uploading. The hook
-  // preserves last-known counts on transient IDB read failures (S11).
-  const photoStatus = useUnsyncedPhotos();
+  // Pending-photo state on the per-card sync badge so a green "Synced ✓"
+  // never appears while photos are still uploading. Reads from the shared
+  // PWAContext subscription (one global IDB scan instead of N per-card scans;
+  // last-known counts preserved on transient IDB read failures via S11).
+  const { photosByInspection } = usePWA();
   const pendingPhotoCount = isInspection
-    ? (photoStatus.photosByInspection?.[report.id] ?? 0)
+    ? (photosByInspection?.[report.id] ?? 0)
     : 0;
   
   const getReportDate = () => {
@@ -314,12 +315,25 @@ export function ReportCard({ report, type, onDelete, onClick, getStatusBadge, co
             {/* Universal Sync Status Badge — 3-state: Local / Syncing photos / Synced */}
             {report.synced_at ? (
               pendingPhotoCount > 0 ? (
-                <Badge variant="outline" className="gap-1 text-xs px-2 py-0.5 text-amber-600 border-amber-300">
-                  <UploadCloud className="w-3 h-3" />
-                  Synced — {pendingPhotoCount} photo{pendingPhotoCount === 1 ? '' : 's'} uploading
-                </Badge>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Badge
+                      variant="outline"
+                      className="gap-1 text-xs px-2 py-0.5 text-amber-700 border-amber-300 bg-amber-50 dark:text-amber-300 dark:border-amber-700 dark:bg-amber-950/30"
+                    >
+                      <UploadCloud className="w-3 h-3" />
+                      Synced — {pendingPhotoCount} photo{pendingPhotoCount === 1 ? '' : 's'} uploading
+                    </Badge>
+                  </TooltipTrigger>
+                  <TooltipContent>
+                    The report is saved to the cloud, but {pendingPhotoCount} photo{pendingPhotoCount === 1 ? ' is' : 's are'} still uploading. They&apos;ll finish on their own when the connection allows.
+                  </TooltipContent>
+                </Tooltip>
               ) : (
-                <Badge variant="outline" className="gap-1 text-xs px-2 py-0.5 text-green-600 border-green-300">
+                <Badge
+                  variant="outline"
+                  className="gap-1 text-xs px-2 py-0.5 text-green-600 border-green-300 dark:text-green-300 dark:border-green-700 dark:bg-green-950/30"
+                >
                   <Check className="w-3 h-3" />
                   Synced
                 </Badge>
