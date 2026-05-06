@@ -171,14 +171,6 @@ export function ReportCard({ report, type, onDelete, onClick, getStatusBadge, co
     default: 'border-l-4 border-l-muted-foreground/30',
   };
 
-  const getRelativeDate = () => {
-    const dateStr = getReportDate();
-    if (!dateStr) return null;
-    const parsed = parseLocalDate(dateStr);
-    if (!parsed) return null;
-    return { full: format(parsed, "PPP"), relative: formatDistanceToNow(parsed, { addSuffix: true }) };
-  };
-
   const getLastActivity = () => {
     const updatedAt = report.updated_at;
     if (!updatedAt) return null;
@@ -187,7 +179,6 @@ export function ReportCard({ report, type, onDelete, onClick, getStatusBadge, co
     } catch { return null; }
   };
 
-  const dateInfo = getRelativeDate();
   const lastActivity = getLastActivity();
 
   return (
@@ -313,9 +304,6 @@ export function ReportCard({ report, type, onDelete, onClick, getStatusBadge, co
               </>
             );
           })()}
-          <p className="text-muted-foreground" title={dateInfo?.full}>
-            {dateInfo ? dateInfo.relative : 'No date'}
-          </p>
           {lastActivity && getReportStatus() !== 'completed' && (
             <Tooltip>
               <TooltipTrigger asChild>
