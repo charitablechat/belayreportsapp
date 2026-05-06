@@ -18,7 +18,7 @@ import { useDashboardFilters } from "@/hooks/useDashboardFilters";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { DashboardReportsSection } from "@/components/dashboard/DashboardReportsSection";
 import { UserAvatar } from "@/components/ui/user-avatar";
-import { toast } from "sonner";
+import { toast } from "@/components/ui/sonner";
 import { format, differenceInDays } from "date-fns";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";

@@ -57,6 +57,15 @@ export const NOTIFICATION_CONFIG: NotificationConfig = {
       /assessment submitted/i,
       /will sync (automatically )?when/i,
       /saved locally/i,
+      // Recoverable storage/sync conditions — log only, never toast
+      /backup storage/i,
+      /restored from local backup/i,
+      /report refreshed/i,
+      /haven't synced/i,
+      /retrying storage/i,
+      /saved to backup/i,
+      /storage not guaranteed/i,
+      /pending sync/i,
     ],
   },
   durations: {

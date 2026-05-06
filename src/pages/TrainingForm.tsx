@@ -515,12 +515,19 @@ export default function TrainingForm() {
             .maybeSingle();
 
           if (!trainingData && !offlineTraining) {
-            console.warn('[TrainingForm] Training not found:', id);
-            toast.error("Training not found", {
-              description: "This training may have been deleted or doesn't exist.",
-            });
-            navigate('/dashboard');
-            return;
+            const serverInconclusive = !!trainingError || !navigator.onLine;
+            const { getCircuitBreakerStatus } = await import('@/lib/offline-storage');
+            const idbDegraded = getCircuitBreakerStatus().open;
+            if (serverInconclusive || idbDegraded) {
+              console.warn('[TrainingForm] Skipping not-found redirect — inconclusive lookup', { serverInconclusive, idbDegraded });
+            } else {
+              console.warn('[TrainingForm] Training not found:', id);
+              toast.error("Training not found", {
+                description: "This training may have been deleted or doesn't exist.",
+              });
+              navigate('/dashboard');
+              return;
+            }
           }
 
           if (trainingError) throw trainingError;

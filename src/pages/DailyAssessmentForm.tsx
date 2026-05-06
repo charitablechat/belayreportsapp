@@ -618,14 +618,23 @@ export default function DailyAssessmentForm() {
           .eq('id', id)
           .maybeSingle();
 
-        // Handle assessment not found - redirect to dashboard
+        // Handle assessment not found - redirect to dashboard. Only act when
+        // the lookup was conclusive (no error, online, IDB healthy) so
+        // transient storage/network issues don't alarm the user.
         if (!assessmentData && !offlineAssessment) {
-          console.warn('[DailyAssessmentForm] Assessment not found:', id);
-          toast.error("Assessment not found", {
-            description: "This assessment may have been deleted or doesn't exist.",
-          });
-          navigate('/dashboard');
-          return;
+          const serverInconclusive = !!assessmentError || !navigator.onLine;
+          const { getCircuitBreakerStatus } = await import('@/lib/offline-storage');
+          const idbDegraded = getCircuitBreakerStatus().open;
+          if (serverInconclusive || idbDegraded) {
+            console.warn('[DailyAssessmentForm] Skipping not-found redirect — inconclusive lookup', { serverInconclusive, idbDegraded });
+          } else {
+            console.warn('[DailyAssessmentForm] Assessment not found:', id);
+            toast.error("Assessment not found", {
+              description: "This assessment may have been deleted or doesn't exist.",
+            });
+            navigate('/dashboard');
+            return;
+          }
         }
 
         if (assessmentError) throw assessmentError;

@@ -1175,16 +1175,10 @@ async function ensureStorage(): Promise<void> {
     if (!isPersisted && !storageWarningShown) {
       console.warn('[Offline Storage] Persistent storage not granted - data may be cleared by browser');
       storageWarningShown = true;
-      // Finding 5: Surface storage eviction risk to user (one-time banner)
-      if (typeof window !== 'undefined' && !localStorage.getItem('storage-eviction-warned')) {
-        safeSetItem('storage-eviction-warned', 'true', { scope: 'offline-storage.evictionWarned' });
-        import('@/hooks/use-toast').then(({ toast }) => {
-          toast({
-            title: "Offline storage not guaranteed",
-            description: "Your browser may clear offline data under storage pressure. Stay connected to sync your work.",
-          });
-        }).catch(() => {});
-      }
+      // Note: previously surfaced as a user-facing toast. Now console-only —
+      // the persistent NetworkStatusBanner already covers offline state, and
+      // popping a toast every session was alarming users without an actionable
+      // remedy. Genuine save failures still raise destructive toasts below.
     }
 
     // Check storage quota
@@ -1836,24 +1830,19 @@ async function withIndexedDBSaveBoundary(
       ? emergencyLocalStorageFallback(operationName, parentDataForFallback)
       : false;
 
-    // Show toast once per session like the silent boundary
+    // Only surface a toast when the emergency localStorage fallback failed.
+    // The "data was saved to backup storage" path is intentionally silent —
+    // it's recoverable and used to spam users with a scary banner on every save.
     try {
       const cbWarningKey = 'circuit-breaker-warning-shown';
-      if (typeof sessionStorage !== 'undefined' && !sessionStorage.getItem(cbWarningKey)) {
+      if (!fallbackSucceeded && typeof sessionStorage !== 'undefined' && !sessionStorage.getItem(cbWarningKey)) {
         sessionStorage.setItem(cbWarningKey, 'true');
         import('@/hooks/use-toast').then(({ toast }) => {
-          if (fallbackSucceeded) {
-            toast({
-              title: 'Using backup storage',
-              description: "Your changes are saved locally. They'll sync when storage recovers.",
-            });
-          } else {
-            toast({
-              title: 'Storage unavailable',
-              description: 'Your changes are NOT saved. Stay on this page until storage recovers.',
-              variant: 'destructive',
-            });
-          }
+          toast({
+            title: 'Storage unavailable',
+            description: 'Your changes are NOT saved. Stay on this page until storage recovers.',
+            variant: 'destructive',
+          });
         }).catch(() => {});
         const resetTime = getCircuitBreakerResetTime(store);
         setTimeout(() => sessionStorage.removeItem(cbWarningKey), resetTime + 1000);
@@ -2061,26 +2050,21 @@ async function withIndexedDBErrorBoundary<T>(
       // Attempt emergency localStorage save for all write ops
       const fallbackSucceeded = emergencyLocalStorageFallback(operationName, fallbackValue);
 
-      // Only show toasts for user-facing saves (not background ops like photo marking)
-      if (isUserFacingSave) {
+      // Only surface a toast when the emergency localStorage fallback ALSO
+      // failed — that's the only condition where the user's data is actually
+      // at risk. The "data is saved to backup storage" path is logged silently;
+      // popping that toast on every save spammed users without any action they
+      // could take.
+      if (isUserFacingSave && !fallbackSucceeded) {
         const cbWarningKey = 'circuit-breaker-warning-shown';
         if (!sessionStorage.getItem(cbWarningKey)) {
           sessionStorage.setItem(cbWarningKey, 'true');
           import('@/hooks/use-toast').then(({ toast }) => {
-            if (fallbackSucceeded) {
-              // Soft toast — data IS saved to localStorage backup
-              toast({
-                title: "Using backup storage",
-                description: "Your changes are saved locally. They'll sync when storage recovers.",
-              });
-            } else {
-              // Red toast — both IndexedDB and localStorage failed
-              toast({
-                title: "Storage temporarily unavailable",
-                description: "Your changes may not be saved locally. Stay connected to sync your work.",
-                variant: "destructive",
-              });
-            }
+            toast({
+              title: "Storage temporarily unavailable",
+              description: "Your changes may not be saved locally. Stay connected to sync your work.",
+              variant: "destructive",
+            });
           }).catch(() => {});
           const resetTime = getCircuitBreakerResetTime(store);
           setTimeout(() => sessionStorage.removeItem(cbWarningKey), resetTime + 1000);
