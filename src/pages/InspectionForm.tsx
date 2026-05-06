@@ -2421,10 +2421,28 @@ export default function InspectionForm() {
           .eq("id", id);
 
         if (error) throw error;
-        
-        // Update local state to reflect completion
-        setInspection({ ...inspection, ...updatePayload });
-        
+
+        // Persist completion to IndexedDB IMMEDIATELY so useAutoSync's drift
+        // check doesn't read a stale `status: 'draft'` from IDB and re-push it,
+        // silently reverting the server back to draft (Baylor bug).
+        // Stamp synced_at = updated_at since the row was just confirmed remote.
+        const completionTimestamp = new Date().toISOString();
+        const updatedInspection = {
+          ...inspection,
+          ...updatePayload,
+          updated_at: completionTimestamp,
+          synced_at: completionTimestamp,
+        };
+        try {
+          await saveInspectionOffline(updatedInspection);
+        } catch (idbErr) {
+          console.error('[InspectionForm] Post-completion IDB save failed', idbErr);
+        }
+
+        // Functional updater so we merge into the latest state produced by
+        // the preceding saveProgress(), not a stale pre-await closure.
+        setInspection(prev => ({ ...(prev ?? inspection), ...updatePayload, updated_at: completionTimestamp, synced_at: completionTimestamp }));
+
         // Trigger celebration on first completion
         if (!wasAlreadyCompleted) {
           triggerCompletionConfetti();
@@ -2440,9 +2458,9 @@ export default function InspectionForm() {
         // the next online cycle via syncInspectionAtomic.
         const updatedInspection = { ...inspection, ...updatePayload };
         await saveInspectionOffline(updatedInspection);
-        
-        // Update local state to reflect completion
-        setInspection(updatedInspection);
+
+        // Update local state to reflect completion (functional updater for consistency)
+        setInspection(prev => ({ ...(prev ?? inspection), ...updatePayload }));
         
         // Trigger celebration on first completion
         if (!wasAlreadyCompleted) {

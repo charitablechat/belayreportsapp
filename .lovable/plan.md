@@ -1,62 +1,91 @@
-## Why the cards say "Unknown"
+# Why the Baylor University Outdoor card stays red
 
-The dashboard query joins each report row to its inspector's profile:
+## Diagnosis (from the audit log)
+
+Reading `audit_logs` for inspection `1f966990-…` shows the same three-step pattern repeating each time the user clicked "Complete":
 
 ```
-inspector:profiles!...fkey(first_name, last_name, avatar_url)
+12:15:00.114  inspections.update    status draft  → draft       (saveProgress before complete)
+12:15:01.063  inspections.complete  status draft  → completed   (completeInspection write)
+12:15:01.727  inspections.update    status completed → completed (deferred synced_at write)
+…
+12:16:44.310  inspections.update    status completed → draft    ← REVERT
+12:16:44.638  inspections.update    status draft → draft         (synced_at)
 ```
 
-That join is silently filtered by RLS. The current `profiles` SELECT policies only let a user read a profile when:
+The server is being silently reverted to `draft` ~90s after every successful completion. That is why the card on the dashboard never turns green — the dashboard reads the server, and the server keeps getting overwritten.
 
-1. It's their own profile (`auth.uid() = id`), OR
-2. They are the **true Super Admin** (`is_super_admin()`), OR
-3. They share an `organization_members` row with that profile.
+## Root cause
 
-There is **no policy that lets an `admin` read other users' profiles**. So when an admin opens the dashboard and sees reports authored by inspectors they don't share an org membership with, the join comes back `null` → `ReportCard.getInspectorName()` falls through to `"Unknown"` and the avatar shows `?`.
+In `src/pages/InspectionForm.tsx`, `completeInspection` has two branches:
 
-`useProfileMap`'s lazy fallback (`getCachedProfile` → `supabase.from('profiles').select(...)`) hits the same RLS wall, so it can't recover the name either.
+- **Offline branch (line ~2442):** calls `saveInspectionOffline(updatedInspection)` → IndexedDB now shows `status: 'completed'`. Correct.
+- **Online branch (line ~2417–2436):** writes to Supabase via `supabase.from("inspections").update(...)` and updates React state with `setInspection(...)`, **but never writes the new status to IndexedDB.**
 
-I confirmed in the DB that every report listed has a real `inspector_id` pointing at a populated profile (Luke Benton, Test Account, etc.) — the data exists, only the read permission is missing for the admin viewing the dashboard.
+Earlier in the same flow `saveProgress()` ran `saveInspectionOffline(inspectionToSave)` with `status: 'draft'` and `dirty: true`. After completion finishes online, IDB still holds `{ status: 'draft', dirty: true }`.
 
-This same gap also breaks name resolution in the Audit Log panel for non-super-admins (`audit_resolve_users` is gated to `is_super_admin()` only).
+`useAutoSync` later runs `syncInspectionAtomic`, which reads the inspection **from IDB** and pushes it back to Supabase as a full upsert — re-writing `status` to `'draft'` and clobbering the completion. The confetti fires (local React state did flip to completed), but the server-of-truth is reverted before the dashboard's next refetch.
 
-## The fix
+A secondary bug exacerbates it: line 2426 uses a stale closure — `setInspection({ ...inspection, ...updatePayload })` — instead of a functional updater. After `await saveProgress()` runs, React state has already been advanced by `performSave`, and merging into the pre-await snapshot drops `updated_at` and any other fields that just changed. Functional `setInspection(prev => …)` is the correct pattern (and matches what `TrainingForm`/`DailyAssessmentForm` already do).
 
-Give the `admin` role (and the read-only super_admin) RLS permission to read profile display fields. This matches the existing `is_admin_or_above()` policies already in place on `inspections`, `trainings`, and `daily_assessments` — admins can already see those reports, they just can't see who authored them.
+## Blast radius
 
-### Migration
+- **Inspection reports**: affected — every online completion is at risk of being silently reverted by the next auto-sync cycle. Severity is highest for Admin re-edits and any user whose connection is fast enough to take the online branch.
+- **Training reports** (`TrainingForm.tsx` line 1453): **not affected** — it calls `saveTrainingOffline(completedTraining)` before the Supabase write.
+- **Daily assessments** (`DailyAssessmentForm.tsx` line 1273): **not affected** — it calls `saveDailyAssessmentOffline(completedAssessment)` first.
 
-```sql
--- Let admins read profiles so dashboard joins resolve
-CREATE POLICY "Admins can view all profiles"
-  ON public.profiles
-  FOR SELECT
-  TO authenticated
-  USING (public.is_admin_or_above());
+So the patch is scoped to inspections only, but I'll add a shared regression test so the two healthy forms can't regress into the same shape.
 
--- Allow admins to resolve names in the audit log too
-CREATE OR REPLACE FUNCTION public.audit_resolve_users(_user_ids uuid[])
-RETURNS TABLE(id uuid, first_name text, last_name text)
-LANGUAGE sql STABLE SECURITY DEFINER SET search_path TO 'public'
-AS $$
-  SELECT p.id, p.first_name, p.last_name
-  FROM public.profiles p
-  WHERE p.id = ANY(_user_ids)
-    AND public.is_admin_or_above();
-$$;
+## Fix
+
+In `src/pages/InspectionForm.tsx → completeInspection`:
+
+1. **Mirror the offline branch in the online branch.** After the Supabase update succeeds, call `saveInspectionOffline(updatedInspection)` so IDB reflects `status: 'completed'`, the new `app_version_at_completion`, and any `attestation_*` fields. This kills the divergence that lets auto-sync overwrite the server.
+
+2. **Use a functional state updater** for `setInspection` so the merge is applied to the latest state produced by `saveProgress()`, not the pre-await closure.
+
+3. **Also stamp the completion's `synced_at` locally in the online branch** (the row was just confirmed written to Supabase a moment ago) so `syncInspectionAtomic` doesn't see drift and re-push.
+
+Pseudocode for the new online branch:
+
+```ts
+if (isOnline) {
+  const completionTimestamp = new Date().toISOString();
+  const { error } = await supabase
+    .from("inspections")
+    .update(updatePayload as never)
+    .eq("id", id);
+  if (error) throw error;
+
+  setInspection(prev => {
+    const merged = { ...(prev ?? inspection), ...updatePayload, synced_at: completionTimestamp };
+    // Persist to IDB so auto-sync doesn't revert status to 'draft'
+    saveInspectionOffline(merged).catch(e =>
+      console.error('[InspectionForm] Post-completion IDB save failed', e)
+    );
+    return merged;
+  });
+
+  if (!wasAlreadyCompleted) {
+    triggerCompletionConfetti();
+    triggerHaptic('success');
+  }
+}
 ```
 
-### What this changes
+The offline branch already does the right thing; only minor cleanup (functional updater) is needed there for consistency.
 
-- Dashboard inspector names + avatars resolve on first paint for admins.
-- `useProfileMap`'s lazy fallback succeeds for locally-saved drafts whose join was stripped.
-- Audit log shows real names for admins, not just super admin.
+## Verification
 
-### What this does NOT change
+- Manual: complete a brand-new inspection while online, wait 60–90 seconds (longer than `useAutoSync`'s active interval) without leaving the page, then refresh the dashboard. Card must show **completed** / green, not red.
+- Audit-log check (re-run the same SQL on the affected row): there should be no `completed → draft` transition after the completion event.
+- Existing offline-completion path still works (kept identical write order).
+- Add a unit test in `src/lib/__tests__/` that simulates: offline-storage write of `{ status: 'draft', dirty: true }` → completion online path → assert IDB now reflects `status: 'completed'` and `synced_at >= updated_at` so `getUnsyncedInspections` would not pick it up.
 
-- No client code changes — the queries already request the join; they just start returning data.
-- Regular (non-admin) users keep the existing rules: own profile + organization-mates only.
-- Super Admin invisibility in the UI is unchanged (that's UI logic, not RLS).
-- No new sensitive columns are exposed beyond what the joins already request (first_name, last_name, avatar_url, acct_number).
+## One-time data repair
 
-After approval I'll run the migration and verify the cards show real names.
+The Baylor University Outdoor row currently shows `status: 'draft'` on the server even though the user completed it. After the fix ships, the user can simply click Complete again on that report and it will stick. No migration needed; the audit log preserves the history.
+
+## Out of scope
+
+- No changes to `TrainingForm`, `DailyAssessmentForm`, the dashboard's polling, or the auto-sync engine — they are healthy. The stack-overflow-style "polling on the dashboard" pattern would mask the bug, not fix it; the right fix is to stop writing the wrong value in the first place.
