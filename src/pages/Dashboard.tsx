@@ -250,24 +250,33 @@ export default function Dashboard() {
     },
   });
 
-  // Fetch invoiced report IDs (admin only) — single source of truth via React Query
+  // Fetch invoiced report metadata (admin only) — single source of truth via React Query
+  type InvoicedMeta = { invoiced_at: string; invoiced_by: string | null };
   const invoicedQuery = useQuery({
     queryKey: ["invoiced-reports"],
     queryFn: async () => {
       const { data, error } = await supabase
         .from("invoiced_reports")
-        .select("report_id");
+        .select("report_id, invoiced_at, invoiced_by");
       if (error) {
         console.warn('[Dashboard] Error fetching invoiced reports:', error);
-        return new Set<string>();
+        return new Map<string, InvoicedMeta>();
       }
-      return new Set((data || []).map((r: { report_id: string }) => r.report_id));
+      const map = new Map<string, InvoicedMeta>();
+      (data || []).forEach((r: { report_id: string; invoiced_at: string; invoiced_by: string | null }) => {
+        map.set(r.report_id, { invoiced_at: r.invoiced_at, invoiced_by: r.invoiced_by });
+      });
+      return map;
     },
     enabled: !!isSuperAdmin,
     staleTime: 30_000,
   });
 
-  const invoicedReportIds = invoicedQuery.data ?? new Set<string>();
+  const invoicedMetaById = invoicedQuery.data ?? new Map<string, InvoicedMeta>();
+  const invoicedReportIds = React.useMemo(
+    () => new Set(invoicedMetaById.keys()),
+    [invoicedMetaById]
+  );
 
   const handleToggleInvoiced = React.useCallback(async (report: DbRow, type: 'inspection' | 'training' | 'daily') => {
     const isCurrentlyInvoiced = invoicedReportIds.has(report.id);
@@ -283,8 +292,8 @@ export default function Dashboard() {
         return;
       }
       // Optimistic update via React Query cache
-      queryClient.setQueryData<Set<string>>(["invoiced-reports"], (old) => {
-        const next = new Set(old);
+      queryClient.setQueryData<Map<string, InvoicedMeta>>(["invoiced-reports"], (old) => {
+        const next = new Map(old);
         next.delete(report.id);
         return next;
       });
@@ -298,8 +307,10 @@ export default function Dashboard() {
         toast.error("Failed to mark as invoiced");
         return;
       }
-      queryClient.setQueryData<Set<string>>(["invoiced-reports"], (old) => {
-        return new Set(old).add(report.id);
+      queryClient.setQueryData<Map<string, InvoicedMeta>>(["invoiced-reports"], (old) => {
+        const next = new Map(old);
+        next.set(report.id, { invoiced_at: new Date().toISOString(), invoiced_by: user?.id ?? null });
+        return next;
       });
       toast.success("Report marked as invoiced");
     }
