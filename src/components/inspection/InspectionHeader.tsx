@@ -35,8 +35,10 @@ export default function InspectionHeader({ inspection, userProfile, modifiedByPr
     try {
       triggerHaptic('light');
       const position = await getCurrentLocationWithAddress();
+      // Save scheduled by parent's handleHeaderUpdate (debounced after
+      // setState flush); calling onImmediateSave synchronously here would
+      // race with React and ship a stale payload.
       onUpdate("location", position.address);
-      onImmediateSave?.();
       toast.success("Location updated");
       triggerHaptic('success');
     } catch (error: any) {
