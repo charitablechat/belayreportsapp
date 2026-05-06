@@ -130,8 +130,12 @@ export default function InspectionHeader({ inspection, userProfile, modifiedByPr
                 <OrganizationAutocomplete
                   value={inspection?.organization || ""}
                   onChange={(value) => {
+                    // Do NOT also call onImmediateSave here — the parent's
+                    // handleHeaderUpdate schedules a debounced save that
+                    // sees the freshly-set state. Calling onImmediateSave
+                    // synchronously would race with React's setState and
+                    // ship a stale payload, silently dropping this value.
                     onUpdate("organization", value);
-                    onImmediateSave?.();
                   }}
                   disabled={isReadOnly}
                 />
