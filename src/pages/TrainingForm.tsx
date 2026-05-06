@@ -422,6 +422,20 @@ export default function TrainingForm() {
       if (!id) return;
 
       try {
+        // Race-fix: flush any pending debounced save into IDB before reading,
+        // so the offline read includes the user's most recent edits.
+        if (autoSaveTimer.current || hasUnsavedRef.current) {
+          try {
+            if (autoSaveTimer.current) {
+              clearTimeout(autoSaveTimer.current);
+              autoSaveTimer.current = null;
+            }
+            await saveTrainingRef.current?.();
+          } catch (e) {
+            console.warn('[TrainingForm] Pre-load flush failed (continuing):', e);
+          }
+        }
+
         // Try loading from offline storage first
         const offlineTraining = await getOfflineTraining(id);
         const [
