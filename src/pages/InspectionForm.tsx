@@ -13,7 +13,7 @@ import { useFormRecordRealtime } from "@/hooks/useFormRecordRealtime";
 import { useNavigate, useParams } from "react-router-dom";
 import { goBack } from "@/lib/navigation";
 import { isLocalDataNewer } from "@/lib/local-data-guards";
-import { applyTrackedFieldWrite } from "@/lib/field-merge";
+import { applyTrackedFieldWrite, mergeRecordFields, TRACKED_FIELDS } from "@/lib/field-merge";
 import { hasTextContent } from "@/lib/html-content-cleaner";
 import { supabase } from "@/integrations/supabase/client";
 import type { PostgrestError, RealtimePostgresChangesPayload } from "@supabase/supabase-js";
