@@ -700,20 +700,8 @@ export default function TrainingForm() {
         if (import.meta.env.DEV) console.log('[TrainingForm] Suppressing pending-update toast — recent self-write');
         return;
       }
-      if (!hasUnsavedRef.current) {
-        if (import.meta.env.DEV) console.log('[TrainingForm] Pending remote update — reloading (no unsaved changes)');
-        loadTraining();
-        return;
-      }
-      toast.warning('Remote update available', {
-        description: 'Another device updated this report. Reload from server (your unsaved edits will be lost) or keep your changes.',
-        duration: 30000,
-        action: {
-          label: 'Reload',
-          onClick: () => { loadTraining(); },
-        },
-        cancel: { label: 'Keep my changes', onClick: () => {} },
-      });
+      if (import.meta.env.DEV) console.log('[TrainingForm] Pending remote update — silent reconcile');
+      loadTraining();
     });
     return () => {
       unsub();

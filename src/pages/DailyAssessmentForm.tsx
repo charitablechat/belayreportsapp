@@ -454,20 +454,8 @@ export default function DailyAssessmentForm() {
         if (import.meta.env.DEV) console.log('[DailyAssessmentForm] Suppressing pending-update toast — recent self-write');
         return;
       }
-      if (!hasUnsavedRef.current) {
-        if (import.meta.env.DEV) console.log('[DailyAssessmentForm] Pending remote update — reloading (no unsaved changes)');
-        loadAssessment();
-        return;
-      }
-      toast.warning('Remote update available', {
-        description: 'Another device updated this report. Reload from server (your unsaved edits will be lost) or keep your changes.',
-        duration: 30000,
-        action: {
-          label: 'Reload',
-          onClick: () => { loadAssessment(); },
-        },
-        cancel: { label: 'Keep my changes', onClick: () => {} },
-      });
+      if (import.meta.env.DEV) console.log('[DailyAssessmentForm] Pending remote update — silent reconcile');
+      loadAssessment();
     });
     return () => {
       unsub();
