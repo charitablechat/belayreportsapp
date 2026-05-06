@@ -474,6 +474,7 @@ export default function PhotoGallery({
         const oldUrls = objectUrlsRef.current;
         objectUrlsRef.current = newObjectUrls;
         setPhotos(mergedPhotos);
+        lastKnownPhotosRef.current = mergedPhotos;
         setFailedCount(signedUrlFailures);
         requestAnimationFrame(() => {
           setTimeout(() => {
@@ -485,6 +486,7 @@ export default function PhotoGallery({
         const oldUrls = objectUrlsRef.current;
         objectUrlsRef.current = newObjectUrls;
         setPhotos(sortedOffline);
+        lastKnownPhotosRef.current = sortedOffline;
         setFailedCount(0);
         requestAnimationFrame(() => {
           setTimeout(() => {
@@ -494,6 +496,8 @@ export default function PhotoGallery({
       }
     } catch (error) {
       console.error('[PhotoGallery] Failed to load photos:', error);
+      // Do NOT clear photos — keep the last-known list rendered so a transient
+      // failure (network blip, IDB hiccup) doesn't visually drop pending uploads.
     } finally {
       setLoading(false);
       initialLoadDone.current = true;
