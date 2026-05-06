@@ -193,7 +193,6 @@ export default function InspectionHeader({ inspection, userProfile, modifiedByPr
                   value={inspection?.previous_inspector || ""}
                   onChange={(value) => {
                     onUpdate("previous_inspector", value);
-                    onImmediateSave?.();
                   }}
                   fieldType="previous_inspector"
                   placeholder="Select or enter inspector..."
@@ -225,7 +224,6 @@ export default function InspectionHeader({ inspection, userProfile, modifiedByPr
                         selected={inspection?.inspection_date ? parseLocalDate(inspection.inspection_date) : undefined}
                         onSelect={(date) => {
                           onUpdate("inspection_date", date ? format(date, 'yyyy-MM-dd') : '');
-                          onImmediateSave?.();
                         }}
                         initialFocus
                         className="pointer-events-auto"
@@ -240,7 +238,6 @@ export default function InspectionHeader({ inspection, userProfile, modifiedByPr
                   value={inspection?.onsite_contact || ""}
                   onChange={(value) => {
                     onUpdate("onsite_contact", value);
-                    onImmediateSave?.();
                   }}
                   fieldType="onsite_contact"
                   placeholder="Select or enter contact..."
@@ -253,7 +250,6 @@ export default function InspectionHeader({ inspection, userProfile, modifiedByPr
                   value={inspection?.previous_inspection_date}
                   onChange={(value) => {
                     onUpdate("previous_inspection_date", value);
-                    onImmediateSave?.();
                   }}
                   disabled={isReadOnly}
                 />
