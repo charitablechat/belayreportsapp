@@ -11,12 +11,13 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { format, differenceInDays, formatDistanceToNow } from "date-fns";
-import { FileText, MoreVertical, Trash2, Download, Check, Cloud, Receipt } from "lucide-react";
+import { FileText, MoreVertical, Trash2, Download, Check, Cloud, Receipt, UploadCloud } from "lucide-react";
 import { triggerHaptic } from "@/lib/haptics";
 import { parseLocalDate } from "@/lib/date-utils";
 import { triggerSuccessConfetti } from "@/lib/confetti";
 import { cn } from "@/lib/utils";
 import { useClickAndHoverSparkles, SparkleContainer } from "@/components/christmas/Sparkles";
+import { useUnsyncedPhotos } from "@/hooks/useUnsyncedPhotos";
 
 // F2: Module-level minute-tick subscriber so we share ONE setInterval across all
 // ReportCard instances on the page (not N intervals for N cards).
