@@ -1,5 +1,6 @@
 import { expect, test } from '@playwright/test';
 import { signIn, signOut } from '../_fixtures/auth';
+import { requireE2EAuthAllowed } from '../_fixtures/safety';
 import {
   MARKER_PREFIX,
   captureSupabaseSession,
@@ -61,6 +62,7 @@ const ADMIN_EMAIL = process.env.E2E_ADMIN_EMAIL;
 const ADMIN_PASSWORD = process.env.E2E_ADMIN_PASSWORD;
 
 test.describe('admin pre-edit override: snapshot captured on admin save', () => {
+  requireE2EAuthAllowed();
   test.skip(
     !OWNER_EMAIL || !OWNER_PASSWORD || !ADMIN_EMAIL || !ADMIN_PASSWORD,
     'Skipping admin pre-edit override e2e: set E2E_TEST_EMAIL/PASSWORD and ' +

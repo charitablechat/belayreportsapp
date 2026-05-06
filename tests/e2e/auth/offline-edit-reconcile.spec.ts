@@ -1,5 +1,6 @@
 import { expect, test } from '@playwright/test';
 import { signIn } from '../_fixtures/auth';
+import { requireE2EAuthAllowed } from '../_fixtures/safety';
 import {
   MARKER_PREFIX,
   captureSupabaseSession,
@@ -42,6 +43,7 @@ const EMAIL = process.env.E2E_TEST_EMAIL;
 const PASSWORD = process.env.E2E_TEST_PASSWORD;
 
 test.describe('sync: offline edit reconciles to cloud', () => {
+  requireE2EAuthAllowed();
   test.skip(
     !EMAIL || !PASSWORD,
     'Skipping scope-C e2e: set E2E_TEST_EMAIL and E2E_TEST_PASSWORD to run.'

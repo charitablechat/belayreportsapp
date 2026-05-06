@@ -1,5 +1,6 @@
 import { expect, test } from '@playwright/test';
 import { signIn } from '../_fixtures/auth';
+import { requireE2EAuthAllowed } from '../_fixtures/safety';
 
 /**
  * Scope "B" — auth-gated golden path.
@@ -21,6 +22,7 @@ const EMAIL = process.env.E2E_TEST_EMAIL;
 const PASSWORD = process.env.E2E_TEST_PASSWORD;
 
 test.describe('auth: signed-in golden path', () => {
+  requireE2EAuthAllowed();
   test.skip(
     !EMAIL || !PASSWORD,
     'Skipping auth-gated e2e: set E2E_TEST_EMAIL and E2E_TEST_PASSWORD to run.'
