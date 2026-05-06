@@ -1,70 +1,62 @@
-## Why users see "File too large"
+## Why the cards say "Unknown"
 
-In `src/pages/NewInspection.tsx` (line 205) the import handler hard-rejects any file over **20 MB**:
+The dashboard query joins each report row to its inspector's profile:
 
-```ts
-if (file.size > 20 * 1024 * 1024) {
-  toast.error("File too large", { description: "Maximum file size is 20 MB." });
-  return;
-}
+```
+inspector:profiles!...fkey(first_name, last_name, avatar_url)
 ```
 
-The whole file is then POSTed as `multipart/form-data` to the `parse-inspection-docx` edge function, which calls `file.arrayBuffer()` and runs `mammoth` / `pdf-parse` / `word-extractor` server-side.
+That join is silently filtered by RLS. The current `profiles` SELECT policies only let a user read a profile when:
 
-Two real problems drive the limit:
+1. It's their own profile (`auth.uid() = id`), OR
+2. They are the **true Super Admin** (`is_super_admin()`), OR
+3. They share an `organization_members` row with that profile.
 
-1. **Edge function payload ceiling.** Supabase Edge Runtime caps inbound request bodies well below the size of an inspection PDF that has embedded site photos (often 25–80 MB). Raising the client limit alone would just move the failure to a 413 / network abort.
-2. **Edge function memory.** `pdf-parse` and `mammoth` materialize the entire document plus extracted images in RAM. A 60 MB photo-heavy PDF reliably OOMs the function even when it does upload.
+There is **no policy that lets an `admin` read other users' profiles**. So when an admin opens the dashboard and sees reports authored by inspectors they don't share an org membership with, the join comes back `null` → `ReportCard.getInspectorName()` falls through to `"Unknown"` and the avatar shows `?`.
 
-The parser itself only ever uses the **plain text** of the document — see line 89 of `supabase/functions/parse-inspection-docx/index.ts`, where the extracted text is immediately truncated to 60 000 characters before being sent to the model. Embedded images are decoded, held in memory, and then discarded.
+`useProfileMap`'s lazy fallback (`getCachedProfile` → `supabase.from('profiles').select(...)`) hits the same RLS wall, so it can't recover the name either.
 
-## Fix: extract text in the browser, send text-only to the edge function
+I confirmed in the DB that every report listed has a real `inspector_id` pointing at a populated profile (Luke Benton, Test Account, etc.) — the data exists, only the read permission is missing for the admin viewing the dashboard.
 
-The image bytes never need to cross the network. We move text extraction to the client, then send a small JSON body (`{ fileName, text }`) to the edge function. This makes the import effectively size-unbounded for the user — a 200 MB PDF with 400 photos becomes a ~200 KB text upload.
+This same gap also breaks name resolution in the Audit Log panel for non-super-admins (`audit_resolve_users` is gated to `is_super_admin()` only).
 
-### 1. New client-side text extractor
+## The fix
 
-Add `src/lib/import-text-extractor.ts`:
+Give the `admin` role (and the read-only super_admin) RLS permission to read profile display fields. This matches the existing `is_admin_or_above()` policies already in place on `inspections`, `trainings`, and `daily_assessments` — admins can already see those reports, they just can't see who authored them.
 
-- `extractDocxText(file)` — `mammoth.browser` `extractRawText({ arrayBuffer })`.
-- `extractPdfText(file)` — `pdfjs-dist` (already viable in browser); iterate pages, concat `getTextContent().items[].str`.
-- `extractDocText(file)` — legacy `.doc` is rare and `word-extractor` is Node-only; keep it as a server-side fallback (see step 3) and warn the user it still needs network + ≤20 MB.
-- `extractMarkdownText(file)` — `await file.text()` + the same regex strip already in the edge function.
+### Migration
 
-Add `mammoth` and `pdfjs-dist` to `dependencies`. Both ship browser builds; bundle impact is acceptable (lazy-import them inside the extractor so the dashboard isn't penalized).
+```sql
+-- Let admins read profiles so dashboard joins resolve
+CREATE POLICY "Admins can view all profiles"
+  ON public.profiles
+  FOR SELECT
+  TO authenticated
+  USING (public.is_admin_or_above());
 
-### 2. Update `handleFileImport` in `NewInspection.tsx`
+-- Allow admins to resolve names in the audit log too
+CREATE OR REPLACE FUNCTION public.audit_resolve_users(_user_ids uuid[])
+RETURNS TABLE(id uuid, first_name text, last_name text)
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path TO 'public'
+AS $$
+  SELECT p.id, p.first_name, p.last_name
+  FROM public.profiles p
+  WHERE p.id = ANY(_user_ids)
+    AND public.is_admin_or_above();
+$$;
+```
 
-- Remove the 20 MB hard check. Replace with a soft warning at, say, 200 MB just to catch obvious mistakes (with a "continue anyway" toast, not a block).
-- Run the appropriate extractor in a try/catch.
-- Show progress: `setImportLoading(true)` already exists; add a status line like "Reading document…" while extraction runs (PDF text extraction on a 100 MB file takes a few seconds on iPad).
-- POST `{ fileName, text }` as `application/json` to `parse-inspection-docx` instead of multipart.
-- Keep the existing 120 s abort, success/partial/truncated handling, and toast logic.
+### What this changes
 
-### 3. Update the edge function `parse-inspection-docx/index.ts`
+- Dashboard inspector names + avatars resolve on first paint for admins.
+- `useProfileMap`'s lazy fallback succeeds for locally-saved drafts whose join was stripped.
+- Audit log shows real names for admins, not just super admin.
 
-Accept either shape:
+### What this does NOT change
 
-- **Existing path** (multipart) — keep for `.doc` legacy fallback and any older clients still in flight; leave the size as-is. Tag the log line so we can deprecate later.
-- **New path** (`application/json` with `{ fileName, text }`) — skip mammoth/pdf-parse entirely, jump straight to the existing `maxChars = 60_000` truncation and AI extraction. This is the fast, memory-safe path.
+- No client code changes — the queries already request the join; they just start returning data.
+- Regular (non-admin) users keep the existing rules: own profile + organization-mates only.
+- Super Admin invisibility in the UI is unchanged (that's UI logic, not RLS).
+- No new sensitive columns are exposed beyond what the joins already request (first_name, last_name, avatar_url, acct_number).
 
-No schema or RLS changes. `verify_jwt` stays `true`.
-
-### 4. UX copy
-
-- Drop the "Maximum file size is 20 MB" line from the dropzone helper text in `NewInspection.tsx` (around line 596–636) — replace with "PDF, DOCX, DOC, or Markdown. Photos in the file are ignored — only the text is read."
-- Keep the offline guard (`!navigator.onLine`) — text extraction is local but the AI call still needs network.
-
-## Verification
-
-1. Import a 45 MB photo-heavy PDF on an iPad → no "too large" toast, extraction completes, fields populate.
-2. Import a 200 MB PDF → completes (slow but works); confirm only JSON text crosses the wire in DevTools network panel.
-3. Import a malformed PDF → extractor throws, friendly "Could not read document" toast, no crash.
-4. Import a `.doc` legacy file → falls back to the multipart path, behaves exactly as today.
-5. Existing `.docx` and `.md` imports still work and still respect the 60 000-char model truncation (server-side `truncated` / `partial` warnings continue to fire on huge text bodies).
-
-## Out of scope
-
-- Streaming/chunked AI extraction for documents whose **text** exceeds 60 000 chars. That's a separate, larger change (multi-pass with overlap), and the existing "partial / truncated" warnings already inform users.
-- Removing the legacy `.doc` server path. Keeping it avoids breaking the small minority of users still uploading old Word files.
-- Any change to photo upload pipelines, sync, RLS, or schema.
+After approval I'll run the migration and verify the cards show real names.
