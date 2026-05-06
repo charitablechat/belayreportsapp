@@ -667,6 +667,7 @@ export function DashboardReportsSection({
                                         compact={compact}
                                         isAdmin={isSuperAdmin}
                                         isInvoiced={invoicedReportIds?.has(report.id)}
+                                        invoicedMeta={invoicedMetaById?.get(report.id)}
                                         onToggleInvoiced={onToggleInvoiced}
                                         profilesById={profilesById}
                                       />
