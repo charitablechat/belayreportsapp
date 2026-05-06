@@ -85,7 +85,7 @@ for (const file of parsed) {
 console.log(`[lint-any-budget] any-errors: ${actual}  budget: ${budget}`);
 
 if (actual > budget) {
-  const failMessage = `[lint-any-budget] found ${actual - budget} net-new @typescript-eslint/no-explicit-any error(s). Budget: ${budget}, actual: ${actual}.`;
+  const failMessage = `found ${actual - budget} net-new @typescript-eslint/no-explicit-any error(s). Budget: ${budget}, actual: ${actual}.`;
   if (isLovableMainPush()) {
     emitLovableGraceWarning("lint-any-budget", failMessage);
     process.exit(0);
