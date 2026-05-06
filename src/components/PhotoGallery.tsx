@@ -260,7 +260,22 @@ export default function PhotoGallery({
       if (!silent) setLoading(true);
       let signedUrlFailures = 0;
       const newObjectUrls: string[] = [];
-      
+
+      // Photo persistence guard: if the IDB layer/circuit breaker is open,
+      // `getOfflinePhotos` will silently return [] (silent boundary).
+      // Re-rendering empty would make pending uploads visually disappear
+      // even though the blob is still safely on disk. Preserve the last-
+      // known list and skip this refresh — a future tick will retry.
+      const breakerOpen = isIdbLayerBreakerOpen() || getCircuitBreakerStatus().open;
+      if (breakerOpen && lastKnownPhotosRef.current.length > 0) {
+        if (import.meta.env.DEV) {
+          console.warn('[PhotoGallery] IDB breaker open — preserving last-known photo list');
+        }
+        if (!silent) setLoading(false);
+        initialLoadDone.current = true;
+        return;
+      }
+
       const offlinePhotos = await getOfflinePhotos(inspectionId);
       const STALE_THRESHOLD_MS = 10 * 60 * 1000;
       const now = Date.now();
