@@ -3589,8 +3589,17 @@ export async function resetPhotoRetryCounts(onlyIds?: string[]): Promise<number>
       while (cursor) {
         const photo = cursor.value;
         const matches = idSet ? idSet.has(photo.id) : true;
-        if (matches && (photo.retryCount || 0) > 0) {
+        // L5: Also reset photos that have a pending backoff window even if
+        // retryCount=0 (e.g. a single transient flake), so the "Retry" button
+        // doesn't appear broken for the user-requested-now case.
+        const hasRetryCount = (photo.retryCount || 0) > 0;
+        const hasBackoffWindow = !!photo.nextRetryAt;
+        if (matches && (hasRetryCount || hasBackoffWindow)) {
           photo.retryCount = 0;
+          // L5: Clear the backoff window so the photo is eligible immediately
+          // on the next sync cycle. This mirrors `resetPhotoForRetry` for
+          // the bulk path used by SyncPulse's "Retry" button.
+          photo.nextRetryAt = null;
           // N-G: must coerce `uploaded` on every photo write — this path
           // iterates ALL photos and a legacy boolean-keyed row (pre-v18 or
           // a row whose migration failed) would otherwise round-trip

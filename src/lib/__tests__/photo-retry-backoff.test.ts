@@ -238,6 +238,70 @@ describe('L5 jittered photo backoff', () => {
     expect(out.find(p => p.id === 'p-reset')).toBeDefined(); // window cleared
   });
 
+  it('resetPhotoRetryCounts clears nextRetryAt on photos with retryCount=0 but a pending backoff window', async () => {
+    // Bug fix from PR #151 review: SyncPulse "Retry" button calls
+    // resetPhotoRetryCounts, which previously only zeroed retryCount —
+    // photos with retryCount=0 + nextRetryAt set (transient-only failures)
+    // were left with the backoff window intact and stayed invisible to
+    // getUnuploadedPhotos for up to ~6 minutes. Verify the bulk path now
+    // mirrors resetPhotoForRetry.
+    const mod = await import('../offline-storage');
+    const blob = new Blob(['t'], { type: 'image/jpeg' });
+    await mod.savePhotoOffline({
+      id: 'p-bulk-trans',
+      inspectionId: 'insp-bulk',
+      section: 'systems',
+      blob,
+      fileName: 'g.jpg',
+      uploaded: false,
+    });
+
+    await mod.markPhotoTransientFailure('p-bulk-trans', 'flake');
+    let out = (await mod.getUnuploadedPhotos()) as Array<{ id: string }>;
+    expect(out.find(p => p.id === 'p-bulk-trans')).toBeUndefined(); // in window
+
+    const reset = await mod.resetPhotoRetryCounts(['p-bulk-trans']);
+    expect(reset).toBe(1);
+
+    out = (await mod.getUnuploadedPhotos()) as Array<{ id: string }>;
+    expect(out.find(p => p.id === 'p-bulk-trans')).toBeDefined();
+  });
+
+  it('resetPhotoRetryCounts clears nextRetryAt on photos with retryCount>0 (post-permanent-failure path)', async () => {
+    const mod = await import('../offline-storage');
+    const blob = new Blob(['s'], { type: 'image/jpeg' });
+    await mod.savePhotoOffline({
+      id: 'p-bulk-perm',
+      inspectionId: 'insp-bulk-perm',
+      section: 'systems',
+      blob,
+      fileName: 'h.jpg',
+      uploaded: false,
+    });
+
+    await mod.incrementPhotoRetryCount('p-bulk-perm');
+    let out = (await mod.getUnuploadedPhotos()) as Array<{ id: string }>;
+    expect(out.find(p => p.id === 'p-bulk-perm')).toBeUndefined(); // in window
+
+    const reset = await mod.resetPhotoRetryCounts(['p-bulk-perm']);
+    expect(reset).toBe(1);
+
+    out = (await mod.getUnuploadedPhotos()) as Array<{ id: string }>;
+    const found = out.find(p => p.id === 'p-bulk-perm');
+    expect(found).toBeDefined();
+
+    // Verify both retryCount AND nextRetryAt are cleared
+    const idbMod = await import('idb');
+    const db = await idbMod.openDB('rope-works-inspections');
+    const photo = await db.get('photos', 'p-bulk-perm') as {
+      retryCount: number;
+      nextRetryAt: number | null;
+    };
+    db.close();
+    expect(photo.retryCount).toBe(0);
+    expect(photo.nextRetryAt).toBeNull();
+  });
+
   it('savePhotoOffline of a fresh photo (no nextRetryAt) is eligible immediately', async () => {
     const mod = await import('../offline-storage');
     const blob = new Blob(['u'], { type: 'image/jpeg' });

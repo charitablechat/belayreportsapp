@@ -572,7 +572,11 @@ export async function syncPhotos(signal?: AbortSignal): Promise<{ remaining: num
         const cls = classifyPhotoError(error);
         console.error(`[Sync Manager] Failed to upload photo (${cls.kind}):`, photo.id, cls.message);
         if (cls.kind === 'transient') {
-          // Retry next cycle without counting toward the dead-letter ceiling.
+          // L5: Stamp lastError + nextRetryAt (jittered) so this catch-all
+          // path also backs off instead of being immediately eligible —
+          // mirrors the explicit upload + DB-insert transient paths above.
+          // retryCount is intentionally NOT bumped.
+          await markPhotoTransientFailure(photo.id, cls.message);
           return;
         }
         const r = await handlePermanentPhotoFailure(photo, cls.message);
