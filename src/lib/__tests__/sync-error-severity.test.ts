@@ -13,6 +13,10 @@ import {
   isRecoverableRollback,
   rollbackFingerprintLeaf,
   rollbackFingerprint,
+  isLocalRecordMissing,
+  localRecordMissingLeaf,
+  localRecordMissingFingerprint,
+  classifyAtomicSyncError,
 } from "../sync-error-severity";
 
 describe("isRecoverableRollback", () => {
@@ -118,5 +122,186 @@ describe("rollbackFingerprint", () => {
     expect(rollbackFingerprint("atomic-sync.syncInspection", a)).not.toEqual(
       rollbackFingerprint("atomic-sync.syncInspection", b),
     );
+  });
+});
+
+describe("isLocalRecordMissing", () => {
+  it("returns true for the inspection pre-flight read failure", () => {
+    expect(
+      isLocalRecordMissing(new Error("Inspection not found in local storage")),
+    ).toBe(true);
+  });
+
+  it("returns true for the training pre-flight read failure", () => {
+    expect(
+      isLocalRecordMissing(new Error("Training not found in local storage")),
+    ).toBe(true);
+  });
+
+  it("returns true for the daily-assessment pre-flight read failure", () => {
+    expect(
+      isLocalRecordMissing(
+        new Error("Daily assessment not found in local storage"),
+      ),
+    ).toBe(true);
+  });
+
+  it("returns false for unrelated errors", () => {
+    expect(isLocalRecordMissing(new Error("schema cache: relation not found"))).toBe(
+      false,
+    );
+    expect(isLocalRecordMissing(null)).toBe(false);
+    expect(isLocalRecordMissing(undefined)).toBe(false);
+    expect(isLocalRecordMissing(new Error("Inspection deleted"))).toBe(false);
+  });
+
+  it("walks the cause chain so wrapped local-missing errors still classify", () => {
+    const leaf = new Error("Inspection not found in local storage");
+    const wrapped = new Error("[atomic-sync] pre-flight read failure");
+    (wrapped as Error & { cause?: unknown }).cause = leaf;
+    expect(isLocalRecordMissing(wrapped)).toBe(true);
+  });
+});
+
+describe("localRecordMissingLeaf", () => {
+  it("extracts 'inspection' for the inspection variant", () => {
+    expect(
+      localRecordMissingLeaf(new Error("Inspection not found in local storage")),
+    ).toBe("inspection");
+  });
+
+  it("extracts 'training' for the training variant", () => {
+    expect(
+      localRecordMissingLeaf(new Error("Training not found in local storage")),
+    ).toBe("training");
+  });
+
+  it("normalises 'Daily assessment' → 'daily-assessment' (kebab-cased)", () => {
+    expect(
+      localRecordMissingLeaf(
+        new Error("Daily assessment not found in local storage"),
+      ),
+    ).toBe("daily-assessment");
+  });
+
+  it("falls back to 'unknown-record' when no record-type token is present", () => {
+    expect(localRecordMissingLeaf(new Error("totally different error"))).toBe(
+      "unknown-record",
+    );
+  });
+});
+
+describe("localRecordMissingFingerprint", () => {
+  it("groups by [scope, 'local-record-missing', record-type, '{{default}}']", () => {
+    expect(
+      localRecordMissingFingerprint(
+        "atomic-sync.syncInspection",
+        new Error("Inspection not found in local storage"),
+      ),
+    ).toEqual([
+      "atomic-sync.syncInspection",
+      "local-record-missing",
+      "inspection",
+      "{{default}}",
+    ]);
+  });
+
+  it("produces distinct fingerprints per record kind so issues don't collapse incorrectly", () => {
+    const a = localRecordMissingFingerprint(
+      "atomic-sync.syncInspection",
+      new Error("Inspection not found in local storage"),
+    );
+    const b = localRecordMissingFingerprint(
+      "atomic-sync.syncTraining",
+      new Error("Training not found in local storage"),
+    );
+    expect(a).not.toEqual(b);
+  });
+
+  it("never collides with rollbackFingerprint at the same scope (different discriminator token)", () => {
+    const rollback = new Error(
+      "Transaction failed after 0/2 steps. Rollback: successful",
+    );
+    const missing = new Error("Inspection not found in local storage");
+    const rollbackFp = rollbackFingerprint("atomic-sync.syncInspection", rollback);
+    const missingFp = localRecordMissingFingerprint(
+      "atomic-sync.syncInspection",
+      missing,
+    );
+    expect(rollbackFp).not.toEqual(missingFp);
+    // Discriminator is at index 1
+    expect(rollbackFp[1]).toBe("rollback-successful");
+    expect(missingFp[1]).toBe("local-record-missing");
+  });
+});
+
+describe("classifyAtomicSyncError", () => {
+  it("returns warning + rollback fingerprint for recoverable rollbacks", () => {
+    const leaf = new Error("Step timeout: upsert:inspection_ziplines");
+    const wrapped = new Error(
+      "Transaction failed after 2/7 steps. Rollback: successful",
+    );
+    (wrapped as Error & { cause?: unknown }).cause = leaf;
+    expect(
+      classifyAtomicSyncError("atomic-sync.syncInspection", wrapped),
+    ).toEqual({
+      level: "warning",
+      fingerprint: [
+        "atomic-sync.syncInspection",
+        "rollback-successful",
+        "upsert:inspection_ziplines",
+        "{{default}}",
+      ],
+    });
+  });
+
+  it("returns warning + local-record-missing fingerprint for missing-record errors", () => {
+    expect(
+      classifyAtomicSyncError(
+        "atomic-sync.syncTraining",
+        new Error("Training not found in local storage"),
+      ),
+    ).toEqual({
+      level: "warning",
+      fingerprint: [
+        "atomic-sync.syncTraining",
+        "local-record-missing",
+        "training",
+        "{{default}}",
+      ],
+    });
+  });
+
+  it("returns error + undefined fingerprint for hard failures (let Sentry stack-group)", () => {
+    expect(
+      classifyAtomicSyncError(
+        "atomic-sync.syncInspection",
+        new Error("new row violates row-level security policy"),
+      ),
+    ).toEqual({ level: "error", fingerprint: undefined });
+
+    expect(
+      classifyAtomicSyncError(
+        "atomic-sync.syncInspection",
+        new Error("Transaction failed after 1/4 steps. Rollback: failed"),
+      ),
+    ).toEqual({ level: "error", fingerprint: undefined });
+  });
+
+  it("rollback classifier wins when both shapes coexist (defensive determinism)", () => {
+    // A rollback wrapper whose inner cause happens to mention "Inspection not
+    // found in local storage" — the rollback path is still the more
+    // actionable signal; classify as rollback.
+    const leaf = new Error("Inspection not found in local storage");
+    const wrapped = new Error(
+      "Transaction failed after 0/2 steps. Rollback: successful",
+    );
+    (wrapped as Error & { cause?: unknown }).cause = leaf;
+    const result = classifyAtomicSyncError(
+      "atomic-sync.syncInspection",
+      wrapped,
+    );
+    expect(result.level).toBe("warning");
+    expect(result.fingerprint?.[1]).toBe("rollback-successful");
   });
 });

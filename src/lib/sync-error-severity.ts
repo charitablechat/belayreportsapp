@@ -102,3 +102,86 @@ export function rollbackFingerprintLeaf(err: unknown): string {
 export function rollbackFingerprint(scope: string, err: unknown): string[] {
   return [scope, "rollback-successful", rollbackFingerprintLeaf(err), "{{default}}"];
 }
+
+/**
+ * Match the pre-flight read failure thrown at the top of each
+ * atomic-sync function when `getOfflineInspection` /
+ * `getOfflineTraining` / `getOfflineDailyAssessment` returns null:
+ *
+ *   throw new Error("Inspection not found in local storage");
+ *   throw new Error("Training not found in local storage");
+ *   throw new Error("Daily assessment not found in local storage");
+ *
+ * Captures the record-type token so the fingerprint can split issues
+ * by record kind.
+ */
+const LOCAL_RECORD_MISSING_RE =
+  /(Inspection|Training|Daily assessment) not found in local storage/i;
+
+/**
+ * Returns true when the error is a "record disappeared from IDB before
+ * sync could read it" — most often the record was soft-deleted /
+ * quarantined / cleared between when the periodic-sync loop enumerated
+ * dirty records and when the per-record sync function actually ran.
+ *
+ * The next periodic-sync tick won't see this record (because it's
+ * gone), so there's nothing actionable for the inspector. Mirror the
+ * Mode 13D treatment of recoverable rollbacks: classify as warning,
+ * fingerprint-group so all occurrences collapse into one Sentry issue
+ * per record kind that you can review weekly instead of N alerts per
+ * occurrence.
+ */
+export function isLocalRecordMissing(err: unknown): boolean {
+  const message = joinErrorCauseChain(err);
+  if (!message) return false;
+  return LOCAL_RECORD_MISSING_RE.test(message);
+}
+
+/**
+ * Extract the record-type token (e.g. `'inspection'`,
+ * `'training'`, `'daily-assessment'`) from a local-record-missing
+ * error. Used as the leaf of a stable fingerprint so issues split by
+ * record kind without splitting per record id.
+ */
+export function localRecordMissingLeaf(err: unknown): string {
+  const message = joinErrorCauseChain(err);
+  const match = message.match(LOCAL_RECORD_MISSING_RE);
+  if (!match?.[1]) return "unknown-record";
+  return match[1].toLowerCase().replace(/\s+/g, "-");
+}
+
+/**
+ * Build the Sentry fingerprint array for a local-record-missing error.
+ * Mirrors `rollbackFingerprint` shape with a distinct discriminator
+ * token (`'local-record-missing'`) so it never collides with rollback
+ * fingerprints even at the same scope.
+ */
+export function localRecordMissingFingerprint(scope: string, err: unknown): string[] {
+  return [scope, "local-record-missing", localRecordMissingLeaf(err), "{{default}}"];
+}
+
+/**
+ * Convenience: whichever recoverable class matches, build the right
+ * fingerprint. Returns `undefined` when the error doesn't fit any of
+ * the known recoverable shapes (caller should log as `error` with no
+ * manual fingerprint).
+ *
+ * Atomic-sync catch sites use this so they don't have to branch on
+ * which classifier matched — pass any caught error and get back the
+ * `(level, fingerprint)` pair to forward to Sentry.
+ */
+export function classifyAtomicSyncError(
+  scope: string,
+  err: unknown,
+): { level: "warning" | "error"; fingerprint: string[] | undefined } {
+  if (isRecoverableRollback(err)) {
+    return { level: "warning", fingerprint: rollbackFingerprint(scope, err) };
+  }
+  if (isLocalRecordMissing(err)) {
+    return {
+      level: "warning",
+      fingerprint: localRecordMissingFingerprint(scope, err),
+    };
+  }
+  return { level: "error", fingerprint: undefined };
+}
