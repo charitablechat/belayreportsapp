@@ -7,7 +7,7 @@ import {
   AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { isLocalDataNewer } from "@/lib/local-data-guards";
-import { applyTrackedFieldWrite } from "@/lib/field-merge";
+import { applyTrackedFieldWrite, mergeRecordFields, TRACKED_FIELDS } from "@/lib/field-merge";
 import { useParams, useNavigate } from "react-router-dom";
 import { goBack } from "@/lib/navigation";
 import { markPendingDashboardRefresh, markDashboardStaleTimestamp, registerActiveFormRecord, unregisterActiveFormRecord, onPendingRemoteUpdate } from "@/lib/sync-events";
@@ -422,6 +422,20 @@ export default function TrainingForm() {
       if (!id) return;
 
       try {
+        // Race-fix: flush any pending debounced save into IDB before reading,
+        // so the offline read includes the user's most recent edits.
+        if (autoSaveTimer.current || hasUnsavedRef.current) {
+          try {
+            if (autoSaveTimer.current) {
+              clearTimeout(autoSaveTimer.current);
+              autoSaveTimer.current = null;
+            }
+            await saveTrainingRef.current?.();
+          } catch (e) {
+            console.warn('[TrainingForm] Pre-load flush failed (continuing):', e);
+          }
+        }
+
         // Try loading from offline storage first
         const offlineTraining = await getOfflineTraining(id);
         const [
@@ -520,7 +534,17 @@ export default function TrainingForm() {
               setInspectorId(trainingData.inspector_id);
             }
           } else if (trainingData) {
-            setTraining(trainingData);
+            // Race-fix: per-field merge so any locally-newer tracked-field
+            // edit survives a refetch even when the server payload doesn't
+            // yet reflect that edit.
+            setTraining(prev => {
+              if (!prev) return trainingData;
+              return mergeRecordFields(
+                prev as typeof trainingData & { field_timestamps?: Record<string, string> | null },
+                trainingData as typeof trainingData & { field_timestamps?: Record<string, string> | null },
+                TRACKED_FIELDS.training,
+              );
+            });
             setInspectorId(trainingData.inspector_id);
             saveTrainingOffline({ ...trainingData, synced_at: trainingData.synced_at || new Date().toISOString() }).catch(e =>
               console.warn('[TrainingForm] Non-critical: failed to cache training', e)

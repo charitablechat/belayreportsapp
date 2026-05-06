@@ -13,7 +13,7 @@ import { useFormRecordRealtime } from "@/hooks/useFormRecordRealtime";
 import { useNavigate, useParams } from "react-router-dom";
 import { goBack } from "@/lib/navigation";
 import { isLocalDataNewer } from "@/lib/local-data-guards";
-import { applyTrackedFieldWrite } from "@/lib/field-merge";
+import { applyTrackedFieldWrite, mergeRecordFields, TRACKED_FIELDS } from "@/lib/field-merge";
 import { hasTextContent } from "@/lib/html-content-cleaner";
 import { supabase } from "@/integrations/supabase/client";
 import type { PostgrestError, RealtimePostgresChangesPayload } from "@supabase/supabase-js";
@@ -1065,6 +1065,21 @@ export default function InspectionForm() {
     }, LOAD_TIMEOUT);
 
     try {
+      // Race-fix: flush any pending debounced save into IDB before reading,
+      // so `getOfflineInspection` returns the row containing the user's
+      // most recent edits instead of a pre-edit snapshot.
+      if (saveDebounceTimerRef.current || hasUnsavedRef.current) {
+        try {
+          if (saveDebounceTimerRef.current) {
+            clearTimeout(saveDebounceTimerRef.current);
+            saveDebounceTimerRef.current = null;
+          }
+          await performSaveRef.current?.(true);
+        } catch (e) {
+          console.warn('[InspectionForm] Pre-load flush failed (continuing):', e);
+        }
+      }
+
       // Helper to wrap offline operations with a timeout to prevent hanging
       const withOfflineTimeout = async <T,>(
         operation: Promise<T>,
@@ -1350,7 +1365,17 @@ export default function InspectionForm() {
         } else {
           // SERVER DATA IS CURRENT — apply it (existing behavior)
           if (data) {
-            setInspection(data);
+            // Race-fix: per-field merge so any locally-newer tracked-field
+            // edit (e.g. onsite_contact typed seconds ago) survives a refetch
+            // even when the server payload doesn't yet reflect that edit.
+            setInspection(prev => {
+              if (!prev) return data;
+              return mergeRecordFields(
+                prev as DbRow & { field_timestamps?: Record<string, string> | null },
+                data as DbRow & { field_timestamps?: Record<string, string> | null },
+                TRACKED_FIELDS.inspection,
+              ) as DbRow;
+            });
             setInspectorId(data.inspector_id);
             // Non-blocking cache update - don't await to prevent loading freeze
             saveInspectionOffline({ ...data, synced_at: data.synced_at || new Date().toISOString() }).catch(e => 

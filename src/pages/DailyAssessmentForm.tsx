@@ -2,7 +2,7 @@ import { useEffect, useState, useRef, useCallback } from "react";
 import { formatReportFilename, formatReportTitle } from "@/lib/report-naming";
 import { useReportTabHistory } from "@/hooks/useReportTabHistory";
 import { isLocalDataNewer } from "@/lib/local-data-guards";
-import { applyTrackedFieldWrite } from "@/lib/field-merge";
+import { applyTrackedFieldWrite, mergeRecordFields, TRACKED_FIELDS } from "@/lib/field-merge";
 import { useParams, useNavigate } from "react-router-dom";
 import { goBack } from "@/lib/navigation";
 import { markPendingDashboardRefresh, markDashboardStaleTimestamp, registerActiveFormRecord, unregisterActiveFormRecord, onPendingRemoteUpdate } from "@/lib/sync-events";
@@ -526,6 +526,19 @@ export default function DailyAssessmentForm() {
 
   const loadAssessment = async () => {
     try {
+      // Race-fix: flush any pending debounced save into IDB before reading.
+      if (autoSaveTimerRef.current || hasUnsavedRef.current) {
+        try {
+          if (autoSaveTimerRef.current) {
+            clearTimeout(autoSaveTimerRef.current);
+            autoSaveTimerRef.current = null;
+          }
+          await handleSaveProgressRef.current?.();
+        } catch (e) {
+          console.warn('[DailyAssessmentForm] Pre-load flush failed (continuing):', e);
+        }
+      }
+
       // Try loading from offline storage first
       const offlineAssessment = await getOfflineDailyAssessment(id!);
       
@@ -630,7 +643,16 @@ export default function DailyAssessmentForm() {
           }
           // Early exit: child data already loaded from IndexedDB above (lines 257-271)
         } else if (assessmentData) {
-          setAssessment(assessmentData);
+          // Race-fix: per-field merge so any locally-newer tracked-field
+          // edit survives a refetch.
+          setAssessment(prev => {
+            if (!prev) return assessmentData;
+            return mergeRecordFields(
+              prev as typeof assessmentData & { field_timestamps?: Record<string, string> | null },
+              assessmentData as typeof assessmentData & { field_timestamps?: Record<string, string> | null },
+              TRACKED_FIELDS.daily_assessment,
+            );
+          });
           setInspectorId(assessmentData.inspector_id);
 
           // Load all related data
