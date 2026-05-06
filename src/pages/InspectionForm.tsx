@@ -1341,14 +1341,24 @@ export default function InspectionForm() {
         const { data, error } = inspectionResult;
         if (error && error.message !== 'Query timeout') throw error;
         
-        // Handle inspection not found - redirect to dashboard
+        // Handle inspection not found - redirect to dashboard.
+        // Only act when the server response is conclusive (no timeout, no error)
+        // AND local storage isn't degraded — otherwise a transient IDB/network
+        // hiccup would falsely alarm the user and bounce them off the form.
         if (!data && !offlineData) {
-          console.warn('[InspectionForm] Inspection not found:', id);
-          toast.error("Inspection not found", {
-            description: "This inspection may have been deleted or doesn't exist.",
-          });
-          navigate('/dashboard');
-          return;
+          const serverInconclusive = !!error || !navigator.onLine;
+          const { getCircuitBreakerStatus } = await import('@/lib/offline-storage');
+          const idbDegraded = getCircuitBreakerStatus().open;
+          if (serverInconclusive || idbDegraded) {
+            console.warn('[InspectionForm] Skipping not-found redirect — inconclusive lookup', { serverInconclusive, idbDegraded });
+          } else {
+            console.warn('[InspectionForm] Inspection not found:', id);
+            toast.error("Inspection not found", {
+              description: "This inspection may have been deleted or doesn't exist.",
+            });
+            navigate('/dashboard');
+            return;
+          }
         }
         
         // Determine if local data should take priority over server data
