@@ -112,7 +112,7 @@ export default function DailyAssessmentForm() {
   const { isOnline } = useNetworkStatus();
   const isMobileView = useIsMobile();
   const { syncReport, getLatestReport } = useReportSync(id, 'daily_assessment');
-  const { storageUnavailable, usingFallbackStorage } = useStorageHealthCheck();
+  const { storageUnavailable } = useStorageHealthCheck();
   
   // Check edit permissions - Super Admins are view-only, only owners can edit
   const [inspectorId, setInspectorId] = useState<string | null>(null);
@@ -1681,25 +1681,6 @@ export default function DailyAssessmentForm() {
                 </p>
                 <p className="text-xs text-destructive/80 mt-0.5">
                   Your changes are at risk. Please stay connected to sync your work.
-                </p>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Fallback Storage Banner */}
-      {usingFallbackStorage && !storageUnavailable && (
-        <div className="bg-amber-50 dark:bg-amber-950/30 border-b border-amber-200 dark:border-amber-800/40">
-          <div className="container mx-auto px-4 py-3">
-            <div className="flex items-center gap-3">
-              <AlertTriangle className="w-5 h-5 text-amber-600 dark:text-amber-400 shrink-0" />
-              <div className="flex-1 min-w-0">
-                <p className="text-sm font-medium text-amber-800 dark:text-amber-300">
-                  Using backup storage
-                </p>
-                <p className="text-xs text-amber-700/80 dark:text-amber-400/70 mt-0.5">
-                  Your changes are saved locally and will sync when storage recovers.
                 </p>
               </div>
             </div>
