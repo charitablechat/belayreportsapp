@@ -86,6 +86,10 @@ export default function PhotoGallery({
   const objectUrlsRef = useRef<string[]>([]);
   const [evictedCount, setEvictedCount] = useState(0);
   const [failedCount, setFailedCount] = useState(0);
+  // Preserve last-known rendered list so a transient IDB read failure (or a
+  // breaker-open fast-fail returning []) does not flicker pending photos out
+  // of the gallery. Updated only after a successful load.
+  const lastKnownPhotosRef = useRef<Photo[]>([]);
 
   // Batch selection state
   const [batchMode, setBatchMode] = useState(false);
