@@ -1,44 +1,90 @@
-## Goal
+## What's happening in the video
 
-Inside the shaded "INVOICED" badge on completed report cards, render the invoice timestamp and the user who marked it, fetched live from `invoiced_reports`. Keep the layout compact and non-overflowing.
+In `Training Summary → Training Observations`, the user clicks into the middle of the line `"French creek non adjustable biplane lanyards have illegible manufacture dates."` and starts editing. As soon as they type, the editor wipes part of the line back to a stale value (and the cursor jumps to the end). They retype, click back in, edit again, get wiped again.
 
-## Where the change lives
+This is the classic "controlled TipTap" race, and it lives in **one shared component** that every report uses, so the fix applies once and protects all reports.
 
-- `src/pages/Dashboard.tsx` — `invoicedQuery` (lines ~253-268) currently stores only a `Set<string>` of `report_id`. Extend it to also expose `invoiced_at` and `invoiced_by`.
-- `src/components/dashboard/DashboardReportsSection.tsx` — pass new metadata prop through to `ReportCard`.
-- `src/components/dashboard/ReportCard.tsx` — render the metadata lines inside the existing red `INVOICED` badge (lines 205-209).
+## Root cause
 
-## Data flow
+`src/components/ui/rich-text-editor.tsx` syncs the `content` prop into the editor on every render:
 
-1. **Query**: change `invoicedQuery` to `select("report_id, invoiced_at, invoiced_by")` and return `Map<reportId, { invoiced_at: string; invoiced_by: string | null }>`. Keep `invoicedReportIds` (a `Set` view) for existing `.has()` callers; derive it from the map's keys so nothing else breaks. Update `handleToggleInvoiced` cache writes to `setQueryData` on the Map (delete entry on removal; add `{ invoiced_at: new Date().toISOString(), invoiced_by: user?.id ?? null }` on insert).
-2. **Prop plumbing**: `DashboardReportsSection` already receives `invoicedReportIds`; also accept `invoicedMeta` (the Map) and pass `invoicedMeta?.get(report.id)` as a new `invoicedMeta` prop on each `<ReportCard>`.
-3. **ReportCard**: add optional prop `invoicedMeta?: { invoiced_at: string; invoiced_by: string | null }`. Use the existing `profilesById` map to resolve `invoiced_by` to a display name (`first_name last_name`, falling back to a short id slice or "Unknown").
-
-## UI inside the INVOICED badge
-
-Replace the single `INVOICED` span (currently `whitespace-nowrap`) with a small flex column:
-
-```
-INVOICED                 ← existing big red label, kept as-is visually
-Mar 4, 2026 · 2:14 PM    ← text-[11px], muted/red-400
-by Jane Doe              ← text-[11px], muted/red-400
+```ts
+useEffect(() => {
+  if (editor && content !== editor.getHTML()) {
+    editor.commands.setContent(content, { emitUpdate: false });
+  }
+}, [content, editor]);
 ```
 
-Implementation notes:
-- Wrap label + meta in a `flex flex-col items-center gap-1` container; remove `whitespace-nowrap` from the outer wrapper and apply it only to the big "INVOICED" word so it never wraps but the meta lines can.
-- Meta block: `text-[11px] font-medium tracking-normal opacity-80 leading-tight text-center`, no rotation override needed (inherits the parent `rotate-[25deg]`). Use `max-w-[80%]` with `break-words` to guarantee no overflow.
-- Format timestamp with `format(new Date(invoiced_at), "PP · p")` from `date-fns` (already used elsewhere in the file).
-- If `invoicedMeta` is missing (e.g., legacy rows), render only the `INVOICED` label — no empty lines.
+Sequence that breaks editing:
+
+1. User types char A → TipTap `onUpdate` fires → `onChange(htmlA)`.
+2. Parent calls `setSummary({...summary, observations: htmlA})` (re-render scheduled).
+3. Before React commits, user types char B → TipTap is now at `htmlB` internally.
+4. React commits with `content = htmlA` (the in-flight value).
+5. Effect runs: `htmlA !== editor.getHTML() (htmlB)` → calls `setContent(htmlA)`.
+6. `setContent` **resets the document** to `htmlA` and **moves the cursor to the end**, destroying char B and any selection state.
+
+When the user is editing in the middle of a line, the cursor "jumping to end" reads as "the rest of the line was deleted" because their next keystroke now appends at the end while the in-flight value they were editing got clobbered. With longer typing bursts you can lose multi-character chunks, which is exactly what the video shows.
+
+This same component is used by:
+
+- `TrainingSummarySection` (Training Observations + Recommendations) — visible bug.
+- `SummarySection` (Inspection: Repairs, Critical Actions, Future Considerations).
+- `ZiplinesTable`, `OperatingSystemsTable`, `EquipmentTable` (per-row inline notes).
+- `KnownIssuesCard`, `DeveloperNotesCard`.
+- `LazyRichTextEditor` (which wraps `RichTextEditor`).
+
+So everywhere a TipTap rich-text field exists, the same race can fire — just less visibly on short fields. Fixing it once in `rich-text-editor.tsx` covers every report.
+
+## Fix
+
+Track the HTML the editor last emitted to the parent. Only sync the `content` prop back into the editor when it represents a **truly external** change (initial load, "Regenerate from Inspection", JSON import, server reconcile) — not when it's just our own `onChange` echoing back through React state.
+
+Edit `src/components/ui/rich-text-editor.tsx`:
+
+1. Add a `lastEmittedHtmlRef = useRef<string | null>(null)`.
+2. In `onUpdate`, set `lastEmittedHtmlRef.current = editor.getHTML()` before calling `onChange`.
+3. Change the sync effect to:
+   ```ts
+   useEffect(() => {
+     if (!editor) return;
+     const current = editor.getHTML();
+     if (content === current) return;                       // already in sync
+     if (content === lastEmittedHtmlRef.current) return;    // it's our own echo — ignore
+     // External change (load, regenerate, import) — preserve cursor where possible.
+     const { from, to } = editor.state.selection;
+     editor.commands.setContent(content, { emitUpdate: false });
+     try {
+       const size = editor.state.doc.content.size;
+       editor.commands.setTextSelection({
+         from: Math.min(from, size),
+         to: Math.min(to, size),
+       });
+     } catch { /* selection restore best-effort */ }
+   }, [content, editor]);
+   ```
+4. Also guard against an edge case where `onChange` is called before the parent commits (focus/blur cycles): keep `lastEmittedHtmlRef` in sync inside `onBlur` too (`lastEmittedHtmlRef.current = editor.getHTML()`).
+
+That's the entire change — single file, ~15 lines.
+
+## Why this is safe for every other consumer
+
+- "Regenerate from Inspection" in `SummarySection` calls `onUpdate(...)` with brand-new HTML that did **not** come from this editor's `onChange` → `lastEmittedHtmlRef.current` does not match it → effect runs → editor updates. Works.
+- JSON import / Realtime reconcile / `loadTraining` set state from outside → same reasoning, works.
+- Normal typing (the broken case today) → the prop coming back equals the value we just emitted → effect skips → cursor and in-flight characters preserved. Fixed.
+- `LazyRichTextEditor` mounts `RichTextEditor` only on focus and unmounts on blur, so each focus cycle starts fresh — the ref-based guard still applies during the focused window, which is when the bug fires.
 
 ## Out of scope
 
-- No DB migrations (columns already exist).
-- No changes to the `useInvoicedStatus` hook (used on form pages, not on dashboard cards).
-- No changes to PDF/HTML report output.
+- No changes to `VoiceRichTextEditor`, `SummarySection`, `TrainingSummarySection`, or any form page. The voice append path (`content + ' ' + text`) is fine because it goes through `onChange` like a normal user edit.
+- No DB / schema changes. No styling changes. No behavior change for "Regenerate", import, or reconcile flows.
+- No changes to plain `<input>` / `<textarea>` fields — they don't use TipTap and don't have this race.
 
 ## Verification
 
-- Mark a completed report as invoiced → badge shows current timestamp and current admin's name immediately (optimistic cache).
-- Refresh dashboard → values persist (read from DB).
-- Remove invoice → metadata disappears with the badge.
-- Long admin names wrap inside the badge without breaking the card layout at 320px width.
+1. Training → Summary → Observations: type a sentence, click into the middle of a word, type/delete characters. Cursor stays put; no characters lost.
+2. Inspection → Summary → Critical Actions: same test.
+3. Inspection → Summary → click "Regenerate from Inspection" → editor updates to regenerated text (external sync still works).
+4. Inspection → Equipment row inline notes (LazyRichTextEditor): focus, edit mid-string, confirm no clobber.
+5. Open the same training on two browsers; edit on one, confirm the other still receives Realtime updates and reloads (external sync path).
