@@ -655,21 +655,11 @@ export default function InspectionForm() {
         if (import.meta.env.DEV) console.log('[InspectionForm] Suppressing pending-update toast — recent self-write');
         return;
       }
-      if (!hasUnsavedRef.current) {
-        // Safe path — no unsaved edits, just reload from server.
-        if (import.meta.env.DEV) console.log('[InspectionForm] Pending remote update — reloading (no unsaved changes)');
-        loadInspection();
-        return;
-      }
-      toast.warning('Remote update available', {
-        description: 'Another device updated this report. Reload from server (your unsaved edits will be lost) or keep your changes.',
-        duration: 30000,
-        action: {
-          label: 'Reload',
-          onClick: () => { loadInspection(); },
-        },
-        cancel: { label: 'Keep my changes', onClick: () => {} },
-      });
+      // Silent reconcile: loadInspection flushes any pending debounced save first,
+      // then merges server data per-field via mergeRecordFields so locally-newer
+      // edits survive. No user prompt needed.
+      if (import.meta.env.DEV) console.log('[InspectionForm] Pending remote update — silent reconcile');
+      loadInspection();
     });
     return () => {
       unsub();
