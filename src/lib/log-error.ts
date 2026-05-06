@@ -28,7 +28,42 @@ export interface LogContext {
   fingerprint?: string[];
 }
 
-export function logError(err: unknown, ctx: LogContext = {}): void {
+/**
+ * Auto-classify well-known recoverable errors so callers don't have to
+ * remember to set `level: 'warning'` + a stable `fingerprint` at every
+ * site. Returns the merged context (caller wins — explicit `level` /
+ * `fingerprint` from `ctx` are preserved).
+ *
+ * `IdbSaveError` is the canonical case: every form save catches it and
+ * surfaces a "Save failed — tap to retry" UI, so the user already has
+ * a recovery path. Forwarding these to Sentry as `level: 'error'` (the
+ * default) generates email-level alerts that say nothing the form's UI
+ * doesn't already say. Downgrade to `warning` + group all
+ * `(code, operationName)` pairs under one fingerprint so the inbox sees
+ * one issue you can review weekly instead of N alerts per occurrence.
+ *
+ * Mirrors the Mode 13D treatment of recoverable rollbacks in
+ * atomic-sync-manager.ts (see PR #131).
+ */
+function classifyRecoverable(err: unknown, ctx: LogContext): LogContext {
+  if (!err || typeof err !== 'object') return ctx;
+  const e = err as { name?: unknown; code?: unknown; operationName?: unknown };
+  if (e.name !== 'IdbSaveError' || typeof e.code !== 'string') return ctx;
+  // Caller wins: never override an explicit level/fingerprint.
+  const level: LogLevel = ctx.level ?? 'warning';
+  const fingerprint: string[] =
+    ctx.fingerprint ??
+    [
+      'IdbSaveError',
+      e.code,
+      typeof e.operationName === 'string' ? e.operationName : 'unknown',
+      '{{default}}',
+    ];
+  return { ...ctx, level, fingerprint };
+}
+
+export function logError(err: unknown, rawCtx: LogContext = {}): void {
+  const ctx = classifyRecoverable(err, rawCtx);
   const payload = {
     message: err instanceof Error ? err.message : String(err),
     stack: err instanceof Error ? err.stack : undefined,
