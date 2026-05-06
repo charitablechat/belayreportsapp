@@ -2055,26 +2055,21 @@ async function withIndexedDBErrorBoundary<T>(
       // Attempt emergency localStorage save for all write ops
       const fallbackSucceeded = emergencyLocalStorageFallback(operationName, fallbackValue);
 
-      // Only show toasts for user-facing saves (not background ops like photo marking)
-      if (isUserFacingSave) {
+      // Only surface a toast when the emergency localStorage fallback ALSO
+      // failed — that's the only condition where the user's data is actually
+      // at risk. The "data is saved to backup storage" path is logged silently;
+      // popping that toast on every save spammed users without any action they
+      // could take.
+      if (isUserFacingSave && !fallbackSucceeded) {
         const cbWarningKey = 'circuit-breaker-warning-shown';
         if (!sessionStorage.getItem(cbWarningKey)) {
           sessionStorage.setItem(cbWarningKey, 'true');
           import('@/hooks/use-toast').then(({ toast }) => {
-            if (fallbackSucceeded) {
-              // Soft toast — data IS saved to localStorage backup
-              toast({
-                title: "Using backup storage",
-                description: "Your changes are saved locally. They'll sync when storage recovers.",
-              });
-            } else {
-              // Red toast — both IndexedDB and localStorage failed
-              toast({
-                title: "Storage temporarily unavailable",
-                description: "Your changes may not be saved locally. Stay connected to sync your work.",
-                variant: "destructive",
-              });
-            }
+            toast({
+              title: "Storage temporarily unavailable",
+              description: "Your changes may not be saved locally. Stay connected to sync your work.",
+              variant: "destructive",
+            });
           }).catch(() => {});
           const resetTime = getCircuitBreakerResetTime(store);
           setTimeout(() => sessionStorage.removeItem(cbWarningKey), resetTime + 1000);
