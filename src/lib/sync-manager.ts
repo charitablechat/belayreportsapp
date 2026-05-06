@@ -5,6 +5,7 @@ import {
   markPhotoAsUploaded,
   incrementPhotoRetryCount,
   setPhotoLastError,
+  markPhotoTransientFailure,
   updatePhotoPath,
   recordPhotoUploadFailure,
   MAX_PHOTO_RETRIES,
@@ -15,8 +16,8 @@ import { extractFileExt } from "./file-ext";
 
 /**
  * S22: Classify a photo upload / DB error into a sync-policy bucket.
- *  - 'transient'           — retry next cycle, do NOT bump retryCount
- *  - 'permanent'           — bump retryCount + stamp lastError
+ *  - 'transient'           — retry after L5 jittered backoff window, do NOT bump retryCount
+ *  - 'permanent'           — bump retryCount + stamp lastError + L5 backoff
  *  - 'success-equivalent'  — already-applied (duplicate); treat as success
  */
 export type PhotoErrorClass = 'transient' | 'permanent' | 'success-equivalent';
@@ -442,8 +443,12 @@ export async function syncPhotos(signal?: AbortSignal): Promise<{ remaining: num
           if (cls.kind === 'success-equivalent') {
             // Storage already has the object — proceed to DB insert path.
           } else if (cls.kind === 'transient') {
-            console.warn('[Sync Manager] Transient upload error, will retry next cycle:', photo.id, cls.message);
-            // Do NOT bump retryCount; do NOT stamp lastError persistently.
+            console.warn('[Sync Manager] Transient upload error, will retry after backoff:', photo.id, cls.message);
+            // L5: Stamp lastError + nextRetryAt (jittered) so the photo
+            // backs off on subsequent cycles instead of being eligible
+            // immediately. retryCount is intentionally NOT bumped — a
+            // transient flake should never push a photo toward dead-letter.
+            await markPhotoTransientFailure(photo.id, cls.message);
             return;
           } else {
             // permanent
@@ -538,7 +543,9 @@ export async function syncPhotos(signal?: AbortSignal): Promise<{ remaining: num
             if (cls.kind === 'success-equivalent') {
               syncLog.log('[Sync Manager] Unique constraint hit (race OK), treating as success:', photo.id);
             } else if (cls.kind === 'transient') {
-              console.warn('[Sync Manager] Transient DB insert error, will retry next cycle:', photo.id, cls.message);
+              console.warn('[Sync Manager] Transient DB insert error, will retry after backoff:', photo.id, cls.message);
+              // L5: see upload-error path above.
+              await markPhotoTransientFailure(photo.id, cls.message);
               return;
             } else {
               console.error('[Sync Manager] Permanent DB insert error for photo:', photo.id, cls.message);
@@ -565,7 +572,11 @@ export async function syncPhotos(signal?: AbortSignal): Promise<{ remaining: num
         const cls = classifyPhotoError(error);
         console.error(`[Sync Manager] Failed to upload photo (${cls.kind}):`, photo.id, cls.message);
         if (cls.kind === 'transient') {
-          // Retry next cycle without counting toward the dead-letter ceiling.
+          // L5: Stamp lastError + nextRetryAt (jittered) so this catch-all
+          // path also backs off instead of being immediately eligible —
+          // mirrors the explicit upload + DB-insert transient paths above.
+          // retryCount is intentionally NOT bumped.
+          await markPhotoTransientFailure(photo.id, cls.message);
           return;
         }
         const r = await handlePermanentPhotoFailure(photo, cls.message);

@@ -27,7 +27,7 @@ import { addSyncNotification as addSyncNotificationStatic } from './notification
 // fix collapsed if Vite ever code-split the chunk differently. Pinning the
 // static import here removes the latent regression cliff. `sync-quarantine`
 // only imports `sync-logger` — no circular-dependency risk. Module is ~5 KB.
-import { isQuarantined as isSessionQuarantined } from './sync-quarantine';
+import { isQuarantined as isSessionQuarantined, jitteredPhotoBackoffMs } from './sync-quarantine';
 
 /** Opaque DB row — fields vary across tables and are read/written structurally.
  *  Uses an `any` index signature so callers can structurally read/write
@@ -103,6 +103,12 @@ interface InspectionDB extends DBSchema {
       retryCount?: number; // Failed upload retry counter
       lastError?: string | null; // S22: Human-readable last upload error
       lastErrorAt?: number | null; // S22: epoch ms when lastError was stamped
+      // L5: Earliest epoch ms the photo is eligible to retry. Stamped (with
+      // jittered backoff baked in) on every transient or permanent failure;
+      // cleared by markPhotoAsUploaded / resetPhotoForRetry. When non-null
+      // and > Date.now(), getUnuploadedPhotos skips the photo so a herd of
+      // co-failed photos doesn't pound the network in the next cycle.
+      nextRetryAt?: number | null;
       capturedByUserId?: string | null; // S23: User-id active when this photo was staged
     };
     indexes: { 'by-inspection': string; 'by-uploaded': number };
@@ -3495,7 +3501,15 @@ export async function getUnuploadedPhotos(userId?: string) {
       await tx.done;
 
       const withBlob = unuploaded.filter(p => p.blob != null);
-      const eligible = withBlob.filter(p => (p.retryCount || 0) < MAX_PHOTO_RETRIES);
+      // L5: Skip photos still inside their jittered backoff window so a
+      // herd of co-failed photos doesn't all retry on the next cycle.
+      // `nextRetryAt` is null/undefined for photos that have never failed
+      // OR were just reset for manual retry, in which case they fall
+      // through immediately. Saturated retryCount filtering still happens
+      // below (and again in syncPhotos) so dead-lettered photos stay out.
+      const now = Date.now();
+      const ready = withBlob.filter(p => !p.nextRetryAt || p.nextRetryAt <= now);
+      const eligible = ready.filter(p => (p.retryCount || 0) < MAX_PHOTO_RETRIES);
 
       // Orphan check — only for temp-* parent ids
       const tempPhotos = eligible.filter(p => p.inspectionId?.startsWith('temp-'));
@@ -3575,8 +3589,17 @@ export async function resetPhotoRetryCounts(onlyIds?: string[]): Promise<number>
       while (cursor) {
         const photo = cursor.value;
         const matches = idSet ? idSet.has(photo.id) : true;
-        if (matches && (photo.retryCount || 0) > 0) {
+        // L5: Also reset photos that have a pending backoff window even if
+        // retryCount=0 (e.g. a single transient flake), so the "Retry" button
+        // doesn't appear broken for the user-requested-now case.
+        const hasRetryCount = (photo.retryCount || 0) > 0;
+        const hasBackoffWindow = !!photo.nextRetryAt;
+        if (matches && (hasRetryCount || hasBackoffWindow)) {
           photo.retryCount = 0;
+          // L5: Clear the backoff window so the photo is eligible immediately
+          // on the next sync cycle. This mirrors `resetPhotoForRetry` for
+          // the bulk path used by SyncPulse's "Retry" button.
+          photo.nextRetryAt = null;
           // N-G: must coerce `uploaded` on every photo write — this path
           // iterates ALL photos and a legacy boolean-keyed row (pre-v18 or
           // a row whose migration failed) would otherwise round-trip
@@ -3665,6 +3688,9 @@ export async function markPhotoAsUploaded(id: string, photoUrl: string) {
         // S22: Clear any prior error state on success
         photo.lastError = null;
         photo.lastErrorAt = null;
+        // L5: Successful upload clears the backoff window so an immediate
+        // re-upload (e.g. after a manual edit) is eligible right away.
+        photo.nextRetryAt = null;
         // N-G: centralised photo write.
         await putPhotoRecord(db, photo);
         
@@ -3705,6 +3731,11 @@ export async function incrementPhotoRetryCount(id: string): Promise<number> {
       if (photo) {
         const newCount = (photo.retryCount || 0) + 1;
         photo.retryCount = newCount;
+        // L5: Stamp the next-retry window so the photo backs off on the
+        // upcoming sync cycle instead of being eligible immediately.
+        // jitteredPhotoBackoffMs is 1-indexed and bakes ±20% jitter in,
+        // so simultaneous co-failures spread out naturally.
+        photo.nextRetryAt = Date.now() + jitteredPhotoBackoffMs(newCount);
         // N-G: centralised photo write.
         await putPhotoRecord(db, photo);
         return newCount;
@@ -3713,6 +3744,37 @@ export async function incrementPhotoRetryCount(id: string): Promise<number> {
     },
     0,
     'incrementPhotoRetryCount'
+  );
+}
+
+/**
+ * L5: Stamp a transient-failure marker on a photo without bumping retryCount.
+ * Used by the syncPhotos transient-error paths so:
+ *  1) `lastError` / `lastErrorAt` are visible in the diagnostics UI even when
+ *     the failure is classified as retryable, and
+ *  2) `nextRetryAt` is set to a small backoff window so a herd of co-failed
+ *     photos doesn't all retry on the very next cycle.
+ *
+ * The backoff index is `(retryCount || 0) + 1` so a brand-new photo that just
+ * hit a transient flake gets attempt-1 spacing (~5s), and a photo that
+ * already has permanent failures gets a slightly longer window.
+ */
+export async function markPhotoTransientFailure(id: string, message: string): Promise<void> {
+  return withIndexedDBErrorBoundary(
+    async () => {
+      const db = await getDB();
+      const photo = await db.get('photos', id);
+      if (photo) {
+        photo.lastError = message.slice(0, 500);
+        const now = Date.now();
+        photo.lastErrorAt = now;
+        photo.nextRetryAt = now + jitteredPhotoBackoffMs((photo.retryCount || 0) + 1);
+        // N-G: centralised photo write.
+        await putPhotoRecord(db, photo);
+      }
+    },
+    undefined,
+    'markPhotoTransientFailure'
   );
 }
 
@@ -3751,6 +3813,10 @@ export async function resetPhotoForRetry(id: string): Promise<boolean> {
       photo.retryCount = 0;
       photo.lastError = null;
       photo.lastErrorAt = null;
+      // L5: Manual retry clears the backoff window so the photo is eligible
+      // immediately on the next sync cycle, not after waiting out the prior
+      // failure's window.
+      photo.nextRetryAt = null;
       // N-G: centralised photo write.
       await putPhotoRecord(db, photo);
       return true;
