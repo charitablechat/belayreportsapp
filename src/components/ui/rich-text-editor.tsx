@@ -22,6 +22,13 @@ export const RichTextEditor = ({
   className,
   autoFocus,
 }: RichTextEditorProps) => {
+  // Tracks the most recent HTML emitted from this editor's onUpdate so we can
+  // distinguish "the parent just echoed our own change back" (ignore — would
+  // clobber the user's in-flight typing and reset the cursor) from a true
+  // external update like initial load, regenerate, JSON import, or remote
+  // reconcile (apply, preserving cursor where possible).
+  const lastEmittedHtmlRef = useRef<string | null>(null);
+
   const editor = useEditor({
     extensions: [
       StarterKit.configure({
@@ -59,9 +66,12 @@ export const RichTextEditor = ({
     content,
     autofocus: autoFocus ?? false,
     onUpdate: ({ editor }) => {
-      onChange(editor.getHTML());
+      const html = editor.getHTML();
+      lastEmittedHtmlRef.current = html;
+      onChange(html);
     },
     onBlur: () => {
+      if (editor) lastEmittedHtmlRef.current = editor.getHTML();
       onBlur?.();
     },
     editorProps: {
@@ -71,10 +81,27 @@ export const RichTextEditor = ({
     },
   });
 
-  // Sync external content changes (e.g. regenerate button) into TipTap
+  // Sync external content changes (initial load, regenerate, import, remote
+  // reconcile) into TipTap. Skip when the prop is just our own onChange echo —
+  // applying it would call setContent mid-typing, destroying in-flight chars
+  // and slamming the cursor to the end of the document.
   useEffect(() => {
-    if (editor && content !== editor.getHTML()) {
-      editor.commands.setContent(content, { emitUpdate: false });
+    if (!editor) return;
+    const current = editor.getHTML();
+    if (content === current) return;
+    if (content === lastEmittedHtmlRef.current) return;
+
+    const { from, to } = editor.state.selection;
+    editor.commands.setContent(content, { emitUpdate: false });
+    lastEmittedHtmlRef.current = editor.getHTML();
+    try {
+      const size = editor.state.doc.content.size;
+      editor.commands.setTextSelection({
+        from: Math.min(from, size),
+        to: Math.min(to, size),
+      });
+    } catch {
+      // best-effort cursor restore
     }
   }, [content, editor]);
 
