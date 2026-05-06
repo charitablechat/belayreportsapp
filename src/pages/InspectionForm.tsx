@@ -1065,6 +1065,21 @@ export default function InspectionForm() {
     }, LOAD_TIMEOUT);
 
     try {
+      // Race-fix: flush any pending debounced save into IDB before reading,
+      // so `getOfflineInspection` returns the row containing the user's
+      // most recent edits instead of a pre-edit snapshot.
+      if (saveDebounceTimerRef.current || hasUnsavedRef.current) {
+        try {
+          if (saveDebounceTimerRef.current) {
+            clearTimeout(saveDebounceTimerRef.current);
+            saveDebounceTimerRef.current = null;
+          }
+          await performSaveRef.current?.(true);
+        } catch (e) {
+          console.warn('[InspectionForm] Pre-load flush failed (continuing):', e);
+        }
+      }
+
       // Helper to wrap offline operations with a timeout to prevent hanging
       const withOfflineTimeout = async <T,>(
         operation: Promise<T>,
