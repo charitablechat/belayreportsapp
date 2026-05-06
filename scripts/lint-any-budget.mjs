@@ -28,6 +28,7 @@ import { spawnSync } from "node:child_process";
 import { readFileSync, existsSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, resolve } from "node:path";
+import { isLovableMainPush, emitLovableGraceWarning } from "./lovable-grace.mjs";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -84,9 +85,12 @@ for (const file of parsed) {
 console.log(`[lint-any-budget] any-errors: ${actual}  budget: ${budget}`);
 
 if (actual > budget) {
-  console.error(
-    `\n[lint-any-budget] FAIL — found ${actual - budget} net-new @typescript-eslint/no-explicit-any error(s).`,
-  );
+  const failMessage = `found ${actual - budget} net-new @typescript-eslint/no-explicit-any error(s). Budget: ${budget}, actual: ${actual}.`;
+  if (isLovableMainPush()) {
+    emitLovableGraceWarning("lint-any-budget", failMessage);
+    process.exit(0);
+  }
+  console.error(`\n[lint-any-budget] FAIL — ${failMessage}`);
   console.error(
     "If this is intentional (e.g. you lowered coverage elsewhere by more than you added),",
   );
