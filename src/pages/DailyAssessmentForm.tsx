@@ -643,7 +643,16 @@ export default function DailyAssessmentForm() {
           }
           // Early exit: child data already loaded from IndexedDB above (lines 257-271)
         } else if (assessmentData) {
-          setAssessment(assessmentData);
+          // Race-fix: per-field merge so any locally-newer tracked-field
+          // edit survives a refetch.
+          setAssessment(prev => {
+            if (!prev) return assessmentData;
+            return mergeRecordFields(
+              prev as typeof assessmentData & { field_timestamps?: Record<string, string> | null },
+              assessmentData as typeof assessmentData & { field_timestamps?: Record<string, string> | null },
+              TRACKED_FIELDS.daily_assessment,
+            );
+          });
           setInspectorId(assessmentData.inspector_id);
 
           // Load all related data
