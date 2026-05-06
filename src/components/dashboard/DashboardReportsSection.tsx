@@ -182,6 +182,7 @@ export function DashboardReportsSection({
   setReportToDelete,
   setDeleteDialogOpen,
   invoicedReportIds,
+  invoicedMetaById,
   onToggleInvoiced,
   invoicedCount,
   profilesById,
