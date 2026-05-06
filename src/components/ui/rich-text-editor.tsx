@@ -70,8 +70,8 @@ export const RichTextEditor = ({
       lastEmittedHtmlRef.current = html;
       onChange(html);
     },
-    onBlur: () => {
-      if (editor) lastEmittedHtmlRef.current = editor.getHTML();
+    onBlur: ({ editor }) => {
+      lastEmittedHtmlRef.current = editor.getHTML();
       onBlur?.();
     },
     editorProps: {
