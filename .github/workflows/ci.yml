@@ -34,10 +34,24 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
+# Skip CI on direct pushes to main from the Lovable bot
+# (`gpt-engineer-app[bot]`). Lovable pushes to main several times a day and
+# never opens PRs, so each push otherwise consumes ~5 min of Actions minutes
+# across 8 jobs. With PR #155's grace mode in place, Lovable's budget overshoots
+# are surfaced in the daily digest issue (label `lovable-budget-overshoot`)
+# even when CI doesn't run, so we lose negligible signal by skipping the run
+# itself. PRs (Devin's, contributors') still get full CI regardless of actor;
+# `workflow_dispatch` runs (e.g. the auth-gated e2e suite) also still fire.
+#
+# This is intentionally inlined per-job rather than gated at the workflow
+# level because GitHub doesn't expose a workflow-level `if:` and a single
+# gating job would still consume an Actions minute. The condition is the
+# same on every job, by design.
 jobs:
   typecheck:
     name: tsc --noEmit
     runs-on: ubuntu-latest
+    if: ${{ github.event_name != 'push' || github.actor != 'gpt-engineer-app[bot]' }}
     steps:
       - uses: actions/checkout@v4
       - uses: oven-sh/setup-bun@v2
@@ -49,6 +63,7 @@ jobs:
   any-budget:
     name: lint:any-budget gate
     runs-on: ubuntu-latest
+    if: ${{ github.event_name != 'push' || github.actor != 'gpt-engineer-app[bot]' }}
     steps:
       - uses: actions/checkout@v4
       - uses: oven-sh/setup-bun@v2
@@ -60,6 +75,7 @@ jobs:
   test:
     name: vitest
     runs-on: ubuntu-latest
+    if: ${{ github.event_name != 'push' || github.actor != 'gpt-engineer-app[bot]' }}
     steps:
       - uses: actions/checkout@v4
       - uses: oven-sh/setup-bun@v2
@@ -71,6 +87,7 @@ jobs:
   build:
     name: vite build (incl. db-version parity check)
     runs-on: ubuntu-latest
+    if: ${{ github.event_name != 'push' || github.actor != 'gpt-engineer-app[bot]' }}
     steps:
       - uses: actions/checkout@v4
       - uses: oven-sh/setup-bun@v2
@@ -84,6 +101,7 @@ jobs:
   bundle-size:
     name: bundle-size budget gate
     runs-on: ubuntu-latest
+    if: ${{ github.event_name != 'push' || github.actor != 'gpt-engineer-app[bot]' }}
     steps:
       - uses: actions/checkout@v4
       - uses: oven-sh/setup-bun@v2
@@ -99,6 +117,7 @@ jobs:
   audit-critical:
     name: bun audit (critical gate)
     runs-on: ubuntu-latest
+    if: ${{ github.event_name != 'push' || github.actor != 'gpt-engineer-app[bot]' }}
     steps:
       - uses: actions/checkout@v4
       - uses: oven-sh/setup-bun@v2
@@ -118,6 +137,7 @@ jobs:
   audit-high:
     name: bun audit (high — advisory only)
     runs-on: ubuntu-latest
+    if: ${{ github.event_name != 'push' || github.actor != 'gpt-engineer-app[bot]' }}
     # Non-blocking: this job runs and reports findings to the PR's checks tab
     # so high-severity transitive advisories are visible, but it does NOT fail
     # the build. Renovate's `vulnerabilityAlerts` block (renovate.json) opens
@@ -159,6 +179,7 @@ jobs:
   e2e-smoke:
     name: playwright e2e (smoke)
     runs-on: ubuntu-latest
+    if: ${{ github.event_name != 'push' || github.actor != 'gpt-engineer-app[bot]' }}
     # 8 min covers cold-cache build (~100s) + Chromium download (~60s) +
     # smoke specs (~30s with retries) with headroom.
     timeout-minutes: 8
