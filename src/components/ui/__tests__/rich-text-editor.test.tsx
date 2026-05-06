@@ -142,14 +142,13 @@ describe('RichTextEditor — controlled echo guard (mid-line deletion regression
 
   it('still applies an external clear (content -> "") after the user has typed', () => {
     function Harness({ external }: { external: string | null }) {
-      const [c, setC] = useState('');
-      // simulate parent forcing a clear when `external` is provided
+      // start with non-empty content so the external "" really is a change
+      const [c, setC] = useState('<p>typed</p>');
       const value = external ?? c;
       return <RichTextEditor content={value} onChange={setC} />;
     }
     const { rerender } = render(<Harness external={null} />);
-
-    // user types
+    // simulate user typing -> editor fires onUpdate (records lastEmitted)
     fake.html = '<p>typed</p>';
     fake.handlers.onUpdate!({ editor: fakeEditor });
     fake.setContent.mockClear();
