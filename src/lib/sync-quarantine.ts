@@ -297,6 +297,36 @@ export function jitteredBackoffMs(attempt: number): number {
   return Math.max(250, Math.round(base + jitter));
 }
 
+/**
+ * L5 — Jittered exponential backoff for photo upload retries.
+ *
+ * Photos retry on every sync cycle (~30s desktop, ~60s mobile). Without a
+ * per-photo cooldown, a network flake that fails N photos in cycle K causes
+ * all N to retry together in cycle K+1, hitting the same conditions and
+ * failing again as a herd. This schedule spreads them out so each photo
+ * waits its own window before becoming eligible again.
+ *
+ * Schedule (attempt is 1-indexed; matches retryCount AFTER it has been
+ * bumped, or `retryCount + 1` for transient failures that don't bump):
+ *   attempt 1 → 5s   (one network blip; barely any delay)
+ *   attempt 2 → 15s  (still next cycle on desktop)
+ *   attempt 3 → 45s  (skip 1-2 cycles)
+ *   attempt 4 → 135s (skip ~4 cycles)
+ *   attempt 5+ → 300s (cap; ~10 cycles before dead-letter)
+ *
+ * Each delay carries ±20% jitter, evaluated ONCE at stamp time, so
+ * concurrent failures don't all become eligible at the same future
+ * instant. The caller stamps `photo.nextRetryAt = now + result` and
+ * `getUnuploadedPhotos` skips photos with `nextRetryAt > now`.
+ */
+export function jitteredPhotoBackoffMs(attempt: number): number {
+  // attempt is 1-indexed; clamp 0 → treat as attempt 1 (smallest delay).
+  const safeAttempt = Math.max(1, attempt);
+  const base = Math.min(5000 * Math.pow(3, safeAttempt - 1), 300_000);
+  const jitter = base * 0.2 * (Math.random() * 2 - 1);
+  return Math.max(1000, Math.round(base + jitter));
+}
+
 /** For diagnostics / admin tools. */
 export function getQuarantineSnapshot(): QuarantineMap {
   return readMap();
