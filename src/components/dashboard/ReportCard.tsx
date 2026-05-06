@@ -204,9 +204,25 @@ export function ReportCard({ report, type, onDelete, onClick, getStatusBadge, co
             COMPLETED
           </span>
           {isAdmin && isInvoiced && (
-            <span className="absolute backdrop-blur-sm bg-red-500/10 border border-red-400/30 rounded-lg px-4 py-2 text-red-600 dark:text-red-400 text-4xl md:text-5xl font-bold tracking-wider rotate-[25deg] select-none whitespace-nowrap shadow-[0_0_20px_rgba(239,68,68,0.25)] animate-pulse-calm">
-              INVOICED
-            </span>
+            <div className="absolute backdrop-blur-sm bg-red-500/10 border border-red-400/30 rounded-lg px-4 py-2 rotate-[25deg] shadow-[0_0_20px_rgba(239,68,68,0.25)] animate-pulse-calm flex flex-col items-center gap-1 max-w-[85%]">
+              <span className="text-red-600 dark:text-red-400 text-4xl md:text-5xl font-bold tracking-wider select-none whitespace-nowrap leading-none">
+                INVOICED
+              </span>
+              {invoicedMeta && (() => {
+                const profile = invoicedMeta.invoiced_by ? profilesById?.get(invoicedMeta.invoiced_by) : null;
+                const byName = profile
+                  ? [profile.first_name, profile.last_name].filter(Boolean).join(' ').trim() || 'Unknown'
+                  : (invoicedMeta.invoiced_by ? 'Unknown' : null);
+                let when = '';
+                try { when = format(new Date(invoicedMeta.invoiced_at), "PP · p"); } catch { when = ''; }
+                return (
+                  <div className="text-[11px] font-medium text-red-700/80 dark:text-red-300/80 leading-tight text-center break-words select-none">
+                    {when && <div>{when}</div>}
+                    {byName && <div>by {byName}</div>}
+                  </div>
+                );
+              })()}
+            </div>
           )}
         </div>
       )}
