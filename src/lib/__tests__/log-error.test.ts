@@ -143,6 +143,108 @@ describe("logError", () => {
     );
   });
 
+  it("IdbSaveError auto-classify: defaults to level='warning' + fingerprint=[IdbSaveError, code, op, default]", async () => {
+    captureExceptionMock.mockImplementation(() => {});
+    // Construct an error with the IdbSaveError shape without importing the
+    // class (avoids pulling offline-storage into the test module graph).
+    const err = Object.assign(new Error("[saveInspectionOffline] save failed: timeout"), {
+      name: "IdbSaveError",
+      code: "timeout",
+      operationName: "saveInspectionOffline",
+    });
+    logError(err, { scope: "InspectionForm.performSave" });
+    // Caller passed no level → auto-downgraded to warning, so console.warn
+    // (not console.error) is used locally.
+    expect(consoleWarnSpy).toHaveBeenCalledWith(
+      "[logError]",
+      expect.objectContaining({ level: "warning" }),
+    );
+    expect(consoleErrorSpy).not.toHaveBeenCalled();
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    expect(captureExceptionMock).toHaveBeenCalledWith(
+      expect.any(Error),
+      expect.any(Object),
+      expect.objectContaining({
+        level: "warning",
+        fingerprint: [
+          "IdbSaveError",
+          "timeout",
+          "saveInspectionOffline",
+          "{{default}}",
+        ],
+      }),
+    );
+  });
+
+  it("IdbSaveError auto-classify: caller-supplied level + fingerprint win over defaults", async () => {
+    captureExceptionMock.mockImplementation(() => {});
+    const err = Object.assign(new Error("[saveTrainingOffline] save failed: idb_closing"), {
+      name: "IdbSaveError",
+      code: "idb_closing",
+      operationName: "saveTrainingOffline",
+    });
+    const customFingerprint = ["custom", "override", "{{default}}"];
+    logError(err, {
+      scope: "TrainingForm.saveTraining",
+      level: "error",
+      fingerprint: customFingerprint,
+    });
+    // Caller said level='error' → console.error (not warn).
+    expect(consoleErrorSpy).toHaveBeenCalled();
+    expect(consoleWarnSpy).not.toHaveBeenCalled();
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    expect(captureExceptionMock).toHaveBeenCalledWith(
+      expect.any(Error),
+      expect.any(Object),
+      expect.objectContaining({
+        level: "error",
+        fingerprint: customFingerprint,
+      }),
+    );
+  });
+
+  it("IdbSaveError auto-classify: ignores values that only LOOK like IdbSaveError (no string code)", async () => {
+    captureExceptionMock.mockImplementation(() => {});
+    // name matches but code is missing — must NOT be auto-downgraded
+    // (defensive: only the canonical shape from offline-storage.ts qualifies).
+    const err = Object.assign(new Error("imposter"), {
+      name: "IdbSaveError",
+      // code intentionally omitted
+    });
+    logError(err, { scope: "test.imposter" });
+    expect(consoleErrorSpy).toHaveBeenCalled();
+    expect(consoleWarnSpy).not.toHaveBeenCalled();
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    const lastCall = captureExceptionMock.mock.calls.at(-1) as unknown[] | undefined;
+    expect(lastCall?.[2]).toEqual(
+      expect.objectContaining({ level: undefined }),
+    );
+  });
+
+  it("IdbSaveError auto-classify: missing operationName falls back to 'unknown' in the fingerprint", async () => {
+    captureExceptionMock.mockImplementation(() => {});
+    const err = Object.assign(new Error("[??] save failed: quota_exceeded"), {
+      name: "IdbSaveError",
+      code: "quota_exceeded",
+      // operationName intentionally omitted
+    });
+    logError(err);
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    expect(captureExceptionMock).toHaveBeenCalledWith(
+      expect.any(Error),
+      expect.any(Object),
+      expect.objectContaining({
+        level: "warning",
+        fingerprint: [
+          "IdbSaveError",
+          "quota_exceeded",
+          "unknown",
+          "{{default}}",
+        ],
+      }),
+    );
+  });
+
   it("swallows rejections from both forward paths so the global unhandledrejection handler cannot recurse", async () => {
     // Critical contract: if either dynamic-import / forward chain leaks
     // an unhandled rejection, the new global handler in main.tsx will
