@@ -526,6 +526,19 @@ export default function DailyAssessmentForm() {
 
   const loadAssessment = async () => {
     try {
+      // Race-fix: flush any pending debounced save into IDB before reading.
+      if (autoSaveTimerRef.current || hasUnsavedRef.current) {
+        try {
+          if (autoSaveTimerRef.current) {
+            clearTimeout(autoSaveTimerRef.current);
+            autoSaveTimerRef.current = null;
+          }
+          await handleSaveProgressRef.current?.();
+        } catch (e) {
+          console.warn('[DailyAssessmentForm] Pre-load flush failed (continuing):', e);
+        }
+      }
+
       // Try loading from offline storage first
       const offlineAssessment = await getOfflineDailyAssessment(id!);
       
