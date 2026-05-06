@@ -545,8 +545,32 @@ function recordLayerBoundaryTimeout(): void {
     console.warn(
       `[Offline Storage] IDB layer breaker tripped — ${LAYER_BREAKER_THRESHOLD} consecutive boundary timeouts; fast-failing for ${cooldownSec}s (backoff #${layerBreakerResetCount})`,
     );
+    // One-shot diagnostic: snapshot storage estimate the first time the
+    // breaker opens per session. Helps confirm whether affected devices are
+    // quota-bound. `_diagLogged` ensures we don't spam on subsequent trips.
+    if (!layerBreakerDiagLogged) {
+      layerBreakerDiagLogged = true;
+      void (async () => {
+        try {
+          const est = (typeof navigator !== 'undefined' && navigator.storage?.estimate)
+            ? await navigator.storage.estimate()
+            : null;
+          console.warn('[Offline Storage] IDB breaker diagnostics', {
+            consecutiveTimeouts: layerBreakerConsecutiveTimeouts,
+            resetCount: layerBreakerResetCount,
+            storageEstimate: est
+              ? { usage: est.usage, quota: est.quota, pct: est.quota ? ((est.usage ?? 0) / est.quota * 100).toFixed(1) + '%' : 'n/a' }
+              : 'unavailable',
+          });
+        } catch {
+          /* diagnostics-only; never throw */
+        }
+      })();
+    }
   }
 }
+
+let layerBreakerDiagLogged = false;
 
 function recordLayerBoundarySuccess(): void {
   // Mode 9A — stamp activity timestamp so the `online` listener's gating
