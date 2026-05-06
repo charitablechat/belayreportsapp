@@ -1175,16 +1175,10 @@ async function ensureStorage(): Promise<void> {
     if (!isPersisted && !storageWarningShown) {
       console.warn('[Offline Storage] Persistent storage not granted - data may be cleared by browser');
       storageWarningShown = true;
-      // Finding 5: Surface storage eviction risk to user (one-time banner)
-      if (typeof window !== 'undefined' && !localStorage.getItem('storage-eviction-warned')) {
-        safeSetItem('storage-eviction-warned', 'true', { scope: 'offline-storage.evictionWarned' });
-        import('@/hooks/use-toast').then(({ toast }) => {
-          toast({
-            title: "Offline storage not guaranteed",
-            description: "Your browser may clear offline data under storage pressure. Stay connected to sync your work.",
-          });
-        }).catch(() => {});
-      }
+      // Note: previously surfaced as a user-facing toast. Now console-only —
+      // the persistent NetworkStatusBanner already covers offline state, and
+      // popping a toast every session was alarming users without an actionable
+      // remedy. Genuine save failures still raise destructive toasts below.
     }
 
     // Check storage quota
