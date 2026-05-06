@@ -20,7 +20,7 @@ import { appendFileSync } from "node:fs";
  *   - All non-Lovable pushes to main (so a human pushing directly to main
  *     in an emergency still gets the gate).
  *
- * Lovable's bumps are surfaced separately by `lovable-budget-digest.yml`,
+ * Lovable's bumps are surfaced separately by `lovable-daily-digest.yml`,
  * which scans the last 24h of main commits, lists overshoots, and opens or
  * updates a tracking issue so the team has visibility into the cumulative
  * cost without main going red on every push.
