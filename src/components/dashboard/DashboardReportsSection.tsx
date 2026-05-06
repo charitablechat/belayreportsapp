@@ -148,6 +148,7 @@ interface DashboardReportsSectionProps {
   setReportToDelete: (report: any) => void;
   setDeleteDialogOpen: (open: boolean) => void;
   invoicedReportIds?: Set<string>;
+  invoicedMetaById?: ReadonlyMap<string, { invoiced_at: string; invoiced_by: string | null }>;
   onToggleInvoiced?: (report: any, type: DashboardReportType) => void;
   invoicedCount?: number;
   profilesById?: ReadonlyMap<string, { first_name: string | null; last_name: string | null; avatar_url: string | null }>;
