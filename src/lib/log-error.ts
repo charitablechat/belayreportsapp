@@ -47,7 +47,7 @@ export interface LogContext {
  */
 function classifyRecoverable(err: unknown, ctx: LogContext): LogContext {
   if (!err || typeof err !== 'object') return ctx;
-  const e = err as { name?: unknown; code?: unknown; operationName?: unknown };
+  const e = err as { name?: unknown; code?: unknown; operationName?: unknown; cause?: unknown };
   if (e.name !== 'IdbSaveError' || typeof e.code !== 'string') return ctx;
   // Caller wins: never override an explicit level/fingerprint.
   const level: LogLevel = ctx.level ?? 'warning';
@@ -59,7 +59,20 @@ function classifyRecoverable(err: unknown, ctx: LogContext): LogContext {
       typeof e.operationName === 'string' ? e.operationName : 'unknown',
       '{{default}}',
     ];
-  return { ...ctx, level, fingerprint };
+  // Mode 14: flatten the structured `IdbSaveDiagnostics` cause into Sentry's
+  // `extra` so probeMs / opMs / quotaPct / breakerState / etc. become
+  // searchable on the Issue page. Always surface code + operationName even
+  // when no diagnostic cause is attached.
+  const baseExtra: Record<string, unknown> = {
+    code: e.code,
+    operationName: typeof e.operationName === 'string' ? e.operationName : 'unknown',
+  };
+  if (e.cause && typeof e.cause === 'object') {
+    Object.assign(baseExtra, e.cause as Record<string, unknown>);
+  }
+  // Caller-supplied extras win over both the diagnostic cause and the base.
+  const extra = { ...baseExtra, ...(ctx.extra ?? {}) };
+  return { ...ctx, level, fingerprint, extra };
 }
 
 export function logError(err: unknown, rawCtx: LogContext = {}): void {

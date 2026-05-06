@@ -1685,6 +1685,106 @@ export function isIdbSaveError(e: unknown): e is IdbSaveError {
   return o.name === 'IdbSaveError' && typeof o.code === 'string';
 }
 
+/**
+ * Mode 14: structured diagnostic snapshot attached to `IdbSaveError.cause`
+ * so downstream Sentry events surface enough context to triage which
+ * sub-step blew the budget without a follow-up code change.
+ *
+ * Captured fields (all best-effort; helper never throws):
+ *   - `probeMs`: time spent in `checkIndexedDBHealth` before the op started
+ *   - `opMs`: time spent inside the `operation()` body
+ *   - `elapsedMs`: total wall-clock time inside the boundary
+ *   - `timeoutMs`: actual budget used (post-grace-bump)
+ *   - `inPostOnlineGrace`: true when the wider Mode-6 budget is active
+ *   - `layerBreakerOpen`: true when the Mode-8A layer breaker is tripped
+ *   - `breakerOpen`: true when ANY per-store breaker is tripped
+ *   - `breakerFailureCount`: max failure count across stores
+ *   - `breakerByStore`: per-store breaker summary (open / failureCount / resetIn)
+ *   - `quotaBytes`, `usageBytes`, `usagePct`: `navigator.storage.estimate()`
+ *     output (raced against a 1 s timeout — Safari can hang here while wedged)
+ *   - `persisted`: `navigator.storage.persisted()` output (raced 500 ms)
+ *   - `userAgent`, `platform`: browser/OS detection for triage
+ *
+ * `log-error.ts` flattens this object into Sentry's `extra` so the fields
+ * become searchable / filterable on the Issue page.
+ */
+export type IdbSaveDiagnostics = {
+  store: string;
+  probeMs?: number;
+  opMs?: number;
+  elapsedMs: number;
+  timeoutMs: number;
+  inPostOnlineGrace: boolean;
+  layerBreakerOpen?: boolean;
+  breakerOpen?: boolean;
+  breakerFailureCount?: number;
+  breakerByStore?: Record<string, { open: boolean; failureCount: number; resetIn: number | null; backoffLevel: number }>;
+  quotaBytes?: number;
+  usageBytes?: number;
+  usagePct?: number | null;
+  persisted?: boolean | null;
+  userAgent?: string;
+  platform?: string;
+};
+
+async function captureIdbSaveDiagnostics(input: {
+  store: BreakerStoreKey;
+  probeMs?: number;
+  opMs?: number;
+  elapsedMs: number;
+  timeoutMs: number;
+}): Promise<IdbSaveDiagnostics> {
+  const out: IdbSaveDiagnostics = {
+    store: input.store,
+    probeMs: input.probeMs,
+    opMs: input.opMs,
+    elapsedMs: input.elapsedMs,
+    timeoutMs: input.timeoutMs,
+    inPostOnlineGrace: false,
+  };
+  try { out.inPostOnlineGrace = isInPostOnlineRecoveryGrace(); } catch { /* swallow */ }
+  try { out.layerBreakerOpen = isIdbLayerBreakerOpen(); } catch { /* swallow */ }
+  try {
+    const status = getCircuitBreakerStatus();
+    out.breakerOpen = status.open;
+    out.breakerFailureCount = status.failureCount;
+    out.breakerByStore = status.byStore;
+  } catch { /* swallow */ }
+  if (typeof navigator !== 'undefined') {
+    try { out.userAgent = navigator.userAgent; } catch { /* swallow */ }
+    try { out.platform = navigator.platform; } catch { /* swallow */ }
+  }
+  // Storage estimate — race against a short timeout. Safari can hang here
+  // while IDB is wedged, and we don't want diagnostic capture to block the
+  // failure path or leak time onto the user's perceived save latency.
+  try {
+    if (typeof navigator !== 'undefined' && navigator.storage?.estimate) {
+      const est = await Promise.race<StorageEstimate | null>([
+        navigator.storage.estimate(),
+        new Promise<null>((resolve) => setTimeout(() => resolve(null), 1000)),
+      ]);
+      if (est) {
+        out.quotaBytes = est.quota;
+        out.usageBytes = est.usage;
+        out.usagePct = est.quota && est.quota > 0 && typeof est.usage === 'number'
+          ? Math.round((est.usage / est.quota) * 100)
+          : null;
+      }
+    }
+  } catch { /* swallow */ }
+  try {
+    if (typeof navigator !== 'undefined' && navigator.storage?.persisted) {
+      out.persisted = await Promise.race<boolean | null>([
+        navigator.storage.persisted(),
+        new Promise<null>((resolve) => setTimeout(() => resolve(null), 500)),
+      ]);
+    }
+  } catch { /* swallow */ }
+  return out;
+}
+
+export const __test_only__captureIdbSaveDiagnosticsForTests = captureIdbSaveDiagnostics;
+
 export type SaveResult = { savedToBackup: boolean };
 
 /**
@@ -1790,17 +1890,28 @@ async function withIndexedDBSaveBoundary(
   OPERATION_TIMEOUT = applyPostOnlineGraceBump(OPERATION_TIMEOUT);
   const TIMEOUT_SENTINEL = Symbol('timeout');
 
+  // Mode 14: per-step timing for telemetry. Captured by closure and surfaced
+  // on `IdbSaveError.cause` when we throw, so Sentry can pinpoint whether
+  // the budget was eaten by the health probe or by the operation body.
+  const boundaryStart = Date.now();
+  let probeMs: number | undefined;
+  let opMs: number | undefined;
+
   try {
     const result = await withTimeout(
       (async () => {
         if (!dbConnectionVerified) {
+          const probeStart = Date.now();
           const isHealthy = await checkIndexedDBHealth();
+          probeMs = Date.now() - probeStart;
           if (!isHealthy) {
             throw new IdbSaveError('idb_unhealthy', operationName);
           }
           dbConnectionVerified = true;
         }
+        const opStart = Date.now();
         await operation();
+        opMs = Date.now() - opStart;
         return 'ok' as const;
       })(),
       OPERATION_TIMEOUT,
@@ -1816,7 +1927,14 @@ async function withIndexedDBSaveBoundary(
         dbPromise.then(db => db.close()).catch(() => {});
         dbPromise = null;
       }
-      throw new IdbSaveError('timeout', operationName);
+      const diag = await captureIdbSaveDiagnostics({
+        store,
+        probeMs,
+        opMs,
+        elapsedMs: Date.now() - boundaryStart,
+        timeoutMs: OPERATION_TIMEOUT,
+      });
+      throw new IdbSaveError('timeout', operationName, diag);
     }
 
     recordIndexedDBSuccess(store);
@@ -1847,7 +1965,14 @@ async function withIndexedDBSaveBoundary(
         dbPromise.then(db => db.close()).catch(() => {});
         dbPromise = null;
       }
-      throw new IdbSaveError('idb_closing', operationName, error);
+      const diag = await captureIdbSaveDiagnostics({
+        store,
+        probeMs,
+        opMs,
+        elapsedMs: Date.now() - boundaryStart,
+        timeoutMs: OPERATION_TIMEOUT,
+      });
+      throw new IdbSaveError('idb_closing', operationName, { ...diag, originalError: String(error) });
     }
 
     console.error(`[Offline Storage] Save error in ${operationName}:`, error);
@@ -1860,6 +1985,14 @@ async function withIndexedDBSaveBoundary(
       recordIndexedDBFailure(store);
     }
 
+    const diag = await captureIdbSaveDiagnostics({
+      store,
+      probeMs,
+      opMs,
+      elapsedMs: Date.now() - boundaryStart,
+      timeoutMs: OPERATION_TIMEOUT,
+    });
+
     if (isQuotaError && typeof window !== 'undefined') {
       import('@/hooks/use-toast').then(({ toast }) => {
         toast({
@@ -1868,10 +2001,10 @@ async function withIndexedDBSaveBoundary(
           variant: 'destructive',
         });
       }).catch(() => {});
-      throw new IdbSaveError('quota_exceeded', operationName, error);
+      throw new IdbSaveError('quota_exceeded', operationName, { ...diag, originalError: String(error) });
     }
 
-    throw new IdbSaveError('unknown', operationName, error);
+    throw new IdbSaveError('unknown', operationName, { ...diag, originalError: String(error) });
   }
 }
 
