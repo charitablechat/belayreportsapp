@@ -519,15 +519,15 @@ export default function TrainingForm() {
             const { getCircuitBreakerStatus } = await import('@/lib/offline-storage');
             const idbDegraded = getCircuitBreakerStatus().open;
             if (serverInconclusive || idbDegraded) {
-              console.warn('[TrainingForm] Skipping not-found redirect — inconclusive lookup', { serverInconclusive, idbDegraded });
-            } else {
-              console.warn('[TrainingForm] Training not found:', id);
-              toast.error("Training not found", {
-                description: "This training may have been deleted or doesn't exist.",
-              });
-              navigate('/dashboard');
-              return;
+              console.warn('[TrainingForm] Skipping not-found redirect — inconclusive lookup; staying mounted', { serverInconclusive, idbDegraded, id });
+              return; // keep form mounted; next refetch/online recovery will reconcile
             }
+            console.warn('[TrainingForm] Training not found:', id);
+            toast.error("Training not found", {
+              description: "This training may have been deleted or doesn't exist.",
+            });
+            navigate('/dashboard');
+            return;
           }
 
           if (trainingError) throw trainingError;

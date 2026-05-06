@@ -1350,15 +1350,15 @@ export default function InspectionForm() {
           const { getCircuitBreakerStatus } = await import('@/lib/offline-storage');
           const idbDegraded = getCircuitBreakerStatus().open;
           if (serverInconclusive || idbDegraded) {
-            console.warn('[InspectionForm] Skipping not-found redirect — inconclusive lookup', { serverInconclusive, idbDegraded });
-          } else {
-            console.warn('[InspectionForm] Inspection not found:', id);
-            toast.error("Inspection not found", {
-              description: "This inspection may have been deleted or doesn't exist.",
-            });
-            navigate('/dashboard');
-            return;
+            console.warn('[InspectionForm] Skipping not-found redirect — inconclusive lookup; staying mounted', { serverInconclusive, idbDegraded, id });
+            return; // keep form mounted; next refetch/online recovery will reconcile
           }
+          console.warn('[InspectionForm] Inspection not found:', id);
+          toast.error("Inspection not found", {
+            description: "This inspection may have been deleted or doesn't exist.",
+          });
+          navigate('/dashboard');
+          return;
         }
         
         // Determine if local data should take priority over server data
