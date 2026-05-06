@@ -221,6 +221,93 @@ describe("logError", () => {
     );
   });
 
+  it("Mode 14: flattens IdbSaveError.cause diagnostic shape into Sentry extra context", async () => {
+    captureExceptionMock.mockImplementation(() => {});
+    const diag = {
+      store: 'inspections',
+      probeMs: 12,
+      opMs: 7993,
+      elapsedMs: 8005,
+      timeoutMs: 8000,
+      inPostOnlineGrace: false,
+      layerBreakerOpen: false,
+      breakerOpen: true,
+      breakerFailureCount: 3,
+      quotaBytes: 1_000_000_000,
+      usageBytes: 250_000_000,
+      usagePct: 25,
+      persisted: true,
+      userAgent: 'Mozilla/5.0',
+      platform: 'iPhone',
+    };
+    const err = Object.assign(new Error("[saveInspectionOffline] save failed: timeout"), {
+      name: "IdbSaveError",
+      code: "timeout",
+      operationName: "saveInspectionOffline",
+      cause: diag,
+    });
+    logError(err, { scope: "InspectionForm.performSave" });
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    const lastCall = captureExceptionMock.mock.calls.at(-1) as unknown[] | undefined;
+    const ctxArg = lastCall?.[1] as Record<string, unknown>;
+    expect(ctxArg).toEqual(
+      expect.objectContaining({
+        scope: "InspectionForm.performSave",
+        code: "timeout",
+        operationName: "saveInspectionOffline",
+        store: 'inspections',
+        probeMs: 12,
+        opMs: 7993,
+        elapsedMs: 8005,
+        timeoutMs: 8000,
+        breakerOpen: true,
+        breakerFailureCount: 3,
+        quotaBytes: 1_000_000_000,
+        usageBytes: 250_000_000,
+        usagePct: 25,
+        persisted: true,
+      }),
+    );
+  });
+
+  it("Mode 14: caller-supplied extras win over diagnostic cause keys", async () => {
+    captureExceptionMock.mockImplementation(() => {});
+    const err = Object.assign(new Error("[saveTrainingOffline] save failed: timeout"), {
+      name: "IdbSaveError",
+      code: "timeout",
+      operationName: "saveTrainingOffline",
+      cause: { store: 'trainings', elapsedMs: 8001 },
+    });
+    logError(err, {
+      scope: "TrainingForm",
+      extra: { store: 'overridden-by-caller' },
+    });
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    const lastCall = captureExceptionMock.mock.calls.at(-1) as unknown[] | undefined;
+    const ctxArg = lastCall?.[1] as Record<string, unknown>;
+    expect(ctxArg).toMatchObject({
+      store: 'overridden-by-caller',
+      elapsedMs: 8001,
+    });
+  });
+
+  it("Mode 14: IdbSaveError without a cause still surfaces code + operationName as extras", async () => {
+    captureExceptionMock.mockImplementation(() => {});
+    const err = Object.assign(new Error("[saveInspectionOffline] save failed: idb_unhealthy"), {
+      name: "IdbSaveError",
+      code: "idb_unhealthy",
+      operationName: "saveInspectionOffline",
+    });
+    logError(err, { scope: "InspectionForm" });
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    const lastCall = captureExceptionMock.mock.calls.at(-1) as unknown[] | undefined;
+    const ctxArg = lastCall?.[1] as Record<string, unknown>;
+    expect(ctxArg).toMatchObject({
+      code: "idb_unhealthy",
+      operationName: "saveInspectionOffline",
+    });
+  });
+
   it("IdbSaveError auto-classify: missing operationName falls back to 'unknown' in the fingerprint", async () => {
     captureExceptionMock.mockImplementation(() => {});
     const err = Object.assign(new Error("[??] save failed: quota_exceeded"), {
