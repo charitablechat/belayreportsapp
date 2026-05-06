@@ -1,50 +1,43 @@
-## Root cause (revised)
+## What you're seeing
 
-The plan's original Fix #1 (guard refetch against in-flight edits) is **already implemented** — `useFormRecordRealtime.onUpdate` and the `onPendingRemoteUpdate` toast in all three forms early-return on `hasUnsavedRef`, and tracked-field merge already runs in `atomic-sync-manager`. So that's not the active bug.
+Those stacked "Remote update available — Keep my changes / Reload" cards in the screenshot are **Sonner toasts**, not a sidebar. They fire from three places:
 
-The real race is in **`loadInspection()`** (and its Training/DailyAssessment twins):
+- `src/pages/InspectionForm.tsx` (~line 664)
+- `src/pages/TrainingForm.tsx` (~line 708)
+- `src/pages/DailyAssessmentForm.tsx` (~line 462)
 
-1. User types into Onsite Contact → 500 ms debounce scheduled, `hasUnsavedChanges=true`, but the IDB write hasn't fired yet.
-2. Some path calls `loadInspection()` (initial mount on a stale tab, "Reload" toast, app resume, channel-degraded fallback).
-3. `loadInspection` reads `offlineData` from IDB — which is the **pre-edit row** because the debounce hasn't flushed.
-4. `localIsNewer` evaluates against stale IDB → false → "server is current" branch runs `setInspection(data)` → in-memory edit is wiped.
+Each form subscribes to `onPendingRemoteUpdate`. When Realtime fires an `UPDATE` for the open report and `hasUnsavedRef.current === true`, the form pops this toast. Because the same device's own writes (and other open tabs) emit Realtime updates, users see this toast pop repeatedly while editing — and they stack because Sonner doesn't dedupe them.
 
-Same mechanism kills photos: `PhotoGallery` re-reads from IDB; if a read fails (the 631 suppressed 8 s timeouts you're seeing) it renders empty instead of preserving the last-known list.
+## Why it's safe to remove
 
-## Fix
+The original purpose of the toast was "your unsaved edits will be lost if we refetch." That's no longer true:
 
-### 1. Flush-before-load in `loadInspection`
-Inspection / Training / DailyAssessment forms — at the top of `loadInspection`:
-- If `saveDebounceTimerRef.current` is set OR `hasUnsavedRef.current` is true, `await performSaveRef.current?.(true)` first, then continue. This ensures the IDB row read by `getInspectionOffline(id)` already contains the pending edit.
+- `loadInspection` / `loadTraining` / `loadAssessment` now flush pending debounced saves before reading IDB (Fix #1 from the prior turn).
+- Server data is merged per-field via `mergeRecordFields(prev, server, TRACKED_FIELDS.*)` (Fix #2). Locally-newer fields survive a refetch.
+- `useFormRecordRealtime` already early-returns on `hasUnsavedRef`, and `isRecentSelfWrite` already suppresses self-write echoes.
 
-### 2. Per-field merge when applying server data
-In every `setInspection(data)` / `setAssessment(data)` / `setTraining(data)` call inside `loadInspection`, replace the raw assignment with `mergeRecordFields(currentInMemory, serverData, TRACKED_FIELDS.<kind>)`. If the user edited Onsite Contact 200 ms ago and `field_timestamps.onsite_contact` is newer than server's, the local value wins. Untracked fields (status, inspector_id, latest_report_html, …) still come from server.
+So the user-facing prompt is redundant — the system can just silently reconcile.
 
-Also apply the same merge on the explicit "Reload" toast action.
+## Plan
 
-### 3. PhotoGallery: preserve last-known on IDB read failure
-`src/components/PhotoGallery.tsx` — wrap the photo-list read with `isIdbReadFailure` detection (mirror `useUnsyncedPhotos`). On failure, keep the previously rendered list in a ref instead of re-rendering empty. Union pending photos (`uploaded === 0`) with server photos so an in-flight upload never disappears between reads.
+1. **Remove the toast in all three forms.** In the `onPendingRemoteUpdate` handler in `InspectionForm.tsx`, `TrainingForm.tsx`, and `DailyAssessmentForm.tsx`:
+   - Keep the `isRecentSelfWrite` early return.
+   - Remove the `hasUnsavedRef.current` branch that calls `toast.warning(...)`.
+   - Always call `loadInspection() / loadTraining() / loadAssessment()` — the per-field merge will preserve unsaved local edits.
+   - Add a `console.log` in DEV explaining the silent reconcile path.
 
-### 4. One-shot diagnostics on breaker open
-Add a single `console.warn` with `await navigator.storage.estimate()` + breaker status the first time the IDB circuit breaker opens per session. No UI change — just helps confirm whether affected devices are quota-bound.
+2. **Leave everything else alone.**
+   - No changes to `useFormRecordRealtime`, `atomic-sync-manager`, `mergeRecordFields`, debounce, RLS, or schema.
+   - No changes to actual sidebars (`src/components/ui/sidebar.tsx` is unrelated and untouched).
+   - No changes to data persistence — merge logic already handles concurrent edits.
+
+3. **Verification.**
+   - Open the same report on two devices, edit on one, save → no toast on the other; values merge silently.
+   - Edit Onsite Contact, switch tabs, come back → no toast, value persists.
+   - Existing field-merge / refetch-race / self-write-suppression tests still pass.
 
 ## Files
 
-- `src/pages/InspectionForm.tsx` — flush-before-load + merge on each `setInspection(data)` in `loadInspection`
-- `src/pages/TrainingForm.tsx` — same
-- `src/pages/DailyAssessmentForm.tsx` — same
-- `src/components/PhotoGallery.tsx` — preserve-last-known + union pending
-- `src/lib/idb-layer-breaker.ts` (or wherever the breaker lives) — one-shot estimate log on open
-
-## Not changing
-
-- `useFormRecordRealtime` guards (already correct)
-- `applyTrackedFieldWrite` / `mergeRecordFields` / debounce window / RLS / schema
-- Circuit-breaker thresholds
-
-## Verification
-
-- Type into Onsite Contact, immediately tap "Reload" toast → value persists.
-- Reload tab while typing → value persists.
-- Add a photo, navigate away during upload → photo still in gallery on return.
-- All existing field-merge / sync-boundary tests pass; add a regression test "loadInspection flushes pending save before reading IDB."
+- `src/pages/InspectionForm.tsx`
+- `src/pages/TrainingForm.tsx`
+- `src/pages/DailyAssessmentForm.tsx`
