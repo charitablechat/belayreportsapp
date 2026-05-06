@@ -7,6 +7,7 @@ import {
   AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { isLocalDataNewer } from "@/lib/local-data-guards";
+import { mergeRecordFields, TRACKED_FIELDS } from "@/lib/field-merge";
 import { applyTrackedFieldWrite } from "@/lib/field-merge";
 import { useParams, useNavigate } from "react-router-dom";
 import { goBack } from "@/lib/navigation";
