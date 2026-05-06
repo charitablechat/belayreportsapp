@@ -1883,6 +1883,7 @@ export default function Dashboard() {
                   setReportToDelete={setReportToDelete}
                   setDeleteDialogOpen={setDeleteDialogOpen}
                   invoicedReportIds={invoicedReportIds}
+                  invoicedMetaById={invoicedMetaById}
                   onToggleInvoiced={handleToggleInvoiced}
                   profilesById={profilesById}
                 />
