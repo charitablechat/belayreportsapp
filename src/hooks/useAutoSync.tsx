@@ -647,6 +647,12 @@ export const useAutoSync = () => {
           }
           
           // Toast shape depends on whether anything failed in this cycle.
+          // F3: photo result has no success/failed counts — inspect remaining/error
+          // so a green "synced" toast never fires while photos still pending.
+          const photoResultForToast = results[3] as { remaining?: number; error?: string } | null;
+          const photosStillPending =
+            (photoResultForToast?.remaining ?? 0) > 0 || !!photoResultForToast?.error;
+
           if (totalFailed > 0 && totalSynced > 0) {
             const msg = `Synced ${totalSynced}; ${totalFailed} failed — will retry`;
             toast.warning(msg);
@@ -654,6 +660,13 @@ export const useAutoSync = () => {
           } else if (totalFailed > 0 && totalSynced === 0) {
             const msg = `Sync failed: ${totalFailed} item${totalFailed === 1 ? '' : 's'} could not upload — will retry`;
             toast.error(msg);
+            addSyncNotification(msg);
+          } else if (cleanSuccess && photosStillPending) {
+            const tail = (photoResultForToast?.remaining ?? 0) > 0
+              ? `${photoResultForToast!.remaining} photo${photoResultForToast!.remaining === 1 ? '' : 's'} still uploading`
+              : 'photos still uploading';
+            const msg = `Reports synced (${totalSynced} items); ${tail}`;
+            toast.warning(msg);
             addSyncNotification(msg);
           } else if (cleanSuccess) {
             const remainingMsg = totalRemaining > 0 ? ` (${totalRemaining} more queued)` : '';

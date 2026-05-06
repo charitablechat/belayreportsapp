@@ -11,12 +11,13 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { format, differenceInDays, formatDistanceToNow } from "date-fns";
-import { FileText, MoreVertical, Trash2, Download, Check, Cloud, Receipt } from "lucide-react";
+import { FileText, MoreVertical, Trash2, Download, Check, Cloud, Receipt, UploadCloud } from "lucide-react";
 import { triggerHaptic } from "@/lib/haptics";
 import { parseLocalDate } from "@/lib/date-utils";
 import { triggerSuccessConfetti } from "@/lib/confetti";
 import { cn } from "@/lib/utils";
 import { useClickAndHoverSparkles, SparkleContainer } from "@/components/christmas/Sparkles";
+import { useUnsyncedPhotos } from "@/hooks/useUnsyncedPhotos";
 
 // F2: Module-level minute-tick subscriber so we share ONE setInterval across all
 // ReportCard instances on the page (not N intervals for N cards).
@@ -71,6 +72,14 @@ export function ReportCard({ report, type, onDelete, onClick, getStatusBadge, co
   const { sparkles, triggerSparkles, handleMouseMove } = useClickAndHoverSparkles();
   const isInspection = type === 'inspection';
   const isDaily = type === 'daily';
+
+  // F3: Surface pending-photo state on the per-card sync badge so a green
+  // "Synced ✓" never appears while photos are still uploading. The hook
+  // preserves last-known counts on transient IDB read failures (S11).
+  const photoStatus = useUnsyncedPhotos();
+  const pendingPhotoCount = isInspection
+    ? (photoStatus.photosByInspection?.[report.id] ?? 0)
+    : 0;
   
   const getReportDate = () => {
     if (isInspection) return report.inspection_date;
@@ -302,12 +311,19 @@ export function ReportCard({ report, type, onDelete, onClick, getStatusBadge, co
               {getReportStatus()}
             </Badge>
             
-            {/* Universal Sync Status Badge */}
+            {/* Universal Sync Status Badge — 3-state: Local / Syncing photos / Synced */}
             {report.synced_at ? (
-              <Badge variant="outline" className="gap-1 text-xs px-2 py-0.5 text-green-600 border-green-300">
-                <Check className="w-3 h-3" />
-                Synced
-              </Badge>
+              pendingPhotoCount > 0 ? (
+                <Badge variant="outline" className="gap-1 text-xs px-2 py-0.5 text-amber-600 border-amber-300">
+                  <UploadCloud className="w-3 h-3" />
+                  Synced — {pendingPhotoCount} photo{pendingPhotoCount === 1 ? '' : 's'} uploading
+                </Badge>
+              ) : (
+                <Badge variant="outline" className="gap-1 text-xs px-2 py-0.5 text-green-600 border-green-300">
+                  <Check className="w-3 h-3" />
+                  Synced
+                </Badge>
+              )
             ) : (
               <Badge variant="secondary" className="gap-1 text-xs px-2 py-0.5">
                 <Cloud className="w-3 h-3" />
