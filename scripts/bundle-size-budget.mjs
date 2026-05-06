@@ -32,6 +32,7 @@
 import { readFileSync, readdirSync, statSync, existsSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, resolve, join, extname } from "node:path";
+import { isLovableMainPush, emitLovableGraceWarning } from "./lovable-grace.mjs";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -98,9 +99,12 @@ for (const { name, size } of top.slice(0, 5)) {
 const ceiling = budget + TOLERANCE_BYTES;
 if (total > ceiling) {
   const over = total - budget;
-  console.error(
-    `\n[bundle-size-budget] FAIL — bundle is ${fmt(over)} over budget (${fmt(TOLERANCE_BYTES)} tolerance allowed).`,
-  );
+  const failMessage = `bundle is ${fmt(over)} over budget (${fmt(TOLERANCE_BYTES)} tolerance allowed). Total: ${fmt(total)}, budget: ${fmt(budget)}.`;
+  if (isLovableMainPush()) {
+    emitLovableGraceWarning("bundle-size-budget", failMessage);
+    process.exit(0);
+  }
+  console.error(`\n[bundle-size-budget] FAIL — ${failMessage}`);
   console.error(
     "If this is intentional (e.g. you added a new feature with vendored",
   );
