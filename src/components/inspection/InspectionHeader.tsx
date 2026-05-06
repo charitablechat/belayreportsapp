@@ -179,7 +179,6 @@ export default function InspectionHeader({ inspection, userProfile, modifiedByPr
                       size="icon"
                       onClick={() => {
                         onUpdate("location", "");
-                        onImmediateSave?.();
                       }}
                       title="Clear location"
                       className="shrink-0"
