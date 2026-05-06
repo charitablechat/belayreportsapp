@@ -1015,23 +1015,6 @@ export default function InspectionForm() {
 
   const handleHeaderUpdate = async (field: string, value: string) => {
     try {
-      // MUTEX: Wait for any in-flight save to complete before proceeding
-      if (anySaveInProgressRef.current) {
-        if (import.meta.env.DEV) {
-          console.log('[InspectionForm] Header update waiting for in-flight save to complete');
-        }
-        // Wait up to 3 seconds for save to finish
-        await new Promise<void>((resolve) => {
-          const check = setInterval(() => {
-            if (!anySaveInProgressRef.current) {
-              clearInterval(check);
-              resolve();
-            }
-          }, 100);
-          setTimeout(() => { clearInterval(check); resolve(); }, 3000);
-        });
-      }
-
       // PR-A: route every header-field write through `applyTrackedFieldWrite`
       // so tracked fields populate `field_timestamps`. Without this the
       // cross-device merger (atomic-sync-manager S16/H4 → mergeRecordFields)
@@ -1043,16 +1026,36 @@ export default function InspectionForm() {
         value,
       );
 
+      // CRITICAL: apply the React state update SYNCHRONOUSLY before any await.
+      // Previously the save-mutex wait gated this update, causing controlled
+      // inputs (e.g. onsite_contact via GlobalAutocomplete) to appear to "lose"
+      // the just-typed value for up to 3 s while a save was in flight — the
+      // input exited edit mode and re-rendered the stale prop.
+      //
       // Sync-mirror the unsaved flag onto the ref BEFORE setInspection so the
       // form-scoped Realtime UPDATE handler (`useFormRecordRealtime.onUpdate`)
       // sees the in-flight edit even if a remote update lands inside the
-      // 500 ms debounce window. Without this, header-field edits (e.g.
-      // `onsite_contact`) get clobbered when atomic-sync's `refetchInspectionPackage`
-      // round-trip emits a Realtime UPDATE before the user's debounced save
-      // has flushed to Supabase.
+      // 500 ms debounce window.
       hasUnsavedRef.current = true;
       setInspection(updatedInspection);
       setHasUnsavedChanges(true);
+
+      // MUTEX: wait for any in-flight save to complete before scheduling the
+      // next debounced save — but DO NOT block the UI state update above.
+      if (anySaveInProgressRef.current) {
+        if (import.meta.env.DEV) {
+          console.log('[InspectionForm] Header update waiting for in-flight save before scheduling next save');
+        }
+        await new Promise<void>((resolve) => {
+          const check = setInterval(() => {
+            if (!anySaveInProgressRef.current) {
+              clearInterval(check);
+              resolve();
+            }
+          }, 100);
+          setTimeout(() => { clearInterval(check); resolve(); }, 3000);
+        });
+      }
 
       // Trigger the debounced auto-save instead of bypassing it
       // This ensures header updates go through the same save path as other changes
