@@ -1,7 +1,7 @@
 import { useEffect, useState, useRef, useCallback } from "react";
 import { OptimizedImage } from "@/components/ui/optimized-image";
 import { supabase } from "@/integrations/supabase/client";
-import { getOfflinePhotos, updatePhotoDisplayOrder, getDB, putPhotoRecord } from "@/lib/offline-storage";
+import { getOfflinePhotos, updatePhotoDisplayOrder, getDB, putPhotoRecord, isIdbLayerBreakerOpen, getCircuitBreakerStatus } from "@/lib/offline-storage";
 import { cachePhotoFromRemote, batchValidateCachedPhotos } from "@/lib/photo-cache";
 import { getPhotoReceipts } from "@/lib/photo-receipts";
 import { useNetworkStatus } from "@/hooks/useNetworkStatus";
