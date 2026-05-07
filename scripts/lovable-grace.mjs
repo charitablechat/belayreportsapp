@@ -1,4 +1,4 @@
-import { appendFileSync } from "node:fs";
+import { appendFileSync, readFileSync } from "node:fs";
 
 /**
  * Lovable-aware CI grace mode.
@@ -25,24 +25,51 @@ import { appendFileSync } from "node:fs";
  * updates a tracking issue so the team has visibility into the cumulative
  * cost without main going red on every push.
  *
- * Detection signal: GITHUB_ACTOR set to the Lovable bot login AND
- * GITHUB_EVENT_NAME=push AND GITHUB_REF=refs/heads/main. We deliberately
- * key off the actor (push initiator) rather than the commit author, so a
- * human force-pushing a Lovable-authored commit still trips the gate.
+ * Detection signal: head-commit author identity matches `gpt-engineer-app[bot]`
+ * AND GITHUB_EVENT_NAME=push AND GITHUB_REF=refs/heads/main. We read the
+ * head-commit author from `$GITHUB_EVENT_PATH` (the JSON event payload
+ * GitHub Actions writes to disk for every run) rather than `GITHUB_ACTOR`,
+ * because `GITHUB_ACTOR` resolves to the OWNER of the app installation
+ * (a human account) when a GitHub App pushes via its installation token,
+ * NOT the bot login. PR #155's first attempt keyed off `GITHUB_ACTOR`
+ * and silently never matched on Lovable's pushes — caught when the
+ * `main-broken-alert` workflow kept firing on commit `66bcd02` even
+ * though the gate was supposed to downgrade for it.
  */
 
 const LOVABLE_BOT_ACTOR = "gpt-engineer-app[bot]";
+
+/**
+ * Reads the head-commit author name from the GitHub Actions event payload.
+ * Returns null if the payload is unavailable or the field is missing
+ * (e.g. running locally, on a non-push event without head_commit, or in
+ * a malformed environment).
+ */
+function readHeadCommitAuthorName() {
+  const eventPath = process.env.GITHUB_EVENT_PATH;
+  if (!eventPath) return null;
+  try {
+    const payload = JSON.parse(readFileSync(eventPath, "utf-8"));
+    // For push events the field is `head_commit.author.{name,email,username}`.
+    // We use `name` because git's `%an` directly matches it for Lovable's
+    // commits (`gpt-engineer-app[bot]`).
+    const name = payload?.head_commit?.author?.name;
+    return typeof name === "string" ? name : null;
+  } catch {
+    // Best-effort: unreachable file, parse error, etc. Fall through to
+    // the gate's default FAIL behaviour rather than silently downgrading.
+    return null;
+  }
+}
 
 /**
  * Returns true when the gate should downgrade FAIL → WARN for this
  * particular CI run.
  */
 export function isLovableMainPush() {
-  return (
-    process.env.GITHUB_ACTOR === LOVABLE_BOT_ACTOR &&
-    process.env.GITHUB_EVENT_NAME === "push" &&
-    process.env.GITHUB_REF === "refs/heads/main"
-  );
+  if (process.env.GITHUB_EVENT_NAME !== "push") return false;
+  if (process.env.GITHUB_REF !== "refs/heads/main") return false;
+  return readHeadCommitAuthorName() === LOVABLE_BOT_ACTOR;
 }
 
 /**

@@ -43,6 +43,15 @@ concurrency:
 # itself. PRs (Devin's, contributors') still get full CI regardless of actor;
 # `workflow_dispatch` runs (e.g. the auth-gated e2e suite) also still fire.
 #
+# Detection: `github.event.head_commit.author.name`, NOT `github.actor`.
+# When a GitHub App pushes via its installation token, `github.actor`
+# resolves to the OWNER of the app installation (the human account that
+# installed Lovable), NOT the bot's login. PR #157's first attempt used
+# `github.actor` and silently never matched. The git-commit author IS
+# `gpt-engineer-app[bot]` for Lovable's pushes, so we key off that
+# instead. The same constraint applies inside lovable-grace.mjs (which
+# now reads `$GITHUB_EVENT_PATH` JSON for the same field).
+#
 # This is intentionally inlined per-job rather than gated at the workflow
 # level because GitHub doesn't expose a workflow-level `if:` and a single
 # gating job would still consume an Actions minute. The condition is the
@@ -51,7 +60,7 @@ jobs:
   typecheck:
     name: tsc --noEmit
     runs-on: ubuntu-latest
-    if: ${{ github.event_name != 'push' || github.actor != 'gpt-engineer-app[bot]' }}
+    if: ${{ github.event_name != 'push' || github.event.head_commit.author.name != 'gpt-engineer-app[bot]' }}
     steps:
       - uses: actions/checkout@v4
       - uses: oven-sh/setup-bun@v2
@@ -63,7 +72,7 @@ jobs:
   any-budget:
     name: lint:any-budget gate
     runs-on: ubuntu-latest
-    if: ${{ github.event_name != 'push' || github.actor != 'gpt-engineer-app[bot]' }}
+    if: ${{ github.event_name != 'push' || github.event.head_commit.author.name != 'gpt-engineer-app[bot]' }}
     steps:
       - uses: actions/checkout@v4
       - uses: oven-sh/setup-bun@v2
@@ -75,7 +84,7 @@ jobs:
   test:
     name: vitest
     runs-on: ubuntu-latest
-    if: ${{ github.event_name != 'push' || github.actor != 'gpt-engineer-app[bot]' }}
+    if: ${{ github.event_name != 'push' || github.event.head_commit.author.name != 'gpt-engineer-app[bot]' }}
     steps:
       - uses: actions/checkout@v4
       - uses: oven-sh/setup-bun@v2
@@ -87,7 +96,7 @@ jobs:
   build:
     name: vite build (incl. db-version parity check)
     runs-on: ubuntu-latest
-    if: ${{ github.event_name != 'push' || github.actor != 'gpt-engineer-app[bot]' }}
+    if: ${{ github.event_name != 'push' || github.event.head_commit.author.name != 'gpt-engineer-app[bot]' }}
     steps:
       - uses: actions/checkout@v4
       - uses: oven-sh/setup-bun@v2
@@ -101,7 +110,7 @@ jobs:
   bundle-size:
     name: bundle-size budget gate
     runs-on: ubuntu-latest
-    if: ${{ github.event_name != 'push' || github.actor != 'gpt-engineer-app[bot]' }}
+    if: ${{ github.event_name != 'push' || github.event.head_commit.author.name != 'gpt-engineer-app[bot]' }}
     steps:
       - uses: actions/checkout@v4
       - uses: oven-sh/setup-bun@v2
@@ -117,7 +126,7 @@ jobs:
   audit-critical:
     name: bun audit (critical gate)
     runs-on: ubuntu-latest
-    if: ${{ github.event_name != 'push' || github.actor != 'gpt-engineer-app[bot]' }}
+    if: ${{ github.event_name != 'push' || github.event.head_commit.author.name != 'gpt-engineer-app[bot]' }}
     steps:
       - uses: actions/checkout@v4
       - uses: oven-sh/setup-bun@v2
@@ -137,7 +146,7 @@ jobs:
   audit-high:
     name: bun audit (high — advisory only)
     runs-on: ubuntu-latest
-    if: ${{ github.event_name != 'push' || github.actor != 'gpt-engineer-app[bot]' }}
+    if: ${{ github.event_name != 'push' || github.event.head_commit.author.name != 'gpt-engineer-app[bot]' }}
     # Non-blocking: this job runs and reports findings to the PR's checks tab
     # so high-severity transitive advisories are visible, but it does NOT fail
     # the build. Renovate's `vulnerabilityAlerts` block (renovate.json) opens
@@ -179,7 +188,7 @@ jobs:
   e2e-smoke:
     name: playwright e2e (smoke)
     runs-on: ubuntu-latest
-    if: ${{ github.event_name != 'push' || github.actor != 'gpt-engineer-app[bot]' }}
+    if: ${{ github.event_name != 'push' || github.event.head_commit.author.name != 'gpt-engineer-app[bot]' }}
     # 8 min covers cold-cache build (~100s) + Chromium download (~60s) +
     # smoke specs (~30s with retries) with headroom.
     timeout-minutes: 8
