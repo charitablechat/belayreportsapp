@@ -181,7 +181,7 @@ function ReportRow({
       {/* 3px accent bar */}
       <span
         aria-hidden
-        className={cn("absolute left-0 top-0 h-full w-[3px]", accentClass)}
+        className={cn("absolute left-0 top-0 h-full w-[3px]", isAdmin && isInvoiced ? INVOICED_ACCENT : baseAccent)}
       />
 
       {/* Icon tile */}
