@@ -29,6 +29,7 @@ import { toast } from '@/components/ui/sonner';
 import { markSnapshotSynced } from '@/lib/local-backup-ledger';
 import { isRestoreInProgress, onRestoreLockChange } from '@/lib/restore-lock';
 import { syncLog } from '@/lib/sync-logger';
+import { scanForStuckPhotos } from '@/lib/stuck-photo-beacon';
 
 /**
  * Result returned by each per-table atomic-sync helper
@@ -849,6 +850,13 @@ export const useAutoSync = () => {
       } catch {
         /* probe failure must never break sync */
       }
+      // Sprint 1B: scan for "0,0,null" stuck photos that have been sitting
+      // in IDB without ever being attempted. Best-effort, internally
+      // debounced per-photoId per-tab + capped at 5 events/session, never
+      // throws. Closes the observability gap from audit Finding 2.
+      scanForStuckPhotos().catch(() => {
+        /* beacon must never break sync */
+      });
       // M6: Periodic GC for unresolved quarantined records (>30d).
       // Cycle-throttled + rate-limited inside the helper. Fire-and-forget.
       // Audit M2: `maybeRunQuarantineGc` is now a static import (file head).
