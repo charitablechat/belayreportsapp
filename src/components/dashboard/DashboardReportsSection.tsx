@@ -644,13 +644,14 @@ export function DashboardReportsSection({
                               )}
                             </CollapsibleTrigger>
                             <CollapsibleContent>
-                              {filters.viewMode === 'list' ? (
+                              {filters.viewMode === 'list' || filters.viewMode === 'split' ? (
                                 <ReportListView
                                   reports={group.items}
                                   type={currentType}
                                   onRowClick={handleClick}
                                   onDelete={handleDelete}
                                   compact={compact}
+                                  twoColumn={filters.viewMode === 'split'}
                                   isAdmin={isSuperAdmin}
                                   invoicedReportIds={invoicedReportIds}
                                   invoicedMetaById={invoicedMetaById}
@@ -687,13 +688,14 @@ export function DashboardReportsSection({
                           </Collapsible>
                         )}
                         {!showHeader && (
-                          filters.viewMode === 'list' ? (
+                          filters.viewMode === 'list' || filters.viewMode === 'split' ? (
                             <ReportListView
                               reports={group.items}
                               type={currentType}
                               onRowClick={handleClick}
                               onDelete={handleDelete}
                               compact={compact}
+                              twoColumn={filters.viewMode === 'split'}
                               isAdmin={isSuperAdmin}
                               invoicedReportIds={invoicedReportIds}
                               invoicedMetaById={invoicedMetaById}
@@ -754,7 +756,7 @@ interface CrossTabSectionProps {
   reports: any[];
   type: 'inspection' | 'training' | 'daily';
   compact: boolean;
-  viewMode: 'grid' | 'list';
+  viewMode: 'grid' | 'list' | 'split';
   onDelete: (report: any) => void;
   onClick: (report: any) => void;
   getStatusBadge?: (report: any) => React.ReactNode;
@@ -774,13 +776,14 @@ function CrossTabSection({ label, icon, reports, type, compact, viewMode, onDele
         <span className="font-semibold text-sm">{label}</span>
         <Badge variant="secondary" className="text-xs">{reports.length}</Badge>
       </div>
-      {viewMode === 'list' ? (
+      {viewMode === 'list' || viewMode === 'split' ? (
         <ReportListView
           reports={reports}
           type={type}
           onRowClick={onClick}
           onDelete={onDelete}
           compact={compact}
+          twoColumn={viewMode === 'split'}
           profilesById={profilesById}
           getStatusBadge={type === 'inspection' ? getStatusBadge : undefined}
         />

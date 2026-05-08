@@ -2368,7 +2368,7 @@ export async function getDB() {
     // Version 8: Add report_versions store for append-only versioning
     // DB_NAME and DB_VERSION shared with public/db-config.js for SW consistency
     const DB_NAME = 'rope-works-inspections';
-    const DB_VERSION = 19;
+    const DB_VERSION = 18;
 
     // Phase 5 — Schema Migration Safety. Now imported statically at the top
     // of this module (see comment there). Previously this was `await
@@ -2741,37 +2741,6 @@ export async function getDB() {
               }
             } catch (err) {
               console.warn('[Offline Storage] v18 photos.uploaded re-coercion failed:', err);
-            }
-          }
-
-          // === NEW in v19: coerce autocomplete_history.synced boolean → 0|1 ===
-          // Audit L1: the `by-synced` index is typed as `number` but writers
-          // were passing `synced: boolean`. IndexedDB silently drops boolean
-          // values from indexes (booleans aren't valid IDB keys), so the
-          // index returned no rows and `getUnsyncedAutocompleteEntries`
-          // never saw legacy entries — autocomplete suggestions captured
-          // offline could not push to the server until the next time the
-          // user edited that exact field. Rewrite legacy rows so the index
-          // actually keys them. Idempotent — numeric rows are skipped.
-          if (oldVersion < 19 && db.objectStoreNames.contains('autocomplete_history')) {
-            try {
-              const store = transaction.objectStore('autocomplete_history');
-              let cursor = await store.openCursor();
-              let rewritten = 0;
-              while (cursor) {
-                const v = cursor.value as { synced?: unknown };
-                if (typeof v.synced === 'boolean') {
-                  v.synced = (v.synced ? 1 : 0) as never;
-                  await cursor.update(v as never);
-                  rewritten++;
-                }
-                cursor = await cursor.continue();
-              }
-              if (import.meta.env.DEV) {
-                console.log(`[Offline Storage] v19: coerced autocomplete_history.synced on ${rewritten} legacy row(s)`);
-              }
-            } catch (err) {
-              console.warn('[Offline Storage] v19 autocomplete_history.synced coercion failed:', err);
             }
           }
         },
@@ -5423,13 +5392,7 @@ export interface AutocompleteEntry {
   value: string;
   usage_count: number;
   last_used_at: string;
-  /**
-   * Audit L1: `0 | 1` — boolean would be silently dropped from the
-   * `by-synced` index because IDB keys can't be booleans. Writers may pass
-   * `boolean` for backward compat; `putAutocompleteEntry` and
-   * `bulkPutAutocompleteEntries` coerce to `0 | 1` before persisting.
-   */
-  synced: 0 | 1 | boolean;
+  synced: boolean;
 }
 
 /**
@@ -5454,24 +5417,11 @@ export async function putAutocompleteEntry(entry: AutocompleteEntry): Promise<vo
   return withIndexedDBErrorBoundary(
     async () => {
       const db = await getDB();
-      await db.put('autocomplete_history', coerceAutocompleteSynced(entry));
+      await db.put('autocomplete_history', entry);
     },
     undefined,
     'putAutocompleteEntry'
   );
-}
-
-/**
- * Audit L1: coerce `synced: boolean` → `synced: 0 | 1` before write so
- * the `by-synced` index actually keys the row. Booleans are not valid
- * IDB keys; passing one silently drops the row from every index typed
- * on that property.
- */
-function coerceAutocompleteSynced(entry: AutocompleteEntry): AutocompleteEntry {
-  if (typeof entry.synced === 'boolean') {
-    return { ...entry, synced: entry.synced ? 1 : 0 };
-  }
-  return entry;
 }
 
 /**
@@ -5495,12 +5445,8 @@ export async function getUnsyncedAutocompleteEntries(): Promise<AutocompleteEntr
   return withIndexedDBErrorBoundary(
     async () => {
       const db = await getDB();
-      // Audit L1: `synced` is now 0|1 (numeric) on every row — see v19
-      // migration above + putAutocompleteEntry coercion. The previous
-      // boolean shape silently dropped rows from the index because IDB
-      // keys can't be booleans, which made this reader return [] even
-      // when there were unsynced entries.
-      return await db.getAllFromIndex('autocomplete_history', 'by-synced', IDBKeyRange.only(0));
+      // synced index stores boolean; false = unsynced
+      return await db.getAllFromIndex('autocomplete_history', 'by-synced', IDBKeyRange.only(0 as unknown as IDBValidKey));
     },
     [],
     'getUnsyncedAutocompleteEntries'
@@ -5516,8 +5462,7 @@ export async function bulkPutAutocompleteEntries(entries: AutocompleteEntry[]): 
     async () => {
       const db = await getDB();
       const tx = db.transaction('autocomplete_history', 'readwrite');
-      // Audit L1: coerce boolean → 0|1 (see putAutocompleteEntry).
-      await Promise.all(entries.map(e => tx.store.put(coerceAutocompleteSynced(e))));
+      await Promise.all(entries.map(e => tx.store.put(e)));
       await tx.done;
     },
     undefined,
