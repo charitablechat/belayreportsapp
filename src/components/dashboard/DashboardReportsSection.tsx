@@ -431,8 +431,6 @@ export function DashboardReportsSection({
             onSortChange={(v) => updateFilter('sortBy', v)}
             groupBy={filters.groupBy}
             onGroupChange={(v) => updateFilter('groupBy', v)}
-            viewMode={filters.viewMode}
-            onViewModeChange={(v) => updateFilter('viewMode', v)}
           />
         </div>
 
