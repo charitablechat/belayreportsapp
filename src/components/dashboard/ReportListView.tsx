@@ -241,8 +241,8 @@ function ReportRow({
       {isAdmin && isInvoiced && (
         <Tooltip>
           <TooltipTrigger asChild>
-            <span className="hidden md:inline-flex shrink-0 items-center gap-1 rounded-full bg-red-500/10 px-2.5 py-0.5 text-xs font-semibold text-red-600 ring-1 ring-inset ring-red-300/60 backdrop-blur-sm dark:text-red-400 dark:ring-red-900">
-              INVOICED ✓
+            <span className="hidden md:inline-flex shrink-0 items-center gap-1 rounded-full bg-teal-600 px-2.5 py-0.5 text-xs font-semibold text-white ring-1 ring-inset ring-teal-700/40 dark:bg-teal-500 dark:ring-teal-300/40">
+              <DollarSign className="w-3 h-3" /> Invoiced
             </span>
           </TooltipTrigger>
           {invoicedMeta && (
