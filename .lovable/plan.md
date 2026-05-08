@@ -1,16 +1,15 @@
-## Hide "Completed" pill in split view when invoiced
+## Restore full list view; keep 10-cap only for split view
 
-In split (two-column) view, the row is tight. When a report is both invoiced and completed, the green "$ Invoiced" chip already conveys the state, so the redundant "Completed" status pill can be dropped to give the report name more horizontal room.
+The 10-row cap should apply only to split (two-column / collapsed) view. In the expanded list view, users need to see all their reports (paged as before).
 
 ### Change
 
-**File:** `src/components/dashboard/ReportListView.tsx`
+**File:** `src/hooks/useDashboardFilters.tsx`
 
-1. Pass `twoColumn` down from the parent list component into each `Row` (it's already a prop on `ReportListView` but not currently forwarded to the row). Add `twoColumn?: boolean` to the row's props and pass it where rows are rendered.
-2. In the status-pill block (lines ~225–234), suppress the pill when `twoColumn && isAdmin && isInvoiced && status === "completed"`. All other views/states render the pill exactly as today.
+- Revert `LIST_PAGE_SIZE` from `10` back to `50`. List view will once again show 50 rows per page with normal pagination, so users can reach every report.
+- Leave the split-view cap intact: the post-pagination `viewMode === 'split'` slice to 10 items per group (Drafts ≤10 + Completed ≤10) stays as is.
 
 ### Out of scope
 
-- No change to list view, grid view, or non-invoiced rows.
-- No change to the "$ Invoiced" chip, row tint, accent bar, or row layout/spacing.
-- No change to `ReportCard` (grid view).
+- No change to grid view (`GRID_PAGE_SIZE = 24`).
+- No change to grouping, sorting, filters, or any styling.
