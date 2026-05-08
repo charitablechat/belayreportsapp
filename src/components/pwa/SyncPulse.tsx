@@ -11,6 +11,10 @@ import {
 } from '@/components/ui/sheet';
 import { getDeadLetterPhotos, resetPhotoRetryCounts } from '@/lib/offline-storage';
 import { useUnsyncedPhotos } from '@/hooks/useUnsyncedPhotos';
+import {
+  getPhotoRetryBuckets,
+  type PhotoRetryBuckets,
+} from '@/lib/photo-retry-buckets';
 import { getQuarantineSnapshot, clearAllQuarantines } from '@/lib/sync-quarantine';
 import {
   collectSyncDiagnostics,
@@ -21,6 +25,21 @@ import {
 import { supabase } from '@/integrations/supabase/client';
 
 type Phase = 'idle' | 'syncing' | 'synced' | 'unsynced' | 'error';
+
+/**
+ * Sprint 1D: short human-readable delta for the RETRYING bucket header.
+ * `_tick` is unused but accepted so React re-renders the row each second
+ * via the 1Hz interval the parent component starts.
+ */
+function formatRetryCountdown(nextRetryAt: number, _tick: number): string {
+  const now = Date.now();
+  const remainingMs = nextRetryAt - now;
+  if (remainingMs <= 0) return 'now';
+  const seconds = Math.ceil(remainingMs / 1000);
+  if (seconds < 60) return `${seconds}s`;
+  const minutes = Math.ceil(seconds / 60);
+  return `${minutes}m`;
+}
 
 /**
  * SyncPulse — minimal dot-based sync indicator.
@@ -58,6 +77,18 @@ export const SyncPulse = ({ className }: { className?: string }) => {
     label: string;
     detail?: string;
   }>(null);
+  // Sprint 1D: per-photo retry-state breakdown (READY/RETRYING/STUCK)
+  // — see src/lib/photo-retry-buckets.ts. Refreshed on every
+  // `sync-photos-updated` event and on a 1Hz tick while the sheet is
+  // open so the RETRYING countdown stays live.
+  const [photoBuckets, setPhotoBuckets] = useState<PhotoRetryBuckets>({
+    ready: 0,
+    retrying: 0,
+    stuck: 0,
+    retryingMinNextRetryAt: null,
+    stuckIds: [],
+  });
+  const [retryingTick, setRetryingTick] = useState(0);
 
   const runSelfCheck = useCallback(async () => {
     setSelfCheckRunning(true);
@@ -115,6 +146,37 @@ export const SyncPulse = ({ className }: { className?: string }) => {
   useEffect(() => {
     if (open) refreshDiagnostics();
   }, [open, lastSyncTime, refreshDiagnostics]);
+
+  // Sprint 1D: subscribe to sync-photos-updated for fresh bucket counts.
+  // Also refresh when the sheet opens so the user always sees current state.
+  useEffect(() => {
+    let cancelled = false;
+    const refresh = async () => {
+      try {
+        const next = await getPhotoRetryBuckets();
+        if (!cancelled) setPhotoBuckets(next);
+      } catch {
+        /* boundary returns EMPTY internally; nothing to do here */
+      }
+    };
+    refresh();
+    const handler = () => {
+      void refresh();
+    };
+    window.addEventListener('sync-photos-updated', handler);
+    return () => {
+      cancelled = true;
+      window.removeEventListener('sync-photos-updated', handler);
+    };
+  }, [open]);
+
+  // Sprint 1D: 1Hz tick while a RETRYING countdown is active so the
+  // displayed delta stays live without re-fetching IDB every second.
+  useEffect(() => {
+    if (!photoBuckets.retryingMinNextRetryAt) return;
+    const id = window.setInterval(() => setRetryingTick((n) => n + 1), 1000);
+    return () => window.clearInterval(id);
+  }, [photoBuckets.retryingMinNextRetryAt]);
 
   // S41 (Fix E + option i): surface session-quarantined records the sync pipeline has
   // given up on this session. Refresh when sheet opens or sync state changes.
@@ -266,11 +328,68 @@ export const SyncPulse = ({ className }: { className?: string }) => {
               </div>
             )}
 
-            {/* Pending photos */}
+            {/* Pending photos — Sprint 1D: 3-row breakdown (READY/RETRYING/STUCK) */}
             {unsyncedPhotoCount > 0 && (
-              <div className="flex items-center justify-between text-green-300/80">
-                <span>PENDING_PHOTOS</span>
-                <span className="text-amber-400">{unsyncedPhotoCount}</span>
+              <div className="space-y-1">
+                <div className="flex items-center justify-between text-green-300/60 text-[10px] uppercase tracking-wider">
+                  <span>PENDING_PHOTOS</span>
+                  <span>{unsyncedPhotoCount}</span>
+                </div>
+                {photoBuckets.ready > 0 && (
+                  <div className="flex items-center justify-between pl-3 text-green-300/80">
+                    <span className="text-green-400">▸ READY</span>
+                    <span>{photoBuckets.ready}</span>
+                  </div>
+                )}
+                {photoBuckets.retrying > 0 && (
+                  <div className="flex items-center justify-between pl-3 text-green-300/80">
+                    <span className="text-amber-400">
+                      ▸ RETRYING
+                      {photoBuckets.retryingMinNextRetryAt && (
+                        <span className="ml-1 text-amber-300/70 font-mono text-[10px]">
+                          ({formatRetryCountdown(photoBuckets.retryingMinNextRetryAt, retryingTick)})
+                        </span>
+                      )}
+                    </span>
+                    <span>{photoBuckets.retrying}</span>
+                  </div>
+                )}
+                {photoBuckets.stuck > 0 && (
+                  <div className="flex items-center justify-between pl-3 text-red-300/90">
+                    <span className="flex items-center gap-1.5">
+                      <span className="text-red-400">▸ STUCK</span>
+                      <button
+                        type="button"
+                        disabled={retrying}
+                        onClick={async () => {
+                          try {
+                            setRetrying(true);
+                            // Reset retryCount + clear nextRetryAt on the
+                            // STUCK photos and force-trigger a sync. Mirrors
+                            // the existing dead-letter Retry button below
+                            // but scoped to the STUCK subset.
+                            const ids = photoBuckets.stuckIds;
+                            if (ids.length > 0) {
+                              await resetPhotoRetryCounts(ids);
+                            }
+                            await updatePhotoCount();
+                            const fresh = await getPhotoRetryBuckets();
+                            setPhotoBuckets(fresh);
+                            await forceSync();
+                          } catch (e) {
+                            console.warn('[SyncPulse] Stuck-photo retry failed:', e);
+                          } finally {
+                            setRetrying(false);
+                          }
+                        }}
+                        className="text-[9px] uppercase tracking-wider px-1.5 py-0.5 rounded border border-red-700/60 text-red-300 hover:bg-red-900/30 disabled:opacity-50"
+                      >
+                        {retrying ? 'RETRYING…' : 'RETRY NOW'}
+                      </button>
+                    </span>
+                    <span>{photoBuckets.stuck}</span>
+                  </div>
+                )}
               </div>
             )}
 
