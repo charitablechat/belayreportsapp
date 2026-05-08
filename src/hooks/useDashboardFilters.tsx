@@ -5,7 +5,7 @@ import { getReportAgeState, type ReportAgeState } from "@/components/dashboard/R
 
 export type SortOption = 'priority' | 'completed' | 'date-asc' | 'date-desc' | 'title-az' | 'assignee';
 export type GroupOption = 'none' | 'status' | 'date' | 'assignee' | 'region';
-export type ViewMode = 'grid' | 'list';
+export type ViewMode = 'grid' | 'list' | 'split';
 export type SyncFilter = 'all' | 'synced' | 'local';
 
 export interface DashboardFilterState {

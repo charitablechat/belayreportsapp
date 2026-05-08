@@ -48,6 +48,7 @@ interface ReportListViewProps {
     { first_name: string | null; last_name: string | null; avatar_url: string | null }
   >;
   getStatusBadge?: (report: any) => React.ReactNode;
+  twoColumn?: boolean;
 }
 
 function getTypeIcon(type: ReportType) {
@@ -372,9 +373,15 @@ export function ReportListView({
   onToggleInvoiced,
   profilesById,
   getStatusBadge,
+  twoColumn,
 }: ReportListViewProps) {
+  // Auto-imply compact when twoColumn is on, unless caller explicitly set it.
+  const effectiveCompact = compact ?? twoColumn ?? false;
+  const containerClass = twoColumn
+    ? "grid grid-cols-1 md:grid-cols-2 gap-2"
+    : cn("flex flex-col", effectiveCompact ? "gap-1.5" : "gap-2");
   return (
-    <ul className={cn("flex flex-col", compact ? "gap-1.5" : "gap-2")}>
+    <ul className={containerClass}>
       {reports.map((r) => (
         <ReportRow
           key={r.id}
@@ -382,7 +389,7 @@ export function ReportListView({
           type={type}
           onRowClick={onRowClick}
           onDelete={onDelete}
-          compact={compact}
+          compact={effectiveCompact}
           isAdmin={isAdmin}
           invoicedReportIds={invoicedReportIds}
           invoicedMetaById={invoicedMetaById}
