@@ -696,7 +696,16 @@ export function DashboardReportsSection({
                           </Collapsible>
                         )}
                         {!showHeader && (
-                          filters.viewMode === 'list' || filters.viewMode === 'split' ? (
+                          <>
+                            {gi === 0 && (
+                              <div className="flex justify-end mb-3">
+                                <ViewModeToggle
+                                  viewMode={filters.viewMode}
+                                  onViewModeChange={(v) => updateFilter('viewMode', v)}
+                                />
+                              </div>
+                            )}
+                            {filters.viewMode === 'list' || filters.viewMode === 'split' ? (
                             <ReportListView
                               reports={group.items}
                               type={currentType}
