@@ -112,7 +112,7 @@ function ReportRow({
   const parsed = dateStr ? parseLocalDate(dateStr) : null;
 
   const createdAt = report.created_at as string | null | undefined;
-  const accentClass = getAccentClasses(createdAt, status);
+  const baseAccent = getAccentClasses(createdAt, status);
 
   // Inspector / assignee
   const assigneeName = getAssigneeName(report, type, profilesById ?? undefined);
