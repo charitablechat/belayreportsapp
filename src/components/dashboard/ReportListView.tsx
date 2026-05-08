@@ -172,7 +172,8 @@ function ReportRow({
         }
       }}
       className={cn(
-        "group relative flex items-center gap-3 overflow-hidden rounded-xl border border-border bg-card transition-colors hover:bg-accent/30 cursor-pointer",
+        "group relative flex items-center gap-3 overflow-hidden rounded-xl border border-border transition-colors cursor-pointer",
+        isAdmin && isInvoiced ? INVOICED_TINT : ROW_TINT_CLASSES[getReportAgeState(createdAt, status ?? "")],
         compact ? "py-2 pr-2" : "py-3 pr-3",
       )}
     >
