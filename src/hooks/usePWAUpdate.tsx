@@ -60,12 +60,9 @@ export const usePWAUpdate = (): PWAUpdateStatus => {
   const offlineReadyRef = useRef(offlineReady);
   offlineReadyRef.current = offlineReady;
 
-  // On mount, suppress banner if we just applied an update before reload
-  useEffect(() => {
-    if (localStorage.getItem(UPDATE_APPLIED_KEY)) {
-      localStorage.removeItem(UPDATE_APPLIED_KEY);
-    }
-  }, []);
+  // Note: the `pwa-update-just-applied` flag is consumed (and cleared) by
+  // <UpdateAppliedCelebration /> so it can fire a confetti + toast on the
+  // post-reload mount. Don't clear it here — that would race the celebration.
 
   useEffect(() => {
     if (!('serviceWorker' in navigator) || isPreviewOrIframeEnvironment()) return;

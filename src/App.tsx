@@ -42,6 +42,7 @@ import { UpdateNotification } from "@/components/pwa/UpdateNotification";
 import { StaleVersionBanner } from "@/components/pwa/StaleVersionBanner";
 import { NetworkStatusBanner } from "@/components/pwa/NetworkStatusBanner";
 import { InstallSuccessNotification } from "@/components/pwa/InstallSuccessNotification";
+import { UpdateAppliedCelebration } from "@/components/pwa/UpdateAppliedCelebration";
 import { RouteFallback } from "@/components/RouteFallback";
 import { MinVersionEnforcer } from "@/components/pwa/MinVersionEnforcer";
 import { AuthenticatedHeader } from "@/components/AuthenticatedHeader";
@@ -179,6 +180,7 @@ const RootLayout = () => {
             {/* PWA Notifications */}
             <InstallBanner />
             <UpdateNotification />
+            <UpdateAppliedCelebration />
             <StaleVersionBanner />
             <NetworkStatusBanner />
             <InstallSuccessNotification />
