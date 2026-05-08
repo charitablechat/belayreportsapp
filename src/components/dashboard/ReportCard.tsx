@@ -200,7 +200,7 @@ export function ReportCard({ report, type, onDelete, onClick, getStatusBadge, co
     >
       {getReportStatus() === 'completed' && (
         <div className="absolute inset-0 flex items-center justify-center pointer-events-none z-10">
-          <span className="text-green-500/20 text-4xl md:text-5xl font-bold tracking-wider rotate-[-25deg] select-none whitespace-nowrap">
+          <span className="text-sky-500/20 text-4xl md:text-5xl font-bold tracking-wider rotate-[-25deg] select-none whitespace-nowrap">
             COMPLETED
           </span>
           {isAdmin && isInvoiced && (
