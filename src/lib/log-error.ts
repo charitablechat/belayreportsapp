@@ -9,6 +9,8 @@
  * Do not mass-replace existing `console.error` calls.
  */
 
+import { APP_VERSION, APP_VERSION_FULL } from "@/lib/attestation";
+
 export type LogLevel = 'fatal' | 'error' | 'warning' | 'info' | 'debug';
 
 export interface LogContext {
@@ -85,7 +87,8 @@ export function logError(err: unknown, rawCtx: LogContext = {}): void {
     extra: ctx.extra,
     level: ctx.level,
     ts: new Date().toISOString(),
-    appVersion: (import.meta as any).env?.APP_VERSION,
+    appVersion: APP_VERSION,
+    appVersionFull: APP_VERSION_FULL,
   };
 
   // Always log locally first. Use console.warn for warnings so the
@@ -100,6 +103,16 @@ export function logError(err: unknown, rawCtx: LogContext = {}): void {
   // Both `.then` and `.catch` swallow so a synchronous throw inside
   // `captureException` (or a rejected import) cannot surface as an
   // unhandled rejection. Logging must NEVER mask the original error.
+  //
+  // Sprint 2 G: enrich every Sentry event with the app version + build
+  // commit so the issue page directly shows which deploy produced the
+  // event, without requiring the viewer to click through to the
+  // "Release" filter. Mirrors PR #139's IdbSaveError enrichment but
+  // applies to the cross-cutting log-error seam, so any sync /
+  // background-task event funneled through `logError` carries this
+  // metadata automatically. Caller-supplied `extra` wins (so a sync
+  // event explicitly setting `app_version_full` for some reason isn't
+  // overwritten here).
   try {
     void import("@/lib/sentry")
       .then(({ captureException }) => {
@@ -109,6 +122,8 @@ export function logError(err: unknown, rawCtx: LogContext = {}): void {
             {
               scope: ctx.scope,
               userId: ctx.userId,
+              app_version: APP_VERSION,
+              app_version_full: APP_VERSION_FULL,
               ...(ctx.extra ?? {}),
             },
             {
