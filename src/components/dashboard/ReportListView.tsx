@@ -36,7 +36,8 @@ const ROW_TINT_CLASSES: Record<ReportAgeState, string> = {
   default: "bg-card hover:bg-accent/30",
 };
 const INVOICED_TINT =
-  "bg-purple-100 hover:bg-purple-100/80 dark:bg-purple-950/40 dark:hover:bg-purple-950/60";
+  "bg-teal-100 hover:bg-teal-100/80 dark:bg-teal-950/40 dark:hover:bg-teal-950/60";
+const INVOICED_ACCENT = "bg-teal-500 dark:bg-teal-400";
 
 type ReportType = "inspection" | "training" | "daily";
 
