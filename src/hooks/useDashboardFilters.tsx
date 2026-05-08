@@ -413,15 +413,6 @@ export function useDashboardFilters(
       paginatedGroups.push(completedGroup);
     }
 
-    // Split view: cap each group at 10 rows (20 total across drafts + completed).
-    // Preserve original `count` so header badges still reflect the full total.
-    if (viewMode === 'split') {
-      paginatedGroups = paginatedGroups.map(g => ({
-        ...g,
-        items: g.items.slice(0, 10),
-      }));
-    }
-
     return {
       groups: paginatedGroups,
       totalItems,
