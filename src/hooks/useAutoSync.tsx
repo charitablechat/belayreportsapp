@@ -197,6 +197,15 @@ export const useAutoSync = () => {
     unsyncedCountRef.current = state.unsyncedCount;
   }, [state.unsyncedCount]);
 
+  // S43 (Fix G): 3-strike silent-failure detector. When sync cycles complete
+  // with zero successes AND there are still pending items AND nothing failed
+  // explicitly, the most likely cause is a silently-expired JWT (cached path
+  // 7C). Three cycles like this in a row → force refreshSession() and surface
+  // a fatal error so the user knows to re-authenticate.
+  const zeroProgressStreakRef = useRef(0);
+  const lastForcedRefreshAtRef = useRef(0);
+  const FORCED_REFRESH_COOLDOWN_MS = 60_000;
+
   const performSync = useCallback(async (silent = true) => {
     // S34: Track per-cycle photo state changes so we only dispatch
     // `sync-photos-updated` when something actually moved.
