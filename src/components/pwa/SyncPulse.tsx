@@ -18,6 +18,7 @@ import {
   deleteOrphanLocally,
   type SyncDiagnosticsReport,
 } from '@/lib/sync-diagnostics';
+import { supabase } from '@/integrations/supabase/client';
 
 type Phase = 'idle' | 'syncing' | 'synced' | 'unsynced' | 'error';
 
