@@ -306,6 +306,64 @@ export const SyncPulse = ({ className }: { className?: string }) => {
               </div>
             )}
 
+            {/* Orphan records — temp-* rows owned by another user (shared device leftovers). */}
+            {diag.orphanRecords.length > 0 && (
+              <div className="space-y-1.5 border-t border-green-900/40 pt-2">
+                <p className="text-amber-400 text-[10px] uppercase tracking-wider">
+                  ▸ Orphan records ({diag.orphanRecords.length})
+                </p>
+                <p className="text-green-700 text-[10px] italic">
+                  These were started on this device by another sign-in and won't sync as you. Reassign to push under your account, or remove.
+                </p>
+                <div className="space-y-1 max-h-48 overflow-y-auto">
+                  {diag.orphanRecords.map((o) => (
+                    <div key={o.id} className="flex items-center justify-between gap-2 pl-2 border-l border-amber-500/40">
+                      <span className="text-green-300/80 truncate text-[10px]">
+                        <span className="text-amber-400 mr-1.5">{o.table.slice(0,3).toUpperCase()}</span>
+                        {o.organization || 'Untitled'}
+                      </span>
+                      <span className="flex gap-1 shrink-0">
+                        <button
+                          type="button"
+                          disabled={busyOrphanId === o.id}
+                          onClick={async () => {
+                            setBusyOrphanId(o.id);
+                            try {
+                              await reassignOrphanToCurrentUser(o.table, o.id);
+                              await refreshDiagnostics();
+                              await forceSync();
+                            } finally { setBusyOrphanId(null); }
+                          }}
+                          className="text-[9px] uppercase tracking-wider px-1.5 py-0.5 rounded border border-green-700/60 text-green-300 hover:bg-green-900/30 disabled:opacity-50"
+                        >REASSIGN</button>
+                        <button
+                          type="button"
+                          disabled={busyOrphanId === o.id}
+                          onClick={async () => {
+                            if (!confirm('Permanently remove this orphan record from this device?')) return;
+                            setBusyOrphanId(o.id);
+                            try {
+                              await deleteOrphanLocally(o.table, o.id);
+                              await refreshDiagnostics();
+                            } finally { setBusyOrphanId(null); }
+                          }}
+                          className="text-[9px] uppercase tracking-wider px-1.5 py-0.5 rounded border border-red-700/60 text-red-300 hover:bg-red-900/30 disabled:opacity-50"
+                        >DELETE</button>
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Temp-parent photos — photos still pinned to a temp-* parent. */}
+            {diag.tempParentPhotos.length > 0 && (
+              <div className="flex items-center justify-between text-green-300/80 border-t border-green-900/40 pt-2">
+                <span>TEMP_PARENT_PHOTOS</span>
+                <span className="text-amber-400">{diag.tempParentPhotos.length}</span>
+              </div>
+            )}
+
             {/* Error — soft (amber) for stats/photo-counts hiccups, red for fatal pipeline failure */}
             {syncError && (
               <p className={cn(
