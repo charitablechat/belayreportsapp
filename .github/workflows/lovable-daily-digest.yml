@@ -14,6 +14,15 @@ name: Lovable daily digest
 # Why daily (not per-commit): a per-commit alert would essentially
 # replicate `main-broken-alert` and recreate the email noise we're
 # trying to remove.
+#
+# Conditional posting (added in PR #160-follow-up): the digest only
+# opens/comments on the issue when at least one budget gate currently
+# fails on main — i.e. when there's an actionable overshoot a human
+# might want to absorb (by bumping `.eslint-any-budget` /
+# `.bundle-size-budget`) or roll back. If Lovable's day was all small
+# typed edits that fit within the existing budgets, no email is sent.
+# This addresses the "too many noisy daily emails" feedback while
+# preserving the cumulative-cost surface for genuine overshoots.
 
 on:
   schedule:
@@ -67,12 +76,70 @@ jobs:
             echo "COMMITS_EOF"
           } >> "$GITHUB_OUTPUT"
 
-      - name: Open or update digest issue
+      # Only run the budget gates when there ARE Lovable commits in the
+      # last 24 h. Otherwise the digest is a no-op and the rest of the
+      # job exits cheaply without spending Actions minutes on bun install
+      # / build / eslint.
+      - uses: oven-sh/setup-bun@v2
         if: ${{ steps.collect.outputs.found != '0' }}
+        with:
+          bun-version: latest
+
+      - name: Install dependencies
+        if: ${{ steps.collect.outputs.found != '0' }}
+        run: bun install --frozen-lockfile
+
+      # Run lint:any-budget WITHOUT Lovable grace (this is a `schedule`
+      # event, not a `push`, so `isLovableMainPush()` returns false and
+      # the script honours its own FAIL exit code). Use
+      # `continue-on-error` so we capture the outcome instead of
+      # short-circuiting the job.
+      - name: Probe lint:any-budget
+        id: any_budget
+        if: ${{ steps.collect.outputs.found != '0' }}
+        continue-on-error: true
+        run: bun run lint:any-budget
+
+      - name: Build (for bundle-size probe)
+        if: ${{ steps.collect.outputs.found != '0' }}
+        run: bun run build
+
+      - name: Probe bundle-size:budget
+        id: bundle_size
+        if: ${{ steps.collect.outputs.found != '0' }}
+        continue-on-error: true
+        run: bun run bundle-size:budget
+
+      # Decide whether to post. Overshoot exists if EITHER probe failed.
+      # The outcome strings are 'success' or 'failure' (set by GitHub
+      # Actions when `continue-on-error: true`). We also expose the
+      # individual outcomes so the issue body can name which gate(s)
+      # overshot.
+      - name: Decide whether to post
+        id: decide
+        if: ${{ steps.collect.outputs.found != '0' }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          any='${{ steps.any_budget.outcome }}'
+          bundle='${{ steps.bundle_size.outcome }}'
+          if [ "$any" = "failure" ] || [ "$bundle" = "failure" ]; then
+            echo "overshoot=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "overshoot=false" >> "$GITHUB_OUTPUT"
+          fi
+          echo "any_outcome=$any" >> "$GITHUB_OUTPUT"
+          echo "bundle_outcome=$bundle" >> "$GITHUB_OUTPUT"
+          echo "Decision: any=$any bundle=$bundle"
+
+      - name: Open or update digest issue
+        if: ${{ steps.collect.outputs.found != '0' && steps.decide.outputs.overshoot == 'true' }}
         uses: actions/github-script@v7
         env:
           COMMIT_LIST: ${{ steps.collect.outputs.commits }}
           COMMIT_COUNT: ${{ steps.collect.outputs.found }}
+          ANY_OUTCOME: ${{ steps.decide.outputs.any_outcome }}
+          BUNDLE_OUTCOME: ${{ steps.decide.outputs.bundle_outcome }}
         with:
           script: |
             const label = 'lovable-budget-overshoot';
@@ -80,6 +147,12 @@ jobs:
             const today = new Date().toISOString().slice(0, 10);
             const commitList = process.env.COMMIT_LIST || '(none)';
             const count = process.env.COMMIT_COUNT;
+            const anyOvershot = process.env.ANY_OUTCOME === 'failure';
+            const bundleOvershot = process.env.BUNDLE_OUTCOME === 'failure';
+            const overshotGates = [
+              anyOvershot ? '`lint:any-budget`' : null,
+              bundleOvershot ? '`bundle-size:budget`' : null,
+            ].filter(Boolean).join(' + ');
 
             // Find or create the rolling issue.
             let issue = null;
@@ -95,16 +168,22 @@ jobs:
             }
 
             const body = [
-              `### ${today} — ${count} Lovable commit(s) on main`,
+              `### ${today} — ${count} Lovable commit(s) on main — ⚠️ overshoot detected`,
+              '',
+              `**Failing gate(s):** ${overshotGates}`,
+              '',
+              '**Lovable commits in last 24 h:**',
               '',
               commitList,
               '',
-              '> The `lovable-grace` bypass in `scripts/lovable-grace.mjs`',
-              '> downgrades the `lint:any-budget` and `bundle-size:budget`',
-              '> gates from FAIL to WARN for direct pushes by the Lovable',
-              '> bot. This issue tracks those commits so the team can',
-              '> review the cumulative cost. Engineering PRs are still',
-              '> held to the budgets.',
+              '> Posted because the budget gate(s) above currently fail on `main`.',
+              '> A human can absorb the cost by bumping the corresponding budget',
+              '> file (`.eslint-any-budget` or `.bundle-size-budget`) in a PR,',
+              '> or roll back the offending commit. Engineering PRs are still',
+              '> held to the budgets via the same gates.',
+              '',
+              '> _Days where Lovable commits all fit within current budgets',
+              '> produce no email, by design (PR #160-follow-up)._',
             ].join('\n');
 
             if (!issue) {
