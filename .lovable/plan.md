@@ -1,33 +1,19 @@
-## Recolor "completed" rows from green to blue
+## Cap split view to 10 per group (20 total)
 
-Now that invoiced is teal, shift completed reports from emerald to a clean blue so the four states read distinctly:
+When `viewMode === 'split'`, limit each group's rendered rows to 10 so the side-by-side layout stays balanced and short.
 
-- critical (overdue) — red
-- warning (>3d) — yellow
-- **completed — blue** (was emerald)
-- invoiced — teal
-- default — neutral card
+### Change
 
-### Color choice
+**File:** `src/hooks/useDashboardFilters.tsx`
 
-Standard `sky` palette — bright, calm, unmistakably "done" without competing with the teal of invoiced or the amber of warning:
+In the `useMemo` that builds `paginatedGroups` (around lines 388–417), after pagination is applied and just before returning, add a split-mode cap:
 
-- Row tint: `bg-sky-50 hover:bg-sky-100/80 dark:bg-sky-950/30 dark:hover:bg-sky-950/50`
-- Left accent bar (3px): `bg-sky-500`
-- Status pill ("completed"): `bg-sky-50 text-sky-700 ring-1 ring-inset ring-sky-200 dark:bg-sky-950/40 dark:text-sky-300 dark:ring-sky-900`
-
-### Files
-
-1. **`src/components/dashboard/ReportListView.tsx`**
-   - `ROW_TINT_CLASSES.completed`: emerald → sky.
-   - `getAccentClasses`: the `status === "completed"` branch returns `bg-sky-500` (the `age <= 7` branch keeps `bg-emerald-500` so brand-new in-progress rows still feel fresh-green; only the completed status itself turns blue).
-   - `getStatusPillClasses` `case "completed"`: emerald → sky tokens.
-
-2. **`src/components/dashboard/ReportCard.tsx`** (grid view)
-   - Find the equivalent completed-state styling (`ageStateClasses.completed` / completed-status pill) and swap emerald → sky to match.
+- If `viewMode === 'split'`, map over `paginatedGroups` and replace each group's `items` with `items.slice(0, 10)`.
+- Keep each group's `count` field at the original full count so the header badge (e.g. "Drafts 37") still reflects reality and signals there's more.
+- This naturally yields the 20-total ceiling (Drafts ≤10 + Completed ≤10) the user asked for.
 
 ### Out of scope
 
-- No change to invoiced (teal), critical (red), warning (yellow), or default tints.
-- No change to the "Completed" stat tile in `DashboardStatsBar` unless you also want it recolored — happy to include it on request.
-- No data, filter, or query changes.
+- No changes to `list` or `grid` view counts/pagination.
+- No change to badges, sorting, filters, or the Completed collapse behavior.
+- No UI/style changes.
