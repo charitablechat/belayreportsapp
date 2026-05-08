@@ -640,6 +640,46 @@ export function __test_only__resetLayerBreakerForTests(): void {
   layerBreakerCloseSubscribers.clear();
 }
 
+/**
+ * Sprint 2 H — production-callable reset for the layer-level queue-stuck
+ * breaker, intended for direct evidence-of-life from the user (opening
+ * SyncPulse, tapping Retry, etc.). The layer breaker exists to protect a
+ * wedged IDB queue from cascading new openDB calls during the wedge
+ * window; if the user is actively interacting with the page, the OS-level
+ * IDB wedge has clearly resolved (otherwise the page itself would be
+ * unresponsive), so making them wait out the 1-4 minute cooldown is pure
+ * latency cost.
+ *
+ * Differs from `resetCircuitBreaker` (per-store breakers) because:
+ *  - the per-store breakers in `breakerStates` reflect store-specific
+ *    failure rates, while the layer breaker reflects a structural IDB
+ *    wedge across all stores;
+ *  - we want subscribers (e.g. `useAutoSync`) to receive the same
+ *    `emitLayerBreakerClosed` notification the cooldown-expiry path
+ *    fires, so a sync attempt is scheduled immediately rather than
+ *    waiting for the next 30s tick.
+ *
+ * Idempotent — calling on a closed breaker is a no-op (no log, no emit).
+ * Logged at `console.info` so the action is visible in production traces
+ * without elevating to `warn`.
+ */
+export function resetLayerBreakerOnUserActivity(reason: string): void {
+  if (layerBreakerTrippedAt === null) return;
+  const heldFor = Date.now() - layerBreakerTrippedAt;
+  layerBreakerTrippedAt = null;
+  layerBreakerConsecutiveTimeouts = 0;
+  // Note: we deliberately DON'T bump `layerBreakerResetCount` here. The
+  // exponential-backoff escalator exists to dampen automatic retry
+  // pressure on a pathologically wedged queue; user-driven resets are
+  // direct evidence the device isn't wedged, so subsequent automatic
+  // trips should start from the base cooldown — not punish the user for
+  // having retried.
+  console.info(
+    `[Offline Storage] Layer breaker manually closed via user activity (${reason}); held for ${Math.round(heldFor / 1000)}s`,
+  );
+  emitLayerBreakerClosed();
+}
+
 /** Test-only inspection helper — reads internal state without exposing module-private vars. */
 export function __test_only__getLayerBreakerStateForTests(): {
   consecutiveTimeouts: number;
