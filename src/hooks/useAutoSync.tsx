@@ -214,8 +214,13 @@ export const useAutoSync = () => {
     let photoChangeCount = 0;
     // Block all writes in Lovable preview to protect production data
     if ((await import('@/lib/environment')).isLovablePreview()) return;
-    // Skip if offline
-    if (!navigator.onLine) {
+    // Skip if offline. Sprint 2 F: use `isLikelyOnline()` so a transient
+    // `navigator.onLine=false` blip during iOS Safari Wi-Fi → cellular
+    // handoff doesn't stall the sync engine for the full handoff window.
+    // The grace branch returns `true` if any fetch round-tripped within
+    // the last 30s, regardless of what the browser flag currently says.
+    const { isLikelyOnline } = await import('@/lib/network-liveness');
+    if (!isLikelyOnline()) {
               syncLog.log('[AutoSync] Offline - skipping sync');
       // Offline is already surfaced through `isOnline` in the badge; not
       // a halt class we need to record separately.

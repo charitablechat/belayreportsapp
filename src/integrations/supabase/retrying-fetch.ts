@@ -46,6 +46,8 @@
  *   by e2e specs
  */
 
+import { recordNetworkSuccess } from '@/lib/network-liveness';
+
 const IDEMPOTENT_METHODS = new Set(['GET', 'HEAD', 'OPTIONS']);
 
 // Mode 13A: 3 → 5 attempts. The previous ~1.75s ceiling was sized for a
@@ -87,7 +89,15 @@ export async function retryingFetch(
 
   for (let attempt = 1; attempt <= maxAttempts; attempt++) {
     try {
-      return await fetch(input, init);
+      const response = await fetch(input, init);
+      // Sprint 2 F: a returned response — even a 4xx / 5xx — proves the
+      // radio round-tripped, so update the network-liveness clock.
+      // Only `TypeError` (caught below) means the fetch never reached
+      // the server. This counter feeds `isLikelyOnline()`, which the
+      // sync entry gates use to ignore a transient `navigator.onLine`
+      // false-positive during iOS Safari Wi-Fi → cellular handoffs.
+      recordNetworkSuccess();
+      return response;
     } catch (err) {
       lastErr = err;
 
