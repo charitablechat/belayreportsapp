@@ -597,6 +597,46 @@ export const useAutoSync = () => {
         const totalRemaining = results.reduce((sum, r) => sum + (r?.remaining || 0), 0);
         const totalFailed = results.reduce((sum, r) => sum + (r?.failed || 0), 0);
         const cleanSuccess = anySuccess && totalFailed === 0;
+
+        // S43 (Fix G): silent-failure detector. Increment when a cycle moves
+        // nothing despite work pending; reset on any progress.
+        const totalReportRemaining = results.slice(0, 3).reduce((sum, r) => sum + (r?.remaining || 0), 0);
+        const photoRemaining = results[3]?.remaining || 0;
+        const hadPendingWork = totalReportRemaining + photoRemaining > 0 || unsyncedCountRef.current > 0;
+        if (!allFetchesFailed && totalSynced === 0 && totalFailed === 0 && hadPendingWork) {
+          zeroProgressStreakRef.current += 1;
+        } else if (totalSynced > 0) {
+          zeroProgressStreakRef.current = 0;
+        }
+        if (zeroProgressStreakRef.current >= 3) {
+          const now = Date.now();
+          if (now - lastForcedRefreshAtRef.current > FORCED_REFRESH_COOLDOWN_MS) {
+            lastForcedRefreshAtRef.current = now;
+            zeroProgressStreakRef.current = 0;
+            console.warn('[AutoSync] 3-strike silent-failure → forcing session refresh');
+            (async () => {
+              try {
+                const { error } = await supabase.auth.refreshSession();
+                if (error) {
+                  setState(prev => ({
+                    ...prev,
+                    syncError: 'Session expired — please sign out and back in to resume sync',
+                    syncErrorSeverity: 'fatal',
+                  }));
+                } else {
+                  syncLog.log('[AutoSync] Session refresh succeeded after silent-failure streak');
+                }
+              } catch (e) {
+                setState(prev => ({
+                  ...prev,
+                  syncError: 'Sync stuck — sign out and back in to resume',
+                  syncErrorSeverity: 'fatal',
+                }));
+              }
+            })();
+          }
+        }
+
         
         if (!allFetchesFailed) {
           // Refresh unsynced counts (non-blocking)
