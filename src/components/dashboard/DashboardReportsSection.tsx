@@ -744,7 +744,8 @@ export function DashboardReportsSection({
                                 );
                               })}
                             </div>
-                          )
+                          )}
+                          </>
                         )}
                       </div>
                     );
