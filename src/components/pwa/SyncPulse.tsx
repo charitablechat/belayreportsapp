@@ -12,6 +12,12 @@ import {
 import { getDeadLetterPhotos, resetPhotoRetryCounts } from '@/lib/offline-storage';
 import { useUnsyncedPhotos } from '@/hooks/useUnsyncedPhotos';
 import { getQuarantineSnapshot, clearAllQuarantines } from '@/lib/sync-quarantine';
+import {
+  collectSyncDiagnostics,
+  reassignOrphanToCurrentUser,
+  deleteOrphanLocally,
+  type SyncDiagnosticsReport,
+} from '@/lib/sync-diagnostics';
 
 type Phase = 'idle' | 'syncing' | 'synced' | 'unsynced' | 'error';
 
