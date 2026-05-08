@@ -1,51 +1,33 @@
-## Goal
+## Color-code horizontal report rows
 
-Add a third option, **Split**, to the existing List/Grid segmented toggle. Split renders the same horizontal row cards as List, but in two columns on screens ≥ md and falls back to a single column below md.
+Match the old card view's age-based tinting on the full row background in `ReportListView.tsx`. Reuse the existing `getReportAgeState` helper from `ReportCard.tsx` so logic stays identical.
 
-## Mapping to real files
+### Mapping (matches old cards, plus invoiced override)
 
-The screenshots show a toggle that, in this codebase, lives in `DashboardControls.tsx` (the only viewMode toggle that exists). The earlier-described `RecentReportsGrid.tsx`, the Dashboard.tsx tab-level toggle, and the `dashboard.recentViewMode` / `dashboard.tabsViewMode` localStorage keys do not exist here, so they're out of scope.
+- `invoiced` (admin + isInvoiced) → **purple** tint (overrides everything else)
+- `critical` (>5 days, not completed) → **red** tint
+- `warning` (>3 days, not completed) → **yellow** tint
+- `completed` → **green** tint
+- `default` (≤3 days, not completed) → current `bg-card`
 
-## Changes
+### Changes
 
-### 1. `src/components/dashboard/ReportListView.tsx`
-- Add `twoColumn?: boolean` prop.
-- Swap the outer container based on the prop:
-  - default → `<ul className="flex flex-col gap-2">` (unchanged)
-  - `twoColumn` → `<ul className="grid grid-cols-1 md:grid-cols-2 gap-2">`
-- When `twoColumn` is true, auto-imply `compact` if the caller didn't pass it explicitly. `compact` and `twoColumn` stay independent props.
-- Row internals are unchanged.
+**`src/components/dashboard/ReportListView.tsx`**
 
-### 2. `src/hooks/useDashboardFilters.tsx`
-- Widen `ViewMode`: `'grid' | 'list'` → `'grid' | 'list' | 'split'`.
-- Pagination size: treat `'split'` like `'list'` (use `LIST_PAGE_SIZE`). One-line change in the existing ternary.
+1. Import `getReportAgeState` from `./ReportCard`.
+2. In `ReportRow`, derive `ageState` from `report.created_at` + status (same call signature as old card).
+3. Build a `rowTintClass` map mirroring the old card's `ageStateClasses` palette but tuned for a row (lighter so text stays readable, with matching dark-mode variants):
+   - `critical`: `bg-red-100 dark:bg-red-950/40 hover:bg-red-100/80 dark:hover:bg-red-950/60`
+   - `warning`: `bg-yellow-50 dark:bg-yellow-950/30 hover:bg-yellow-100/80 dark:hover:bg-yellow-950/50`
+   - `completed`: `bg-emerald-50 dark:bg-emerald-950/30 hover:bg-emerald-100/80 dark:hover:bg-emerald-950/50`
+   - `default`: keep existing `bg-card hover:bg-accent/30`
+4. Add an invoiced override class applied **after** the age tint (so it wins): `bg-purple-100 dark:bg-purple-950/40 hover:bg-purple-100/80 dark:hover:bg-purple-950/60`. Triggered by the same `isAdmin && isInvoiced` condition already present.
+5. Apply via the existing `cn(...)` on the `<li>` — replace the current `bg-card ... hover:bg-accent/30` segment with the resolved tint class.
+6. Keep the 3px left accent bar unchanged (still uses `getAccentClasses`).
 
-### 3. `src/components/dashboard/DashboardControls.tsx`
-- Add a third `<Button>` between List and Grid, with the `Columns2` lucide icon and `aria-label="Split"`, active when `viewMode === 'split'`. Reuses the existing segmented-switch styles.
+### Out of scope
 
-### 4. `src/components/dashboard/DashboardReportsSection.tsx`
-- Update the four render branches that currently switch on `filters.viewMode === 'list'`:
-  - The two main render paths (lines ~647 and ~682) and the `CrossTabSection` path (~761).
-  - New logic: render `ReportListView` with `twoColumn` when `viewMode === 'split'`, otherwise keep the existing list/grid behavior.
-- Widen `CrossTabSectionProps.viewMode` from `'grid' | 'list'` to `'grid' | 'list' | 'split'` so it can pass through.
-
-```text
-viewMode === 'list'  → <ReportListView ...props />
-viewMode === 'split' → <ReportListView twoColumn ...props />
-viewMode === 'grid'  → existing ReportCard grid (unchanged)
-```
-
-## Out of scope
-
-- No data, query, RLS, or business-logic changes.
-- No new component file.
-- No `RecentReportsGrid.tsx` or Dashboard.tsx toggle (don't exist).
-- No localStorage persistence (existing toggle is React state only; can be added later if requested).
-- Inventory / `invoiced` tab: no special handling — Split applies uniformly anywhere the toggle is shown.
-
-## Files touched
-
-- `src/components/dashboard/ReportListView.tsx`
-- `src/components/dashboard/DashboardControls.tsx`
-- `src/components/dashboard/DashboardReportsSection.tsx`
-- `src/hooks/useDashboardFilters.tsx`
+- No prop, type, query, or filter changes.
+- No changes to `ReportCard.tsx`, `DashboardReportsSection.tsx`, `useDashboardFilters.tsx`, or `DashboardControls.tsx`.
+- Grid (old card) view continues to use its existing colors.
+- Tailwind palette colors used (`red/yellow/emerald/purple`) match what the old card already uses in this file's siblings; no new tokens needed.
