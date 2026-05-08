@@ -181,6 +181,7 @@ import {
 } from "./offline-storage";
 import { appendVersion, getLatestFieldCount, calculateFieldCount } from "./report-version-manager";
 import { runWithConcurrency } from "./concurrency";
+import { isLikelyOnline } from "./network-liveness";
 import type { MergeableRecord } from "./field-merge";
 
 // ─── internal type aliases ──────────────────────────────────────────────────
@@ -1534,13 +1535,18 @@ export async function syncAllInspectionsAtomic(preValidatedUser?: CachedUser, si
   // survives the prod build and shows up in Playwright traces.
   console.warn('[Atomic Sync] syncAllInspectionsAtomic invoked', {
     online: navigator.onLine,
+    likelyOnline: isLikelyOnline(),
     hasPreValidatedUser: !!preValidatedUser,
     aborted: !!signal?.aborted,
   });
   const capabilities = getMobileCapabilities();
   const ITEM_SYNC_TIMEOUT = 25000; // 25 seconds per item max (increased for mobile networks)
-  
-  if (!navigator.onLine) {
+
+  // Sprint 2 F: defer to `isLikelyOnline()` so a transient
+  // `navigator.onLine=false` blip during iOS Safari handoff doesn't
+  // collapse a healthy drain into a no-op. The grace branch returns
+  // `true` if any fetch round-tripped within the last 30s.
+  if (!isLikelyOnline()) {
     syncLog.log('[Atomic Sync] Offline - skipping sync');
     return;
   }
@@ -2594,13 +2600,15 @@ export async function syncAllTrainingsAtomic(preValidatedUser?: CachedUser, sign
   // Mode 11B observability — see syncAllInspectionsAtomic.
   console.warn('[Atomic Sync] syncAllTrainingsAtomic invoked', {
     online: navigator.onLine,
+    likelyOnline: isLikelyOnline(),
     hasPreValidatedUser: !!preValidatedUser,
     aborted: !!signal?.aborted,
   });
   const capabilities = getMobileCapabilities();
   const ITEM_SYNC_TIMEOUT = 25000; // 25 seconds per item max (increased for mobile networks)
   
-  if (!navigator.onLine) {
+  // Sprint 2 F: see `syncAllInspectionsAtomic` rationale.
+  if (!isLikelyOnline()) {
     syncLog.log('[Atomic Sync] Offline - skipping training sync');
     return { total: 0, success: 0, failed: 0, errors: [] };
   }
@@ -3496,13 +3504,15 @@ export async function syncAllDailyAssessmentsAtomic(preValidatedUser?: CachedUse
   // Mode 11B observability — see syncAllInspectionsAtomic.
   console.warn('[Atomic Sync] syncAllDailyAssessmentsAtomic invoked', {
     online: navigator.onLine,
+    likelyOnline: isLikelyOnline(),
     hasPreValidatedUser: !!preValidatedUser,
     aborted: !!signal?.aborted,
   });
   const capabilities = getMobileCapabilities();
   const ITEM_SYNC_TIMEOUT = 25000; // 25 seconds per item max (increased for mobile networks)
-  
-  if (!navigator.onLine) {
+
+  // Sprint 2 F: see `syncAllInspectionsAtomic` rationale.
+  if (!isLikelyOnline()) {
     syncLog.log('[Atomic Sync] Offline - skipping daily assessment sync');
     return { total: 0, success: 0, failed: 0, errors: [] };
   }
