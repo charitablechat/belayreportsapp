@@ -90,7 +90,7 @@ describe("classifyRecoverableSentryEvent", () => {
 
 describe("runBeforeSend", () => {
   it("downgrades a matching default-level event", () => {
-    const event = { level: "error" as const };
+    const event = { level: "error" as const } as { level: string; fingerprint?: string[] };
     const hint = {
       originalException: Object.assign(new Error("Lock was stolen by another request"), {
         name: "AbortError",
