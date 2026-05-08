@@ -432,7 +432,31 @@ export const SyncPulse = ({ className }: { className?: string }) => {
               <p className="text-green-600 text-[10px]">▸ Changes will sync when back online.</p>
             )}
 
-            {/* Info footer */}
+            {/* Self-check — proves whether JWT + RLS visibility are healthy. */}
+            <div className="space-y-1.5 border-t border-green-900/40 pt-2">
+              <div className="flex items-center justify-between">
+                <span className="text-green-400 text-[10px] uppercase tracking-wider">▸ Self-check</span>
+                <button
+                  type="button"
+                  disabled={selfCheckRunning || !isOnline}
+                  onClick={runSelfCheck}
+                  className="text-[10px] uppercase tracking-wider px-2 py-0.5 rounded border border-green-700/60 text-green-300 hover:bg-green-900/30 disabled:opacity-50"
+                >
+                  {selfCheckRunning ? 'RUNNING…' : 'RUN SELF-CHECK'}
+                </button>
+              </div>
+              {selfCheckResult && (
+                <p className={cn(
+                  'text-[10px] rounded px-2 py-1 border',
+                  selfCheckResult.ok
+                    ? 'text-green-300 bg-green-950/30 border-green-900/40'
+                    : 'text-amber-300 bg-amber-950/30 border-amber-900/40',
+                )}>
+                  {selfCheckResult.label}{selfCheckResult.detail ? `: ${selfCheckResult.detail}` : ''}
+                </p>
+              )}
+            </div>
+
             <p className="text-green-700 text-[10px] italic pt-1 border-t border-green-900/40">
               Auto-sync runs in background.
               {isIOSDevice && ' iOS: visibility change + 30s interval.'}
