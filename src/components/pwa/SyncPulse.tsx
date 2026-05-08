@@ -189,7 +189,16 @@ export const SyncPulse = ({ className }: { className?: string }) => {
     setQuarantinedCount(active);
   }, [open, isSyncing, lastSyncTime]);
 
-  const totalUnsynced = unsyncedCount + unsyncedPhotoCount;
+  // Sprint 1D fix-forward: photo count must include photos in jittered backoff,
+  // otherwise the dot/badge can read "ALL SYNCED" while the terminal still shows
+  // RETRYING rows (same root cause as PR #167's PENDING_PHOTOS section gate).
+  // Math.max is a belt-and-suspenders fallback covering the brief window between
+  // mount and the first getPhotoRetryBuckets() resolve, where photoBuckets is
+  // still all-zeros but useUnsyncedPhotos may already report a count.
+  const photoBucketTotal =
+    photoBuckets.ready + photoBuckets.retrying + photoBuckets.stuck;
+  const photoCountForIndicator = Math.max(unsyncedPhotoCount, photoBucketTotal);
+  const totalUnsynced = unsyncedCount + photoCountForIndicator;
 
   // Detect sync completion → show green for 2s then fade
   useEffect(() => {
@@ -333,11 +342,11 @@ export const SyncPulse = ({ className }: { className?: string }) => {
                 photos in active backoff stay counted under PENDING_PHOTOS while
                 they wait — getUnuploadedPhotos excludes nextRetryAt > now, but
                 bucketPhotos correctly classifies those as RETRYING. */}
-            {(photoBuckets.ready + photoBuckets.retrying + photoBuckets.stuck) > 0 && (
+            {photoBucketTotal > 0 && (
               <div className="space-y-1">
                 <div className="flex items-center justify-between text-green-300/60 text-[10px] uppercase tracking-wider">
                   <span>PENDING_PHOTOS</span>
-                  <span>{photoBuckets.ready + photoBuckets.retrying + photoBuckets.stuck}</span>
+                  <span>{photoBucketTotal}</span>
                 </div>
                 {photoBuckets.ready > 0 && (
                   <div className="flex items-center justify-between pl-3 text-green-300/80">
