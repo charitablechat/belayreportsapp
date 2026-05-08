@@ -103,6 +103,7 @@ function ReportRow({
   onToggleInvoiced,
   profilesById,
   getStatusBadge,
+  twoColumn,
 }: {
   report: any;
   type: ReportType;
