@@ -49,6 +49,21 @@ export const SyncPulse = ({ className }: { className?: string }) => {
   const [open, setOpen] = useState(false);
   const [retrying, setRetrying] = useState(false);
   const [quarantinedCount, setQuarantinedCount] = useState(0);
+  const [diag, setDiag] = useState<SyncDiagnosticsReport>({ orphanRecords: [], tempParentPhotos: [], partial: false });
+  const [busyOrphanId, setBusyOrphanId] = useState<string | null>(null);
+
+  const refreshDiagnostics = useCallback(async () => {
+    try {
+      const r = await collectSyncDiagnostics();
+      setDiag(r);
+    } catch (e) {
+      console.warn('[SyncPulse] diagnostics failed:', e);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (open) refreshDiagnostics();
+  }, [open, lastSyncTime, refreshDiagnostics]);
 
   // S41 (Fix E + option i): surface session-quarantined records the sync pipeline has
   // given up on this session. Refresh when sheet opens or sync state changes.
