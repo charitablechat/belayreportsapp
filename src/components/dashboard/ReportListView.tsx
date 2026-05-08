@@ -12,6 +12,7 @@ import {
   Cloud,
   Check,
   UploadCloud,
+  DollarSign,
 } from "lucide-react";
 import {
   DropdownMenu,
