@@ -58,6 +58,13 @@ export const BackgroundSyncStatus = () => {
             iPad and iPhone don't support background syncing. Please keep this app
             open and on-screen until the sync indicator shows everything is up to date
             {!isOnline && ' — and reconnect to the internet'}.
+            {hasPending && (
+              <span className="block mt-1 text-xs">
+                If a number stays stuck, tap the sync dot in the header and use{' '}
+                <strong>RUN SELF-CHECK</strong> — it will tell you whether the device
+                is signed in correctly or if specific records need to be reassigned.
+              </span>
+            )}
           </>
         ) : (
           <>This browser doesn't support background syncing. Keep the app open until sync completes.</>
