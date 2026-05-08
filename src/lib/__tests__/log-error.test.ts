@@ -332,6 +332,36 @@ describe("logError", () => {
     );
   });
 
+  it("Sprint 2 G: enriches every Sentry event with app_version + app_version_full extras", async () => {
+    captureExceptionMock.mockImplementation(() => {});
+    logError(new Error("boom"), { scope: "atomic-sync.syncInspection" });
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    const lastCall = captureExceptionMock.mock.calls.at(-1) as unknown[] | undefined;
+    const ctxArg = lastCall?.[1] as Record<string, unknown>;
+    // We can't assert exact values (Vite's `define` plugin replaces
+    // import.meta.env at build time, not test time, so APP_VERSION is
+    // 'unknown' in vitest). The contract we need is just that the keys
+    // are present and string-valued so Sentry can index them.
+    expect(ctxArg).toEqual(
+      expect.objectContaining({
+        app_version: expect.any(String),
+        app_version_full: expect.any(String),
+      }),
+    );
+  });
+
+  it("Sprint 2 G: caller-supplied extras override the auto-enriched app_version keys", async () => {
+    captureExceptionMock.mockImplementation(() => {});
+    logError(new Error("boom"), {
+      scope: "manual-override",
+      extra: { app_version: "caller-wins" },
+    });
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    const lastCall = captureExceptionMock.mock.calls.at(-1) as unknown[] | undefined;
+    const ctxArg = lastCall?.[1] as Record<string, unknown>;
+    expect(ctxArg).toMatchObject({ app_version: "caller-wins" });
+  });
+
   it("swallows rejections from both forward paths so the global unhandledrejection handler cannot recurse", async () => {
     // Critical contract: if either dynamic-import / forward chain leaks
     // an unhandled rejection, the new global handler in main.tsx will
