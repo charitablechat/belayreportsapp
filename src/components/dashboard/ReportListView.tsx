@@ -33,7 +33,7 @@ import { getReportAgeState, type ReportAgeState } from "./ReportCard";
 const ROW_TINT_CLASSES: Record<ReportAgeState, string> = {
   critical: "bg-red-100 hover:bg-red-100/80 dark:bg-red-950/40 dark:hover:bg-red-950/60",
   warning: "bg-yellow-50 hover:bg-yellow-100/80 dark:bg-yellow-950/30 dark:hover:bg-yellow-950/50",
-  completed: "bg-emerald-50 hover:bg-emerald-100/80 dark:bg-emerald-950/30 dark:hover:bg-emerald-950/50",
+  completed: "bg-sky-50 hover:bg-sky-100/80 dark:bg-sky-950/30 dark:hover:bg-sky-950/50",
   default: "bg-card hover:bg-accent/30",
 };
 const INVOICED_TINT =
@@ -72,7 +72,7 @@ function getTypeIcon(type: ReportType) {
 function getAccentClasses(createdAt: string | null | undefined, status?: string) {
   if (!createdAt) return "bg-slate-300";
   const age = differenceInDays(new Date(), new Date(createdAt));
-  if (status === "completed") return "bg-emerald-500";
+  if (status === "completed") return "bg-sky-500";
   if (age <= 7) return "bg-emerald-500";
   if (age <= 30) return "bg-amber-500";
   return "bg-slate-400";
@@ -81,7 +81,7 @@ function getAccentClasses(createdAt: string | null | undefined, status?: string)
 function getStatusPillClasses(status: string | undefined): string {
   switch (status) {
     case "completed":
-      return "bg-emerald-50 text-emerald-700 ring-1 ring-inset ring-emerald-200 dark:bg-emerald-950/40 dark:text-emerald-300 dark:ring-emerald-900";
+      return "bg-sky-50 text-sky-700 ring-1 ring-inset ring-sky-200 dark:bg-sky-950/40 dark:text-sky-300 dark:ring-sky-900";
     case "in_progress":
     case "in-progress":
       return "bg-amber-50 text-amber-700 ring-1 ring-inset ring-amber-200 dark:bg-amber-950/40 dark:text-amber-300 dark:ring-amber-900";

@@ -168,7 +168,7 @@ export function ReportCard({ report, type, onDelete, onClick, getStatusBadge, co
   const ageStateClasses: Record<ReportAgeState, string> = {
     critical: 'border-l-4 border-l-destructive bg-red-200 dark:bg-red-900/40',
     warning: 'border-l-4 border-l-amber-500 bg-yellow-50 dark:bg-yellow-950/30',
-    completed: 'border-l-4 border-l-green-500',
+    completed: 'border-l-4 border-l-sky-500 bg-sky-50 dark:bg-sky-950/30',
     default: 'border-l-4 border-l-muted-foreground/30',
   };
 
@@ -200,7 +200,7 @@ export function ReportCard({ report, type, onDelete, onClick, getStatusBadge, co
     >
       {getReportStatus() === 'completed' && (
         <div className="absolute inset-0 flex items-center justify-center pointer-events-none z-10">
-          <span className="text-green-500/20 text-4xl md:text-5xl font-bold tracking-wider rotate-[-25deg] select-none whitespace-nowrap">
+          <span className="text-sky-500/20 text-4xl md:text-5xl font-bold tracking-wider rotate-[-25deg] select-none whitespace-nowrap">
             COMPLETED
           </span>
           {isAdmin && isInvoiced && (
