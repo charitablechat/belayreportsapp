@@ -18,6 +18,7 @@ import {
   deleteOrphanLocally,
   type SyncDiagnosticsReport,
 } from '@/lib/sync-diagnostics';
+import { supabase } from '@/integrations/supabase/client';
 
 type Phase = 'idle' | 'syncing' | 'synced' | 'unsynced' | 'error';
 
@@ -51,6 +52,56 @@ export const SyncPulse = ({ className }: { className?: string }) => {
   const [quarantinedCount, setQuarantinedCount] = useState(0);
   const [diag, setDiag] = useState<SyncDiagnosticsReport>({ orphanRecords: [], tempParentPhotos: [], partial: false });
   const [busyOrphanId, setBusyOrphanId] = useState<string | null>(null);
+  const [selfCheckRunning, setSelfCheckRunning] = useState(false);
+  const [selfCheckResult, setSelfCheckResult] = useState<null | {
+    ok: boolean;
+    label: string;
+    detail?: string;
+  }>(null);
+
+  const runSelfCheck = useCallback(async () => {
+    setSelfCheckRunning(true);
+    setSelfCheckResult(null);
+    try {
+      const { data, error } = await supabase.functions.invoke('sync-self-check', {
+        headers: { 'x-client-now': String(Date.now()) },
+      });
+      if (error) {
+        setSelfCheckResult({
+          ok: false,
+          label: 'JWT_FAIL',
+          detail: error.message ?? 'Function invocation failed',
+        });
+        return;
+      }
+      const r = data as {
+        jwt_ok?: boolean;
+        rls_ok?: boolean;
+        probes?: Array<{ table: string; ok: boolean; error?: string }>;
+        clock_skew_ms?: number | null;
+      };
+      if (!r?.jwt_ok) {
+        setSelfCheckResult({ ok: false, label: 'JWT_FAIL', detail: 'Session token rejected. Sign out and back in.' });
+        return;
+      }
+      if (!r.rls_ok) {
+        const failed = (r.probes ?? []).filter((p) => !p.ok).map((p) => p.table).join(', ');
+        setSelfCheckResult({ ok: false, label: 'RLS_FAIL', detail: `Blocked: ${failed || 'unknown'}` });
+        return;
+      }
+      const skew = r.clock_skew_ms ?? 0;
+      const skewWarn = Math.abs(skew) > 60_000;
+      setSelfCheckResult({
+        ok: !skewWarn,
+        label: skewWarn ? 'CLOCK_SKEW' : 'OK',
+        detail: skewWarn ? `Device clock off by ${Math.round(skew / 1000)}s` : 'Auth + visibility healthy',
+      });
+    } catch (e) {
+      setSelfCheckResult({ ok: false, label: 'NET_FAIL', detail: (e as Error).message });
+    } finally {
+      setSelfCheckRunning(false);
+    }
+  }, []);
 
   const refreshDiagnostics = useCallback(async () => {
     try {
@@ -381,7 +432,31 @@ export const SyncPulse = ({ className }: { className?: string }) => {
               <p className="text-green-600 text-[10px]">▸ Changes will sync when back online.</p>
             )}
 
-            {/* Info footer */}
+            {/* Self-check — proves whether JWT + RLS visibility are healthy. */}
+            <div className="space-y-1.5 border-t border-green-900/40 pt-2">
+              <div className="flex items-center justify-between">
+                <span className="text-green-400 text-[10px] uppercase tracking-wider">▸ Self-check</span>
+                <button
+                  type="button"
+                  disabled={selfCheckRunning || !isOnline}
+                  onClick={runSelfCheck}
+                  className="text-[10px] uppercase tracking-wider px-2 py-0.5 rounded border border-green-700/60 text-green-300 hover:bg-green-900/30 disabled:opacity-50"
+                >
+                  {selfCheckRunning ? 'RUNNING…' : 'RUN SELF-CHECK'}
+                </button>
+              </div>
+              {selfCheckResult && (
+                <p className={cn(
+                  'text-[10px] rounded px-2 py-1 border',
+                  selfCheckResult.ok
+                    ? 'text-green-300 bg-green-950/30 border-green-900/40'
+                    : 'text-amber-300 bg-amber-950/30 border-amber-900/40',
+                )}>
+                  {selfCheckResult.label}{selfCheckResult.detail ? `: ${selfCheckResult.detail}` : ''}
+                </p>
+              )}
+            </div>
+
             <p className="text-green-700 text-[10px] italic pt-1 border-t border-green-900/40">
               Auto-sync runs in background.
               {isIOSDevice && ' iOS: visibility change + 30s interval.'}
