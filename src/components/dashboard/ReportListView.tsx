@@ -410,6 +410,7 @@ export function ReportListView({
           onToggleInvoiced={onToggleInvoiced}
           profilesById={profilesById}
           getStatusBadge={getStatusBadge}
+          twoColumn={twoColumn}
         />
       ))}
     </ul>
