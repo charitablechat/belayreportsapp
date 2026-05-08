@@ -30,6 +30,7 @@ import { markSnapshotSynced } from '@/lib/local-backup-ledger';
 import { isRestoreInProgress, onRestoreLockChange } from '@/lib/restore-lock';
 import { syncLog } from '@/lib/sync-logger';
 import { scanForStuckPhotos } from '@/lib/stuck-photo-beacon';
+import { recordSyncHalt, clearSyncHalt } from '@/lib/sync-halt-tracker';
 
 /**
  * Result returned by each per-table atomic-sync helper
@@ -216,6 +217,8 @@ export const useAutoSync = () => {
     // Skip if offline
     if (!navigator.onLine) {
               syncLog.log('[AutoSync] Offline - skipping sync');
+      // Offline is already surfaced through `isOnline` in the badge; not
+      // a halt class we need to record separately.
       return;
     }
 
@@ -225,6 +228,7 @@ export const useAutoSync = () => {
     // is released by withRestoreLock(); a fresh sync is kicked off then.
     if (isRestoreInProgress()) {
               syncLog.log('[AutoSync] Restore in progress - skipping sync cycle');
+      recordSyncHalt('restore_in_progress');
       return;
     }
 
@@ -233,17 +237,25 @@ export const useAutoSync = () => {
     if (cbStatus.open) {
       if (silent) {
                   syncLog.log('[AutoSync] Circuit breaker open - skipping background sync cycle');
+        const resetIn = cbStatus.resetIn;
+        recordSyncHalt('circuit_breaker_open', {
+          autoResumeAt:
+            typeof resetIn === 'number' && resetIn > 0
+              ? Date.now() + resetIn
+              : undefined,
+        });
         return;
       }
       // Force sync: reset the circuit breaker so user action always works
       syncLog.log('[AutoSync] Circuit breaker open but force sync requested - resetting circuit breaker');
       resetCircuitBreaker();
     }
-    
+
     // Quick sync gate — no network call needed to reject unauthenticated state
     const cachedUser = getCachedUserFromStorage();
     if (!cachedUser) {
               syncLog.log('[AutoSync] No cached user session - skipping sync');
+      recordSyncHalt('no_session');
       return;
     }
     
@@ -272,6 +284,7 @@ export const useAutoSync = () => {
         validatedUser = fallback;
       } else {
         console.warn('[AutoSync] Session validation timed out, skipping sync');
+        recordSyncHalt('auth_validation_timeout');
         return;
       }
     }
@@ -282,6 +295,7 @@ export const useAutoSync = () => {
         validatedUser = fallback;
       } else {
         console.warn('[AutoSync] No valid session, skipping sync');
+        recordSyncHalt('auth_no_valid_session');
         return;
       }
     }
@@ -312,6 +326,12 @@ export const useAutoSync = () => {
     syncInProgressRef.current = true;
     setSyncInProgress(true);
     setState(prev => ({ ...prev, isSyncing: true }));
+
+    // We've cleared every actionable silent-halt path; clear the surfaced
+    // halt reason so the UI returns to a normal SYNCING state. If the cycle
+    // discovers a fresh halt class (e.g. all IDB reads time out), the
+    // post-cycle code below re-records it.
+    clearSyncHalt();
 
     // S21: Create a deferred promise that resolves when this run's `finally` clears it.
     // Concurrent callers above await this directly instead of polling.
@@ -593,6 +613,12 @@ export const useAutoSync = () => {
         // Check if any sync actually happened or if all returned -1 (fetch failed due to timeout)
         const results = (syncResult.result as TableSyncResult[]) || [];
         const allFetchesFailed = results.length > 0 && results.every(r => r?.total === -1);
+        if (allFetchesFailed) {
+          // Every IDB read in the parallel pipeline timed out / errored —
+          // counts are stale, no work moved. Surface to the user instead of
+          // silently leaving "37 PENDING" stuck.
+          recordSyncHalt('idb_reads_failed');
+        }
         const anySuccess = results.some(r => r?.success > 0);
         const totalSynced = results.reduce((sum, r) => sum + (r?.success || 0), 0);
         const totalRemaining = results.reduce((sum, r) => sum + (r?.remaining || 0), 0);
