@@ -453,6 +453,96 @@ const LAYER_BREAKER_THRESHOLD = 3;
 const LAYER_BREAKER_BASE_COOLDOWN_MS = 60_000; // 1 minute base
 const LAYER_BREAKER_MAX_COOLDOWN_MS = 240_000; // 4 minute ceiling
 
+// Audit M1 — Hard cap on the working-set scan size for `getUnsynced*`
+// readers. The current implementation does `db.getAll('inspections')`
+// (and equivalents for `trainings` / `daily_assessments`), which deserialises
+// the entire store into JS heap before filtering. For typical users the
+// store holds <100 records and this is fast, but a broken sync engine, a
+// runaway form-write loop, or a migration-from-cloud hydration that
+// over-shoots its budget can bloat the store into the thousands. When that
+// happens, the full scan blocks the IDB transaction long enough to tip the
+// layer breaker, which masks the underlying bloat with a noisier error
+// (queue-stuck) and starves drain of any chance to recover.
+//
+// The cap is enforced via `getAll(query, count)` (idb's third positional)
+// which limits the cursor walk at the IDB layer — the engine does not
+// even materialise records past the cap into JS. We then issue a cheap
+// `db.count(store)` to see how badly we're over the cap; if so, we emit
+// a single Sentry warning per session per store so we can re-architect
+// later without spamming. The truncated working set is still processed
+// normally — partial drain is strictly better than no drain.
+const UNSYNCED_SCAN_CAP = 10_000;
+const overflowReportedStores = new Set<string>();
+
+async function reportUnsyncedScanOverflow(
+  store: string,
+  cap: number,
+  realTotal: number,
+  callerName: string,
+): Promise<void> {
+  if (overflowReportedStores.has(store)) return;
+  overflowReportedStores.add(store);
+
+  console.warn('[Offline Storage] Unsynced scan exceeded cap — store is unexpectedly bloated', {
+    store,
+    cap,
+    realTotal,
+    overflow: realTotal - cap,
+    caller: callerName,
+  });
+
+  try {
+    const { logError } = await import('./log-error');
+    try {
+      logError(new Error(`Unsynced scan cap exceeded for ${store}`), {
+        scope: 'unsynced-scan-overflow',
+        extra: {
+          store,
+          cap,
+          realTotal,
+          overflow: realTotal - cap,
+          caller: callerName,
+        },
+      });
+    } catch {
+      /* swallow */
+    }
+  } catch {
+    /* swallow — log-error import failed; nothing actionable */
+  }
+}
+
+/**
+ * Audit M1 — observability hook for callers that just executed a capped
+ * `getAll(store, undefined, UNSYNCED_SCAN_CAP)`. If the result exactly
+ * equals the cap (the only signal that the cap was hit), we issue a cheap
+ * `db.count(store)` to see how far over we are, and emit a single
+ * Sentry warning per session per store. The truncated working set is
+ * still processed normally — partial drain is strictly better than no drain.
+ */
+async function maybeReportUnsyncedScanOverflow(
+  db: { count: (store: never) => Promise<number> },
+  store: string,
+  rowsLength: number,
+  callerName: string,
+  cap: number = UNSYNCED_SCAN_CAP,
+): Promise<void> {
+  if (rowsLength < cap) return;
+  try {
+    const realTotal = await db.count(store as never);
+    if (realTotal > cap) {
+      void reportUnsyncedScanOverflow(store, cap, realTotal, callerName);
+    }
+  } catch {
+    // count() fail is non-fatal; we still have rows from the capped getAll.
+  }
+}
+
+/** @internal Test-only — clear the per-session overflow-reported set. */
+export function __test_only__resetUnsyncedScanOverflowState(): void {
+  overflowReportedStores.clear();
+}
+
 // Mode 9F — autosync-resume hook. The breaker auto-clears on cooldown-expiry
 // (see `isIdbLayerBreakerOpen` below). When that happens, we want any
 // observers (e.g. `useAutoSync`) to immediately attempt a drain rather than
@@ -2986,7 +3076,12 @@ export async function getUnsyncedInspections(userId?: string) {
       
       // Simple getAll() + filter — reliable across all browsers.
       // These stores typically hold <100 records so full scans are fast.
-      const all = await db.getAll('inspections');
+      // Audit M1: cap the working-set scan at UNSYNCED_SCAN_CAP rows so a
+      // pathologically bloated store can't tip the layer breaker via a
+      // multi-second IDB transaction. Overflow is reported once per
+      // session per store via Sentry.
+      const all = await db.getAll('inspections', undefined, UNSYNCED_SCAN_CAP);
+      void maybeReportUnsyncedScanOverflow(db, 'inspections', all.length, 'getUnsyncedInspections');
       // C9 (P2): Exclude quarantined records (remote was soft-deleted) from unsynced
       // candidates so we don't keep re-attempting to upload them.
       // S40 (Fix A): Filter by ownership BEFORE the drift check. Records owned
@@ -4523,7 +4618,9 @@ export async function getUnsyncedDailyAssessments(userId?: string) {
     async () => {
       const db = await getDB();
       
-      const all = await db.getAll('daily_assessments');
+      // Audit M1: cap (see getUnsyncedInspections).
+      const all = await db.getAll('daily_assessments', undefined, UNSYNCED_SCAN_CAP);
+      void maybeReportUnsyncedScanOverflow(db, 'daily_assessments', all.length, 'getUnsyncedDailyAssessments');
       // S40 (Fix A): Ownership filter before drift check (see getUnsyncedInspections).
       // Audit H1: `isSessionQuarantined` is now a static import (file head).
       const candidates = all.filter(isNotQuarantined).filter(record => {
@@ -4888,7 +4985,9 @@ export async function getUnsyncedTrainings(userId?: string) {
     async () => {
       const db = await getDB();
       
-      const all = await db.getAll('trainings');
+      // Audit M1: cap (see getUnsyncedInspections).
+      const all = await db.getAll('trainings', undefined, UNSYNCED_SCAN_CAP);
+      void maybeReportUnsyncedScanOverflow(db, 'trainings', all.length, 'getUnsyncedTrainings');
       // S40 (Fix A): Ownership filter before drift check (see getUnsyncedInspections).
       // Audit H1: `isSessionQuarantined` is now a static import (file head).
       const candidates = all.filter(isNotQuarantined).filter(record => {
