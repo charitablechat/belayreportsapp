@@ -22,9 +22,14 @@ import {
   deleteOrphanLocally,
   type SyncDiagnosticsReport,
 } from '@/lib/sync-diagnostics';
+import {
+  getSyncHaltState,
+  subscribeSyncHalt,
+  type SyncHaltState,
+} from '@/lib/sync-halt-tracker';
 import { supabase } from '@/integrations/supabase/client';
 
-type Phase = 'idle' | 'syncing' | 'synced' | 'unsynced' | 'error';
+type Phase = 'idle' | 'syncing' | 'synced' | 'unsynced' | 'paused' | 'error';
 
 /**
  * Sprint 1D: short human-readable delta for the RETRYING bucket header.
@@ -70,6 +75,10 @@ export const SyncPulse = ({ className }: { className?: string }) => {
   const [retrying, setRetrying] = useState(false);
   const [quarantinedCount, setQuarantinedCount] = useState(0);
   const [diag, setDiag] = useState<SyncDiagnosticsReport>({ orphanRecords: [], tempParentPhotos: [], partial: false });
+  const [haltState, setHaltState] = useState<SyncHaltState | null>(() => getSyncHaltState());
+  // Tick once a second while a halt with `autoResumeAt` is active so the
+  // countdown rendered in the terminal sheet stays accurate.
+  const [, setHaltTick] = useState(0);
   const [busyOrphanId, setBusyOrphanId] = useState<string | null>(null);
   const [selfCheckRunning, setSelfCheckRunning] = useState(false);
   const [selfCheckResult, setSelfCheckResult] = useState<null | {
@@ -189,12 +198,27 @@ export const SyncPulse = ({ className }: { className?: string }) => {
     setQuarantinedCount(active);
   }, [open, isSyncing, lastSyncTime]);
 
-  // Sprint 1D fix-forward: photo count must include photos in jittered backoff,
-  // otherwise the dot/badge can read "ALL SYNCED" while the terminal still shows
-  // RETRYING rows (same root cause as PR #167's PENDING_PHOTOS section gate).
-  // Math.max is a belt-and-suspenders fallback covering the brief window between
-  // mount and the first getPhotoRetryBuckets() resolve, where photoBuckets is
-  // still all-zeros but useUnsyncedPhotos may already report a count.
+  // Subscribe to sync-halt-tracker so the badge can flip to PAUSED the moment
+  // a silent-return path fires inside `performSync`.
+  useEffect(() => {
+    const unsub = subscribeSyncHalt((s) => setHaltState(s));
+    return unsub;
+  }, []);
+
+  // 1Hz tick while a countdown halt is active, so the rendered "Auto-resumes
+  // in Ns" text stays current. Stops when no countdown is outstanding.
+  useEffect(() => {
+    if (!haltState?.autoResumeAt) return;
+    const t = setInterval(() => setHaltTick((n) => n + 1), 1000);
+    return () => clearInterval(t);
+  }, [haltState?.autoResumeAt]);
+
+  // Sprint 1D fix-forward (PR #167): photo count must include photos in
+  // jittered backoff, otherwise the dot/badge can read "ALL SYNCED" while the
+  // terminal still shows RETRYING rows. Math.max is a belt-and-suspenders
+  // fallback covering the brief window between mount and the first
+  // getPhotoRetryBuckets() resolve, where photoBuckets is still all-zeros but
+  // useUnsyncedPhotos may already report a count.
   const photoBucketTotal =
     photoBuckets.ready + photoBuckets.retrying + photoBuckets.stuck;
   const photoCountForIndicator = Math.max(unsyncedPhotoCount, photoBucketTotal);
@@ -215,11 +239,21 @@ export const SyncPulse = ({ className }: { className?: string }) => {
   // Soft errors (stats/photo-counts hiccups) keep the underlying phase and surface
   // an amber advisory line in the terminal instead.
   const isFatalError = syncError !== null && syncErrorSeverity === 'fatal';
+  // A halt is only meaningful while the engine isn't actively running and we
+  // have something pending. Otherwise (e.g. the paused state was leftover but
+  // the next tick already drained the queue) we let the normal phase win.
+  const showPaused =
+    !isSyncing &&
+    !isFatalError &&
+    haltState !== null &&
+    totalUnsynced > 0 &&
+    isOnline;
   let phase: Phase = 'idle';
   if (!isOnline) phase = 'error';
   else if (isFatalError) phase = 'error';
   else if (isSyncing) phase = 'syncing';
   else if (justSynced) phase = 'synced';
+  else if (showPaused) phase = 'paused';
   else if (totalUnsynced > 0) phase = 'unsynced';
 
   const formatLastSync = (date: Date | null) => {
@@ -237,9 +271,24 @@ export const SyncPulse = ({ className }: { className?: string }) => {
   const statusLabel =
     phase === 'syncing' ? 'SYNCING...'
     : phase === 'error' ? (isOnline ? 'SYNC FAILED' : 'OFFLINE')
+    : phase === 'paused' ? `PAUSED · ${haltState?.label ?? '—'}`
     : phase === 'unsynced' ? `${totalUnsynced} PENDING`
     : phase === 'synced' ? 'SYNCED'
     : 'ALL SYNCED';
+
+  // Plain-English countdown for the terminal sheet, refreshed by the 1Hz tick.
+  const haltCountdown = (() => {
+    if (!haltState?.autoResumeAt) return null;
+    const remainingMs = haltState.autoResumeAt - Date.now();
+    if (remainingMs <= 0) return 'Resuming …';
+    const sec = Math.ceil(remainingMs / 1000);
+    if (sec < 60) return `Auto-resumes in ${sec}s`;
+    const min = Math.floor(sec / 60);
+    const rem = sec % 60;
+    return rem === 0
+      ? `Auto-resumes in ${min}m`
+      : `Auto-resumes in ${min}m ${rem}s`;
+  })();
 
   return (
     <>
@@ -254,6 +303,7 @@ export const SyncPulse = ({ className }: { className?: string }) => {
             'w-2 h-2 rounded-full transition-all duration-500 ease-in-out',
             phase === 'syncing' && 'bg-blue-500 opacity-90 animate-[pulse_2s_ease-in-out_infinite]',
             phase === 'error' && 'bg-destructive opacity-100',
+            phase === 'paused' && 'bg-yellow-500 opacity-90 animate-[pulse_2.5s_ease-in-out_infinite]',
             phase === 'unsynced' && 'bg-amber-500 opacity-80',
             phase === 'synced' && 'bg-green-500 opacity-100',
             phase === 'idle' && 'opacity-0',
@@ -283,6 +333,7 @@ export const SyncPulse = ({ className }: { className?: string }) => {
                 'font-bold px-2 py-0.5 rounded text-[10px] uppercase tracking-wider',
                 phase === 'syncing' && 'bg-blue-900/50 text-blue-300',
                 phase === 'error' && 'bg-red-900/50 text-red-300',
+                phase === 'paused' && 'bg-yellow-900/50 text-yellow-300',
                 phase === 'unsynced' && 'bg-amber-900/50 text-amber-300',
                 phase === 'synced' && 'bg-green-900/50 text-green-300',
                 phase === 'idle' && 'bg-green-900/50 text-green-300',
@@ -306,6 +357,44 @@ export const SyncPulse = ({ className }: { className?: string }) => {
                 {isSyncing && <span className="inline-block w-1.5 h-3 ml-1 bg-green-400 animate-[blink-cursor_1s_step-end_infinite]" />}
               </span>
             </div>
+
+            {/* Sync engine paused — surfaces a silent-halt reason from
+                useAutoSync's performSync so a stuck PENDING badge has a
+                user-visible explanation instead of feeling broken. */}
+            {showPaused && haltState && (
+              <div className="space-y-1.5 border-t border-green-900/40 pt-2">
+                <div className="flex items-center justify-between">
+                  <span className="text-yellow-400 text-[10px] uppercase tracking-wider">
+                    ▸ Sync engine paused
+                  </span>
+                  <button
+                    type="button"
+                    disabled={retrying}
+                    onClick={async () => {
+                      try {
+                        setRetrying(true);
+                        await forceSync();
+                      } catch (e) {
+                        console.warn('[SyncPulse] Force sync after halt failed:', e);
+                      } finally {
+                        setRetrying(false);
+                      }
+                    }}
+                    className="text-[10px] uppercase tracking-wider px-2 py-0.5 rounded border border-yellow-700/60 text-yellow-300 hover:bg-yellow-900/30 disabled:opacity-50"
+                  >
+                    {retrying ? 'RETRYING…' : 'RETRY NOW'}
+                  </button>
+                </div>
+                <p className="text-yellow-200/90 text-[10px] leading-relaxed">
+                  {haltState.detail}
+                </p>
+                {haltCountdown && (
+                  <p className="text-yellow-300/70 text-[10px] italic">
+                    {haltCountdown}
+                  </p>
+                )}
+              </div>
+            )}
 
             {/* Pending reports */}
             {unsyncedCount > 0 && (
