@@ -649,6 +649,14 @@ export function DashboardReportsSection({
                                   reports={group.items}
                                   type={currentType}
                                   onRowClick={handleClick}
+                                  onDelete={handleDelete}
+                                  compact={compact}
+                                  isAdmin={isSuperAdmin}
+                                  invoicedReportIds={invoicedReportIds}
+                                  invoicedMetaById={invoicedMetaById}
+                                  onToggleInvoiced={onToggleInvoiced}
+                                  profilesById={profilesById}
+                                  getStatusBadge={currentType === 'inspection' ? getStatusBadge : undefined}
                                 />
                               ) : (
                                 <div className={gridClass}>
@@ -684,6 +692,14 @@ export function DashboardReportsSection({
                               reports={group.items}
                               type={currentType}
                               onRowClick={handleClick}
+                              onDelete={handleDelete}
+                              compact={compact}
+                              isAdmin={isSuperAdmin}
+                              invoicedReportIds={invoicedReportIds}
+                              invoicedMetaById={invoicedMetaById}
+                              onToggleInvoiced={onToggleInvoiced}
+                              profilesById={profilesById}
+                              getStatusBadge={currentType === 'inspection' ? getStatusBadge : undefined}
                             />
                           ) : (
                             <div className={gridClass}>
@@ -763,6 +779,10 @@ function CrossTabSection({ label, icon, reports, type, compact, viewMode, onDele
           reports={reports}
           type={type}
           onRowClick={onClick}
+          onDelete={onDelete}
+          compact={compact}
+          profilesById={profilesById}
+          getStatusBadge={type === 'inspection' ? getStatusBadge : undefined}
         />
       ) : (
         <div className={gridClass}>

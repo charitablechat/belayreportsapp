@@ -82,7 +82,7 @@ export function useDashboardFilters(
     quickFilters: { myCards: false, dueThisWeek: false, draftsOnly: false, needsAttention: false },
     sortBy: 'priority',
     groupBy: 'none',
-    viewMode: 'grid',
+    viewMode: 'list',
     page: 1,
   });
 
