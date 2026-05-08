@@ -168,7 +168,7 @@ export function ReportCard({ report, type, onDelete, onClick, getStatusBadge, co
   const ageStateClasses: Record<ReportAgeState, string> = {
     critical: 'border-l-4 border-l-destructive bg-red-200 dark:bg-red-900/40',
     warning: 'border-l-4 border-l-amber-500 bg-yellow-50 dark:bg-yellow-950/30',
-    completed: 'border-l-4 border-l-green-500',
+    completed: 'border-l-4 border-l-sky-500 bg-sky-50 dark:bg-sky-950/30',
     default: 'border-l-4 border-l-muted-foreground/30',
   };
 
