@@ -1,34 +1,33 @@
-## Recolor invoiced rows: money-green tint + "$ Invoiced" chip
+## Recolor "completed" rows from green to blue
 
-Replace the purple invoiced tint with a distinct teal/money-green, and add a small inline chip so invoiced rows are unmistakable even when the green tints are similar.
+Now that invoiced is teal, shift completed reports from emerald to a clean blue so the four states read distinctly:
+
+- critical (overdue) — red
+- warning (>3d) — yellow
+- **completed — blue** (was emerald)
+- invoiced — teal
+- default — neutral card
 
 ### Color choice
 
-To stay distinct from the existing **completed** green (`bg-emerald-50/80`), invoiced uses a deeper, more blue-leaning **teal**:
+Standard `sky` palette — bright, calm, unmistakably "done" without competing with the teal of invoiced or the amber of warning:
 
-- Row tint: `bg-teal-100/80 dark:bg-teal-950/40`
-- Left accent bar (3px): `bg-teal-500 dark:bg-teal-400`
-- Chip: `bg-teal-600 text-white dark:bg-teal-500` with a `DollarSign` icon (lucide) and the label "Invoiced"
-
-This reads as "paid / billable" without colliding with the completed-green (which is lighter and more yellow-green). Side-by-side: completed = pale mint, invoiced = saturated teal.
+- Row tint: `bg-sky-50 hover:bg-sky-100/80 dark:bg-sky-950/30 dark:hover:bg-sky-950/50`
+- Left accent bar (3px): `bg-sky-500`
+- Status pill ("completed"): `bg-sky-50 text-sky-700 ring-1 ring-inset ring-sky-200 dark:bg-sky-950/40 dark:text-sky-300 dark:ring-sky-900`
 
 ### Files
 
 1. **`src/components/dashboard/ReportListView.tsx`**
-   - Change `INVOICED_TINT` from `bg-purple-100/80 dark:bg-purple-950/40` to `bg-teal-100/80 dark:bg-teal-950/40`.
-   - Update the left-accent-bar logic (`getAccentClasses` or inline) so when `isAdmin && isInvoiced`, the bar uses `bg-teal-500 dark:bg-teal-400` (overrides the age-based color, same precedence as the row tint).
-   - Inside `ReportRow`'s right-side metadata cluster, when `isAdmin && isInvoiced`, render a small chip:
-     ```
-     <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold bg-teal-600 text-white dark:bg-teal-500">
-       <DollarSign class="w-3 h-3" /> Invoiced
-     </span>
-     ```
-     Place it just before the existing date/age text so it sits next to the other status badges.
+   - `ROW_TINT_CLASSES.completed`: emerald → sky.
+   - `getAccentClasses`: the `status === "completed"` branch returns `bg-sky-500` (the `age <= 7` branch keeps `bg-emerald-500` so brand-new in-progress rows still feel fresh-green; only the completed status itself turns blue).
+   - `getStatusPillClasses` `case "completed"`: emerald → sky tokens.
 
-2. **`src/components/dashboard/ReportCard.tsx`** (grid view) — for visual parity, swap any `purple-*` invoiced styling to the same teal tokens so list, split, and grid all match.
+2. **`src/components/dashboard/ReportCard.tsx`** (grid view)
+   - Find the equivalent completed-state styling (`ageStateClasses.completed` / completed-status pill) and swap emerald → sky to match.
 
 ### Out of scope
 
-- No change to the red overdue / yellow warning / green completed tints.
-- No change to the existing "INVOICED" watermark on rendered reports (that stays red per the Invoiced Reports memory).
-- No filter, query, or data changes.
+- No change to invoiced (teal), critical (red), warning (yellow), or default tints.
+- No change to the "Completed" stat tile in `DashboardStatsBar` unless you also want it recolored — happy to include it on request.
+- No data, filter, or query changes.

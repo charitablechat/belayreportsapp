@@ -33,7 +33,7 @@ import { getReportAgeState, type ReportAgeState } from "./ReportCard";
 const ROW_TINT_CLASSES: Record<ReportAgeState, string> = {
   critical: "bg-red-100 hover:bg-red-100/80 dark:bg-red-950/40 dark:hover:bg-red-950/60",
   warning: "bg-yellow-50 hover:bg-yellow-100/80 dark:bg-yellow-950/30 dark:hover:bg-yellow-950/50",
-  completed: "bg-emerald-50 hover:bg-emerald-100/80 dark:bg-emerald-950/30 dark:hover:bg-emerald-950/50",
+  completed: "bg-sky-50 hover:bg-sky-100/80 dark:bg-sky-950/30 dark:hover:bg-sky-950/50",
   default: "bg-card hover:bg-accent/30",
 };
 const INVOICED_TINT =
