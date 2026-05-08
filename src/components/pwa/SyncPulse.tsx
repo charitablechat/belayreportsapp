@@ -328,12 +328,16 @@ export const SyncPulse = ({ className }: { className?: string }) => {
               </div>
             )}
 
-            {/* Pending photos — Sprint 1D: 3-row breakdown (READY/RETRYING/STUCK) */}
-            {unsyncedPhotoCount > 0 && (
+            {/* Pending photos — Sprint 1D: 3-row breakdown (READY/RETRYING/STUCK).
+                Header + gate source from bucket sum (not unsyncedPhotoCount) so
+                photos in active backoff stay counted under PENDING_PHOTOS while
+                they wait — getUnuploadedPhotos excludes nextRetryAt > now, but
+                bucketPhotos correctly classifies those as RETRYING. */}
+            {(photoBuckets.ready + photoBuckets.retrying + photoBuckets.stuck) > 0 && (
               <div className="space-y-1">
                 <div className="flex items-center justify-between text-green-300/60 text-[10px] uppercase tracking-wider">
                   <span>PENDING_PHOTOS</span>
-                  <span>{unsyncedPhotoCount}</span>
+                  <span>{photoBuckets.ready + photoBuckets.retrying + photoBuckets.stuck}</span>
                 </div>
                 {photoBuckets.ready > 0 && (
                   <div className="flex items-center justify-between pl-3 text-green-300/80">
