@@ -9,7 +9,11 @@ import {
   SheetTitle,
   SheetDescription,
 } from '@/components/ui/sheet';
-import { getDeadLetterPhotos, resetPhotoRetryCounts } from '@/lib/offline-storage';
+import {
+  getDeadLetterPhotos,
+  resetPhotoRetryCounts,
+  resetLayerBreakerOnUserActivity,
+} from '@/lib/offline-storage';
 import { useUnsyncedPhotos } from '@/hooks/useUnsyncedPhotos';
 import {
   getPhotoRetryBuckets,
@@ -295,7 +299,14 @@ export const SyncPulse = ({ className }: { className?: string }) => {
       <button
         type="button"
         aria-label="Sync status"
-        onClick={() => setOpen(true)}
+        onClick={() => {
+          // Sprint 2 H: opening the sync terminal is direct evidence the
+          // device isn't OS-wedged. Auto-clear the layer breaker so any
+          // queued sync probe runs immediately rather than making the
+          // user wait out a 1-4 minute cooldown.
+          resetLayerBreakerOnUserActivity('SyncPulse opened');
+          setOpen(true);
+        }}
         className={cn('relative flex items-center justify-center w-8 h-8', className)}
       >
         <div
@@ -373,7 +384,7 @@ export const SyncPulse = ({ className }: { className?: string }) => {
                     onClick={async () => {
                       try {
                         setRetrying(true);
-                        await forceSync();
+                        resetLayerBreakerOnUserActivity('SyncPulse retry'); await forceSync();
                       } catch (e) {
                         console.warn('[SyncPulse] Force sync after halt failed:', e);
                       } finally {
@@ -477,7 +488,7 @@ export const SyncPulse = ({ className }: { className?: string }) => {
                             await updatePhotoCount();
                             const fresh = await getPhotoRetryBuckets();
                             setPhotoBuckets(fresh);
-                            await forceSync();
+                            resetLayerBreakerOnUserActivity('SyncPulse retry'); await forceSync();
                           } catch (e) {
                             console.warn('[SyncPulse] Stuck-photo retry failed:', e);
                           } finally {
@@ -523,7 +534,7 @@ export const SyncPulse = ({ className }: { className?: string }) => {
                         setRetrying(true);
                         clearAllQuarantines();
                         setQuarantinedCount(0);
-                        await forceSync();
+                        resetLayerBreakerOnUserActivity('SyncPulse retry'); await forceSync();
                       } catch (e) {
                         console.warn('[SyncPulse] Quarantine retry failed:', e);
                       } finally {
@@ -560,7 +571,7 @@ export const SyncPulse = ({ className }: { className?: string }) => {
                           await resetPhotoRetryCounts(ids);
                         }
                         await updatePhotoCount();
-                        await forceSync();
+                        resetLayerBreakerOnUserActivity('SyncPulse retry'); await forceSync();
                       } catch (e) {
                         console.warn('[SyncPulse] Retry failed:', e);
                       } finally {
@@ -603,7 +614,7 @@ export const SyncPulse = ({ className }: { className?: string }) => {
                             try {
                               await reassignOrphanToCurrentUser(o.table, o.id);
                               await refreshDiagnostics();
-                              await forceSync();
+                              resetLayerBreakerOnUserActivity('SyncPulse retry'); await forceSync();
                             } finally { setBusyOrphanId(null); }
                           }}
                           className="text-[9px] uppercase tracking-wider px-1.5 py-0.5 rounded border border-green-700/60 text-green-300 hover:bg-green-900/30 disabled:opacity-50"
