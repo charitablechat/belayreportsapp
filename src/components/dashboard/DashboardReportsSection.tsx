@@ -610,8 +610,18 @@ export function DashboardReportsSection({
                 )
               ) : (
                 <div className={cn("space-y-6", compact && "space-y-3")}>
-                  {groups.map((group, gi) => {
-                    const isCompleted = group.label.startsWith('Completed');
+                  {groups.map((rawGroup, gi) => {
+                    const isCompleted = rawGroup.label.startsWith('Completed');
+                    // In Completed group, push non-invoiced reports to the top so
+                    // outstanding billing work is immediately visible. Stable partition
+                    // preserves the existing within-subgroup order.
+                    const sortedItems = (isCompleted && invoicedReportIds)
+                      ? [
+                          ...rawGroup.items.filter((r: any) => !invoicedReportIds.has(r.id)),
+                          ...rawGroup.items.filter((r: any) => invoicedReportIds.has(r.id)),
+                        ]
+                      : rawGroup.items;
+                    const group = sortedItems === rawGroup.items ? rawGroup : { ...rawGroup, items: sortedItems };
                     const isCollapsed = isCompleted ? completedCollapsed : collapsedGroups.has(group.label);
                     const showHeader = groups.length > 1 || filters.groupBy !== 'none';
 
