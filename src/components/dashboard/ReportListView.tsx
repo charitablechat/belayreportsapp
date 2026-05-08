@@ -1,106 +1,396 @@
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Badge } from "@/components/ui/badge";
+import { useEffect, useState } from "react";
+import { format, differenceInDays, formatDistanceToNow } from "date-fns";
+import {
+  Building2,
+  HardHat,
+  ClipboardCheck,
+  GraduationCap,
+  MoreVertical,
+  Trash2,
+  Download,
+  Receipt,
+  Cloud,
+  Check,
+  UploadCloud,
+} from "lucide-react";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import { Check, Cloud } from "lucide-react";
-import { differenceInDays } from "date-fns";
-import { format } from "date-fns";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { parseLocalDate } from "@/lib/date-utils";
-import { cn } from "@/lib/utils";
 import { triggerHaptic } from "@/lib/haptics";
 import { getReportDate, getAssigneeName } from "@/lib/report-utils";
+import { usePWA } from "@/hooks/usePWA";
+import { cn } from "@/lib/utils";
+
+type ReportType = "inspection" | "training" | "daily";
 
 interface ReportListViewProps {
   reports: any[];
-  type: 'inspection' | 'training' | 'daily';
+  type: ReportType;
   onRowClick: (report: any) => void;
+  onDelete?: (report: any) => void;
+  compact?: boolean;
+  isAdmin?: boolean;
+  invoicedReportIds?: Set<string>;
+  invoicedMetaById?: ReadonlyMap<
+    string,
+    { invoiced_at: string; invoiced_by: string | null }
+  >;
+  onToggleInvoiced?: (report: any, type: ReportType) => void;
+  profilesById?: ReadonlyMap<
+    string,
+    { first_name: string | null; last_name: string | null; avatar_url: string | null }
+  >;
+  getStatusBadge?: (report: any) => React.ReactNode;
 }
 
-function getAvatarUrl(r: any, type: string): string | null {
-  if (type === 'training') return r.trainer?.avatar_url || null;
-  return r.inspector?.avatar_url || null;
+function getTypeIcon(type: ReportType) {
+  if (type === "training") return GraduationCap;
+  if (type === "daily") return ClipboardCheck;
+  return HardHat;
 }
 
-function getDaysOpen(r: any): number {
-  if (!r.created_at) return 0;
-  return differenceInDays(new Date(), new Date(r.created_at));
+function getAccentClasses(createdAt: string | null | undefined, status?: string) {
+  if (!createdAt) return "bg-slate-300";
+  const age = differenceInDays(new Date(), new Date(createdAt));
+  if (status === "completed") return "bg-emerald-500";
+  if (age <= 7) return "bg-emerald-500";
+  if (age <= 30) return "bg-amber-500";
+  return "bg-slate-400";
 }
 
-function getDaysOpenColor(days: number, status: string): string {
-  if (status === 'completed') return '';
-  if (days > 5) return 'bg-red-200 dark:bg-red-900/40 text-red-900 dark:text-red-200';
-  if (days > 3) return 'bg-yellow-50 dark:bg-yellow-950/30 text-yellow-900 dark:text-yellow-200';
-  return '';
+function getStatusPillClasses(status: string | undefined): string {
+  switch (status) {
+    case "completed":
+      return "bg-emerald-50 text-emerald-700 ring-1 ring-inset ring-emerald-200 dark:bg-emerald-950/40 dark:text-emerald-300 dark:ring-emerald-900";
+    case "in_progress":
+    case "in-progress":
+      return "bg-amber-50 text-amber-700 ring-1 ring-inset ring-amber-200 dark:bg-amber-950/40 dark:text-amber-300 dark:ring-amber-900";
+    case "draft":
+    default:
+      return "bg-slate-100 text-slate-700 ring-1 ring-inset ring-slate-200 dark:bg-slate-800/60 dark:text-slate-300 dark:ring-slate-700";
+  }
 }
 
-export function ReportListView({ reports, type, onRowClick }: ReportListViewProps) {
+function ReportRow({
+  report,
+  type,
+  onRowClick,
+  onDelete,
+  compact,
+  isAdmin,
+  invoicedReportIds,
+  invoicedMetaById,
+  onToggleInvoiced,
+  profilesById,
+  getStatusBadge,
+}: {
+  report: any;
+  type: ReportType;
+} & Omit<ReportListViewProps, "reports" | "type">) {
+  const Icon = getTypeIcon(type);
+  const status = report.status as string | undefined;
+  const dateStr = getReportDate(report, type);
+  const parsed = dateStr ? parseLocalDate(dateStr) : null;
+
+  const createdAt = report.created_at as string | null | undefined;
+  const accentClass = getAccentClasses(createdAt, status);
+
+  // Inspector / assignee
+  const assigneeName = getAssigneeName(report, type, profilesById ?? undefined);
+  const firstName = assigneeName.split(" ")[0] || "—";
+  const fallbackProfile =
+    typeof report?.inspector_id === "string"
+      ? profilesById?.get(report.inspector_id) || null
+      : null;
+  const avatarUrl =
+    type === "training"
+      ? report.trainer?.avatar_url || fallbackProfile?.avatar_url || null
+      : report.inspector?.avatar_url || fallbackProfile?.avatar_url || null;
+  const initials =
+    assigneeName && assigneeName !== "Unknown"
+      ? assigneeName
+          .split(" ")
+          .filter(Boolean)
+          .slice(0, 2)
+          .map((p: string) => p[0])
+          .join("")
+          .toUpperCase()
+      : "?";
+
+  // Sync status (mirror ReportCard logic)
+  const { photosByInspection } = usePWA();
+  const pendingPhotos =
+    type === "inspection" ? photosByInspection?.[report.id] ?? 0 : 0;
+  const isSynced = !!report.synced_at;
+
+  const isInvoiced = invoicedReportIds?.has(report.id) ?? false;
+  const invoicedMeta = invoicedMetaById?.get(report.id);
+
+  // Meta line: location · assignee · X days ago
+  const metaParts: string[] = [];
+  if (report.location || report.site) metaParts.push(report.location || report.site);
+  if (assigneeName && assigneeName !== "Unknown") metaParts.push(assigneeName);
+  if (createdAt) {
+    try {
+      metaParts.push(formatDistanceToNow(new Date(createdAt), { addSuffix: true }));
+    } catch {
+      /* noop */
+    }
+  }
+
   return (
-    <div className="border rounded-md overflow-hidden bg-background/95 backdrop-blur-sm shadow-sm">
-      <Table>
-        <TableHeader className="bg-muted/80">
-          <TableRow>
-            <TableHead className="min-w-[180px]">Title</TableHead>
-            <TableHead className="hidden md:table-cell">Location</TableHead>
-            <TableHead>Date</TableHead>
-            <TableHead className="hidden sm:table-cell">Assignee</TableHead>
-            <TableHead>Status</TableHead>
-            <TableHead className="text-center">Days</TableHead>
-            <TableHead className="text-center">Sync</TableHead>
-          </TableRow>
-        </TableHeader>
-        <TableBody>
-          {reports.map((r, index) => {
-            const days = getDaysOpen(r);
-            const daysColor = getDaysOpenColor(days, r.status);
-            const dateStr = getReportDate(r, type);
-            const parsed = dateStr ? parseLocalDate(dateStr) : null;
+    <li
+      role="button"
+      tabIndex={0}
+      onClick={() => {
+        triggerHaptic("light");
+        onRowClick(report);
+      }}
+      onKeyDown={(e) => {
+        if (e.key === "Enter" || e.key === " ") {
+          e.preventDefault();
+          triggerHaptic("light");
+          onRowClick(report);
+        }
+      }}
+      className={cn(
+        "group relative flex items-center gap-3 overflow-hidden rounded-xl border border-border bg-card transition-colors hover:bg-accent/30 cursor-pointer",
+        compact ? "py-2 pr-2" : "py-3 pr-3",
+      )}
+    >
+      {/* 3px accent bar */}
+      <span
+        aria-hidden
+        className={cn("absolute left-0 top-0 h-full w-[3px]", accentClass)}
+      />
 
-            return (
-              <TableRow
-                key={r.id}
-                className={cn("cursor-pointer hover:bg-muted/50", index % 2 === 0 && "bg-muted/20")}
-                onClick={() => {
-                  triggerHaptic('light');
-                  onRowClick(r);
-                }}
-              >
-                <TableCell className="font-semibold text-sm">{r.organization || 'Untitled'}</TableCell>
-                <TableCell className="hidden md:table-cell text-sm text-muted-foreground">{r.location || '—'}</TableCell>
-                <TableCell className="text-sm text-muted-foreground font-mono">
-                  {parsed ? format(parsed, "MMM d, yyyy") : '—'}
-                </TableCell>
-                <TableCell className="hidden sm:table-cell">
-                  <div className="flex items-center gap-2">
-                    <Avatar className="h-5 w-5">
-                      <AvatarImage src={getAvatarUrl(r, type) || undefined} />
-                      <AvatarFallback className="text-[10px] bg-primary/10 text-primary">
-                        {getAssigneeName(r, type).charAt(0).toUpperCase()}
-                      </AvatarFallback>
-                    </Avatar>
-                    <span className="text-sm text-muted-foreground">{getAssigneeName(r, type)}</span>
-                  </div>
-                </TableCell>
-                <TableCell>
-                  <Badge variant={r.status === 'completed' ? 'default' : 'secondary'} className="text-xs">
-                    {r.status}
-                  </Badge>
-                </TableCell>
-                <TableCell className="text-center">
-                  <span className={cn("px-2 py-0.5 rounded text-xs font-mono", daysColor)}>
-                    {r.status === 'completed' ? '—' : days}
+      {/* Icon tile */}
+      <div
+        className={cn(
+          "ml-3 flex shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary",
+          compact ? "h-9 w-9" : "h-10 w-10",
+        )}
+      >
+        <Icon className={compact ? "h-4 w-4" : "h-5 w-5"} />
+      </div>
+
+      {/* Primary column */}
+      <div className="flex min-w-0 flex-1 flex-col">
+        <div
+          className="truncate text-base font-semibold leading-tight"
+          style={{ fontFamily: "Georgia, 'Times New Roman', serif" }}
+        >
+          {report.organization || "Untitled"}
+        </div>
+        {metaParts.length > 0 && (
+          <div className="mt-0.5 truncate text-xs text-muted-foreground">
+            {metaParts.join(" · ")}
+          </div>
+        )}
+      </div>
+
+      {/* Inspector chip — hidden <sm */}
+      <div className="hidden sm:flex shrink-0 items-center gap-1.5 max-w-[140px]">
+        <Avatar className="h-6 w-6">
+          <AvatarImage src={avatarUrl || undefined} alt={assigneeName} />
+          <AvatarFallback className="text-[10px] bg-primary/10 text-primary">
+            {initials}
+          </AvatarFallback>
+        </Avatar>
+        <span className="truncate text-xs text-muted-foreground">{firstName}</span>
+      </div>
+
+      {/* Status pill */}
+      {status && (
+        <span
+          className={cn(
+            "shrink-0 rounded-full px-2.5 py-0.5 text-xs font-medium capitalize",
+            getStatusPillClasses(status),
+          )}
+        >
+          {status.replace(/[_-]/g, " ")}
+        </span>
+      )}
+
+      {/* Inspection custom status badge (passed via getStatusBadge) */}
+      {getStatusBadge && type === "inspection" && (
+        <div className="hidden md:block shrink-0">{getStatusBadge(report)}</div>
+      )}
+
+      {/* Invoiced pill */}
+      {isAdmin && isInvoiced && (
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <span className="hidden md:inline-flex shrink-0 items-center gap-1 rounded-full bg-red-500/10 px-2.5 py-0.5 text-xs font-semibold text-red-600 ring-1 ring-inset ring-red-300/60 backdrop-blur-sm dark:text-red-400 dark:ring-red-900">
+              INVOICED ✓
+            </span>
+          </TooltipTrigger>
+          {invoicedMeta && (
+            <TooltipContent>
+              {(() => {
+                const profile = invoicedMeta.invoiced_by
+                  ? profilesById?.get(invoicedMeta.invoiced_by)
+                  : null;
+                const byName = profile
+                  ? [profile.first_name, profile.last_name].filter(Boolean).join(" ").trim() ||
+                    "Unknown"
+                  : invoicedMeta.invoiced_by
+                  ? "Unknown"
+                  : null;
+                let when = "";
+                try {
+                  when = format(new Date(invoicedMeta.invoiced_at), "PP · p");
+                } catch {
+                  /* noop */
+                }
+                return (
+                  <span>
+                    {when}
+                    {byName ? ` · by ${byName}` : ""}
                   </span>
-                </TableCell>
-                <TableCell className="text-center">
-                  {r.synced_at ? (
-                    <Check className="w-4 h-4 text-green-600 mx-auto" />
-                  ) : (
-                    <Cloud className="w-4 h-4 text-muted-foreground mx-auto" />
-                  )}
-                </TableCell>
-              </TableRow>
-            );
-          })}
-        </TableBody>
-      </Table>
-    </div>
+                );
+              })()}
+            </TooltipContent>
+          )}
+        </Tooltip>
+      )}
+
+      {/* Sync chip */}
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <span className="shrink-0 inline-flex items-center justify-center text-muted-foreground">
+            {isSynced ? (
+              pendingPhotos > 0 ? (
+                <UploadCloud className="h-4 w-4 text-amber-500" />
+              ) : (
+                <Check className="h-4 w-4 text-emerald-600" />
+              )
+            ) : (
+              <Cloud className="h-4 w-4" />
+            )}
+          </span>
+        </TooltipTrigger>
+        <TooltipContent>
+          {isSynced
+            ? pendingPhotos > 0
+              ? `Synced — ${pendingPhotos} photo${pendingPhotos === 1 ? "" : "s"} uploading`
+              : "Synced"
+            : "Local only"}
+        </TooltipContent>
+      </Tooltip>
+
+      {/* Date — hidden <md */}
+      <div className="hidden md:block shrink-0 text-xs text-muted-foreground tabular-nums w-[92px] text-right">
+        {parsed ? format(parsed, "MMM d, yyyy") : "—"}
+      </div>
+
+      {/* Kebab */}
+      <DropdownMenu>
+        <DropdownMenuTrigger asChild onClick={(e) => e.stopPropagation()}>
+          <Button
+            variant="ghost"
+            size="icon"
+            className="h-8 w-8 shrink-0"
+            onClick={(e) => {
+              e.stopPropagation();
+              triggerHaptic("light");
+            }}
+          >
+            <MoreVertical className="h-4 w-4" />
+          </Button>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align="end" onClick={(e) => e.stopPropagation()}>
+          <DropdownMenuItem
+            onClick={(e) => {
+              e.stopPropagation();
+              onRowClick(report);
+            }}
+          >
+            Open
+          </DropdownMenuItem>
+          {report.pdf_url && (
+            <DropdownMenuItem
+              onClick={(e) => {
+                e.stopPropagation();
+                window.open(report.pdf_url, "_blank");
+              }}
+            >
+              <Download className="w-4 h-4 mr-2" />
+              Download PDF
+            </DropdownMenuItem>
+          )}
+          {isAdmin && status === "completed" && onToggleInvoiced && (
+            <DropdownMenuItem
+              onClick={(e) => {
+                e.stopPropagation();
+                onToggleInvoiced(report, type);
+              }}
+              className={
+                isInvoiced
+                  ? "text-amber-600 focus:text-amber-600"
+                  : "text-red-600 focus:text-red-600"
+              }
+            >
+              <Receipt className="w-4 h-4 mr-2" />
+              {isInvoiced ? "Remove Invoice" : "Mark Invoice"}
+            </DropdownMenuItem>
+          )}
+          {onDelete && (
+            <DropdownMenuItem
+              onClick={(e) => {
+                e.stopPropagation();
+                onDelete(report);
+              }}
+              className="text-destructive focus:text-destructive"
+            >
+              <Trash2 className="w-4 h-4 mr-2" />
+              Delete
+            </DropdownMenuItem>
+          )}
+        </DropdownMenuContent>
+      </DropdownMenu>
+    </li>
+  );
+}
+
+export function ReportListView({
+  reports,
+  type,
+  onRowClick,
+  onDelete,
+  compact,
+  isAdmin,
+  invoicedReportIds,
+  invoicedMetaById,
+  onToggleInvoiced,
+  profilesById,
+  getStatusBadge,
+}: ReportListViewProps) {
+  return (
+    <ul className={cn("flex flex-col", compact ? "gap-1.5" : "gap-2")}>
+      {reports.map((r) => (
+        <ReportRow
+          key={r.id}
+          report={r}
+          type={type}
+          onRowClick={onRowClick}
+          onDelete={onDelete}
+          compact={compact}
+          isAdmin={isAdmin}
+          invoicedReportIds={invoicedReportIds}
+          invoicedMetaById={invoicedMetaById}
+          onToggleInvoiced={onToggleInvoiced}
+          profilesById={profilesById}
+          getStatusBadge={getStatusBadge}
+        />
+      ))}
+    </ul>
   );
 }
