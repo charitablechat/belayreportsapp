@@ -103,6 +103,7 @@ function ReportRow({
   onToggleInvoiced,
   profilesById,
   getStatusBadge,
+  twoColumn,
 }: {
   report: any;
   type: ReportType;
@@ -222,7 +223,7 @@ function ReportRow({
       </div>
 
       {/* Status pill */}
-      {status && (
+      {status && !(twoColumn && isAdmin && isInvoiced && status === "completed") && (
         <span
           className={cn(
             "shrink-0 rounded-full px-2.5 py-0.5 text-xs font-medium capitalize",
@@ -409,6 +410,7 @@ export function ReportListView({
           onToggleInvoiced={onToggleInvoiced}
           profilesById={profilesById}
           getStatusBadge={getStatusBadge}
+          twoColumn={twoColumn}
         />
       ))}
     </ul>
