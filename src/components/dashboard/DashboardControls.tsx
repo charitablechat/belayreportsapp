@@ -1,6 +1,6 @@
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Button } from "@/components/ui/button";
-import { LayoutGrid, List } from "lucide-react";
+import { LayoutGrid, List, Columns2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { SortOption, GroupOption, ViewMode } from "@/hooks/useDashboardFilters";
 
@@ -51,18 +51,29 @@ export function DashboardControls({
         <Button
           variant="ghost"
           size="icon"
-          className={cn("h-8 w-8 rounded-none", viewMode === 'grid' && "bg-accent")}
-          onClick={() => onViewModeChange('grid')}
-        >
-          <LayoutGrid className="w-4 h-4" />
-        </Button>
-        <Button
-          variant="ghost"
-          size="icon"
+          aria-label="List"
           className={cn("h-8 w-8 rounded-none", viewMode === 'list' && "bg-accent")}
           onClick={() => onViewModeChange('list')}
         >
           <List className="w-4 h-4" />
+        </Button>
+        <Button
+          variant="ghost"
+          size="icon"
+          aria-label="Split"
+          className={cn("h-8 w-8 rounded-none", viewMode === 'split' && "bg-accent")}
+          onClick={() => onViewModeChange('split')}
+        >
+          <Columns2 className="w-4 h-4" />
+        </Button>
+        <Button
+          variant="ghost"
+          size="icon"
+          aria-label="Grid"
+          className={cn("h-8 w-8 rounded-none", viewMode === 'grid' && "bg-accent")}
+          onClick={() => onViewModeChange('grid')}
+        >
+          <LayoutGrid className="w-4 h-4" />
         </Button>
       </div>
     </div>
