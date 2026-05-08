@@ -14,6 +14,15 @@ name: Lovable daily digest
 # Why daily (not per-commit): a per-commit alert would essentially
 # replicate `main-broken-alert` and recreate the email noise we're
 # trying to remove.
+#
+# Conditional posting (added in PR #160-follow-up): the digest only
+# opens/comments on the issue when at least one budget gate currently
+# fails on main — i.e. when there's an actionable overshoot a human
+# might want to absorb (by bumping `.eslint-any-budget` /
+# `.bundle-size-budget`) or roll back. If Lovable's day was all small
+# typed edits that fit within the existing budgets, no email is sent.
+# This addresses the "too many noisy daily emails" feedback while
+# preserving the cumulative-cost surface for genuine overshoots.
 
 on:
   schedule:
@@ -67,12 +76,93 @@ jobs:
             echo "COMMITS_EOF"
           } >> "$GITHUB_OUTPUT"
 
-      - name: Open or update digest issue
+      # Only run the budget gates when there ARE Lovable commits in the
+      # last 24 h. Otherwise the digest is a no-op and the rest of the
+      # job exits cheaply without spending Actions minutes on bun install
+      # / build / eslint.
+      - uses: oven-sh/setup-bun@v2
         if: ${{ steps.collect.outputs.found != '0' }}
+        with:
+          bun-version: latest
+
+      # Every probe step from here on uses `continue-on-error: true` so
+      # that a failure in any one step (e.g. Lovable shipped a tsc error
+      # in the build) does not silently suppress the entire notification
+      # pipeline. The `decide` and post steps below use `if: always()`
+      # plus an explicit `found != '0'` guard so they run regardless of
+      # any prior step failure. This is the only automated check on
+      # Lovable-pushes-to-main (CI is skipped per ci.yml), so the
+      # post-failure path needs to be robust.
+      - name: Install dependencies
+        id: install
+        if: ${{ steps.collect.outputs.found != '0' }}
+        continue-on-error: true
+        run: bun install --frozen-lockfile
+
+      # Run lint:any-budget WITHOUT Lovable grace (this is a `schedule`
+      # event, not a `push`, so `isLovableMainPush()` returns false and
+      # the script honours its own FAIL exit code). Skip if install
+      # failed (eslint won't be available); decide step will catch the
+      # install failure separately.
+      - name: Probe lint:any-budget
+        id: any_budget
+        if: ${{ steps.collect.outputs.found != '0' && steps.install.outcome == 'success' }}
+        continue-on-error: true
+        run: bun run lint:any-budget
+
+      - name: Build (for bundle-size probe)
+        id: build
+        if: ${{ steps.collect.outputs.found != '0' && steps.install.outcome == 'success' }}
+        continue-on-error: true
+        run: bun run build
+
+      # Bundle-size probe only runs if build succeeded — otherwise
+      # `dist/` is missing and the script fails with a misleading 'no
+      # files found' that we'd attribute to bundle-size overshoot.
+      # decide step still names a build failure separately.
+      - name: Probe bundle-size:budget
+        id: bundle_size
+        if: ${{ steps.collect.outputs.found != '0' && steps.build.outcome == 'success' }}
+        continue-on-error: true
+        run: bun run bundle-size:budget
+
+      # Decide whether to post. We post if ANY probe / build / install
+      # outcome is anything other than 'success'. `outcome` is one of
+      # 'success' / 'failure' / 'skipped' / 'cancelled'. Skipped happens
+      # when a step's `if:` was false (e.g. install failed so we didn't
+      # try eslint). Treating skipped-after-failure as a reportable
+      # condition is correct: SOMETHING is wrong, the team should know.
+      - name: Decide whether to post
+        id: decide
+        if: ${{ always() && steps.collect.outputs.found != '0' }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          install='${{ steps.install.outcome }}'
+          any='${{ steps.any_budget.outcome }}'
+          build='${{ steps.build.outcome }}'
+          bundle='${{ steps.bundle_size.outcome }}'
+          if [ "$install" != "success" ] || [ "$any" != "success" ] || [ "$build" != "success" ] || [ "$bundle" != "success" ]; then
+            echo "overshoot=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "overshoot=false" >> "$GITHUB_OUTPUT"
+          fi
+          echo "install_outcome=$install" >> "$GITHUB_OUTPUT"
+          echo "any_outcome=$any" >> "$GITHUB_OUTPUT"
+          echo "build_outcome=$build" >> "$GITHUB_OUTPUT"
+          echo "bundle_outcome=$bundle" >> "$GITHUB_OUTPUT"
+          echo "Decision: install=$install any=$any build=$build bundle=$bundle"
+
+      - name: Open or update digest issue
+        if: ${{ always() && steps.collect.outputs.found != '0' && steps.decide.outputs.overshoot == 'true' }}
         uses: actions/github-script@v7
         env:
           COMMIT_LIST: ${{ steps.collect.outputs.commits }}
           COMMIT_COUNT: ${{ steps.collect.outputs.found }}
+          INSTALL_OUTCOME: ${{ steps.decide.outputs.install_outcome }}
+          ANY_OUTCOME: ${{ steps.decide.outputs.any_outcome }}
+          BUILD_OUTCOME: ${{ steps.decide.outputs.build_outcome }}
+          BUNDLE_OUTCOME: ${{ steps.decide.outputs.bundle_outcome }}
         with:
           script: |
             const label = 'lovable-budget-overshoot';
@@ -80,6 +170,23 @@ jobs:
             const today = new Date().toISOString().slice(0, 10);
             const commitList = process.env.COMMIT_LIST || '(none)';
             const count = process.env.COMMIT_COUNT;
+            // Each outcome is one of 'success' / 'failure' / 'skipped' /
+            // 'cancelled'. We treat 'failure' as a budget overshoot we
+            // want to name; 'skipped' as a downstream consequence of an
+            // earlier failure (don't double-report). Build / install
+            // failures are surfaced separately because they're a
+            // different class of problem than a budget overshoot.
+            const installFailed = process.env.INSTALL_OUTCOME === 'failure';
+            const buildFailed = process.env.BUILD_OUTCOME === 'failure';
+            const anyOvershot = process.env.ANY_OUTCOME === 'failure';
+            const bundleOvershot = process.env.BUNDLE_OUTCOME === 'failure';
+
+            const overshotGates = [
+              installFailed ? '`bun install` (lockfile broken?)' : null,
+              anyOvershot ? '`lint:any-budget`' : null,
+              buildFailed ? '`bun run build` (likely tsc/vite error)' : null,
+              bundleOvershot ? '`bundle-size:budget`' : null,
+            ].filter(Boolean).join(' + ');
 
             // Find or create the rolling issue.
             let issue = null;
@@ -95,16 +202,22 @@ jobs:
             }
 
             const body = [
-              `### ${today} — ${count} Lovable commit(s) on main`,
+              `### ${today} — ${count} Lovable commit(s) on main — ⚠️ overshoot detected`,
+              '',
+              `**Failing gate(s):** ${overshotGates}`,
+              '',
+              '**Lovable commits in last 24 h:**',
               '',
               commitList,
               '',
-              '> The `lovable-grace` bypass in `scripts/lovable-grace.mjs`',
-              '> downgrades the `lint:any-budget` and `bundle-size:budget`',
-              '> gates from FAIL to WARN for direct pushes by the Lovable',
-              '> bot. This issue tracks those commits so the team can',
-              '> review the cumulative cost. Engineering PRs are still',
-              '> held to the budgets.',
+              '> Posted because the budget gate(s) above currently fail on `main`.',
+              '> A human can absorb the cost by bumping the corresponding budget',
+              '> file (`.eslint-any-budget` or `.bundle-size-budget`) in a PR,',
+              '> or roll back the offending commit. Engineering PRs are still',
+              '> held to the budgets via the same gates.',
+              '',
+              '> _Days where Lovable commits all fit within current budgets',
+              '> produce no email, by design (PR #160-follow-up)._',
             ].join('\n');
 
             if (!issue) {
