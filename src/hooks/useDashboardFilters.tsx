@@ -286,9 +286,9 @@ export function useDashboardFilters(
         const db = getReportDate(b, type) || '';
         return db.localeCompare(da);
       });
-      completed = completed.slice(0, 9);
+      completed = completed.slice(0, 10);
       return {
-        groups: [{ label: 'Last 9 Completed', count: completed.length, items: completed }],
+        groups: [{ label: 'Last 10 Completed', count: completed.length, items: completed }],
         totalItems: completed.length,
         totalPages: 1,
         currentPage: 1,
