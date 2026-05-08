@@ -81,7 +81,7 @@ function getAccentClasses(createdAt: string | null | undefined, status?: string)
 function getStatusPillClasses(status: string | undefined): string {
   switch (status) {
     case "completed":
-      return "bg-emerald-50 text-emerald-700 ring-1 ring-inset ring-emerald-200 dark:bg-emerald-950/40 dark:text-emerald-300 dark:ring-emerald-900";
+      return "bg-sky-50 text-sky-700 ring-1 ring-inset ring-sky-200 dark:bg-sky-950/40 dark:text-sky-300 dark:ring-sky-900";
     case "in_progress":
     case "in-progress":
       return "bg-amber-50 text-amber-700 ring-1 ring-inset ring-amber-200 dark:bg-amber-950/40 dark:text-amber-300 dark:ring-amber-900";
