@@ -12,6 +12,7 @@ import { DashboardSearchBar } from "@/components/dashboard/DashboardSearchBar";
 import { DashboardFilters } from "@/components/dashboard/DashboardFilters";
 import { DashboardQuickFilters } from "@/components/dashboard/DashboardQuickFilters";
 import { DashboardControls } from "@/components/dashboard/DashboardControls";
+import { ViewModeToggle } from "@/components/dashboard/ViewModeToggle";
 import { DashboardPagination } from "@/components/dashboard/DashboardPagination";
 import { DashboardStatsBar } from "@/components/dashboard/DashboardStatsBar";
 import { useDashboardFilters } from "@/hooks/useDashboardFilters";
