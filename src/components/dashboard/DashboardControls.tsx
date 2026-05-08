@@ -1,22 +1,16 @@
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Button } from "@/components/ui/button";
-import { LayoutGrid, List, Columns2 } from "lucide-react";
-import { cn } from "@/lib/utils";
-import type { SortOption, GroupOption, ViewMode } from "@/hooks/useDashboardFilters";
+import type { SortOption, GroupOption } from "@/hooks/useDashboardFilters";
 
 interface DashboardControlsProps {
   sortBy: SortOption;
   onSortChange: (v: SortOption) => void;
   groupBy: GroupOption;
   onGroupChange: (v: GroupOption) => void;
-  viewMode: ViewMode;
-  onViewModeChange: (v: ViewMode) => void;
 }
 
 export function DashboardControls({
   sortBy, onSortChange,
   groupBy, onGroupChange,
-  viewMode, onViewModeChange,
 }: DashboardControlsProps) {
   return (
     <div className="flex flex-wrap items-center gap-2">
@@ -46,36 +40,6 @@ export function DashboardControls({
           <SelectItem value="assignee">Inspector/Trainer</SelectItem>
         </SelectContent>
       </Select>
-
-      <div className="flex border rounded-md overflow-hidden">
-        <Button
-          variant="ghost"
-          size="icon"
-          aria-label="List"
-          className={cn("h-8 w-8 rounded-none", viewMode === 'list' && "bg-accent")}
-          onClick={() => onViewModeChange('list')}
-        >
-          <List className="w-4 h-4" />
-        </Button>
-        <Button
-          variant="ghost"
-          size="icon"
-          aria-label="Split"
-          className={cn("h-8 w-8 rounded-none", viewMode === 'split' && "bg-accent")}
-          onClick={() => onViewModeChange('split')}
-        >
-          <Columns2 className="w-4 h-4" />
-        </Button>
-        <Button
-          variant="ghost"
-          size="icon"
-          aria-label="Grid"
-          className={cn("h-8 w-8 rounded-none", viewMode === 'grid' && "bg-accent")}
-          onClick={() => onViewModeChange('grid')}
-        >
-          <LayoutGrid className="w-4 h-4" />
-        </Button>
-      </div>
     </div>
   );
 }

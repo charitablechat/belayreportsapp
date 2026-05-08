@@ -12,6 +12,7 @@ import { DashboardSearchBar } from "@/components/dashboard/DashboardSearchBar";
 import { DashboardFilters } from "@/components/dashboard/DashboardFilters";
 import { DashboardQuickFilters } from "@/components/dashboard/DashboardQuickFilters";
 import { DashboardControls } from "@/components/dashboard/DashboardControls";
+import { ViewModeToggle } from "@/components/dashboard/ViewModeToggle";
 import { DashboardPagination } from "@/components/dashboard/DashboardPagination";
 import { DashboardStatsBar } from "@/components/dashboard/DashboardStatsBar";
 import { useDashboardFilters } from "@/hooks/useDashboardFilters";
@@ -431,8 +432,6 @@ export function DashboardReportsSection({
             onSortChange={(v) => updateFilter('sortBy', v)}
             groupBy={filters.groupBy}
             onGroupChange={(v) => updateFilter('groupBy', v)}
-            viewMode={filters.viewMode}
-            onViewModeChange={(v) => updateFilter('viewMode', v)}
           />
         </div>
 
@@ -635,14 +634,23 @@ export function DashboardReportsSection({
                             open={!isCollapsed}
                             onOpenChange={() => isCompleted ? setCompletedCollapsed(!completedCollapsed) : toggleGroupCollapse(group.label)}
                           >
-                            <CollapsibleTrigger className="flex items-center gap-2 mb-3 w-full text-left hover:opacity-80 transition-opacity">
-                              {isCollapsed ? <ChevronRight className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
-                              <span className="font-semibold text-sm">{group.label}</span>
-                              <Badge variant="secondary" className="text-xs">{group.count}</Badge>
-                              {isCollapsed && getCollapsedSummary() && (
-                                <span className="text-xs text-muted-foreground ml-2 truncate">{getCollapsedSummary()}</span>
-                              )}
-                            </CollapsibleTrigger>
+                            <div className="flex items-center gap-2 mb-3">
+                              <CollapsibleTrigger asChild>
+                                <button className="flex items-center gap-2 flex-1 min-w-0 text-left hover:opacity-80 transition-opacity">
+                                  {isCollapsed ? <ChevronRight className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+                                  <span className="font-semibold text-sm">{group.label}</span>
+                                  <Badge variant="secondary" className="text-xs">{group.count}</Badge>
+                                  {isCollapsed && getCollapsedSummary() && (
+                                    <span className="text-xs text-muted-foreground ml-2 truncate">{getCollapsedSummary()}</span>
+                                  )}
+                                </button>
+                              </CollapsibleTrigger>
+                              <ViewModeToggle
+                                viewMode={filters.viewMode}
+                                onViewModeChange={(v) => updateFilter('viewMode', v)}
+                                className="ml-auto flex-shrink-0"
+                              />
+                            </div>
                             <CollapsibleContent>
                               {filters.viewMode === 'list' || filters.viewMode === 'split' ? (
                                 <ReportListView
@@ -688,7 +696,16 @@ export function DashboardReportsSection({
                           </Collapsible>
                         )}
                         {!showHeader && (
-                          filters.viewMode === 'list' || filters.viewMode === 'split' ? (
+                          <>
+                            {gi === 0 && (
+                              <div className="flex justify-end mb-3">
+                                <ViewModeToggle
+                                  viewMode={filters.viewMode}
+                                  onViewModeChange={(v) => updateFilter('viewMode', v)}
+                                />
+                              </div>
+                            )}
+                            {filters.viewMode === 'list' || filters.viewMode === 'split' ? (
                             <ReportListView
                               reports={group.items}
                               type={currentType}
@@ -727,7 +744,8 @@ export function DashboardReportsSection({
                                 );
                               })}
                             </div>
-                          )
+                          )}
+                          </>
                         )}
                       </div>
                     );
