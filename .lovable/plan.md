@@ -1,20 +1,26 @@
-## Push non-invoiced reports to top of Completed group
+## Goal
 
-In the Completed section, reports that haven't been invoiced should appear first; invoiced ones drop below. This makes outstanding billing work visible at a glance without changing the within-status order otherwise.
+Whenever the app finishes applying a PWA update (whether the user clicked "Install Update" or it happens automatically in the future), show a clear celebration so the user knows the update landed: a confetti burst plus a styled toast with the new version.
 
-### Change
+## How the signal already works
 
-**File:** `src/components/dashboard/DashboardReportsSection.tsx`
+`src/hooks/usePWAUpdate.tsx` already writes `localStorage['pwa-update-just-applied'] = 'true'` right before reloading the page in `updateServiceWorker(...)`. After reload, the hook silently removes that key. We'll repurpose this as the "an update was just applied" signal so any future auto-update path that goes through `updateServiceWorker` is automatically covered.
 
-In the `groups.map(...)` render block (around line 613), when `group.label === 'Completed'` and `invoicedReportIds` is available, derive a sorted copy:
+## Changes
 
-- Stable partition: items where `!invoicedReportIds.has(report.id)` first, then invoiced items, preserving each subgroup's existing date-desc order.
-- Use the sorted array as `group.items` when rendering rows/cards.
+1. **`src/hooks/usePWAUpdate.tsx`** — Remove the silent auto-clear of `pwa-update-just-applied` in the mount effect (lines 64-68). Leave the write site untouched. The new component below becomes the sole consumer/clearer, eliminating a race.
 
-Apply in both branches that render groups (the `showHeader` Collapsible branch and the `!showHeader` branch) so list, split, and grid views all benefit.
+2. **New `src/components/pwa/UpdateAppliedCelebration.tsx`** — A tiny mount-only component:
+   - On mount, read `localStorage['pwa-update-just-applied']`. If absent, render nothing.
+   - Otherwise, immediately remove the key (idempotent — guards against StrictMode double-mount), then:
+     - Call `triggerCompletionConfetti()` from `src/lib/confetti.ts` (already mobile-tuned).
+     - Show a Retro-Tech Terminal–styled `toast.success('UPDATE INSTALLED', { description: 'Now running v{APP_VERSION}', duration: 5000 })` reusing the same monospace/green styling pattern as `showHardSavedToast` in `src/lib/toast-helpers.ts` so it matches the existing brutalist aesthetic.
+   - Returns `null`.
 
-### Out of scope
+3. **`src/App.tsx`** — Mount `<UpdateAppliedCelebration />` next to `<UpdateNotification />` (around line 181) so it runs once per app load.
 
-- No change to grouping, filtering, or pagination logic in `useDashboardFilters`.
-- No change to Drafts ordering.
-- No styling changes — invoiced rows keep the teal tint and `$ Invoiced` chip.
+## Out of scope
+
+- No changes to update-detection logic, the "UPDATE AVAILABLE" banner, sync flows, version-check polling, or any styling beyond the new toast.
+- No new dependencies — `canvas-confetti` and `sonner` are already in use.
+- We are not changing whether updates apply automatically; we're only ensuring that whenever they do, the user gets feedback.
