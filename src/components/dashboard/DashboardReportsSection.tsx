@@ -634,14 +634,23 @@ export function DashboardReportsSection({
                             open={!isCollapsed}
                             onOpenChange={() => isCompleted ? setCompletedCollapsed(!completedCollapsed) : toggleGroupCollapse(group.label)}
                           >
-                            <CollapsibleTrigger className="flex items-center gap-2 mb-3 w-full text-left hover:opacity-80 transition-opacity">
-                              {isCollapsed ? <ChevronRight className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
-                              <span className="font-semibold text-sm">{group.label}</span>
-                              <Badge variant="secondary" className="text-xs">{group.count}</Badge>
-                              {isCollapsed && getCollapsedSummary() && (
-                                <span className="text-xs text-muted-foreground ml-2 truncate">{getCollapsedSummary()}</span>
-                              )}
-                            </CollapsibleTrigger>
+                            <div className="flex items-center gap-2 mb-3">
+                              <CollapsibleTrigger asChild>
+                                <button className="flex items-center gap-2 flex-1 min-w-0 text-left hover:opacity-80 transition-opacity">
+                                  {isCollapsed ? <ChevronRight className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+                                  <span className="font-semibold text-sm">{group.label}</span>
+                                  <Badge variant="secondary" className="text-xs">{group.count}</Badge>
+                                  {isCollapsed && getCollapsedSummary() && (
+                                    <span className="text-xs text-muted-foreground ml-2 truncate">{getCollapsedSummary()}</span>
+                                  )}
+                                </button>
+                              </CollapsibleTrigger>
+                              <ViewModeToggle
+                                viewMode={filters.viewMode}
+                                onViewModeChange={(v) => updateFilter('viewMode', v)}
+                                className="ml-auto flex-shrink-0"
+                              />
+                            </div>
                             <CollapsibleContent>
                               {filters.viewMode === 'list' || filters.viewMode === 'split' ? (
                                 <ReportListView
