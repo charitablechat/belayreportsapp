@@ -72,7 +72,7 @@ function getTypeIcon(type: ReportType) {
 function getAccentClasses(createdAt: string | null | undefined, status?: string) {
   if (!createdAt) return "bg-slate-300";
   const age = differenceInDays(new Date(), new Date(createdAt));
-  if (status === "completed") return "bg-emerald-500";
+  if (status === "completed") return "bg-sky-500";
   if (age <= 7) return "bg-emerald-500";
   if (age <= 30) return "bg-amber-500";
   return "bg-slate-400";
