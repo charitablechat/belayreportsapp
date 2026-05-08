@@ -303,6 +303,7 @@ export const SyncPulse = ({ className }: { className?: string }) => {
             'w-2 h-2 rounded-full transition-all duration-500 ease-in-out',
             phase === 'syncing' && 'bg-blue-500 opacity-90 animate-[pulse_2s_ease-in-out_infinite]',
             phase === 'error' && 'bg-destructive opacity-100',
+            phase === 'paused' && 'bg-yellow-500 opacity-90 animate-[pulse_2.5s_ease-in-out_infinite]',
             phase === 'unsynced' && 'bg-amber-500 opacity-80',
             phase === 'synced' && 'bg-green-500 opacity-100',
             phase === 'idle' && 'opacity-0',
