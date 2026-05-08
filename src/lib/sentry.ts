@@ -11,6 +11,15 @@
  * never enters the dev/preview module graph. Statically importing it caused
  * Vite's optimizer to bundle a second React copy, breaking React context
  * (`useContext` returned null inside RouterProvider).
+ *
+ * `beforeSend` runs `classifyRecoverableSentryEvent` on every event to
+ * downgrade well-known recoverable / browser-designed errors (Web Locks
+ * tab-coordination handoffs, Safari connection-closing on Supabase Storage
+ * uploads, etc.) from `error` to `warning` so they stop generating
+ * high-priority email alerts but stay visible in the dashboard for trend
+ * review. This complements the call-site classifier in `log-error.ts`,
+ * which only sees errors that flow through the `logError()` seam —
+ * `beforeSend` catches third-party SDK errors that bypass `logError`.
  */
 
 const DSN =
@@ -25,6 +34,107 @@ function deriveEnvironment(): string {
   if (host === "rwreports.com" || host === "www.rwreports.com") return "production";
   if (host.endsWith("lovable.app")) return "preview";
   return "development";
+}
+
+/**
+ * Result of `classifyRecoverableSentryEvent`. `null` means "don't
+ * touch the event"; a non-null result means "downgrade severity and
+ * apply this fingerprint for grouping".
+ */
+export type SentryEventClassification = {
+  level: 'warning';
+  fingerprint: string[];
+} | null;
+
+/**
+ * Pure classifier for Sentry's `beforeSend` hook. Returns a downgrade
+ * directive when `(name, message)` matches a known recoverable /
+ * browser-designed error, otherwise `null`.
+ *
+ * Adding a new pattern here is the canonical way to silence Sentry
+ * email noise for an error class without changing the original
+ * throw / catch site — useful when the throw lives in a third-party
+ * SDK (Supabase Storage, Supabase Auth's Web Locks coordination,
+ * etc.).
+ *
+ * Caveats:
+ * - Match by `name + message` only. Do NOT match on stack frames
+ *   (minified in production, fragile across SDK updates).
+ * - Use exact-equality (`===`) for the `message` so a future SDK
+ *   update that changes the message string surfaces the new wording
+ *   as a fresh error instead of being silently swallowed.
+ * - Caller wins: `beforeSend` only applies the classification when
+ *   the event arrived without an explicit `level` override. (See
+ *   `runBeforeSend` below.)
+ */
+export function classifyRecoverableSentryEvent(
+  name: string,
+  message: string,
+): SentryEventClassification {
+  // Web Locks API tab-coordination handoff. Supabase Auth uses
+  // `navigator.locks.request(name, { steal: true })` to coordinate
+  // which tab leads token refresh; when a new tab opens it steals
+  // the lock from the previous leader, whose pending lock-holder
+  // promise rejects with this exact `AbortError`. Browser-designed
+  // behavior, no recovery action needed — the new tab is now
+  // leading and the old tab's auth session is unaffected.
+  if (name === 'AbortError' && message === 'Lock was stolen by another request') {
+    return {
+      level: 'warning',
+      fingerprint: ['AbortError', 'lock-stolen', '{{default}}'],
+    };
+  }
+
+  // Supabase Storage upload failure surfaced through Safari's
+  // notoriously generic 'Load failed' message (Safari maps most
+  // network failures — connection-closed, DNS hiccup, brief
+  // offline blip — to that same string). Recoverable: PR #151's
+  // L5 jittered-backoff stamps `nextRetryAt` on the photo and the
+  // next sync cycle retries it automatically.
+  if (name === 'StorageUnknownError' && message === 'Load failed') {
+    return {
+      level: 'warning',
+      fingerprint: ['StorageUnknownError', 'load-failed', '{{default}}'],
+    };
+  }
+
+  return null;
+}
+
+/**
+ * Apply `classifyRecoverableSentryEvent` to a Sentry event. Exported
+ * for unit testing; called from inside the `beforeSend` closure in
+ * `initSentry`. Mutates and returns the event so the SDK keeps
+ * delivering it (returning `null` would drop it silently, which is
+ * NOT what we want — we still want trend visibility in the dashboard,
+ * just not an email).
+ *
+ * Caller-supplied `event.level` (e.g. via `logError`'s call-site
+ * classifier in `log-error.ts`) wins: we never override an explicit
+ * non-`error` level. The SDK's default for `captureException` is
+ * `error`, so 'error' here = 'no caller classification'.
+ */
+export function runBeforeSend<
+  E extends {
+    level?: string;
+    fingerprint?: string[];
+  },
+>(event: E, hint?: { originalException?: unknown }): E {
+  try {
+    if (event.level && event.level !== 'error') return event;
+    const ex = hint?.originalException;
+    if (!ex || typeof ex !== 'object') return event;
+    const e = ex as { name?: unknown; message?: unknown };
+    const name = typeof e.name === 'string' ? e.name : '';
+    const message = typeof e.message === 'string' ? e.message : '';
+    const classification = classifyRecoverableSentryEvent(name, message);
+    if (!classification) return event;
+    event.level = classification.level;
+    event.fingerprint = classification.fingerprint;
+  } catch {
+    // beforeSend must never break event delivery.
+  }
+  return event;
 }
 
 export async function initSentry(): Promise<void> {
@@ -45,6 +155,7 @@ export async function initSentry(): Promise<void> {
       environment: deriveEnvironment(),
       sendDefaultPii: true,
       tracesSampleRate: 0,
+      beforeSend: (event, hint) => runBeforeSend(event, hint),
     });
     sentryModule = Sentry;
     initialized = true;
