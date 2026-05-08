@@ -36,7 +36,7 @@ export interface GroupedReports {
 }
 
 const GRID_PAGE_SIZE = 24;
-const LIST_PAGE_SIZE = 50;
+const LIST_PAGE_SIZE = 10;
 
 function tierOf(r: any): number {
   if (r.status === 'completed') return 3;
