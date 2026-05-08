@@ -27,6 +27,16 @@ import { triggerHaptic } from "@/lib/haptics";
 import { getReportDate, getAssigneeName } from "@/lib/report-utils";
 import { usePWA } from "@/hooks/usePWA";
 import { cn } from "@/lib/utils";
+import { getReportAgeState, type ReportAgeState } from "./ReportCard";
+
+const ROW_TINT_CLASSES: Record<ReportAgeState, string> = {
+  critical: "bg-red-100 hover:bg-red-100/80 dark:bg-red-950/40 dark:hover:bg-red-950/60",
+  warning: "bg-yellow-50 hover:bg-yellow-100/80 dark:bg-yellow-950/30 dark:hover:bg-yellow-950/50",
+  completed: "bg-emerald-50 hover:bg-emerald-100/80 dark:bg-emerald-950/30 dark:hover:bg-emerald-950/50",
+  default: "bg-card hover:bg-accent/30",
+};
+const INVOICED_TINT =
+  "bg-purple-100 hover:bg-purple-100/80 dark:bg-purple-950/40 dark:hover:bg-purple-950/60";
 
 type ReportType = "inspection" | "training" | "daily";
 
@@ -162,7 +172,8 @@ function ReportRow({
         }
       }}
       className={cn(
-        "group relative flex items-center gap-3 overflow-hidden rounded-xl border border-border bg-card transition-colors hover:bg-accent/30 cursor-pointer",
+        "group relative flex items-center gap-3 overflow-hidden rounded-xl border border-border transition-colors cursor-pointer",
+        isAdmin && isInvoiced ? INVOICED_TINT : ROW_TINT_CLASSES[getReportAgeState(createdAt, status ?? "")],
         compact ? "py-2 pr-2" : "py-3 pr-3",
       )}
     >
