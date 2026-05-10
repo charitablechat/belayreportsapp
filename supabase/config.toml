@@ -45,6 +45,8 @@ project_id = "ssgzcgvygnsrqalisshx"
     verify_jwt = false
   [functions.process-email-queue]
     verify_jwt = true
+  [functions.prune-old-backups]
+    verify_jwt = false
   [functions.restore-full-backup]
     verify_jwt = false
   [functions.scheduled-backup-notify]
