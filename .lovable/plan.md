@@ -1,26 +1,53 @@
+# Reduce Lovable Cloud Burn
+
 ## Goal
 
-Whenever the app finishes applying a PWA update (whether the user clicked "Install Update" or it happens automatically in the future), show a clear celebration so the user knows the update landed: a confetti burst plus a styled toast with the new version.
+Cut baseline Cloud cost by eliminating wasteful background work. Primary win: stop polling an empty email queue every 5 seconds.
 
-## How the signal already works
+## Findings
 
-`src/hooks/usePWAUpdate.tsx` already writes `localStorage['pwa-update-just-applied'] = 'true'` right before reloading the page in `updateServiceWorker(...)`. After reload, the hook silently removes that key. We'll repurpose this as the "an update was just applied" signal so any future auto-update path that goes through `updateServiceWorker` is automatically covered.
+- `process-email-queue` cron runs **every 5 seconds** → ~17,280 invocations/day even when both queues are empty (currently 0 messages in both `q_auth_emails` and `q_transactional_emails`).
+- `daily-backup-8pm-et` cron has the **anon key hardcoded inline** instead of using `webhook_config` like every other cron.
+- `weekly-full-database-backup` runs Sundays at 03:00 with no idempotency guard — if it fires twice (e.g. retry after a transient failure) it does a second full table scan and storage write.
+- `backup_history` shows 0 rows in the last 7 days despite the weekly cron — worth a sanity check but not blocking.
 
 ## Changes
 
-1. **`src/hooks/usePWAUpdate.tsx`** — Remove the silent auto-clear of `pwa-update-just-applied` in the mount effect (lines 64-68). Leave the write site untouched. The new component below becomes the sole consumer/clearer, eliminating a race.
+### 1. Slow the email queue poller (biggest impact)
 
-2. **New `src/components/pwa/UpdateAppliedCelebration.tsx`** — A tiny mount-only component:
-   - On mount, read `localStorage['pwa-update-just-applied']`. If absent, render nothing.
-   - Otherwise, immediately remove the key (idempotent — guards against StrictMode double-mount), then:
-     - Call `triggerCompletionConfetti()` from `src/lib/confetti.ts` (already mobile-tuned).
-     - Show a Retro-Tech Terminal–styled `toast.success('UPDATE INSTALLED', { description: 'Now running v{APP_VERSION}', duration: 5000 })` reusing the same monospace/green styling pattern as `showHardSavedToast` in `src/lib/toast-helpers.ts` so it matches the existing brutalist aesthetic.
-   - Returns `null`.
+Reschedule `process-email-queue` from `5 seconds` to `30 seconds`. Keeps email delivery feel near-instant for users (Auth emails are batched server-side anyway and 30s is well within tolerance) while cutting invocations **6×**: from ~17,280/day to ~2,880/day.
 
-3. **`src/App.tsx`** — Mount `<UpdateAppliedCelebration />` next to `<UpdateNotification />` (around line 181) so it runs once per app load.
+The existing SQL guard already short-circuits when both queues are empty, so this purely reduces wakeup overhead.
+
+### 2. Move hardcoded anon key to `webhook_config`
+
+Rewrite the `daily-backup-8pm-et` cron to look up the webhook secret from `webhook_config` (matching the pattern used by `weekly-full-database-backup` and `check-overdue-reports-daily`). Removes a long-lived anon key embedded in `pg_cron`'s command text and matches existing security posture.
+
+### 3. Add a 6-day idempotency guard to weekly backup
+
+Wrap the `weekly-full-database-backup` cron body so it skips the call if a successful backup already exists in `backup_history` within the past 6 days. One-line `WHERE NOT EXISTS (...)` guard. Prevents accidental double runs from costing a second full DB scan.
 
 ## Out of scope
 
-- No changes to update-detection logic, the "UPDATE AVAILABLE" banner, sync flows, version-check polling, or any styling beyond the new toast.
-- No new dependencies — `canvas-confetti` and `sonner` are already in use.
-- We are not changing whether updates apply automatically; we're only ensuring that whenever they do, the user gets feedback.
+- No edge-function code changes — only cron scheduling and SQL.
+- Not touching `weekly-trigger-health-check`, `nightly-retention-cleanup`, or `cleanup-expired-deleted-records` — those are infrequent and cheap.
+- Not converting email queue to event-driven (would require a Postgres NOTIFY listener in the edge function); 30s polling is the simplest, safest win.
+
+## Technical details
+
+All three changes are done via `cron.unschedule(...)` + `cron.schedule(...)` in a single Supabase insert call (per project convention — these jobs reference user-specific URLs/secrets so they go through the **insert** tool, not migrations).
+
+### Expected savings
+
+
+| Job                         | Before              | After     | Daily invocations saved   |
+| --------------------------- | ------------------- | --------- | ------------------------- |
+| process-email-queue         | every 5s            | every 30s | ~14,400/day               |
+| weekly-full-database-backup | possible double-run | guarded   | up to 1 full DB export/wk |
+
+
+Roughly an order-of-magnitude reduction in baseline edge-function invocations.
+
+## Verification
+
+After applying, re-query `cron.job` to confirm the new schedules, and watch `backup_history` plus `pgmq.q_*` over the next 24h to confirm emails still flow and backups still record.
