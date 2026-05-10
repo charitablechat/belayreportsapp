@@ -1406,6 +1406,65 @@ function classifyLocalStorageError(
 }
 
 /**
+ * Evict the oldest already-synced `rw_backup_*` snapshots from localStorage
+ * to free up at least `bytesNeeded` bytes (UTF-16 estimate).
+ *
+ * Mirrors the pattern in `local-backup-ledger.ts:evictIfNeeded` but is invoked
+ * reactively from `emergencyLocalStorageFallback` only when a write has just
+ * thrown `QuotaExceededError`. Unsynced snapshots are never evicted — they are
+ * still the only client-side copy of the user's work.
+ *
+ * Returns the number of bytes actually freed (caller decides whether to retry).
+ *
+ * Exported for unit testing only — production callers should use
+ * `emergencyLocalStorageFallback` which calls this internally.
+ */
+export function evictSyncedBackupSnapshots(bytesNeeded: number): number {
+  if (typeof localStorage === 'undefined' || bytesNeeded <= 0) return 0;
+
+  type Entry = { key: string; ts: number; bytes: number };
+  const synced: Entry[] = [];
+
+  for (let i = 0; i < localStorage.length; i++) {
+    const key = localStorage.key(i);
+    if (!key || !key.startsWith('rw_backup_')) continue;
+    const value = localStorage.getItem(key);
+    if (!value) continue;
+    const bytes = key.length * 2 + value.length * 2; // UTF-16
+    try {
+      const snapshot = JSON.parse(value) as { synced?: boolean; ts?: number };
+      if (snapshot && snapshot.synced === true) {
+        synced.push({ key, ts: typeof snapshot.ts === 'number' ? snapshot.ts : 0, bytes });
+      }
+    } catch {
+      // Corrupt snapshot — safe to evict (it was unreadable anyway)
+      synced.push({ key, ts: 0, bytes });
+    }
+  }
+
+  // Oldest first
+  synced.sort((a, b) => a.ts - b.ts);
+
+  let freed = 0;
+  for (const entry of synced) {
+    if (freed >= bytesNeeded) break;
+    try {
+      localStorage.removeItem(entry.key);
+      freed += entry.bytes;
+    } catch {
+      // removeItem can in theory throw on a corrupt store — ignore and keep going
+    }
+  }
+
+  if (freed > 0) {
+    console.warn(
+      `[Offline Storage] Evicted ${synced.length} synced snapshot(s), freed ${(freed / 1024).toFixed(1)}KB`,
+    );
+  }
+  return freed;
+}
+
+/**
  * Emergency localStorage fallback for write operations when circuit breaker is open.
  * Attempts to persist critical report data via the backup ledger so it isn't lost.
  *
@@ -1442,7 +1501,27 @@ function emergencyLocalStorageFallback(operationName: string, data: unknown): bo
       children: {},
     };
     json = JSON.stringify(snapshot);
-    localStorage.setItem(key, json);
+    try {
+      localStorage.setItem(key, json);
+    } catch (writeErr: unknown) {
+      // On quota exhaustion, evict the oldest already-synced snapshots and
+      // retry once. Unsynced snapshots are never evicted — they may be the
+      // only client-side copy of the user's in-progress work.
+      if (classifyLocalStorageError(writeErr) === 'localstorage_quota') {
+        // Aim to free ~2x the inbound payload so subsequent emergency saves
+        // in the same session don't immediately re-trip the same quota.
+        const bytesNeeded = (key.length + json.length) * 2 * 2;
+        const freed = evictSyncedBackupSnapshots(bytesNeeded);
+        if (freed > 0) {
+          // Retry once. If this throws again, the outer catch handles it.
+          localStorage.setItem(key, json);
+        } else {
+          throw writeErr;
+        }
+      } else {
+        throw writeErr;
+      }
+    }
     console.warn(
       `[Offline Storage] Emergency localStorage save for ${reportType} ${id.substring(0, 8)} (${(json.length / 1024).toFixed(1)}KB)`,
     );
