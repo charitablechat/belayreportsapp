@@ -1,62 +1,70 @@
-## Status
+# Fix scroll-to-top on Equipment / Systems / Ziplines inputs
 
-The structural fix for this exact bug landed in the previous turn — confirmed still in place on disk:
+## Root-cause findings
 
-- `GlobalAutocomplete.tsx` — `handleTriggerFocus` no longer re-seeds the local buffer on every focus event; `PopoverContent` has `onOpenAutoFocus={(e) => e.preventDefault()}`; `justSelectedRef` window extended to 400 ms.
-- `DatabaseAutocomplete.tsx`, `HistoryAutocomplete.tsx`, `OrganizationAutocomplete.tsx` — same two changes (no-clobber focus, no-steal popover focus).
-- `SystemTypeSelect.tsx`, `EquipmentTypeCombobox.tsx` — popover now pre-seeds its CommandInput with the current `value` (instead of empty) on open, caret at end, and refuses to commit empty over a non-empty value.
-- Existing `GlobalAutocomplete.dropdown-persistence.test.tsx` (5 cases) still passes.
+There is **no `<form>` wrapper** around any report (Inspection, Training, Daily Assessment), so the "scroll to top on Enter" symptom is **not** caused by implicit form submission. It is caused by two interacting behaviors:
 
-What's missing is what the user is now asking for explicitly: **regression tests that lock the tablet behaviour and prove desktop is unaffected**, plus a live browser pass to confirm the lived experience.
+### Cause A — Smooth-center scroll in `focusNextCell`
+`src/lib/table-focus-utils.ts` is invoked on Enter inside every cell input across `EquipmentTable.tsx`, `OperatingSystemsTable.tsx`, and `ZiplinesTable.tsx`. After advancing focus it calls:
 
-## What this plan adds
+```text
+next.scrollIntoView({ behavior: 'smooth', block: 'center', inline: 'nearest' });
+```
 
-### 1. Lock the tablet contract with new unit tests
+`block: 'center'` re-centers the next field in the viewport on **every** Enter press — even when the field is already fully visible. On long tables this produces a pronounced "jump" that users perceive as a reset. When the row's selector finds no matching focusables (which happens when a `DebouncedInput` is wrapped or when the next cell is a rich-text editor or `Popover` trigger), the function falls through to the "next row" branch and re-centers an off-screen element, scrolling far away from where the user was working.
 
-`src/components/__tests__/GlobalAutocomplete.tablet-edit-persistence.test.tsx` (new):
-- Tap-focus a populated field, type extra characters directly into the trigger Input, blur to outside → committed value equals original + suffix (not just the suffix, not empty).
-- Tap-focus a populated field, blur, re-focus, type → in-flight buffer survives the refocus (proves `if (!isEditing)` guard works).
-- Open the popover on a populated field, close without typing → value unchanged (proves no empty-commit).
-- Open popover and confirm the inner CommandInput does NOT receive focus on open (proves `onOpenAutoFocus` preventDefault).
+### Cause B — Row remount on `onImmediateSave`
+Every cell `onBlur` calls `onImmediateSave`. That handler mutates parent state (and, after a sync, swaps `temp-xxx` row IDs for real UUIDs). Because rows use `key={item.id}`, the row **remounts** when the ID changes. The browser then drops focus to `<body>` and, with `scroll-behavior: smooth` enabled globally, scroll-anchoring sometimes resets the document scroll position toward the top — especially on tablets where the soft keyboard had been pushing the layout.
 
-`src/components/inspection/__tests__/EquipmentTypeCombobox.edit-existing.test.tsx` (new, mirror in `src/components/__tests__/SystemTypeSelect.edit-existing.test.tsx`):
-- Open popover on a field with existing value → CommandInput is pre-filled with that value.
-- Clear the CommandInput to empty and close → original value preserved.
-- Edit a character and close → committed value reflects the edit, `onAddOption` fires only when the edited value is genuinely new.
+`GlobalEnterToBlur` already snapshots and restores `scrollY` across two animation frames, but it only fires on the **Enter** path. The **blur-by-tap** path (Cause B) has no such guard, which is why users also see the jump when they simply tap elsewhere.
 
-### 2. Desktop regression guard
+### Why prior `e.preventDefault()` calls didn't fix it
+Each cell's `onKeyDown` already calls `e.preventDefault()`, but `GlobalEnterToBlur` runs first in the capture phase with `stopPropagation()`, so the cell's `onKeyDown` (including its `focusNextCell` call) often never runs from Enter. The visible jump on Enter is therefore Cause A only when the global handler is bypassed (e.g., focus is inside an open combobox `aria-expanded="true"`, or the target is a textarea without Cmd/Ctrl). The blur path is Cause B.
 
-A "desktop keyboard navigation" case in each new test file:
-- Focus trigger via keyboard (Tab) → popover opens; Down-arrow + Enter selects a history item; subsequent Tab leaves the field with that value committed exactly once. Confirms the touch-oriented fix didn't break arrow/Enter desktop flows.
+## Fix
 
-### 3. Live preview verification
+Three small, surgical changes — all presentation-layer, no business-logic impact.
 
-Drive the browser tool against the dashboard and an active report at tablet viewport (820×1180) and desktop (1366×768):
-- Operating Systems table: tap a populated system-type cell, append text, tap outside → text now equals original + appended.
-- Equipment Type cell: same.
-- Inspector / On-site contact: type, lose focus briefly, refocus, continue typing → no characters lost.
-- Desktop: Tab-traverse the same fields, pick an existing dropdown option with arrow keys + Enter → field commits and tab advances normally.
+### 1. `src/lib/table-focus-utils.ts` — stop the re-centering jump
+Change the two `scrollIntoView` calls to:
+```text
+scrollIntoView({ behavior: 'auto', block: 'nearest', inline: 'nearest' });
+```
+`block: 'nearest'` scrolls only when the target is actually off-screen; `behavior: 'auto'` removes the smooth animation that makes the movement look like a reset. No focus behavior changes.
 
-### 4. Out of scope
+### 2. New helper `preserveScroll(fn)` in `src/lib/table-focus-utils.ts`
+A tiny wrapper that snapshots `window.scrollX/scrollY`, invokes `fn()`, and restores scroll across two `requestAnimationFrame`s — mirroring what `GlobalEnterToBlur` already does. Reused everywhere `onImmediateSave` runs.
 
-- Backend / RLS / verifiedWrite (unrelated to focus bug).
-- Other input wrappers (`DebouncedInput`, `VoiceRichTextEditor`) — they don't have the popover focus-steal pattern.
+```text
+export function preserveScroll<T>(fn: () => T): T {
+  const x = window.scrollX, y = window.scrollY;
+  const result = fn();
+  requestAnimationFrame(() => {
+    window.scrollTo(x, y);
+    requestAnimationFrame(() => window.scrollTo(x, y));
+  });
+  return result;
+}
+```
 
-## Files to add
+### 3. Wrap blur handlers in `EquipmentTable.tsx`, `OperatingSystemsTable.tsx`, `ZiplinesTable.tsx`
+Replace bare `onBlur={onImmediateSave}` with `onBlur={() => preserveScroll(() => onImmediateSave?.())}` on every cell input in those three files. Same for the custom blur callbacks (production year normalizer, divider text, etc.) and the Enter `onKeyDown` paths — wrap the `onImmediateSave?.()` call there too, so even if the row remounts after save, the page lands where it started.
 
-- `src/components/__tests__/GlobalAutocomplete.tablet-edit-persistence.test.tsx`
-- `src/components/__tests__/SystemTypeSelect.edit-existing.test.tsx`
-- `src/components/inspection/__tests__/EquipmentTypeCombobox.edit-existing.test.tsx`
-
-No production source files change in this turn — the fix already shipped. This turn is verification + regression locking.
+No other files change. `GlobalEnterToBlur`, `useEnterToBlur`, and `useKeyboardAvoidance` already handle scroll correctly and are left alone.
 
 ## Verification
 
-```
-bunx vitest run src/components/__tests__/GlobalAutocomplete.dropdown-persistence.test.tsx \
-                src/components/__tests__/GlobalAutocomplete.tablet-edit-persistence.test.tsx \
-                src/components/__tests__/SystemTypeSelect.edit-existing.test.tsx \
-                src/components/inspection/__tests__/EquipmentTypeCombobox.edit-existing.test.tsx
-```
+1. **Vitest**: add a focused unit test on `preserveScroll` (mock `window.scrollTo`, assert it is called twice with the saved coords across two rAF ticks).
+2. **Browser preview at 820×1180 (tablet) and 1366×768 (desktop)** on `/inspection/:id`:
+   - Scroll halfway down the Equipment list, tap a cell, type, press Enter → scroll stays put, focus advances to next cell.
+   - Same flow on Ziplines and Operating Systems tabs.
+   - Tap an input, then tap blank space (blur without Enter) → scroll stays put.
+   - Open the Equipment type combobox on a populated row → no scroll movement (was already fixed in the prior tablet-edit work; this change does not touch combobox code).
+3. **Existing regression tests** for combobox edit persistence must still pass (`bunx vitest run` on the three test files added previously).
 
-Then browser-tool walkthrough at both viewports as above.
+## Out of scope
+
+- No business-logic / save-pipeline changes.
+- No changes to combobox, rich-text editor, or keyboard-avoidance behavior.
+- No changes to `GlobalEnterToBlur` / `useEnterToBlur` (already correct).
+- No changes to `useScrollRestoration` (that handles route changes, not in-form interaction).
