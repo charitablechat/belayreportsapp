@@ -79,22 +79,28 @@ export const KnownIssuesCard = ({ isSuperAdmin }: KnownIssuesCardProps) => {
     
     try {
       const user = await getUserWithCache();
-      
-      const { error } = await supabase
+
+      const { data, error } = await supabase
         .from('app_announcements')
         .update({
           content: editContent,
           updated_at: new Date().toISOString(),
           updated_by: user?.id
         })
-        .eq('id', announcement.id);
+        .eq('id', announcement.id)
+        .select('id, content, updated_at')
+        .maybeSingle();
 
       if (error) throw error;
+      if (!data) {
+        toast.error("Save blocked — you don't have permission to edit Known Issues.");
+        return;
+      }
 
       setAnnouncement({
         ...announcement,
-        content: editContent,
-        updated_at: new Date().toISOString()
+        content: data.content,
+        updated_at: data.updated_at,
       });
       setIsEditing(false);
       toast.success('Known issues updated successfully');
