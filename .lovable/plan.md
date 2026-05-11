@@ -1,81 +1,62 @@
-## What's actually happening
+## Status
 
-The "text disappears" symptom on tablets is not a save/persistence failure — it's an input-focus bug in our combobox-style fields. Three patterns produce the same visible result:
+The structural fix for this exact bug landed in the previous turn — confirmed still in place on disk:
 
-**A. `SystemTypeSelect` and `EquipmentTypeCombobox` (used in operating-systems / equipment tables)**
+- `GlobalAutocomplete.tsx` — `handleTriggerFocus` no longer re-seeds the local buffer on every focus event; `PopoverContent` has `onOpenAutoFocus={(e) => e.preventDefault()}`; `justSelectedRef` window extended to 400 ms.
+- `DatabaseAutocomplete.tsx`, `HistoryAutocomplete.tsx`, `OrganizationAutocomplete.tsx` — same two changes (no-clobber focus, no-steal popover focus).
+- `SystemTypeSelect.tsx`, `EquipmentTypeCombobox.tsx` — popover now pre-seeds its CommandInput with the current `value` (instead of empty) on open, caret at end, and refuses to commit empty over a non-empty value.
+- Existing `GlobalAutocomplete.dropdown-persistence.test.tsx` (5 cases) still passes.
 
-The visible field is a *button*, not a text input. The actual editable text lives inside a `CommandInput` (the popover's search box), and it starts **empty** every time the popover opens. On tablets the soft keyboard immediately covers the popover, so the user thinks they're editing the existing text in place. Whatever they type is the *search filter*, and on popover close `handleOpenChange` does `commitValue(searchValue)` → the original value is replaced with the search string. If they tap outside without typing anything the original survives, but the moment they touch a key, the value is overwritten.
+What's missing is what the user is now asking for explicitly: **regression tests that lock the tablet behaviour and prove desktop is unaffected**, plus a live browser pass to confirm the lived experience.
 
-**B. `GlobalAutocomplete` (used for inspector names, contacts, equipment, ziplines, etc.)**
+## What this plan adds
 
-The trigger is a real `Input`, but `handleTriggerFocus` does three things on *every* focus event:
-1. `setIsEditing(true)`
-2. `setInputValue(value)` — overwrites any in-flight local edit with the prop value
-3. `setOpen(true)` — opens the popover, whose `PopoverContent` does not preventDefault on `onOpenAutoFocus`, so focus jumps to the inner `CommandInput`.
+### 1. Lock the tablet contract with new unit tests
 
-Two failure modes follow:
-- User starts typing in the trigger Input, taps away briefly (tablet keyboard collapse / autocorrect bar / scroll), refocuses → `handleTriggerFocus` re-runs → `setInputValue(value)` wipes everything they typed.
-- User taps an already-populated field intending to edit. Focus lands on the trigger, then Radix's FocusScope hands focus to the inner `CommandInput`. The CommandInput is bound to the same `inputValue` state. They type to edit "Old Value" → on close `handleOpenChange` commits `inputValue` (the search term) → original is replaced.
+`src/components/__tests__/GlobalAutocomplete.tablet-edit-persistence.test.tsx` (new):
+- Tap-focus a populated field, type extra characters directly into the trigger Input, blur to outside → committed value equals original + suffix (not just the suffix, not empty).
+- Tap-focus a populated field, blur, re-focus, type → in-flight buffer survives the refocus (proves `if (!isEditing)` guard works).
+- Open the popover on a populated field, close without typing → value unchanged (proves no empty-commit).
+- Open popover and confirm the inner CommandInput does NOT receive focus on open (proves `onOpenAutoFocus` preventDefault).
 
-**C. After picking a dropdown option, continuing to type**
+`src/components/inspection/__tests__/EquipmentTypeCombobox.edit-existing.test.tsx` (new, mirror in `src/components/__tests__/SystemTypeSelect.edit-existing.test.tsx`):
+- Open popover on a field with existing value → CommandInput is pre-filled with that value.
+- Clear the CommandInput to empty and close → original value preserved.
+- Edit a character and close → committed value reflects the edit, `onAddOption` fires only when the edited value is genuinely new.
 
-`handleSelect` calls `setInputValue(selectedValue); setIsEditing(false)` then `justSelectedRef` suppresses the focus-restore reopen (covered by the existing dropdown-persistence test). But the next genuine refocus runs `handleTriggerFocus` again, which (1) reopens the popover and (2) overwrites `inputValue` — same loss pattern as B.
+### 2. Desktop regression guard
 
-The tablet specificity comes from soft-keyboard focus thrash and from users not seeing the popover (it's hidden under the keyboard), so they don't realize they're typing into a filter, not the field.
+A "desktop keyboard navigation" case in each new test file:
+- Focus trigger via keyboard (Tab) → popover opens; Down-arrow + Enter selects a history item; subsequent Tab leaves the field with that value committed exactly once. Confirms the touch-oriented fix didn't break arrow/Enter desktop flows.
 
-## Fix
+### 3. Live preview verification
 
-### 1. `SystemTypeSelect` and `EquipmentTypeCombobox`
+Drive the browser tool against the dashboard and an active report at tablet viewport (820×1180) and desktop (1366×768):
+- Operating Systems table: tap a populated system-type cell, append text, tap outside → text now equals original + appended.
+- Equipment Type cell: same.
+- Inspector / On-site contact: type, lose focus briefly, refocus, continue typing → no characters lost.
+- Desktop: Tab-traverse the same fields, pick an existing dropdown option with arrow keys + Enter → field commits and tab advances normally.
 
-- When the popover opens, **pre-seed `searchValue` with the current `value`** instead of `""`, and place the caret at end of the CommandInput so editing existing text is the obvious affordance.
-- Keep `searchValue` as the single source of edit truth (it already commits on close).
-- When the popover closes with `searchValue.trim() === value.trim()`, don't call `commitValue` — no-op (already true via the `trimmed !== value` guard, keep it).
-- If the user clears the field to empty inside the popover and closes, treat that as a no-op (don't blow away a non-empty value with empty). Only commit when `searchValue.trim()` is non-empty OR the user explicitly used the clear button (we'll add a separate "Clear" affordance if requested — out of scope for this fix).
+### 4. Out of scope
 
-### 2. `GlobalAutocomplete`
+- Backend / RLS / verifiedWrite (unrelated to focus bug).
+- Other input wrappers (`DebouncedInput`, `VoiceRichTextEditor`) — they don't have the popover focus-steal pattern.
 
-- Stop unconditionally overwriting `inputValue` on focus. Change `handleTriggerFocus` so it only seeds `inputValue` from `value` **when transitioning from non-editing to editing AND `inputValue` is empty or equals the previous committed value**. In effect: don't clobber an in-flight edit.
-- Add `onOpenAutoFocus={(e) => e.preventDefault()}` to `PopoverContent` so opening the popover doesn't yank focus away from the trigger Input. The trigger Input is already wired to update `inputValue` via its own `onChange`, so users edit directly in the field they tapped.
-- Keep the CommandInput in the popover but make it cosmetic-only on touch: its `onValueChange` should not be writable by the user — render it as a non-input "current edit" preview, or simply hide it on touch devices and let the trigger Input drive filtering. Simpler: keep CommandInput but bind its `value` one-way to `inputValue` and route its `onValueChange` through the same setter — but ALSO ensure the trigger keeps focus so users never tab into the CommandInput unintentionally. The `onOpenAutoFocus` preventDefault is the primary fix; CommandInput stays for keyboard users.
-- In `handleOpenChange(false)`, before committing `inputValue`, guard with `inputValue.trim().length > 0` — never overwrite a previous non-empty value with an empty commit unless the user used the explicit Clear (X) button. The X button still goes through `handleClear` which explicitly calls `onChange("")` — unchanged.
-- After `handleSelect`, also clear `justSelectedRef` only after a longer 400ms window for slow tablet focus restores (current 200ms occasionally races on iPad Safari).
+## Files to add
 
-### 3. Audit pass on remaining autocomplete components
+- `src/components/__tests__/GlobalAutocomplete.tablet-edit-persistence.test.tsx`
+- `src/components/__tests__/SystemTypeSelect.edit-existing.test.tsx`
+- `src/components/inspection/__tests__/EquipmentTypeCombobox.edit-existing.test.tsx`
 
-Read `DatabaseAutocomplete.tsx`, `HistoryAutocomplete.tsx`, `OrganizationAutocomplete.tsx` and apply the same two rules:
-- Never overwrite local edit buffer on refocus.
-- Never commit empty-string over a previously non-empty value implicitly; require an explicit clear gesture.
-
-### 4. Regression tests
-
-Add a `GlobalAutocomplete.tablet-edit-persistence.test.tsx` companion to the existing dropdown-persistence test covering:
-- Tap populated field, type additional characters in the trigger Input, tap outside → committed value equals original + typed suffix (not just the suffix, not empty).
-- Tap populated field, lose focus, refocus, type → in-flight buffer survives the refocus.
-- Tap populated field, open popover, close without typing → value unchanged.
-
-Add an `EquipmentTypeCombobox.edit-existing.test.tsx` covering:
-- Open popover on a field with existing value → CommandInput is pre-filled with that value with caret at end.
-- Edit a character, close → committed value reflects the edit.
-- Close with empty searchValue → original value preserved (no implicit wipe).
-
-### 5. No backend or data-layer changes
-
-This is entirely a frontend input-state fix. RLS, `verifiedWrite`, and the announcements save path are not involved — those were the previous turn's audit and are already in place.
-
-## Files touched
-
-- `src/components/SystemTypeSelect.tsx`
-- `src/components/inspection/EquipmentTypeCombobox.tsx`
-- `src/components/GlobalAutocomplete.tsx`
-- `src/components/DatabaseAutocomplete.tsx` (audit + same fixes if pattern matches)
-- `src/components/HistoryAutocomplete.tsx` (audit + same fixes if pattern matches)
-- `src/components/OrganizationAutocomplete.tsx` (audit + same fixes if pattern matches)
-- `src/components/__tests__/GlobalAutocomplete.tablet-edit-persistence.test.tsx` (new)
-- `src/components/__tests__/EquipmentTypeCombobox.edit-existing.test.tsx` (new)
+No production source files change in this turn — the fix already shipped. This turn is verification + regression locking.
 
 ## Verification
 
-- `bunx vitest run src/components/__tests__/GlobalAutocomplete.dropdown-persistence.test.tsx src/components/__tests__/GlobalAutocomplete.tablet-edit-persistence.test.tsx src/components/__tests__/EquipmentTypeCombobox.edit-existing.test.tsx`
-- Manual: in the preview, open an existing inspection's Operating Systems table on a narrow viewport, tap a system-type cell with text, type one extra character, tap outside → text now reads original + new character.
-- Manual: same on Equipment table.
-- Manual: on a populated inspector-name field, focus → blur → focus → type → text still survives.
+```
+bunx vitest run src/components/__tests__/GlobalAutocomplete.dropdown-persistence.test.tsx \
+                src/components/__tests__/GlobalAutocomplete.tablet-edit-persistence.test.tsx \
+                src/components/__tests__/SystemTypeSelect.edit-existing.test.tsx \
+                src/components/inspection/__tests__/EquipmentTypeCombobox.edit-existing.test.tsx
+```
+
+Then browser-tool walkthrough at both viewports as above.
