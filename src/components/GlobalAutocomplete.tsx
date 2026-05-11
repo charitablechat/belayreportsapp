@@ -597,7 +597,18 @@ export function GlobalAutocomplete({
           </div>
         </div>
       </PopoverAnchor>
-      <PopoverContent className="min-w-[--radix-popover-trigger-width] w-auto max-w-[calc(100vw-2rem)] p-0 shadow-lg border" align="start">
+      <PopoverContent
+        className="min-w-[--radix-popover-trigger-width] w-auto max-w-[calc(100vw-2rem)] p-0 shadow-lg border"
+        align="start"
+        onOpenAutoFocus={(e) => {
+          // Keep focus on the trigger Input. Without this, Radix's
+          // FocusScope moves focus into the inner CommandInput, which on
+          // tablets hides under the soft keyboard — users then type into
+          // a filter box thinking they're editing the field, and on close
+          // the search term silently overwrites the field value.
+          e.preventDefault();
+        }}
+      >
         <Command shouldFilter={false}>
           <CommandInput
             placeholder={placeholder}
