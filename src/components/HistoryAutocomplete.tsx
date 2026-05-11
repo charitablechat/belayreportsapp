@@ -386,7 +386,11 @@ export default function HistoryAutocomplete({
           </div>
         </div>
       </PopoverTrigger>
-      <PopoverContent className="w-[calc(100vw-2rem)] sm:w-[300px] max-w-[300px] p-0" align="start">
+      <PopoverContent
+        className="w-[calc(100vw-2rem)] sm:w-[300px] max-w-[300px] p-0"
+        align="start"
+        onOpenAutoFocus={(e) => e.preventDefault()}
+      >
         <Command shouldFilter={true}>
           <CommandInput
             placeholder={placeholder}
