@@ -233,29 +233,43 @@ export function ReportOwnershipTool() {
     
     setIsUpdating(true);
     try {
-      let error;
-      
+      let error: unknown = null;
+      let affected: { id: string } | null = null;
+
       if (selectedReport.type === 'training') {
         const result = await supabase
           .from('trainings')
           .update({ inspector_id: newOwnerId })
-          .eq('id', selectedReport.id);
+          .eq('id', selectedReport.id)
+          .select('id')
+          .maybeSingle();
         error = result.error;
+        affected = result.data;
       } else if (selectedReport.type === 'inspection') {
         const result = await supabase
           .from('inspections')
           .update({ inspector_id: newOwnerId })
-          .eq('id', selectedReport.id);
+          .eq('id', selectedReport.id)
+          .select('id')
+          .maybeSingle();
         error = result.error;
+        affected = result.data;
       } else {
         const result = await supabase
           .from('daily_assessments')
           .update({ inspector_id: newOwnerId })
-          .eq('id', selectedReport.id);
+          .eq('id', selectedReport.id)
+          .select('id')
+          .maybeSingle();
         error = result.error;
+        affected = result.data;
       }
-      
+
       if (error) throw error;
+      if (!affected) {
+        // RLS filtered the row — the update silently did nothing.
+        throw new Error("Permission denied or record no longer exists. No rows were updated.");
+      }
       
       toast.success("Ownership reassigned successfully");
       setSelectedReport(null);
