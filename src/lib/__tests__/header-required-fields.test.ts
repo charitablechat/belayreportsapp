@@ -164,7 +164,7 @@ describe('REQUIRED_HEADER_FIELDS — schema alignment', () => {
    * is enough on its own to fail validation.
    */
 
-  const matrix: { kind: ReportKind; schema: typeof inspectionSchema; baseline: Record<string, unknown> }[] = [
+  const matrix: { kind: ReportKind; schema: any; baseline: Record<string, unknown> }[] = [
     { kind: 'inspection', schema: inspectionSchema, baseline: minimumValidRecord('inspection') },
     { kind: 'training', schema: trainingSchema, baseline: minimumValidRecord('training') },
     { kind: 'daily_assessment', schema: dailyAssessmentSchema, baseline: minimumValidRecord('daily_assessment') },
