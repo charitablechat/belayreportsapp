@@ -486,9 +486,16 @@ export function GlobalAutocomplete({
       justSelectedRef.current = false;
       return;
     }
-    setIsEditing(true);
-    setInputValue(value);
-    placeCursorAtEnd();
+    // Only seed inputValue from the prop `value` when transitioning into
+    // edit mode (from non-editing). Re-seeding on every focus event clobbers
+    // any in-flight local edit the user has typed but not yet committed —
+    // a frequent tablet failure mode where soft-keyboard / autocorrect bar
+    // briefly steals focus and returns it.
+    if (!isEditing) {
+      setIsEditing(true);
+      setInputValue(value);
+      placeCursorAtEnd();
+    }
     if (!open) {
       setOpen(true);
     }
