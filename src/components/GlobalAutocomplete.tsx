@@ -432,7 +432,10 @@ export function GlobalAutocomplete({
 
   const handleOpenChange = (isOpen: boolean) => {
     if (!isOpen) {
-      // Commit on close
+      // Commit on close. Never silently wipe a previously non-empty value
+      // with an empty buffer — that turns "tap the field, change my mind,
+      // tap outside" into a data-loss event on tablets where the popover
+      // is often hidden under the soft keyboard.
       if (isEditing && inputValue.trim()) {
         const trimmed = inputValue.trim();
         if (trimmed !== value) {
