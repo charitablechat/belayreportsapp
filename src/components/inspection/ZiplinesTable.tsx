@@ -9,7 +9,7 @@ import ResultSelect from "@/components/ResultSelect";
 import { GlobalAutocomplete } from "@/components/GlobalAutocomplete";
 import { Plus, Trash2 } from "lucide-react";
 import ItemPhotoUpload from "./ItemPhotoUpload";
-import { focusNextCell } from "@/lib/table-focus-utils";
+import { focusNextCell, preserveScroll } from "@/lib/table-focus-utils";
 import { useState, useCallback, useEffect, memo } from "react";
 import {
   AlertDialog,
