@@ -378,7 +378,7 @@ export function GlobalAutocomplete({
     // genuine user re-focus is never permanently suppressed if focus moved
     // elsewhere first (e.g. Enter → focusNextCell).
     justSelectedRef.current = true;
-    setTimeout(() => { justSelectedRef.current = false; }, 200);
+    setTimeout(() => { justSelectedRef.current = false; }, 400);
     onChange(selectedValue);
     saveToHistory(selectedValue);
     setOpen(false);
