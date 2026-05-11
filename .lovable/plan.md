@@ -1,89 +1,81 @@
-# Fix silent save failures + audit data persistence
+## What's actually happening
 
-## Root cause (confirmed)
+The "text disappears" symptom on tablets is not a save/persistence failure — it's an input-focus bug in our combobox-style fields. Three patterns produce the same visible result:
 
-`app_announcements` (the table behind **Known Issues** and **Developer Notes**) has RLS policies that gate `UPDATE` / `INSERT` on `is_admin_or_above()` — which is correct. But the **client code** in `KnownIssuesCard.tsx` and `DeveloperNotesCard.tsx` fires:
+**A. `SystemTypeSelect` and `EquipmentTypeCombobox` (used in operating-systems / equipment tables)**
 
-```ts
-await supabase.from('app_announcements').update({ content }).eq('announcement_type', 'known_issues')
-```
+The visible field is a *button*, not a text input. The actual editable text lives inside a `CommandInput` (the popover's search box), and it starts **empty** every time the popover opens. On tablets the soft keyboard immediately covers the popover, so the user thinks they're editing the existing text in place. Whatever they type is the *search filter*, and on popover close `handleOpenChange` does `commitValue(searchValue)` → the original value is replaced with the search string. If they tap outside without typing anything the original survives, but the moment they touch a key, the value is overwritten.
 
-…with **no `.select()` and no row-count check**. When RLS, a stale row, or a missing row causes the update to affect zero rows, PostgREST returns `{ data: null, error: null }`. The component then runs the success branch, shows "Saved", updates local state, and the edit silently vanishes on the next refetch.
+**B. `GlobalAutocomplete` (used for inspector names, contacts, equipment, ziplines, etc.)**
 
-This same fragile pattern (`update().eq()` with no verification) is used in many other write paths across the app, so any future RLS drift, ownership mismatch, or soft-delete race will fail silently the same way.
+The trigger is a real `Input`, but `handleTriggerFocus` does three things on *every* focus event:
+1. `setIsEditing(true)`
+2. `setInputValue(value)` — overwrites any in-flight local edit with the prop value
+3. `setOpen(true)` — opens the popover, whose `PopoverContent` does not preventDefault on `onOpenAutoFocus`, so focus jumps to the inner `CommandInput`.
 
-## Plan
+Two failure modes follow:
+- User starts typing in the trigger Input, taps away briefly (tablet keyboard collapse / autocorrect bar / scroll), refocuses → `handleTriggerFocus` re-runs → `setInputValue(value)` wipes everything they typed.
+- User taps an already-populated field intending to edit. Focus lands on the trigger, then Radix's FocusScope hands focus to the inner `CommandInput`. The CommandInput is bound to the same `inputValue` state. They type to edit "Old Value" → on close `handleOpenChange` commits `inputValue` (the search term) → original is replaced.
 
-### 1. Fix the immediate bug — Known Issues & Developer Notes
+**C. After picking a dropdown option, continuing to type**
 
-In both `src/components/dashboard/KnownIssuesCard.tsx` and `src/components/dashboard/DeveloperNotesCard.tsx`:
+`handleSelect` calls `setInputValue(selectedValue); setIsEditing(false)` then `justSelectedRef` suppresses the focus-restore reopen (covered by the existing dropdown-persistence test). But the next genuine refocus runs `handleTriggerFocus` again, which (1) reopens the popover and (2) overwrites `inputValue` — same loss pattern as B.
 
-- Switch the save mutation to:
-  ```ts
-  const { data, error } = await supabase
-    .from('app_announcements')
-    .update({ content, updated_by: user.id, updated_at: new Date().toISOString() })
-    .eq('announcement_type', 'known_issues') // or 'developer_notes'
-    .select('id, content, updated_at')
-    .maybeSingle();
-  ```
-- Treat `error` OR `!data` as failure → show a real destructive toast ("Save failed — you may not have permission. Your changes have not been saved.") and **do not** clear the dirty/edit state.
-- Only on a verified returned row: update local state from `data.content` (server truth), exit edit mode, success toast.
-- Add an "unsaved changes" guard so navigating away while dirty prompts the user.
-- Ensure the row always exists: add an idempotent upsert seed in the same migration below (one row per `announcement_type`).
+The tablet specificity comes from soft-keyboard focus thrash and from users not seeing the popover (it's hidden under the keyboard), so they don't realize they're typing into a filter, not the field.
 
-### 2. Self-healing migration on `app_announcements`
+## Fix
 
-- Guarantee exactly one row exists for each of `known_issues` and `developer_notes` (insert if missing).
-- Add a `UNIQUE` constraint on `announcement_type` so accidental duplicates can't appear.
-- Re-confirm RLS is `is_admin_or_above()` for INSERT/UPDATE (already correct per schema), and add an explicit `TO authenticated` on each policy for defense in depth.
+### 1. `SystemTypeSelect` and `EquipmentTypeCombobox`
 
-### 3. Codebase-wide audit of silent-write patterns
+- When the popover opens, **pre-seed `searchValue` with the current `value`** instead of `""`, and place the caret at end of the CommandInput so editing existing text is the obvious affordance.
+- Keep `searchValue` as the single source of edit truth (it already commits on close).
+- When the popover closes with `searchValue.trim() === value.trim()`, don't call `commitValue` — no-op (already true via the `trimmed !== value` guard, keep it).
+- If the user clears the field to empty inside the popover and closes, treat that as a no-op (don't blow away a non-empty value with empty). Only commit when `searchValue.trim()` is non-empty OR the user explicitly used the clear button (we'll add a separate "Clear" affordance if requested — out of scope for this fix).
 
-Sweep for `supabase.from(...).update(...)` / `.delete(...)` / `.upsert(...)` calls that **don't** chain `.select()` and don't inspect the result. Prioritized fix list:
+### 2. `GlobalAutocomplete`
 
-| Priority | Area | Why it matters |
-|---|---|---|
-| P0 | `app_announcements` (this bug) | Reproduced data loss |
-| P0 | `inspection_reports`, `training_reports`, `daily_assessment_reports` header writes | Highest stakes — legal/inspection record of truth |
-| P0 | Attestation / completion writes (`status`, `attestation_*`, `app_version_at_completion`) | Lock semantics depend on these landing |
-| P1 | Inspection items, equipment, standards, summary autosave | WIP loss = inspector rework |
-| P1 | Training section/sign-off writes | First-sign-wins integrity |
-| P1 | Daily-assessment checklist writes (`*_checks`, `*_of_day`) | Per-row autosave with no verification |
-| P1 | Photo metadata updates (caption, display_order, photo_section) | Caption sync memory rule depends on this |
-| P2 | `profiles` updates, `notification_preferences`, `user_roles` admin edits | Admin UX bug surface |
-| P2 | `equipment_type_options`, `system_type_options`, autocomplete tables | Custom-entry loss |
-| P2 | `organizations` upserts / auto-linking | Already memory-tracked |
-| P3 | Edge-function service-role writes | Spot-check only — bypass RLS, but verify they read back |
+- Stop unconditionally overwriting `inputValue` on focus. Change `handleTriggerFocus` so it only seeds `inputValue` from `value` **when transitioning from non-editing to editing AND `inputValue` is empty or equals the previous committed value**. In effect: don't clobber an in-flight edit.
+- Add `onOpenAutoFocus={(e) => e.preventDefault()}` to `PopoverContent` so opening the popover doesn't yank focus away from the trigger Input. The trigger Input is already wired to update `inputValue` via its own `onChange`, so users edit directly in the field they tapped.
+- Keep the CommandInput in the popover but make it cosmetic-only on touch: its `onValueChange` should not be writable by the user — render it as a non-input "current edit" preview, or simply hide it on touch devices and let the trigger Input drive filtering. Simpler: keep CommandInput but bind its `value` one-way to `inputValue` and route its `onValueChange` through the same setter — but ALSO ensure the trigger keeps focus so users never tab into the CommandInput unintentionally. The `onOpenAutoFocus` preventDefault is the primary fix; CommandInput stays for keyboard users.
+- In `handleOpenChange(false)`, before committing `inputValue`, guard with `inputValue.trim().length > 0` — never overwrite a previous non-empty value with an empty commit unless the user used the explicit Clear (X) button. The X button still goes through `handleClear` which explicitly calls `onChange("")` — unchanged.
+- After `handleSelect`, also clear `justSelectedRef` only after a longer 400ms window for slow tablet focus restores (current 200ms occasionally races on iPad Safari).
 
-For every P0/P1 hit:
-1. Add `.select('id, …key fields')` to the mutation chain.
-2. Treat `data == null` (post-RLS filter) as an error, surface a toast, and keep the local dirty state so the user can retry.
-3. Where the operation is offline-queued through IndexedDB, also stamp `synced_at` only on confirmed return and leave the local row "dirty" otherwise — preserving the existing `local-first-data-integrity-v3` rule.
+### 3. Audit pass on remaining autocomplete components
 
-### 4. Shared helper to make this hard to get wrong
+Read `DatabaseAutocomplete.tsx`, `HistoryAutocomplete.tsx`, `OrganizationAutocomplete.tsx` and apply the same two rules:
+- Never overwrite local edit buffer on refocus.
+- Never commit empty-string over a previously non-empty value implicitly; require an explicit clear gesture.
 
-Add `src/lib/db/verifiedWrite.ts` exporting `verifiedUpdate`, `verifiedInsert`, `verifiedUpsert`, `verifiedDelete`. Each wraps the supabase client call, forces `.select(...)`, throws a typed `SilentWriteError` when zero rows are returned, and logs the table + filter for diagnostics. Migrate the P0/P1 sites to use these helpers; leave others on a follow-up.
+### 4. Regression tests
 
-### 5. New memory entry
+Add a `GlobalAutocomplete.tablet-edit-persistence.test.tsx` companion to the existing dropdown-persistence test covering:
+- Tap populated field, type additional characters in the trigger Input, tap outside → committed value equals original + typed suffix (not just the suffix, not empty).
+- Tap populated field, lose focus, refocus, type → in-flight buffer survives the refocus.
+- Tap populated field, open popover, close without typing → value unchanged.
 
-`mem://security/silent-rls-no-op` — every user-initiated mutation MUST verify ≥1 returned row before reporting success; otherwise treat as a permissions/ownership failure.
+Add an `EquipmentTypeCombobox.edit-existing.test.tsx` covering:
+- Open popover on a field with existing value → CommandInput is pre-filled with that value with caret at end.
+- Edit a character, close → committed value reflects the edit.
+- Close with empty searchValue → original value preserved (no implicit wipe).
 
-### 6. Verification
+### 5. No backend or data-layer changes
 
-- Manually edit Known Issues and Developer Notes as an admin user → confirm persistence after refetch.
-- Force a failing case (e.g. mismatched RLS) in a scratch branch and confirm the destructive toast fires and edit state is retained.
-- Run TypeScript build (auto by harness).
-- Query `app_announcements` to confirm exactly two rows, one per type, with up-to-date `updated_at`.
+This is entirely a frontend input-state fix. RLS, `verifiedWrite`, and the announcements save path are not involved — those were the previous turn's audit and are already in place.
 
-## Out of scope (flagged, not changed this pass)
+## Files touched
 
-- The previously identified `nightly-retention-cleanup` / backup-pruning work is unaffected by this plan.
-- Refactoring offline-sync writers to use `verifiedUpdate` — those already have multi-layer integrity checks; will be a follow-up if the P0/P1 sweep doesn't fully cover them.
+- `src/components/SystemTypeSelect.tsx`
+- `src/components/inspection/EquipmentTypeCombobox.tsx`
+- `src/components/GlobalAutocomplete.tsx`
+- `src/components/DatabaseAutocomplete.tsx` (audit + same fixes if pattern matches)
+- `src/components/HistoryAutocomplete.tsx` (audit + same fixes if pattern matches)
+- `src/components/OrganizationAutocomplete.tsx` (audit + same fixes if pattern matches)
+- `src/components/__tests__/GlobalAutocomplete.tablet-edit-persistence.test.tsx` (new)
+- `src/components/__tests__/EquipmentTypeCombobox.edit-existing.test.tsx` (new)
 
-## Technical details
+## Verification
 
-- No schema breakage: `app_announcements` gets a UNIQUE constraint + seed rows only.
-- No edge-function changes required for the bug fix.
-- `verifiedWrite` helpers are additive; existing call sites continue to work until migrated.
-- All toast copy stays consistent with the minimal brutalist aesthetic (Georgia serif, no grey backgrounds, destructive variant for failures).
+- `bunx vitest run src/components/__tests__/GlobalAutocomplete.dropdown-persistence.test.tsx src/components/__tests__/GlobalAutocomplete.tablet-edit-persistence.test.tsx src/components/__tests__/EquipmentTypeCombobox.edit-existing.test.tsx`
+- Manual: in the preview, open an existing inspection's Operating Systems table on a narrow viewport, tap a system-type cell with text, type one extra character, tap outside → text now reads original + new character.
+- Manual: same on Equipment table.
+- Manual: on a populated inspector-name field, focus → blur → focus → type → text still survives.

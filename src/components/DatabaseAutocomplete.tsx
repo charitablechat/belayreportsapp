@@ -280,9 +280,14 @@ export function DatabaseAutocomplete({
   };
 
   const handleTriggerFocus = () => {
-    setIsEditing(true);
-    setSearchValue(value);
-    placeCursorAtEnd();
+    // Only seed the local buffer when transitioning into edit mode.
+    // Re-seeding on every focus event clobbers in-flight local edits
+    // when soft-keyboard / autocorrect briefly steals and restores focus.
+    if (!isEditing) {
+      setIsEditing(true);
+      setSearchValue(value);
+      placeCursorAtEnd();
+    }
     if (!open) setOpen(true);
   };
 
@@ -367,7 +372,11 @@ export function DatabaseAutocomplete({
             </div>
           </div>
         </PopoverTrigger>
-        <PopoverContent className="w-[--radix-popover-trigger-width] p-0" align="start">
+        <PopoverContent
+          className="w-[--radix-popover-trigger-width] p-0"
+          align="start"
+          onOpenAutoFocus={(e) => e.preventDefault()}
+        >
           <Command shouldFilter={false}>
             <CommandInput
               placeholder={`Search or type new...`}

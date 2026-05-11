@@ -293,9 +293,13 @@ export default function HistoryAutocomplete({
   };
 
   const handleTriggerFocus = () => {
-    setIsEditing(true);
-    setInputValue(value);
-    placeCursorAtEnd();
+    // Only seed the local buffer when transitioning into edit mode.
+    // Re-seeding on every focus event clobbers in-flight local edits.
+    if (!isEditing) {
+      setIsEditing(true);
+      setInputValue(value);
+      placeCursorAtEnd();
+    }
     if (!open) setOpen(true);
   };
 
@@ -382,7 +386,11 @@ export default function HistoryAutocomplete({
           </div>
         </div>
       </PopoverTrigger>
-      <PopoverContent className="w-[calc(100vw-2rem)] sm:w-[300px] max-w-[300px] p-0" align="start">
+      <PopoverContent
+        className="w-[calc(100vw-2rem)] sm:w-[300px] max-w-[300px] p-0"
+        align="start"
+        onOpenAutoFocus={(e) => e.preventDefault()}
+      >
         <Command shouldFilter={true}>
           <CommandInput
             placeholder={placeholder}

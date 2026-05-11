@@ -378,7 +378,7 @@ export function GlobalAutocomplete({
     // genuine user re-focus is never permanently suppressed if focus moved
     // elsewhere first (e.g. Enter → focusNextCell).
     justSelectedRef.current = true;
-    setTimeout(() => { justSelectedRef.current = false; }, 200);
+    setTimeout(() => { justSelectedRef.current = false; }, 400);
     onChange(selectedValue);
     saveToHistory(selectedValue);
     setOpen(false);
@@ -432,7 +432,10 @@ export function GlobalAutocomplete({
 
   const handleOpenChange = (isOpen: boolean) => {
     if (!isOpen) {
-      // Commit on close
+      // Commit on close. Never silently wipe a previously non-empty value
+      // with an empty buffer — that turns "tap the field, change my mind,
+      // tap outside" into a data-loss event on tablets where the popover
+      // is often hidden under the soft keyboard.
       if (isEditing && inputValue.trim()) {
         const trimmed = inputValue.trim();
         if (trimmed !== value) {
@@ -483,9 +486,16 @@ export function GlobalAutocomplete({
       justSelectedRef.current = false;
       return;
     }
-    setIsEditing(true);
-    setInputValue(value);
-    placeCursorAtEnd();
+    // Only seed inputValue from the prop `value` when transitioning into
+    // edit mode (from non-editing). Re-seeding on every focus event clobbers
+    // any in-flight local edit the user has typed but not yet committed —
+    // a frequent tablet failure mode where soft-keyboard / autocorrect bar
+    // briefly steals focus and returns it.
+    if (!isEditing) {
+      setIsEditing(true);
+      setInputValue(value);
+      placeCursorAtEnd();
+    }
     if (!open) {
       setOpen(true);
     }
@@ -587,7 +597,18 @@ export function GlobalAutocomplete({
           </div>
         </div>
       </PopoverAnchor>
-      <PopoverContent className="min-w-[--radix-popover-trigger-width] w-auto max-w-[calc(100vw-2rem)] p-0 shadow-lg border" align="start">
+      <PopoverContent
+        className="min-w-[--radix-popover-trigger-width] w-auto max-w-[calc(100vw-2rem)] p-0 shadow-lg border"
+        align="start"
+        onOpenAutoFocus={(e) => {
+          // Keep focus on the trigger Input. Without this, Radix's
+          // FocusScope moves focus into the inner CommandInput, which on
+          // tablets hides under the soft keyboard — users then type into
+          // a filter box thinking they're editing the field, and on close
+          // the search term silently overwrites the field value.
+          e.preventDefault();
+        }}
+      >
         <Command shouldFilter={false}>
           <CommandInput
             placeholder={placeholder}

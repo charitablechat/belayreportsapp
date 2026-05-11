@@ -51,6 +51,8 @@ export default function SystemTypeSelect({
   const commitValue = useCallback(
     (next: string) => {
       const trimmed = next.trim();
+      // Never silently wipe a previously non-empty value with an empty
+      // search buffer. The user must use an explicit clear gesture.
       if (!trimmed) return;
       if (trimmed !== value) {
         const isNew = !options.some(
@@ -89,12 +91,27 @@ export default function SystemTypeSelect({
     [searchValue, commitValue, onBlur]
   );
 
+  // Pre-seed the search box with the current value when the popover opens,
+  // and place the caret at the end. Without this, users on tablets type into
+  // an empty search box thinking they're editing the field in place, and the
+  // existing value is silently replaced on close.
   useEffect(() => {
     if (open) {
-      const t = setTimeout(() => commandInputRef.current?.focus(), 50);
+      setSearchValue(value ?? "");
+      const t = setTimeout(() => {
+        const input = commandInputRef.current;
+        if (!input) return;
+        input.focus();
+        try {
+          const len = input.value.length;
+          input.setSelectionRange(len, len);
+        } catch {
+          // Some input types don't support setSelectionRange; ignore.
+        }
+      }, 50);
       return () => clearTimeout(t);
     }
-  }, [open]);
+  }, [open, value]);
 
   return (
     <Popover open={open} onOpenChange={handleOpenChange}>
