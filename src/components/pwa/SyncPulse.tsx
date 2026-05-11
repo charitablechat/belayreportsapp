@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { usePWA } from '@/hooks/usePWA';
 import { isIOS } from '@/lib/mobile-detection';
 import { cn } from '@/lib/utils';
@@ -24,6 +25,10 @@ import {
   getPhotoRetryBuckets,
   type PhotoRetryBuckets,
 } from '@/lib/photo-retry-buckets';
+import {
+  getValidationStuckRecords,
+  type ValidationBuckets,
+} from '@/lib/validation-buckets';
 import { getQuarantineSnapshot, clearAllQuarantines } from '@/lib/sync-quarantine';
 import {
   collectSyncDiagnostics,
@@ -77,6 +82,7 @@ export const SyncPulse = ({ className }: { className?: string }) => {
   } = usePWA();
   const { regressionSkipCount } = useUnsyncedPhotos();
 
+  const navigate = useNavigate();
   const isIOSDevice = isIOS();
   const [justSynced, setJustSynced] = useState(false);
   const [previousSyncingState, setPreviousSyncingState] = useState(false);
@@ -113,6 +119,14 @@ export const SyncPulse = ({ className }: { className?: string }) => {
     stuckIds: [],
   });
   const [retryingTick, setRetryingTick] = useState(0);
+  // PR #2 (Sync Terminal STUCK-validation bucket): parent records that
+  // would currently fail client-side validation at sync time. Surfaces
+  // the records PR #178's form-side gate now prevents going forward,
+  // but that were already stranded on the device before #178 shipped.
+  const [validationStuck, setValidationStuck] = useState<ValidationBuckets>({
+    count: 0,
+    records: [],
+  });
 
   const runSelfCheck = useCallback(async () => {
     setSelfCheckRunning(true);
@@ -193,6 +207,28 @@ export const SyncPulse = ({ className }: { className?: string }) => {
       window.removeEventListener('sync-photos-updated', handler);
     };
   }, [open]);
+
+  // PR #2 (validation-stuck bucket): re-run the parent validator on
+  // every unsynced parent record so stranded records (organization
+  // cleared on-device etc.) get surfaced with a deep-link to recover.
+  // Refresh when the sheet opens and after every sync attempt so
+  // records leave the bucket as soon as they sync successfully.
+  useEffect(() => {
+    if (!open) return;
+    let cancelled = false;
+    const refresh = async () => {
+      try {
+        const next = await getValidationStuckRecords();
+        if (!cancelled) setValidationStuck(next);
+      } catch {
+        /* boundary returns EMPTY internally; nothing to do here */
+      }
+    };
+    refresh();
+    return () => {
+      cancelled = true;
+    };
+  }, [open, lastSyncTime]);
 
   // Sprint 1D: 1Hz tick while a RETRYING countdown is active so the
   // displayed delta stays live without re-fetching IDB every second.
@@ -514,6 +550,61 @@ export const SyncPulse = ({ className }: { className?: string }) => {
                     <span>{photoBuckets.stuck}</span>
                   </div>
                 )}
+              </div>
+            )}
+
+            {/* PR #2: STUCK_VALIDATION — parent records that would currently
+                fail client-side validation at sync time. Companion to PR #178's
+                form-side gate: prevents new occurrences forward, surfaces
+                existing stranded ones so the user can recover them in-place. */}
+            {validationStuck.count > 0 && (
+              <div className="space-y-1.5 border-t border-green-900/40 pt-2">
+                <div className="flex items-center justify-between text-[10px] uppercase tracking-wider">
+                  <span className="text-red-300">STUCK_VALIDATION</span>
+                  <span className="text-red-300">{validationStuck.count}</span>
+                </div>
+                <p className="text-green-700 text-[10px] italic">
+                  ▸ These records can't sync until the listed fields are filled in.
+                </p>
+                <div className="space-y-1">
+                  {validationStuck.records.map((record) => {
+                    const kindLabel =
+                      record.kind === 'inspection' ? 'INSP'
+                      : record.kind === 'training' ? 'TRN'
+                      : 'ASM';
+                    const missingDisplay = record.missingFields.length > 0
+                      ? record.missingFields.join(', ')
+                      : 'required fields';
+                    return (
+                      <div
+                        key={`${record.kind}-${record.id}`}
+                        className="flex items-start justify-between gap-2 pl-3 border-l border-red-500/50 text-red-300/90"
+                      >
+                        <div className="min-w-0 flex-1">
+                          <div className="flex items-center gap-1.5">
+                            <span className="text-[9px] font-bold uppercase tracking-wider text-red-400">
+                              {kindLabel}
+                            </span>
+                            <span className="truncate">{record.label}</span>
+                          </div>
+                          <div className="text-[10px] text-red-300/70 truncate">
+                            Missing: {missingDisplay}
+                          </div>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setOpen(false);
+                            navigate(record.deepLinkPath);
+                          }}
+                          className="flex-shrink-0 text-[9px] uppercase tracking-wider px-1.5 py-0.5 rounded border border-red-700/60 text-red-300 hover:bg-red-900/30"
+                        >
+                          FIX
+                        </button>
+                      </div>
+                    );
+                  })}
+                </div>
               </div>
             )}
 
