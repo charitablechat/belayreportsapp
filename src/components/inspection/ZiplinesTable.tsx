@@ -34,10 +34,16 @@ interface ZiplinesTableProps {
 
 const ZIP_GRID_COLS = "grid-cols-[40px_88px_minmax(120px,1fr)_80px_80px_80px_80px_100px_80px_100px_80px_100px_100px_minmax(120px,1fr)_48px]";
 
-function ZiplinesTable({ ziplines, onUpdate, onImmediateSave, inspectionId, onGalleryRefresh }: ZiplinesTableProps) {
+function ZiplinesTable({ ziplines, onUpdate, onImmediateSave: rawOnImmediateSave, inspectionId, onGalleryRefresh }: ZiplinesTableProps) {
   const [itemToDelete, setItemToDelete] = useState<{ id: string; name: string } | null>(null);
   const [newItemId, setNewItemId] = useState<string | null>(null);
   const effectiveInspectionId = inspectionId || window.location.pathname.split('/').pop() || '';
+
+  // Wrap onImmediateSave so blur/Enter-driven re-renders never lose the scroll position.
+  const onImmediateSave = useCallback(() => {
+    if (!rawOnImmediateSave) return;
+    preserveScroll(() => rawOnImmediateSave());
+  }, [rawOnImmediateSave]);
 
   const { getDragProps } = useNativeDrag(ziplines, (reordered) => onUpdate(reordered));
 
