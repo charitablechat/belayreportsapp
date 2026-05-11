@@ -114,12 +114,8 @@ export async function verifiedUpdate<T = Record<string, unknown>>({
       };
     };
   };
-  const base = client.from(String(table)).update(values);
-  const { data, error } = await applyMatch(
-    base as unknown as { eq: (k: string, v: unknown) => unknown },
-    match,
-  )
-    // @ts-expect-error - dynamic chain
+  const base = client.from(String(table)).update(values) as unknown as EqChain;
+  const { data, error } = await applyMatch(base, match)
     .select(returning)
     .maybeSingle();
 
