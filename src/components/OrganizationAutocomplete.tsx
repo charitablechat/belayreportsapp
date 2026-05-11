@@ -374,7 +374,11 @@ export const OrganizationAutocomplete = ({
             </div>
           </div>
         </PopoverAnchor>
-        <PopoverContent className="w-[--radix-popover-trigger-width] p-0" align="start">
+        <PopoverContent
+          className="w-[--radix-popover-trigger-width] p-0"
+          align="start"
+          onOpenAutoFocus={(e) => e.preventDefault()}
+        >
           <Command shouldFilter={false}>
             <CommandInput 
               placeholder="Search or type organization..." 
