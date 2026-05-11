@@ -83,10 +83,11 @@ interface UpsertArgs {
   returning?: string;
 }
 
-function applyMatch<T extends { eq: (k: string, v: unknown) => T }>(
-  q: T,
-  match: Record<string, unknown>,
-): T {
+type EqChain = { eq: (k: string, v: unknown) => EqChain } & {
+  select: (r: string) => { maybeSingle: () => Promise<{ data: unknown; error: unknown }> };
+};
+
+function applyMatch(q: EqChain, match: Record<string, unknown>): EqChain {
   let cur = q;
   for (const [k, v] of Object.entries(match)) {
     cur = cur.eq(k, v);
