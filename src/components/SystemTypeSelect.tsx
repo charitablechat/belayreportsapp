@@ -51,6 +51,8 @@ export default function SystemTypeSelect({
   const commitValue = useCallback(
     (next: string) => {
       const trimmed = next.trim();
+      // Never silently wipe a previously non-empty value with an empty
+      // search buffer. The user must use an explicit clear gesture.
       if (!trimmed) return;
       if (trimmed !== value) {
         const isNew = !options.some(
