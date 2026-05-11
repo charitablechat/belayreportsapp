@@ -14,6 +14,7 @@ import { useNavigate, useParams } from "react-router-dom";
 import { goBack } from "@/lib/navigation";
 import { isLocalDataNewer } from "@/lib/local-data-guards";
 import { applyTrackedFieldWrite, mergeRecordFields, TRACKED_FIELDS } from "@/lib/field-merge";
+import { checkRequiredHeaderFields, formatMissingFieldLabels } from "@/lib/header-required-fields";
 import { hasTextContent } from "@/lib/html-content-cleaner";
 import { supabase } from "@/integrations/supabase/client";
 import type { PostgrestError, RealtimePostgresChangesPayload } from "@supabase/supabase-js";
@@ -1602,6 +1603,30 @@ export default function InspectionForm() {
   const performSave = async (silent: boolean = false) => {
     // Block all writes in Lovable preview to protect production data
     if ((await import('@/lib/environment')).isLovablePreview()) return;
+    // Required-field gate: mirror the sync-time validator
+    // (`validation-schemas.ts#inspectionSchema`) at save time so the form
+    // and the sync engine cannot disagree about which header fields are
+    // required. Manual saves surface a toast; auto-saves skip silently so
+    // the user isn't spammed every debounce interval while editing.
+    const requiredHeaderCheck = checkRequiredHeaderFields(
+      inspection as unknown as Record<string, unknown>,
+      'inspection',
+    );
+    if (!requiredHeaderCheck.ok) {
+      const missingLabels = formatMissingFieldLabels(requiredHeaderCheck.missing);
+      if (!silent) {
+        toast.error('Cannot save — required fields missing', {
+          description: missingLabels,
+        });
+        setSaveError({
+          message: `Required fields missing: ${missingLabels}`,
+          code: 'REQUIRED_FIELD_MISSING',
+        });
+      } else if (import.meta.env.DEV) {
+        console.log(`[InspectionForm] Skipping silent save — required fields missing: ${missingLabels}`);
+      }
+      return;
+    }
     // Mutex guard: prevent concurrent saves from auto-save, emergency save, and interval timer
     if (anySaveInProgressRef.current) {
       if (import.meta.env.DEV) console.log('[InspectionForm] performSave skipped - another save in progress');
@@ -3261,11 +3286,35 @@ export default function InspectionForm() {
           </Alert>
         )}
 
+        {(() => {
+          const requiredHeaderCheck = checkRequiredHeaderFields(
+            inspection as unknown as Record<string, unknown>,
+            'inspection',
+          );
+          if (requiredHeaderCheck.ok) return null;
+          const missingLabels = formatMissingFieldLabels(requiredHeaderCheck.missing);
+          return (
+            <div
+              role="alert"
+              className="border-2 border-red-500/60 bg-red-950/30 text-red-400 font-mono text-xs px-4 py-3 rounded flex items-start gap-2 mb-4"
+              data-testid="required-fields-banner"
+            >
+              <Lock className="h-3.5 w-3.5 flex-shrink-0 mt-0.5" />
+              <div className="space-y-1">
+                <div className="font-bold">SAVING DISABLED — required fields missing</div>
+                <div>
+                  Fill in <span className="text-red-200">{missingLabels}</span> to resume saving. Edits to other fields stay visible in the form but will not persist until the required fields are filled.
+                </div>
+              </div>
+            </div>
+          );
+        })()}
+
         <InspectionHeader
           inspection={inspection}
           userProfile={inspectorProfile}
           modifiedByProfile={modifiedByProfile as { first_name?: string; last_name?: string } | null}
-          onUpdate={effectiveReadOnly ? () => {} : handleHeaderUpdate} 
+          onUpdate={effectiveReadOnly ? () => {} : handleHeaderUpdate}
           onImmediateSave={effectiveReadOnly ? undefined : stableTriggerImmediateSave}
           isReadOnly={effectiveReadOnly}
         />
