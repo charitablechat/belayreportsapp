@@ -42,6 +42,7 @@ import {
   type SyncHaltState,
 } from '@/lib/sync-halt-tracker';
 import { supabase } from '@/integrations/supabase/client';
+import { getUserWithCache } from '@/lib/cached-auth';
 
 type Phase = 'idle' | 'syncing' | 'synced' | 'unsynced' | 'paused' | 'error';
 
@@ -213,12 +214,23 @@ export const SyncPulse = ({ className }: { className?: string }) => {
   // cleared on-device etc.) get surfaced with a deep-link to recover.
   // Refresh when the sheet opens and after every sync attempt so
   // records leave the bucket as soon as they sync successfully.
+  //
+  // Always scope by current user id (resolved through `getUserWithCache`
+  // — the same cached-auth helper `useAutoSync` uses) so shared-device
+  // accounts don't see each other's stranded records and the FIX
+  // deep-link can never navigate into another user's form.
   useEffect(() => {
     if (!open) return;
     let cancelled = false;
     const refresh = async () => {
       try {
-        const next = await getValidationStuckRecords();
+        const user = await getUserWithCache();
+        if (cancelled) return;
+        if (!user?.id) {
+          setValidationStuck({ count: 0, records: [] });
+          return;
+        }
+        const next = await getValidationStuckRecords(user.id);
         if (!cancelled) setValidationStuck(next);
       } catch {
         /* boundary returns EMPTY internally; nothing to do here */

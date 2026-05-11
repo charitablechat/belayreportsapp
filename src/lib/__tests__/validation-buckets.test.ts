@@ -1,8 +1,17 @@
-import { describe, expect, it } from 'vitest';
-import { bucketValidationFailures } from '@/lib/validation-buckets';
+import { describe, expect, it, vi } from 'vitest';
+import {
+  bucketValidationFailures,
+  getValidationStuckRecords,
+} from '@/lib/validation-buckets';
 import { validateInspection } from '@/lib/validation-schemas';
 import { validateTraining } from '@/lib/training-validation-schemas';
 import { validateDailyAssessment } from '@/lib/daily-assessment-validation-schemas';
+
+vi.mock('@/lib/offline-storage', () => ({
+  getUnsyncedInspections: vi.fn(async () => []),
+  getUnsyncedTrainings: vi.fn(async () => []),
+  getUnsyncedDailyAssessments: vi.fn(async () => []),
+}));
 
 /**
  * Stub validator that always succeeds. Used to scope a test to a single
@@ -117,6 +126,29 @@ describe('bucketValidationFailures', () => {
     ]);
   });
 
+  it('treats empty-string organization as falsy so labelFor falls through to site/location', () => {
+    // Regression lock for Devin Review finding: the primary scenario
+    // this surface targets is a record stranded with `organization: ''`.
+    // Using `??` (only null/undefined falls through) would short-circuit
+    // and skip the still-present `site` value, producing 'Untitled
+    // Assessment' instead of 'East Tower'.
+    const result = bucketValidationFailures(
+      [],
+      [],
+      [
+        { id: 'a-1', organization: '', site: 'East Tower' },
+        { id: 'a-2', organization: '   ', location: 'Bay 4' },
+      ],
+      {
+        inspection: okValidator,
+        training: okValidator,
+        daily_assessment: failOn('organization'),
+      },
+    );
+
+    expect(result.records.map((r) => r.label)).toEqual(['East Tower', 'Bay 4']);
+  });
+
   it('ignores records with missing id (cannot be deep-linked)', () => {
     const result = bucketValidationFailures(
       [{ organization: 'AcmeCo' }, { id: 'i-1', organization: 'AcmeCo' }],
@@ -167,6 +199,47 @@ describe('bucketValidationFailures', () => {
       },
     );
     expect(result.count).toBe(0);
+  });
+});
+
+describe('getValidationStuckRecords userId guard', () => {
+  it('returns EMPTY without hitting IDB when userId is null/undefined/empty', async () => {
+    const storage = await import('@/lib/offline-storage');
+    const inspectionsMock = vi.mocked(storage.getUnsyncedInspections);
+    const trainingsMock = vi.mocked(storage.getUnsyncedTrainings);
+    const assessmentsMock = vi.mocked(storage.getUnsyncedDailyAssessments);
+    inspectionsMock.mockClear();
+    trainingsMock.mockClear();
+    assessmentsMock.mockClear();
+
+    for (const userId of [null, undefined, '']) {
+      const result = await getValidationStuckRecords(userId);
+      expect(result).toEqual({ count: 0, records: [] });
+    }
+
+    // Regression lock for the Devin Review finding: when no userId is
+    // available we must NEVER call the IDB readers without a filter,
+    // since they short-circuit ownership when userId is omitted and
+    // would surface records from every account on the device.
+    expect(inspectionsMock).not.toHaveBeenCalled();
+    expect(trainingsMock).not.toHaveBeenCalled();
+    expect(assessmentsMock).not.toHaveBeenCalled();
+  });
+
+  it('forwards the userId to every IDB reader', async () => {
+    const storage = await import('@/lib/offline-storage');
+    const inspectionsMock = vi.mocked(storage.getUnsyncedInspections);
+    const trainingsMock = vi.mocked(storage.getUnsyncedTrainings);
+    const assessmentsMock = vi.mocked(storage.getUnsyncedDailyAssessments);
+    inspectionsMock.mockClear();
+    trainingsMock.mockClear();
+    assessmentsMock.mockClear();
+
+    await getValidationStuckRecords('user-abc');
+
+    expect(inspectionsMock).toHaveBeenCalledWith('user-abc');
+    expect(trainingsMock).toHaveBeenCalledWith('user-abc');
+    expect(assessmentsMock).toHaveBeenCalledWith('user-abc');
   });
 });
 

@@ -94,13 +94,25 @@ interface UnsyncedRecordLike {
  * list so the two surfaces stay visually consistent.
  */
 function labelFor(record: UnsyncedRecordLike, kind: ValidationStuckKind): string {
-  const explicit =
-    record.organization ??
-    record.site ??
-    record.location ??
-    record.course_title;
-  if (typeof explicit === 'string' && explicit.trim().length > 0) {
-    return explicit.trim();
+  // Iterate the fallback chain explicitly and trim each candidate so
+  // empty-string AND whitespace-only values both fall through. The
+  // primary scenario this surface targets — records stranded because
+  // `organization` was cleared on-device — has `organization: ''`, and
+  // partial users sometimes have `organization: '   '` from a stray
+  // space. `??` alone would short-circuit on `''`; `||` would treat
+  // `'   '` as truthy. Walking the list keeps the fallback chain in
+  // lock-step with `SyncPulse.tsx`'s pending-reports list.
+  const candidates: ReadonlyArray<string | null | undefined> = [
+    record.organization,
+    record.site,
+    record.location,
+    record.course_title,
+  ];
+  for (const candidate of candidates) {
+    if (typeof candidate === 'string') {
+      const trimmed = candidate.trim();
+      if (trimmed.length > 0) return trimmed;
+    }
   }
   if (kind === 'inspection') return 'Untitled Inspection';
   if (kind === 'training') return 'Untitled Training';
@@ -176,17 +188,30 @@ export function bucketValidationFailures(
  * the three report stores and return the records that would currently
  * fail at sync time.
  *
+ * `userId` is REQUIRED to scope the scan to records the current user
+ * owns: `getUnsyncedInspections()` etc. short-circuit the ownership
+ * filter when called without a userId (see `offline-storage.ts`), which
+ * would surface records from other accounts on shared devices and let
+ * the FIX deep-link navigate the current user into another user's
+ * form data. Callers should resolve the current user via
+ * `getUserWithCache()` (or the equivalent cached-auth helper) and pass
+ * `.id` through. When `userId` is `null`/`undefined` (e.g. signed-out
+ * session) the function returns `EMPTY` rather than over-fetch.
+ *
  * Read-only: does not mutate IDB or trigger a sync. Returns `EMPTY` on
  * any unexpected error so a transient read failure can't blank the
  * Sync Terminal section (matches the boundary behavior of
  * `getPhotoRetryBuckets`).
  */
-export async function getValidationStuckRecords(): Promise<ValidationBuckets> {
+export async function getValidationStuckRecords(
+  userId: string | null | undefined,
+): Promise<ValidationBuckets> {
+  if (!userId) return EMPTY;
   try {
     const [inspections, trainings, assessments] = await Promise.all([
-      getUnsyncedInspections(),
-      getUnsyncedTrainings(),
-      getUnsyncedDailyAssessments(),
+      getUnsyncedInspections(userId),
+      getUnsyncedTrainings(userId),
+      getUnsyncedDailyAssessments(userId),
     ]);
     return bucketValidationFailures(
       inspections as ReadonlyArray<UnsyncedRecordLike>,
