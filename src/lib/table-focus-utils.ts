@@ -1,7 +1,8 @@
 /**
  * Moves focus to the next focusable cell in a table row.
  * If at the end of a row, wraps to the first input of the next row.
- * Scrolls the newly focused element to the center of the viewport.
+ * Only scrolls if the newly focused element is not already visible, and never
+ * with a smooth/centered animation that users perceive as a page jump.
  */
 export function focusNextCell(current: HTMLElement) {
   const row = current.closest('[data-row-id]');
@@ -15,7 +16,6 @@ export function focusNextCell(current: HTMLElement) {
   // The current element might be nested inside a wrapper; find it or its ancestor in the list
   let idx = focusables.indexOf(current);
   if (idx === -1) {
-    // Try to find the closest match (e.g. the current is inside a wrapper that contains the input)
     idx = focusables.findIndex((el) => el.contains(current) || current.contains(el));
   }
 
@@ -24,7 +24,7 @@ export function focusNextCell(current: HTMLElement) {
   if (next) {
     next.focus();
     requestAnimationFrame(() => {
-      next.scrollIntoView({ behavior: 'smooth', block: 'center', inline: 'nearest' });
+      next.scrollIntoView({ behavior: 'auto', block: 'nearest', inline: 'nearest' });
     });
   } else {
     // Move to the next row's first input
@@ -40,9 +40,27 @@ export function focusNextCell(current: HTMLElement) {
       if (firstInput) {
         firstInput.focus();
         requestAnimationFrame(() => {
-          firstInput.scrollIntoView({ behavior: 'smooth', block: 'center', inline: 'nearest' });
+          firstInput.scrollIntoView({ behavior: 'auto', block: 'nearest', inline: 'nearest' });
         });
       }
     }
   }
+}
+
+/**
+ * Snapshots window scroll position, runs fn, then restores scroll across two
+ * animation frames. Use to wrap state-mutating handlers (like onImmediateSave)
+ * that may remount rows and let the browser drop the document scroll position.
+ */
+export function preserveScroll<T>(fn: () => T): T {
+  const x = typeof window !== 'undefined' ? window.scrollX : 0;
+  const y = typeof window !== 'undefined' ? window.scrollY : 0;
+  const result = fn();
+  if (typeof window !== 'undefined' && typeof requestAnimationFrame !== 'undefined') {
+    requestAnimationFrame(() => {
+      window.scrollTo(x, y);
+      requestAnimationFrame(() => window.scrollTo(x, y));
+    });
+  }
+  return result;
 }

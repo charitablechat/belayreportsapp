@@ -9,7 +9,7 @@ import { Plus, Trash2, Minus } from "lucide-react";
 import ItemPhotoUpload from "./ItemPhotoUpload";
 import { Input } from "@/components/ui/input";
 import { DebouncedInput } from "./DebouncedInput";
-import { focusNextCell } from "@/lib/table-focus-utils";
+import { focusNextCell, preserveScroll } from "@/lib/table-focus-utils";
 import { useState, useCallback, useEffect, memo } from "react";
 import {
   AlertDialog,
@@ -36,10 +36,16 @@ interface OperatingSystemsTableProps {
 
 const OS_GRID_COLS = "grid-cols-[40px_88px_minmax(180px,1fr)_minmax(160px,1fr)_192px_minmax(150px,1fr)_64px]";
 
-function OperatingSystemsTable({ systems, onUpdate, onImmediateSave, inspectionId, onGalleryRefresh }: OperatingSystemsTableProps) {
+function OperatingSystemsTable({ systems, onUpdate, onImmediateSave: rawOnImmediateSave, inspectionId, onGalleryRefresh }: OperatingSystemsTableProps) {
   const [itemToDelete, setItemToDelete] = useState<{ id: string; name: string } | null>(null);
   const [newItemId, setNewItemId] = useState<string | null>(null);
   const effectiveInspectionId = inspectionId || window.location.pathname.split('/').pop() || '';
+
+  // Wrap onImmediateSave so blur/Enter-driven re-renders never lose the scroll position.
+  const onImmediateSave = useCallback(() => {
+    if (!rawOnImmediateSave) return;
+    preserveScroll(() => rawOnImmediateSave());
+  }, [rawOnImmediateSave]);
 
   const { getDragProps } = useNativeDrag(systems, (reordered) => onUpdate(reordered));
 
