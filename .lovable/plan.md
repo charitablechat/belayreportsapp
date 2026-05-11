@@ -1,56 +1,89 @@
+# Fix silent save failures + audit data persistence
+
 ## Root cause (confirmed)
 
-The Known Issues and Developer Notes cards are silently failing to save because of a mismatch between the UI gate and the database RLS gate, combined with a missing post-write verification.
+`app_announcements` (the table behind **Known Issues** and **Developer Notes**) has RLS policies that gate `UPDATE` / `INSERT` on `is_admin_or_above()` — which is correct. But the **client code** in `KnownIssuesCard.tsx` and `DeveloperNotesCard.tsx` fires:
 
-1. **UI gate** — `Dashboard.tsx` computes `isSuperAdmin` from the RPC `is_admin_or_above` (returns true for any `admin` or `super_admin`). It then passes `isSuperAdmin={!!isSuperAdmin}` to `KnownIssuesCard` and `DeveloperNotesCard`, so every admin sees the **Edit** button.
-2. **DB gate** — RLS on `app_announcements` uses `is_super_admin()`, which requires `user_roles.role = 'super_admin'`. Querying `user_roles`, there are **zero** rows with role `super_admin` — only `admin`. So every UPDATE from the app is filtered to 0 rows by RLS.
-3. **No error surfaced** — PostgREST does not return an error when RLS filters out the target row; the `.update().eq('id', …)` call resolves with `error: null` and an empty result. The component then runs the success branch, sets state, and shows "updated successfully". A page refetch pulls the unchanged server row and the edit disappears — exactly the symptom reported.
+```ts
+await supabase.from('app_announcements').update({ content }).eq('announcement_type', 'known_issues')
+```
 
-Same bug pattern lives in both `src/components/dashboard/KnownIssuesCard.tsx` (line 79–94) and `src/components/dashboard/DeveloperNotesCard.tsx` (line 73–88).
+…with **no `.select()` and no row-count check**. When RLS, a stale row, or a missing row causes the update to affect zero rows, PostgREST returns `{ data: null, error: null }`. The component then runs the success branch, shows "Saved", updates local state, and the edit silently vanishes on the next refetch.
 
-## Fix (Known Issues + Developer Notes)
+This same fragile pattern (`update().eq()` with no verification) is used in many other write paths across the app, so any future RLS drift, ownership mismatch, or soft-delete race will fail silently the same way.
 
-1. **Align the DB policy with the UI**: replace the two `is_super_admin()` policies on `public.app_announcements` with `is_admin_or_above()` so admins (the people who can press Edit) can actually write. Per the project's RBAC memory, this is the canonical check and the "True Super Admin" tier is read-only and invisible — there are no super_admin rows by design.
-2. **Verify writes in the components**: change both cards' `update(...)` calls to `update(...).select('id, content, updated_at').single()` and treat "no row returned" as a failure (toast "Save failed — you may not have permission" and roll the editor back). This converts every future silent RLS filter into a visible failure.
+## Plan
 
-## Wider audit — same anti-pattern across the app
+### 1. Fix the immediate bug — Known Issues & Developer Notes
 
-The fragile pattern is: **`supabase.from(X).update(…).eq('id', …)` with no `.select()` and no row-count check**. Whenever RLS filters the target row, the call returns `{ error: null, data: null }` and the caller cheerfully reports success. I will sweep the codebase for this pattern and harden the high-impact write paths.
+In both `src/components/dashboard/KnownIssuesCard.tsx` and `src/components/dashboard/DeveloperNotesCard.tsx`:
 
-### Audit scope (priority order)
+- Switch the save mutation to:
+  ```ts
+  const { data, error } = await supabase
+    .from('app_announcements')
+    .update({ content, updated_by: user.id, updated_at: new Date().toISOString() })
+    .eq('announcement_type', 'known_issues') // or 'developer_notes'
+    .select('id, content, updated_at')
+    .maybeSingle();
+  ```
+- Treat `error` OR `!data` as failure → show a real destructive toast ("Save failed — you may not have permission. Your changes have not been saved.") and **do not** clear the dirty/edit state.
+- Only on a verified returned row: update local state from `data.content` (server truth), exit edit mode, success toast.
+- Add an "unsaved changes" guard so navigating away while dirty prompts the user.
+- Ensure the row always exists: add an idempotent upsert seed in the same migration below (one row per `announcement_type`).
 
-1. **Announcements** (this bug) — already covered above.
-2. **Report writes** — `inspection_reports`, `training_reports`, `daily_assessment_reports` updates from form save paths, admin reassignment flows, completion lock toggles, and invoiced-status toggles. These are the highest-stakes writes; a silent failure here = lost field data.
-3. **Inspection / training / daily_assessment header & item rows** — same `update().eq('id', …)` shape used in autosave.
-4. **Profile + role writes** — `profiles`, `user_roles`, `organization_members` from Admin User Management; `is_super_admin()` policies here are correct (intentional gate), but the UI must still detect "0 rows updated" and tell the operator the action was denied.
-5. **Notification preferences, app_announcements, onboarding resources, equipment_type_options, system_type_options, autocomplete tables** — secondary, but same pattern likely present.
-6. **Photo metadata updates** (`inspection_photos`, `training_photos` caption / order updates).
-7. **Edge function writes** that use the **anon** client on the user's JWT (not service-role). Service-role writes bypass RLS so they aren't at risk for this specific bug, but I'll spot-check that the few user-JWT functions (`admin-manage-user`, `send-report-email` status updates, `generate-inspection-html` HTML cache write, etc.) all handle empty result sets.
+### 2. Self-healing migration on `app_announcements`
 
-### What I will check for each write path
+- Guarantee exactly one row exists for each of `known_issues` and `developer_notes` (insert if missing).
+- Add a `UNIQUE` constraint on `announcement_type` so accidental duplicates can't appear.
+- Re-confirm RLS is `is_admin_or_above()` for INSERT/UPDATE (already correct per schema), and add an explicit `TO authenticated` on each policy for defense in depth.
 
-- **RLS vs UI gate match** — does the policy actually permit the user the UI is showing the control to?
-- **Result verification** — every important `.update()` / `.upsert()` / `.delete()` either chains `.select()` and asserts a non-empty result, or uses one of the existing safe wrappers (`safe-functions-invoke`, `non-blocking-save`). I'll wrap the survivors.
-- **Optimistic local state** — when the server write silently no-ops, the local IDB row and React state must NOT be marked as "synced". I will cross-check against the `local-first-data-integrity-v3` and `sync-deduplication-guard` memories so we don't introduce regressions there.
-- **Toasts** — convert "we ran the call without an error" into "we have a confirmed write" before showing success.
+### 3. Codebase-wide audit of silent-write patterns
 
-### Out of scope
+Sweep for `supabase.from(...).update(...)` / `.delete(...)` / `.upsert(...)` calls that **don't** chain `.select()` and don't inspect the result. Prioritized fix list:
 
-- The actual content of Known Issues / Developer Notes — the user controls that.
-- Cost / retention work from the previous turn — already shipped.
-- Sync engine internals (offline → online reconcile). Those already have row-count assertions per the existing memories; I'll only touch direct-from-component writes.
+| Priority | Area | Why it matters |
+|---|---|---|
+| P0 | `app_announcements` (this bug) | Reproduced data loss |
+| P0 | `inspection_reports`, `training_reports`, `daily_assessment_reports` header writes | Highest stakes — legal/inspection record of truth |
+| P0 | Attestation / completion writes (`status`, `attestation_*`, `app_version_at_completion`) | Lock semantics depend on these landing |
+| P1 | Inspection items, equipment, standards, summary autosave | WIP loss = inspector rework |
+| P1 | Training section/sign-off writes | First-sign-wins integrity |
+| P1 | Daily-assessment checklist writes (`*_checks`, `*_of_day`) | Per-row autosave with no verification |
+| P1 | Photo metadata updates (caption, display_order, photo_section) | Caption sync memory rule depends on this |
+| P2 | `profiles` updates, `notification_preferences`, `user_roles` admin edits | Admin UX bug surface |
+| P2 | `equipment_type_options`, `system_type_options`, autocomplete tables | Custom-entry loss |
+| P2 | `organizations` upserts / auto-linking | Already memory-tracked |
+| P3 | Edge-function service-role writes | Spot-check only — bypass RLS, but verify they read back |
 
-## Deliverables
+For every P0/P1 hit:
+1. Add `.select('id, …key fields')` to the mutation chain.
+2. Treat `data == null` (post-RLS filter) as an error, surface a toast, and keep the local dirty state so the user can retry.
+3. Where the operation is offline-queued through IndexedDB, also stamp `synced_at` only on confirmed return and leave the local row "dirty" otherwise — preserving the existing `local-first-data-integrity-v3` rule.
 
-1. One migration switching the two `app_announcements` policies from `is_super_admin()` to `is_admin_or_above()`.
-2. Hardened `KnownIssuesCard.tsx` and `DeveloperNotesCard.tsx` with `.select().single()` verification and a real failure toast.
-3. An audit report (posted in chat, not a file) listing every `.update()` / `.upsert()` / `.delete()` call in `src/` that lacks row-count verification, grouped by risk tier, with the specific fixes applied for tier-1 and tier-2 paths. Tier-3 paths get a list and a recommendation, applied only if you green-light a second pass.
-4. A new memory entry under `mem://security/silent-rls-no-op` codifying the rule: **every user-initiated mutation must verify it affected ≥1 row before reporting success**.
+### 4. Shared helper to make this hard to get wrong
 
-## Technical notes
+Add `src/lib/db/verifiedWrite.ts` exporting `verifiedUpdate`, `verifiedInsert`, `verifiedUpsert`, `verifiedDelete`. Each wraps the supabase client call, forces `.select(...)`, throws a typed `SilentWriteError` when zero rows are returned, and logs the table + filter for diagnostics. Migrate the P0/P1 sites to use these helpers; leave others on a follow-up.
 
-- The `is_admin_or_above()` SQL function already exists and is the project-blessed RBAC entry point (per `session-and-rbac-resilience-v2`).
-- `app_announcements` has only two rows (`known_issues`, `developer_notes`); changing the policy does not change visibility because the SELECT policy is already `authenticated → true`.
-- The component edit gate (`isSuperAdmin` prop) stays as-is — it's already correctly wired to `is_admin_or_above` upstream; only the prop name is misleading. I'll rename it to `canEdit` while I'm in there to prevent the next person from re-introducing the mismatch.
+### 5. New memory entry
 
-Approve and I'll start with the migration + component fixes, then run the audit sweep in the same pass.
+`mem://security/silent-rls-no-op` — every user-initiated mutation MUST verify ≥1 returned row before reporting success; otherwise treat as a permissions/ownership failure.
+
+### 6. Verification
+
+- Manually edit Known Issues and Developer Notes as an admin user → confirm persistence after refetch.
+- Force a failing case (e.g. mismatched RLS) in a scratch branch and confirm the destructive toast fires and edit state is retained.
+- Run TypeScript build (auto by harness).
+- Query `app_announcements` to confirm exactly two rows, one per type, with up-to-date `updated_at`.
+
+## Out of scope (flagged, not changed this pass)
+
+- The previously identified `nightly-retention-cleanup` / backup-pruning work is unaffected by this plan.
+- Refactoring offline-sync writers to use `verifiedUpdate` — those already have multi-layer integrity checks; will be a follow-up if the P0/P1 sweep doesn't fully cover them.
+
+## Technical details
+
+- No schema breakage: `app_announcements` gets a UNIQUE constraint + seed rows only.
+- No edge-function changes required for the bug fix.
+- `verifiedWrite` helpers are additive; existing call sites continue to work until migrated.
+- All toast copy stays consistent with the minimal brutalist aesthetic (Georgia serif, no grey backgrounds, destructive variant for failures).
