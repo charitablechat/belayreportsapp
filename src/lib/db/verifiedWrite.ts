@@ -137,12 +137,8 @@ export async function verifiedDelete<T = Record<string, unknown>>({
       delete: () => { eq: (k: string, v: unknown) => unknown };
     };
   };
-  const base = client.from(String(table)).delete();
-  const { data, error } = await applyMatch(
-    base as unknown as { eq: (k: string, v: unknown) => unknown },
-    match,
-  )
-    // @ts-expect-error - dynamic chain
+  const base = client.from(String(table)).delete() as unknown as EqChain;
+  const { data, error } = await applyMatch(base, match)
     .select(returning)
     .maybeSingle();
 
