@@ -104,9 +104,21 @@ export async function verifiedUpdate<T = Record<string, unknown>>({
   match,
   returning = "id",
 }: UpdateArgs): Promise<T> {
-  // @ts-expect-error - dynamic table name
-  const base = supabase.from(table).update(values);
-  const { data, error } = await applyMatch(base, match)
+  // Dynamic table name + generic values force us through `any` here; the
+  // public API is still strongly typed via the function generics.
+  const client = supabase as unknown as {
+    from: (t: string) => {
+      update: (v: Record<string, unknown>) => {
+        eq: (k: string, v: unknown) => unknown;
+      };
+    };
+  };
+  const base = client.from(String(table)).update(values);
+  const { data, error } = await applyMatch(
+    base as unknown as { eq: (k: string, v: unknown) => unknown },
+    match,
+  )
+    // @ts-expect-error - dynamic chain
     .select(returning)
     .maybeSingle();
 
@@ -123,9 +135,17 @@ export async function verifiedDelete<T = Record<string, unknown>>({
   match,
   returning = "id",
 }: DeleteArgs): Promise<T> {
-  // @ts-expect-error - dynamic table name
-  const base = supabase.from(table).delete();
-  const { data, error } = await applyMatch(base, match)
+  const client = supabase as unknown as {
+    from: (t: string) => {
+      delete: () => { eq: (k: string, v: unknown) => unknown };
+    };
+  };
+  const base = client.from(String(table)).delete();
+  const { data, error } = await applyMatch(
+    base as unknown as { eq: (k: string, v: unknown) => unknown },
+    match,
+  )
+    // @ts-expect-error - dynamic chain
     .select(returning)
     .maybeSingle();
 
@@ -135,23 +155,27 @@ export async function verifiedDelete<T = Record<string, unknown>>({
 }
 
 /**
- * Insert a row. Throws SilentWriteError if the insert returned nothing
- * (RLS WITH CHECK denial returns an error in practice, but this guards
- * against PostgREST representation quirks).
+ * Insert a row. Throws SilentWriteError if the insert returned nothing.
  */
 export async function verifiedInsert<T = Record<string, unknown>>({
   table,
   values,
   returning = "id",
 }: InsertArgs): Promise<T> {
-  // @ts-expect-error - dynamic table name
-  const { data, error } = await supabase
-    .from(table)
+  const client = supabase as unknown as {
+    from: (t: string) => {
+      insert: (v: unknown) => {
+        select: (r: string) => { maybeSingle: () => Promise<{ data: unknown; error: unknown }> };
+      };
+    };
+  };
+  const { data, error } = await client
+    .from(String(table))
     .insert(values)
     .select(returning)
     .maybeSingle();
 
-  if (error) throw error;
+  if (error) throw error as Error;
   if (!data) throw new SilentWriteError("insert", String(table), {});
   return data as T;
 }
@@ -165,14 +189,24 @@ export async function verifiedUpsert<T = Record<string, unknown>>({
   onConflict,
   returning = "id",
 }: UpsertArgs): Promise<T> {
-  // @ts-expect-error - dynamic table name
-  const { data, error } = await supabase
-    .from(table)
+  const client = supabase as unknown as {
+    from: (t: string) => {
+      upsert: (
+        v: unknown,
+        opts?: { onConflict?: string },
+      ) => {
+        select: (r: string) => { maybeSingle: () => Promise<{ data: unknown; error: unknown }> };
+      };
+    };
+  };
+  const { data, error } = await client
+    .from(String(table))
     .upsert(values, onConflict ? { onConflict } : undefined)
     .select(returning)
     .maybeSingle();
 
-  if (error) throw error;
+  if (error) throw error as Error;
   if (!data) throw new SilentWriteError("upsert", String(table), {});
   return data as T;
 }
+
