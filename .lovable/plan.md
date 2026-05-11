@@ -1,75 +1,56 @@
-# Cut Cloud Burn — Retention Janitor
+## Root cause (confirmed)
 
-## Goal
+The Known Issues and Developer Notes cards are silently failing to save because of a mismatch between the UI gate and the database RLS gate, combined with a missing post-write verification.
 
-Stop paying for ~12 GB of storage and 2.6 GB of DB that's mostly historical exhaust. Fixes the actual cost driver behind the recent $35–42 spikes.
+1. **UI gate** — `Dashboard.tsx` computes `isSuperAdmin` from the RPC `is_admin_or_above` (returns true for any `admin` or `super_admin`). It then passes `isSuperAdmin={!!isSuperAdmin}` to `KnownIssuesCard` and `DeveloperNotesCard`, so every admin sees the **Edit** button.
+2. **DB gate** — RLS on `app_announcements` uses `is_super_admin()`, which requires `user_roles.role = 'super_admin'`. Querying `user_roles`, there are **zero** rows with role `super_admin` — only `admin`. So every UPDATE from the app is filtered to 0 rows by RLS.
+3. **No error surfaced** — PostgREST does not return an error when RLS filters out the target row; the `.update().eq('id', …)` call resolves with `error: null` and an empty result. The component then runs the success branch, sets state, and shows "updated successfully". A page refetch pulls the unchanged server row and the edit disappears — exactly the symptom reported.
 
-## Current waste (from diagnostics)
+Same bug pattern lives in both `src/components/dashboard/KnownIssuesCard.tsx` (line 79–94) and `src/components/dashboard/DeveloperNotesCard.tsx` (line 73–88).
 
-| Source | Size | Issue |
-|---|---|---|
-| `database-backups` bucket | 7.3 GB / 7,801 objects | Never pruned — every daily + weekly backup kept forever |
-| `cron.job_run_details` | 1.9 GB | Every cron tick (incl. 5s email poller) writes a row, never trimmed. 74% of DB. |
-| `audit_logs` | 356 MB | No retention |
-| `report_deleted_items` | 120 MB | Soft-deletes accumulate |
-| `admin_edit_snapshots` | 97 MB | No retention |
+## Fix (Known Issues + Developer Notes)
 
-## Plan
+1. **Align the DB policy with the UI**: replace the two `is_super_admin()` policies on `public.app_announcements` with `is_admin_or_above()` so admins (the people who can press Edit) can actually write. Per the project's RBAC memory, this is the canonical check and the "True Super Admin" tier is read-only and invisible — there are no super_admin rows by design.
+2. **Verify writes in the components**: change both cards' `update(...)` calls to `update(...).select('id, content, updated_at').single()` and treat "no row returned" as a failure (toast "Save failed — you may not have permission" and roll the editor back). This converts every future silent RLS filter into a visible failure.
 
-### 1. New `nightly-retention-janitor` cron — runs 04:00 ET daily
+## Wider audit — same anti-pattern across the app
 
-Single pg_cron job that runs four `DELETE` statements wrapped in their own savepoints so one failure doesn't block the others:
+The fragile pattern is: **`supabase.from(X).update(…).eq('id', …)` with no `.select()` and no row-count check**. Whenever RLS filters the target row, the call returns `{ error: null, data: null }` and the caller cheerfully reports success. I will sweep the codebase for this pattern and harden the high-impact write paths.
 
-- **`cron.job_run_details`** — keep last 7 days (`WHERE end_time < now() - interval '7 days'`). Frees ~1.8 GB immediately. Postgres has a built-in helper `cron.purge_run_details()` we can call instead if available.
-- **`audit_logs`** — keep last 90 days. Frees ~250 MB.
-- **`admin_edit_snapshots`** — keep last 90 days. Frees ~70 MB.
-- **`report_deleted_items`** — already has a 60-day retention contract per memory; verify the existing `cleanup-expired-deleted-records` cron is actually firing. If yes, leave alone.
+### Audit scope (priority order)
 
-### 2. Backup bucket retention — runs 04:15 ET daily
+1. **Announcements** (this bug) — already covered above.
+2. **Report writes** — `inspection_reports`, `training_reports`, `daily_assessment_reports` updates from form save paths, admin reassignment flows, completion lock toggles, and invoiced-status toggles. These are the highest-stakes writes; a silent failure here = lost field data.
+3. **Inspection / training / daily_assessment header & item rows** — same `update().eq('id', …)` shape used in autosave.
+4. **Profile + role writes** — `profiles`, `user_roles`, `organization_members` from Admin User Management; `is_super_admin()` policies here are correct (intentional gate), but the UI must still detect "0 rows updated" and tell the operator the action was denied.
+5. **Notification preferences, app_announcements, onboarding resources, equipment_type_options, system_type_options, autocomplete tables** — secondary, but same pattern likely present.
+6. **Photo metadata updates** (`inspection_photos`, `training_photos` caption / order updates).
+7. **Edge function writes** that use the **anon** client on the user's JWT (not service-role). Service-role writes bypass RLS so they aren't at risk for this specific bug, but I'll spot-check that the few user-JWT functions (`admin-manage-user`, `send-report-email` status updates, `generate-inspection-html` HTML cache write, etc.) all handle empty result sets.
 
-New edge function `prune-old-backups` (or extend `nightly-retention-cleanup` if it exists) that lists `database-backups` storage bucket and deletes objects following:
+### What I will check for each write path
 
-- Keep **last 30 daily** backups
-- Keep **last 12 Sunday** (weekly) backups beyond that
-- Delete everything else
+- **RLS vs UI gate match** — does the policy actually permit the user the UI is showing the control to?
+- **Result verification** — every important `.update()` / `.upsert()` / `.delete()` either chains `.select()` and asserts a non-empty result, or uses one of the existing safe wrappers (`safe-functions-invoke`, `non-blocking-save`). I'll wrap the survivors.
+- **Optimistic local state** — when the server write silently no-ops, the local IDB row and React state must NOT be marked as "synced". I will cross-check against the `local-first-data-integrity-v3` and `sync-deduplication-guard` memories so we don't introduce regressions there.
+- **Toasts** — convert "we ran the call without an error" into "we have a confirmed write" before showing success.
 
-Pruning ~7,700 of 7,801 objects → frees ~6+ GB. Function uses service role, called via webhook secret like the existing backup crons.
+### Out of scope
 
-### 3. Verification queries (run once after first execution)
+- The actual content of Known Issues / Developer Notes — the user controls that.
+- Cost / retention work from the previous turn — already shipped.
+- Sync engine internals (offline → online reconcile). Those already have row-count assertions per the existing memories; I'll only touch direct-from-component writes.
 
-```sql
-SELECT pg_size_pretty(pg_total_relation_size('cron.job_run_details'));
-SELECT count(*), pg_size_pretty(sum(file_size_bytes)) FROM backup_history;
-```
+## Deliverables
 
-Plus a `SELECT name, count(*) FROM storage.objects WHERE bucket_id = 'database-backups'` before/after.
+1. One migration switching the two `app_announcements` policies from `is_super_admin()` to `is_admin_or_above()`.
+2. Hardened `KnownIssuesCard.tsx` and `DeveloperNotesCard.tsx` with `.select().single()` verification and a real failure toast.
+3. An audit report (posted in chat, not a file) listing every `.update()` / `.upsert()` / `.delete()` call in `src/` that lacks row-count verification, grouped by risk tier, with the specific fixes applied for tier-1 and tier-2 paths. Tier-3 paths get a list and a recommendation, applied only if you green-light a second pass.
+4. A new memory entry under `mem://security/silent-rls-no-op` codifying the rule: **every user-initiated mutation must verify it affected ≥1 row before reporting success**.
 
-## Technical details
+## Technical notes
 
-- Both crons go through `supabase--insert` (per project convention — they reference URLs/secrets, not migrations).
-- Janitor SQL uses `DO $$ BEGIN ... EXCEPTION WHEN OTHERS THEN ... END $$` blocks per table so a single bad row doesn't abort the whole sweep.
-- Backup pruner edge function:
-  - Auth: webhook secret header (matches `export-full-backup` pattern)
-  - Lists `database-backups` paginated (1000 at a time), groups by `created_at` parsed from filename, applies retention rules, batch `.remove([...])` calls.
-  - Logs result to `backup_history` metadata or a new `backup_pruning_log` row (decide during impl).
-- `verify_jwt = false` for the new edge function in `supabase/config.toml`.
+- The `is_admin_or_above()` SQL function already exists and is the project-blessed RBAC entry point (per `session-and-rbac-resilience-v2`).
+- `app_announcements` has only two rows (`known_issues`, `developer_notes`); changing the policy does not change visibility because the SELECT policy is already `authenticated → true`.
+- The component edit gate (`isSuperAdmin` prop) stays as-is — it's already correctly wired to `is_admin_or_above` upstream; only the prop name is misleading. I'll rename it to `canEdit` while I'm in there to prevent the next person from re-introducing the mismatch.
 
-## Out of scope
-
-- Email queue cron (already discussed — 30s is fine, leaving alone).
-- Compressing backups (would help but adds complexity; pruning gets us most of the win).
-- Reducing daily-backup frequency (user wants daily backups; only changing retention).
-
-## Expected impact
-
-- **Storage**: ~12 GB → ~3 GB (75% reduction)
-- **DB size**: 2.6 GB → ~0.5 GB (80% reduction) → smaller every future backup too
-- **Monthly burn**: should drop the storage+DB component roughly in proportion. Won't fully know until the next billing cycle, but this targets the right line items.
-
-## Rollback
-
-If anything looks off after the first run:
-- `cron.unschedule('nightly-retention-janitor')`
-- `cron.unschedule('prune-old-backups')`
-
-Deleted rows from `cron.job_run_details` and `audit_logs` are not recoverable, but they're operational logs — losing >7d / >90d of them is acceptable. Backup objects deleted from storage are gone permanently, which is why we keep 30 daily + 12 weekly as a safety margin (≈4+ months of recovery points).
+Approve and I'll start with the migration + component fixes, then run the audit sweep in the same pass.
