@@ -1872,6 +1872,7 @@ export type IdbSaveErrorCode =
   | 'timeout'
   | 'quota_exceeded'
   | 'storage_unavailable'
+  | 'REQUIRED_FIELD_MISSING'
   | 'unknown';
 
 export class IdbSaveError extends Error {
