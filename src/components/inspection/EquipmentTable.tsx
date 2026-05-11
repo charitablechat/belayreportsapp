@@ -38,9 +38,15 @@ interface EquipmentTableProps {
 
 const EQ_GRID_COLS = "grid-cols-[40px_88px_minmax(120px,1fr)_128px_96px_160px_minmax(150px,1fr)_64px]";
 
-function EquipmentTable({ category, displayName, equipment, onUpdate, onImmediateSave, categoryOptions = [], onAddCategoryOption, inspectionId, onGalleryRefresh }: EquipmentTableProps) {
+function EquipmentTable({ category, displayName, equipment, onUpdate, onImmediateSave: rawOnImmediateSave, categoryOptions = [], onAddCategoryOption, inspectionId, onGalleryRefresh }: EquipmentTableProps) {
   const isMobile = useIsMobile();
   const effectiveInspectionId = inspectionId || window.location.pathname.split('/').pop() || '';
+
+  // Wrap onImmediateSave so blur/Enter-driven re-renders never lose the scroll position.
+  const onImmediateSave = useCallback(() => {
+    if (!rawOnImmediateSave) return;
+    preserveScroll(() => rawOnImmediateSave());
+  }, [rawOnImmediateSave]);
   
   const categoryEquipment = useMemo(
     () => equipment.filter((item) => item.equipment_category === category),
