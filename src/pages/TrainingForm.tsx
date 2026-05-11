@@ -8,6 +8,7 @@ import {
 } from "@/components/ui/alert-dialog";
 import { isLocalDataNewer } from "@/lib/local-data-guards";
 import { applyTrackedFieldWrite, mergeRecordFields, TRACKED_FIELDS } from "@/lib/field-merge";
+import { checkRequiredHeaderFields, formatMissingFieldLabels } from "@/lib/header-required-fields";
 import { useParams, useNavigate } from "react-router-dom";
 import { goBack } from "@/lib/navigation";
 import { markPendingDashboardRefresh, markDashboardStaleTimestamp, registerActiveFormRecord, unregisterActiveFormRecord, onPendingRemoteUpdate, isRecentSelfWrite } from "@/lib/sync-events";
@@ -773,6 +774,31 @@ export default function TrainingForm() {
     // Block all writes in Lovable preview to protect production data
     if ((await import('@/lib/environment')).isLovablePreview()) return;
     if (!training || !id) return;
+
+    // Required-field gate: mirror the sync-time validator
+    // (`training-validation-schemas.ts#trainingSchema`) at save time so the
+    // form and the sync engine cannot disagree about which header fields
+    // are required. Manual saves surface a toast; auto-saves skip silently
+    // so the user isn't spammed every interval while they're still editing.
+    const requiredHeaderCheck = checkRequiredHeaderFields(
+      training as unknown as Record<string, unknown>,
+      'training',
+    );
+    if (!requiredHeaderCheck.ok) {
+      const missingLabels = formatMissingFieldLabels(requiredHeaderCheck.missing);
+      if (!silent) {
+        toast.error('Cannot save — required fields missing', {
+          description: missingLabels,
+        });
+        setSaveError({
+          message: `Required fields missing: ${missingLabels}`,
+          code: 'REQUIRED_FIELD_MISSING',
+        });
+      } else if (import.meta.env.DEV) {
+        console.log(`[Training Save] Skipping silent save — required fields missing: ${missingLabels}`);
+      }
+      return;
+    }
 
     // Prevent duplicate save calls
     if (saveInProgressRef.current) {
@@ -1927,6 +1953,30 @@ export default function TrainingForm() {
             isActive={swipeState.isSwipingBack} 
           />
         )}
+
+        {(() => {
+          const requiredHeaderCheck = checkRequiredHeaderFields(
+            training as unknown as Record<string, unknown>,
+            'training',
+          );
+          if (requiredHeaderCheck.ok) return null;
+          const missingLabels = formatMissingFieldLabels(requiredHeaderCheck.missing);
+          return (
+            <div
+              role="alert"
+              className="border-2 border-red-500/60 bg-red-950/30 text-red-400 font-mono text-xs px-4 py-3 rounded flex items-start gap-2 mb-4"
+              data-testid="required-fields-banner"
+            >
+              <Lock className="h-3.5 w-3.5 flex-shrink-0 mt-0.5" />
+              <div className="space-y-1">
+                <div className="font-bold">SAVING DISABLED — required fields missing</div>
+                <div>
+                  Fill in <span className="text-red-200">{missingLabels}</span> to resume saving. Edits to other fields stay visible in the form but will not persist until the required fields are filled.
+                </div>
+              </div>
+            </div>
+          );
+        })()}
 
         <Tabs value={currentTab} onValueChange={handleTabChange} className="space-y-6">
           <div ref={swipeContainerRef} className="sticky top-0 z-30 bg-background/95 backdrop-blur-sm pb-1">

@@ -3,6 +3,7 @@ import { formatReportFilename, formatReportTitle } from "@/lib/report-naming";
 import { useReportTabHistory } from "@/hooks/useReportTabHistory";
 import { isLocalDataNewer } from "@/lib/local-data-guards";
 import { applyTrackedFieldWrite, mergeRecordFields, TRACKED_FIELDS } from "@/lib/field-merge";
+import { checkRequiredHeaderFields, formatMissingFieldLabels } from "@/lib/header-required-fields";
 import { useParams, useNavigate } from "react-router-dom";
 import { goBack } from "@/lib/navigation";
 import { markPendingDashboardRefresh, markDashboardStaleTimestamp, registerActiveFormRecord, unregisterActiveFormRecord, onPendingRemoteUpdate, isRecentSelfWrite } from "@/lib/sync-events";
@@ -740,6 +741,26 @@ export default function DailyAssessmentForm() {
     if (!hasUnsavedChanges) setHasUnsavedChanges(true);
     const updatedAssessment = applyTrackedFieldWrite(assessment, 'daily_assessment', field, value);
     setAssessment(updatedAssessment);
+
+    // Required-field gate: refuse to persist a write while a required
+    // header field (e.g. `organization`, `assessment_date`) is missing.
+    // The React state above still reflects the user's attempted edit so
+    // the inline banner is visible, but IDB and Supabase retain the
+    // last-valid version so the record can still sync once the user fills
+    // in the missing field(s). Without this gate, the per-keystroke
+    // immediate-write below persists an unsyncable record (empty
+    // `organization` etc.) and the sync engine then throws
+    //   `Validation failed: [{"path":"assessment.organization", ...}]`
+    // on every cycle — exactly the production Sentry signature on
+    // Android Chrome that motivated this PR.
+    const requiredCheck = checkRequiredHeaderFields(
+      updatedAssessment as unknown as Record<string, unknown>,
+      'daily_assessment',
+    );
+    if (!requiredCheck.ok) {
+      return;
+    }
+
     try {
       // Save offline first
       await saveDailyAssessmentOffline(updatedAssessment);
@@ -857,6 +878,29 @@ export default function DailyAssessmentForm() {
   const handleSaveProgress = async (silent = false) => {
     // Block all writes in Lovable preview to protect production data
     if ((await import('@/lib/environment')).isLovablePreview()) return;
+    // Required-field gate: same invariant as the per-keystroke writer in
+    // `handleUpdateAssessment`. Manual saves surface a toast pointing the
+    // user at the offending field(s); auto-saves silently skip so the user
+    // isn't spammed every interval while they're still editing.
+    const requiredHeaderCheck = checkRequiredHeaderFields(
+      assessment as unknown as Record<string, unknown>,
+      'daily_assessment',
+    );
+    if (!requiredHeaderCheck.ok) {
+      const missingLabels = formatMissingFieldLabels(requiredHeaderCheck.missing);
+      if (!silent) {
+        toast.error('Cannot save — required fields missing', {
+          description: missingLabels,
+        });
+        setSaveError({
+          message: `Required fields missing: ${missingLabels}`,
+          code: 'REQUIRED_FIELD_MISSING',
+        });
+      } else if (import.meta.env.DEV) {
+        console.log(`[Save] Skipping silent save — required fields missing: ${missingLabels}`);
+      }
+      return;
+    }
     // Prevent duplicate save calls
     if (saveInProgressRef.current) {
       if (import.meta.env.DEV) console.log('[Save] Save already in progress, skipping');
@@ -1955,9 +1999,32 @@ export default function DailyAssessmentForm() {
           </div>
         )}
       <div className="space-y-6">
-        <DailyAssessmentHeader 
-          assessment={assessment} 
-          onUpdate={effectiveReadOnly ? () => {} : handleUpdateAssessment} 
+        {(() => {
+          const requiredHeaderCheck = checkRequiredHeaderFields(
+            assessment as unknown as Record<string, unknown>,
+            'daily_assessment',
+          );
+          if (requiredHeaderCheck.ok) return null;
+          const missingLabels = formatMissingFieldLabels(requiredHeaderCheck.missing);
+          return (
+            <div
+              role="alert"
+              className="border-2 border-red-500/60 bg-red-950/30 text-red-400 font-mono text-xs px-4 py-3 rounded flex items-start gap-2"
+              data-testid="required-fields-banner"
+            >
+              <Lock className="h-3.5 w-3.5 flex-shrink-0 mt-0.5" />
+              <div className="space-y-1">
+                <div className="font-bold">SAVING DISABLED — required fields missing</div>
+                <div>
+                  Fill in <span className="text-red-200">{missingLabels}</span> to resume saving. Edits to other fields are kept in the form but will not persist until the required fields are filled.
+                </div>
+              </div>
+            </div>
+          );
+        })()}
+        <DailyAssessmentHeader
+          assessment={assessment}
+          onUpdate={effectiveReadOnly ? () => {} : handleUpdateAssessment}
           isReadOnly={effectiveReadOnly}
           userProfile={inspectorProfile as { first_name?: string; last_name?: string } | null}
           modifiedByProfile={modifiedByProfile as { first_name?: string; last_name?: string } | null}
