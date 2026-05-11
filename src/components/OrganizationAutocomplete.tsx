@@ -284,9 +284,13 @@ export const OrganizationAutocomplete = ({
   };
 
   const handleTriggerFocus = () => {
-    setIsEditing(true);
-    setSearch(value);
-    placeCursorAtEnd();
+    // Only seed the local buffer when transitioning into edit mode.
+    // Re-seeding on every focus event clobbers in-flight local edits.
+    if (!isEditing) {
+      setIsEditing(true);
+      setSearch(value);
+      placeCursorAtEnd();
+    }
     if (!open) setOpen(true);
   };
 
