@@ -280,9 +280,14 @@ export function DatabaseAutocomplete({
   };
 
   const handleTriggerFocus = () => {
-    setIsEditing(true);
-    setSearchValue(value);
-    placeCursorAtEnd();
+    // Only seed the local buffer when transitioning into edit mode.
+    // Re-seeding on every focus event clobbers in-flight local edits
+    // when soft-keyboard / autocorrect briefly steals and restores focus.
+    if (!isEditing) {
+      setIsEditing(true);
+      setSearchValue(value);
+      placeCursorAtEnd();
+    }
     if (!open) setOpen(true);
   };
 
