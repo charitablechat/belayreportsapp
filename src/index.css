@@ -348,6 +348,22 @@ All colors MUST be HSL.
     @apply backdrop-blur-md bg-white/10 dark:bg-slate-900/40 border border-white/20 shadow-lg rounded-lg;
   }
 
+  /*
+   * Required-field completion gate — shared red pulse used by all three
+   * report forms (Inspection, Training, Daily Assessment). Subtle by design:
+   * animates box-shadow + border-color only, never opacity. Falls back to a
+   * static destructive ring when the user prefers reduced motion.
+   * See src/lib/required-fields.ts and mem://features/required-field-completion-gate.
+   */
+  .field-invalid {
+    @apply border border-destructive rounded-lg animate-pulse-error;
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .field-invalid {
+      @apply animate-none ring-2 ring-destructive ring-offset-2;
+    }
+  }
+
   .brutalist-metric {
     @apply text-4xl font-black tracking-tight;
   }

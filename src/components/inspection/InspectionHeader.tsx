@@ -35,7 +35,7 @@ interface InspectionHeaderProps {
 
 export default function InspectionHeader({ inspection, userProfile, modifiedByProfile, onUpdate, onImmediateSave, isReadOnly = false, missingFieldKeys = [] }: InspectionHeaderProps) {
   const isMissing = (key: string) => missingFieldKeys.includes(key);
-  const missingRing = "animate-pulse ring-2 ring-destructive ring-offset-2";
+  const missingRing = "field-invalid";
 
   const [locationLoading, setLocationLoading] = useState(false);
 

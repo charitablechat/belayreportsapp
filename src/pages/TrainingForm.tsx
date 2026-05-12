@@ -1868,6 +1868,11 @@ export default function TrainingForm() {
                       id: `completion-blocked-${id}`,
                       description: formatMissingDescription(missing),
                       duration: Infinity,
+                      className: 'border border-destructive-foreground/20',
+                      style: {
+                        background: 'hsl(var(--destructive))',
+                        color: 'hsl(var(--destructive-foreground))',
+                      },
                     });
                     document.getElementById(`field-${missing[0].key}`)
                       ?.scrollIntoView({ behavior: 'smooth', block: 'center' });

@@ -1,110 +1,59 @@
-## Block "Complete" until required header fields are filled
+# Two-Stage Report State: Draft vs Complete
 
-Saving stays unrestricted (drafts can be empty). The **Complete** action is the only new gate, with three signals when it's blocked: rejection, persistent toast at top of screen, and a red pulse on the offending field(s).
+Most of this system already landed in the prior turn (shared helper, Inspection + Training wiring, tests). This plan finishes the remaining slice and locks in the aesthetic polish you asked for.
 
-### Required fields per report
+## What's already in place
 
-Sourced from the existing zod schemas — no new rules introduced:
+- `src/lib/required-fields.ts` — `getMissingInspectionFields`, `getMissingTrainingFields`, `getMissingDailyAssessmentFields`. Empty string, whitespace, null, undefined all count as missing.
+- Inspection form: completion gate, persistent sonner toast (`duration: Infinity`, key `completion-blocked-${id}`), scroll-to-first-missing, live-clear effect, header inputs get `id="field-${key}"` + `aria-invalid` + pulse class when invalid.
+- Training form: same wiring.
+- Saves/autosave/IndexedDB writes remain unblocked. Existing Report Completion Bypass for non-header schema errors is unchanged. Attestation / lock dialog / admin re-complete unchanged.
+- Tests: `src/lib/__tests__/required-fields.test.ts` (12 passing).
 
-| Report | Required header fields |
-|---|---|
-| Inspection | `organization`, `location`, `inspection_date` |
-| Training | `organization` (Training Site), `start_date`, `end_date` |
-| Daily Assessment | `organization`, `assessment_date` |
+## What this plan adds
 
-(Attestation signature stays gated separately — already wired.)
+### 1. Daily Assessment wiring (parity with the other two)
+- `src/components/daily-assessment/DailyAssessmentForm.tsx`: add `missingFields` state, wrap `handleCompleteClick` with `getMissingDailyAssessmentFields`, persistent toast keyed `completion-blocked-${id}`, scroll first missing field into view, `useEffect` that live-clears toast + state when fields fill in.
+- `src/components/daily-assessment/DailyAssessmentHeader.tsx`: pass `missingFields` down, add `id="field-organization"` / `id="field-assessment_date"`, conditional pulse class + `aria-invalid`.
 
-### New shared helper — `src/lib/required-fields.ts`
+### 2. Subtle, developer-focused pulse
+Replace the current `animate-pulse ring-destructive` (whole-element opacity pulse — too loud) with a dedicated keyframe in `tailwind.config.ts` that animates `box-shadow` only:
 
-Single source of truth so the three forms can't drift:
-
-```ts
-export type MissingField = { key: string; label: string };
-
-export function getMissingInspectionFields(i: Partial<DbRow>): MissingField[] { ... }
-export function getMissingTrainingFields(t: Partial<DbRow>): MissingField[] { ... }
-export function getMissingAssessmentFields(a: Partial<DbRow>): MissingField[] { ... }
+```text
+@keyframes pulse-error {
+  0%, 100% { box-shadow: 0 0 0 0 hsl(var(--destructive) / 0.0); border-color: hsl(var(--destructive)); }
+  50%      { box-shadow: 0 0 0 4px hsl(var(--destructive) / 0.25); border-color: hsl(var(--destructive)); }
+}
 ```
+- Animation utility: `animate-pulse-error` running 1.6s ease-in-out infinite.
+- Respects `prefers-reduced-motion` via a `@media` block that flips to a static 1px destructive border + ring, no motion.
+- Applied as a single class `field-invalid` (defined in `index.css` `@layer components`) so all three forms share one source of truth.
 
-Each returns `[]` when complete. Empty string, whitespace-only, `null`, and `undefined` all count as missing.
+### 3. Toast accessibility/contrast
+- Continue using sonner (already global). Pass `style={{ background: 'hsl(var(--destructive))', color: 'hsl(var(--destructive-foreground))' }}` and `className: 'border border-destructive-foreground/20'` on the blocking toast for high contrast.
+- Add `role: 'alert'` via sonner's `important: true` so screen readers announce immediately.
+- Body lists missing fields as a comma-separated, human-readable list ("Organization, Assessment date").
 
-### Form wiring (same shape in all three forms)
+### 4. Tests
+- Extend `src/lib/__tests__/required-fields.test.ts` if any Daily Assessment edge case is uncovered (whitespace org, null assessment_date).
+- New `src/components/daily-assessment/__tests__/daily-assessment-completion-gate.test.tsx`: renders form with empty header, clicks Complete, asserts (a) `onComplete` not called, (b) toast text contains both field names, (c) `field-organization` has `aria-invalid="true"` and `field-invalid` class.
 
-In `InspectionForm.tsx`, `TrainingForm.tsx`, `DailyAssessmentForm.tsx`:
+### 5. Memory
+Add `mem://features/required-field-completion-gate` documenting: client-only gate via `src/lib/required-fields.ts`, persistent sonner toast (`duration: Infinity`, key `completion-blocked-${id}`), shared `field-invalid` class with reduced-motion fallback, saves/autosave never blocked.
 
-1. Add state `const [missingFields, setMissingFields] = useState<MissingField[]>([])`.
-2. Wrap `handleCompleteClick` (or the equivalent in Training/Assessment):
-   ```ts
-   const missing = getMissingInspectionFields(inspection);
-   if (missing.length) {
-     setMissingFields(missing);
-     toast.error('Cannot complete report', {
-       id: `completion-blocked-${id}`,
-       description: `Required fields missing: ${missing.map(m => m.label).join(', ')}`,
-       duration: Infinity,
-     });
-     // Scroll the first missing field into view
-     document.getElementById(`field-${missing[0].key}`)?.scrollIntoView({ behavior: 'smooth', block: 'center' });
-     return; // reject — do NOT open attestation, do NOT call completeXxx
-   }
-   toast.dismiss(`completion-blocked-${id}`);
-   setMissingFields([]);
-   // existing flow continues (attestation dialog or completeXxx)
-   ```
-3. Live-clear the toast and pulse as the user fixes fields:
-   ```ts
-   useEffect(() => {
-     if (!missingFields.length) return;
-     const stillMissing = getMissingInspectionFields(inspection);
-     if (!stillMissing.length) {
-       toast.dismiss(`completion-blocked-${id}`);
-       setMissingFields([]);
-     } else {
-       setMissingFields(stillMissing);
-     }
-   }, [inspection?.organization, inspection?.location, inspection?.inspection_date]);
-   ```
+## Files touched
 
-### Field-level pulse
+- `src/components/daily-assessment/DailyAssessmentForm.tsx` (edit)
+- `src/components/daily-assessment/DailyAssessmentHeader.tsx` (edit)
+- `tailwind.config.ts` (add `pulse-error` keyframe + animation)
+- `src/index.css` (add `.field-invalid` component class + reduced-motion fallback)
+- `src/components/inspection/InspectionHeader.tsx`, `src/components/training/TrainingHeader.tsx` (swap `animate-pulse ring-destructive` → `field-invalid`)
+- Toast call sites in all three forms (add high-contrast style + `important: true`)
+- `src/components/daily-assessment/__tests__/daily-assessment-completion-gate.test.tsx` (new)
+- `mem://features/required-field-completion-gate` (new)
 
-Each header input that can be required gets:
-- `id={`field-${key}`}` for scrolling
-- a className gated on `missingFields.some(m => m.key === key)`:
-  ```tsx
-  className={cn(
-    "...existing classes",
-    isMissing && "animate-pulse ring-2 ring-destructive ring-offset-2 rounded-md",
-  )}
-  ```
-- `aria-invalid={isMissing}` so screen readers announce it.
+## Out of scope
 
-The pulse stops the moment the field is non-empty (Step 3 above clears `missingFields`).
-
-### Toast behavior
-
-- Single sonner toast per report, keyed by `completion-blocked-${reportId}` so re-clicking Complete updates the same toast instead of stacking.
-- `duration: Infinity` keeps it on screen until either (a) the user fills every missing field (auto-dismiss via the effect), or (b) the user explicitly dismisses it.
-- Description text lists the human labels: `"Required fields missing: Organization, Location, Inspection date"`.
-- Plays well with the offline-first model: this is a pure client-side gate, no network calls, works offline.
-
-### What stays unchanged
-
-- `saveProgress` / autosave / IndexedDB writes — still accept empty fields.
-- Existing `Report Completion Bypass` memory (non-blocking completion ignores schema validation **errors**) — still applies to the rest of the schema. We're carving out **only** the per-form `getMissing*Fields` check, which lives outside the zod parse.
-- Attestation dialog flow.
-- Admin re-complete flow (`inspection.attestation_signed_at` shortcut) — gets the same gate up front.
-- Lock dialog after completion.
-- No DB migration, no edge-function change, no schema change.
-
-### Tests
-
-`src/lib/__tests__/required-fields.test.ts` covering, for each report type:
-- all-filled returns `[]`
-- single missing field returns just that field
-- whitespace-only counts as missing
-- `null` / `undefined` count as missing
-- field order in the returned array matches form display order (so the toast reads top-down)
-
-### Memory update
-
-After implementation I'll add a memory entry under `mem://features/required-field-completion-gate` and reference it from the index. It will say: completion is gated on header fields per report; gate is client-only, lives in `src/lib/required-fields.ts`, surfaces via persistent sonner toast keyed `completion-blocked-${id}` plus `animate-pulse ring-destructive` on the offending field; saves remain unblocked.
+- Row-level result/checkbox validation (you chose Header fields only).
+- Any change to save/autosave/IDB behavior.
+- Backend / RLS / schema changes.

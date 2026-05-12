@@ -176,6 +176,19 @@ export default {
             opacity: "0.6",
           },
         },
+        // Subtle, developer-focused error pulse: animates box-shadow only,
+        // never opacity. Powers the .field-invalid utility used by the
+        // required-field completion gate. See src/index.css.
+        "pulse-error": {
+          "0%, 100%": {
+            boxShadow: "0 0 0 0 hsl(var(--destructive) / 0)",
+            borderColor: "hsl(var(--destructive))",
+          },
+          "50%": {
+            boxShadow: "0 0 0 4px hsl(var(--destructive) / 0.25)",
+            borderColor: "hsl(var(--destructive))",
+          },
+        },
       },
       animation: {
         "accordion-down": "accordion-down 0.2s ease-out",
@@ -187,6 +200,7 @@ export default {
         "slide-up": "slide-up 0.3s ease-out",
         "pulse-soft": "pulse-soft 2s ease-in-out infinite",
         "pulse-calm": "pulse-calm 4s ease-in-out infinite",
+        "pulse-error": "pulse-error 1.6s ease-in-out infinite",
       },
     },
   },

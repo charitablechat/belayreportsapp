@@ -4,6 +4,7 @@ import { useReportTabHistory } from "@/hooks/useReportTabHistory";
 import { isLocalDataNewer } from "@/lib/local-data-guards";
 import { applyTrackedFieldWrite, mergeRecordFields, TRACKED_FIELDS } from "@/lib/field-merge";
 import { checkRequiredHeaderFields, formatMissingFieldLabels } from "@/lib/header-required-fields";
+import { getMissingAssessmentFields, formatMissingDescription, type MissingField } from "@/lib/required-fields";
 import { useParams, useNavigate } from "react-router-dom";
 import { goBack } from "@/lib/navigation";
 import { markPendingDashboardRefresh, markDashboardStaleTimestamp, registerActiveFormRecord, unregisterActiveFormRecord, onPendingRemoteUpdate, isRecentSelfWrite } from "@/lib/sync-events";
@@ -174,6 +175,50 @@ export default function DailyAssessmentForm() {
   const [versionPanelOpen, setVersionPanelOpen] = useState(false);
   const [lastVersionNumber, setLastVersionNumber] = useState<number | undefined>(undefined);
   const [lastFieldCount, setLastFieldCount] = useState<number | undefined>(undefined);
+
+  // Required-field completion gate. Saves stay unblocked; only the
+  // explicit Complete action checks this list. See
+  // src/lib/required-fields.ts and mem://features/required-field-completion-gate.
+  const [missingRequiredFields, setMissingRequiredFields] = useState<MissingField[]>([]);
+  useEffect(() => {
+    if (!missingRequiredFields.length) return;
+    const stillMissing = getMissingAssessmentFields(assessment);
+    if (!stillMissing.length) {
+      toast.dismiss(`completion-blocked-${id}`);
+      setMissingRequiredFields([]);
+    } else if (stillMissing.length !== missingRequiredFields.length) {
+      setMissingRequiredFields(stillMissing);
+    }
+  }, [assessment?.organization, assessment?.assessment_date, missingRequiredFields.length, id]);
+
+  // Click handler for the Complete button. Required-field gate runs first;
+  // missing fields reject completion with a persistent toast + red pulse.
+  const handleCompleteClick = () => {
+    const missing = getMissingAssessmentFields(assessment);
+    if (missing.length) {
+      setMissingRequiredFields(missing);
+      toast.error('Cannot complete report', {
+        id: `completion-blocked-${id}`,
+        description: formatMissingDescription(missing),
+        duration: Infinity,
+        className: 'border border-destructive-foreground/20',
+        style: {
+          background: 'hsl(var(--destructive))',
+          color: 'hsl(var(--destructive-foreground))',
+        },
+      });
+      document.getElementById(`field-${missing[0].key}`)
+        ?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      return;
+    }
+    toast.dismiss(`completion-blocked-${id}`);
+    setMissingRequiredFields([]);
+    if (assessment?.attestation_signed_at) {
+      setShowSubmitDialog(true);
+    } else {
+      setShowAttestationDialog(true);
+    }
+  };
 
   // Field-level click interception for locked reports (allow-list: only block editable elements)
   const handleLockedFieldClick = useCallback((e: React.MouseEvent | React.PointerEvent) => {
@@ -1899,13 +1944,7 @@ export default function DailyAssessmentForm() {
               {assessment?.status !== 'completed' && (
               <Button 
                 size={isMobileView ? "default" : "sm"} 
-                onClick={() => {
-                  if (assessment?.attestation_signed_at) {
-                    setShowSubmitDialog(true);
-                  } else {
-                    setShowAttestationDialog(true);
-                  }
-                }} 
+                onClick={handleCompleteClick}
                 disabled={saving || submitting}
                 className={isMobileView ? "min-w-[100px] h-10 text-sm font-medium" : ""}
               >
@@ -2028,6 +2067,7 @@ export default function DailyAssessmentForm() {
           isReadOnly={effectiveReadOnly}
           userProfile={inspectorProfile as { first_name?: string; last_name?: string } | null}
           modifiedByProfile={modifiedByProfile as { first_name?: string; last_name?: string } | null}
+          missingFieldKeys={missingRequiredFields.map(m => m.key)}
         />
         {id && currentUser?.id && (
           <CollaboratorPresence

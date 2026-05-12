@@ -34,7 +34,7 @@ const parseLocalDate = (dateStr: string | null | undefined) => {
 
 export default function TrainingHeader({ training, onUpdate, isReadOnly = false, userProfile, modifiedByProfile, missingFieldKeys = [] }: TrainingHeaderProps) {
   const isMissing = (key: string) => missingFieldKeys.includes(key);
-  const missingRing = "animate-pulse ring-2 ring-destructive ring-offset-2 rounded-md p-2";
+  const missingRing = "field-invalid p-2";
 
   // Build trainer name from the original owner's profile
   const trainerName = userProfile?.first_name && userProfile?.last_name
