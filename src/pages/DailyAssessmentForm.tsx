@@ -201,7 +201,6 @@ export default function DailyAssessmentForm() {
         id: `completion-blocked-${id}`,
         description: formatMissingDescription(missing),
         duration: Infinity,
-        important: true,
         className: 'border border-destructive-foreground/20',
         style: {
           background: 'hsl(var(--destructive))',
