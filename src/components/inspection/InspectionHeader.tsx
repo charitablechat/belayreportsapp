@@ -136,7 +136,14 @@ export default function InspectionHeader({ inspection, userProfile, modifiedByPr
                   />
                 </div>
               )}
-              <div className="space-y-1.5 p-3 rounded-lg bg-muted/30 border border-border/50">
+              <div
+                id="field-organization"
+                aria-invalid={isMissing('organization') || undefined}
+                className={cn(
+                  "space-y-1.5 p-3 rounded-lg bg-muted/30 border border-border/50",
+                  isMissing('organization') && missingRing,
+                )}
+              >
                 <Label className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-1 block">Facility Name</Label>
                 <OrganizationAutocomplete
                   value={inspection?.organization || ""}
