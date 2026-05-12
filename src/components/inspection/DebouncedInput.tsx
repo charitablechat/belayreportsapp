@@ -49,8 +49,18 @@ export const DebouncedInput = memo(function DebouncedInput({
     }
   }, [validate, delay]);
 
+  // `setSelectionRange` / `selectionStart` throw `InvalidStateError` on
+  // <input type="number"> (and email/file/etc). Guard before touching them.
+  // See Sentry ef893d25fff04e82bea7fcf8ad4f66b9 (May 12, 2026).
+  const supportsSelection = (input: HTMLInputElement): boolean => {
+    const t = input.type;
+    return t !== "number" && t !== "email" && t !== "file" && typeof input.setSelectionRange === "function";
+  };
+
   const placeCursorAtEnd = useCallback((input: HTMLInputElement) => {
+    if (!supportsSelection(input)) return;
     const setCaret = () => {
+      if (!supportsSelection(input)) return;
       const len = input.value.length;
       input.setSelectionRange(len, len);
     };
@@ -67,6 +77,7 @@ export const DebouncedInput = memo(function DebouncedInput({
   }, [onFocus, placeCursorAtEnd]);
 
   const handlePointerRelease = useCallback((input: HTMLInputElement) => {
+    if (!supportsSelection(input)) return;
     if (
       input.value.length > 0 &&
       input.selectionStart === 0 &&
