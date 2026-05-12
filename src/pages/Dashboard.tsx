@@ -654,6 +654,10 @@ export default function Dashboard() {
       window.removeEventListener('dashboard-stale', handleDashboardStale);
       subscription.unsubscribe();
       unsubscribeSyncComplete();
+      if (refreshScheduledRef.current) {
+        clearTimeout(refreshScheduledRef.current);
+        refreshScheduledRef.current = null;
+      }
     };
   }, []);
 
