@@ -3789,7 +3789,11 @@ export async function getUnuploadedPhotos(userId?: string) {
       const needsParent = userScoped.slice(0, PHOTO_PARENT_LOOKUP_CAP);
       const dropIds = new Set<string>();
       const orphanUuidIds = new Set<string>();
-      if (needsParent.length > 0) {
+      // S43: Parent-walk (orphan + ownership filter) only runs when a userId
+      // is supplied. Untyped/legacy callers (tests, internal probes) get the
+      // raw eligible set so they never silently lose photos to ownership
+      // heuristics they didn't opt into.
+      if (userId && needsParent.length > 0) {
         const inspTx = db.transaction('inspections', 'readonly');
         await Promise.all(
           needsParent.map(async (p) => {
