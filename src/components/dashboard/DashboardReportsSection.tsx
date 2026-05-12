@@ -1,4 +1,4 @@
-import { useMemo, useState, useEffect, useRef } from "react";
+import { useMemo, useState, useEffect, useRef, memo } from "react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -155,7 +155,7 @@ interface DashboardReportsSectionProps {
   profilesById?: ReadonlyMap<string, { first_name: string | null; last_name: string | null; avatar_url: string | null }>;
 }
 
-export function DashboardReportsSection({
+function DashboardReportsSectionImpl({
   inspections,
   trainings,
   dailyAssessments,
@@ -834,3 +834,6 @@ function CrossTabSection({ label, icon, reports, type, compact, viewMode, onDele
     </div>
   );
 }
+
+export const DashboardReportsSection = memo(DashboardReportsSectionImpl);
+

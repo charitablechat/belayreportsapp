@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useMemo } from "react";
+import React, { useEffect, useState, useMemo, useRef, useCallback } from "react";
 import { cn } from "@/lib/utils";
 import { useNavigate, useLocation } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
@@ -119,6 +119,30 @@ function writeDashboardCache(key: string, data: DbRow[]) {
   } catch {}
 }
 
+// Value-equality bail-out for dashboard row arrays. Compares by id +
+// updated_at so identical SWR refetches don't replace the array reference
+// and trigger DashboardReportsSection to remount its rows. See
+// .lovable/plan.md "Root cause 2" for context.
+function sameRows(a: DbRow[], b: DbRow[]): boolean {
+  if (a === b) return true;
+  if (a.length !== b.length) return false;
+  for (let i = 0; i < a.length; i++) {
+    if (a[i].id !== b[i].id) return false;
+    if ((a[i].updated_at ?? '') !== (b[i].updated_at ?? '')) return false;
+  }
+  return true;
+}
+
+// Functional setter that no-ops when the next array is row-equivalent to
+// the current one. React bails out of the render when the setter returns
+// the same reference.
+function applyRowsIfChanged(
+  setter: React.Dispatch<React.SetStateAction<DbRow[]>>,
+  next: DbRow[],
+) {
+  setter(prev => (sameRows(prev, next) ? prev : next));
+}
+
 export default function Dashboard() {
   const navigate = useNavigate();
   const location = useLocation();
@@ -159,7 +183,6 @@ export default function Dashboard() {
   const [showStaleDataBanner, setShowStaleDataBanner] = useState(false);
   const networkFailCountRef = React.useRef(0);
 
-  
   // Build unique inspector list from report data
   const uniqueInspectors = useMemo(() => {
     const map = new Map<string, string>();
@@ -430,6 +453,26 @@ export default function Dashboard() {
     }
   }, []);
 
+  // Coalescer for refresh triggers (focus, visibility, sync-complete,
+  // pageshow, online, dashboard-stale, realtime fallback). Without this
+  // the seven event sources can stack three refreshes inside a second,
+  // each restarting the full inspections/trainings/assessments pipeline
+  // and re-replacing the React arrays — the visible "flicker" on
+  // /dashboard. See .lovable/plan.md "Root cause 1".
+  const refreshScheduledRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const requestRefresh = useCallback(() => {
+    if (refreshScheduledRef.current) return; // already queued
+    if (refreshInFlightRef.current) {
+      // Let the in-flight pendingRefresh trailer handle it
+      pendingRefreshRef.current = true;
+      return;
+    }
+    refreshScheduledRef.current = setTimeout(() => {
+      refreshScheduledRef.current = null;
+      refreshReports(true);
+    }, 250);
+  }, [refreshReports]);
+
   useEffect(() => {
     setLoading(true);
     // Fix 2: only show skeletons if we truly have nothing cached. If cache
@@ -489,7 +532,7 @@ export default function Dashboard() {
       setIsOnline(true);
       invalidateSuperAdminCache();
       queryClient.invalidateQueries({ queryKey: ["is-super-admin"] });
-      refreshReports(true);
+      requestRefresh();
     };
     const handleOffline = () => setIsOnline(false);
 
@@ -498,22 +541,22 @@ export default function Dashboard() {
       if (import.meta.env.DEV) console.log('[Dashboard] Sync complete - refreshing');
       invalidateSuperAdminCache();
       queryClient.invalidateQueries({ queryKey: ["is-super-admin"] });
-      refreshReports(true);
+      requestRefresh();
     });
 
     // Visibility change (tab switch, app resume)
     const handleVisibilityChange = () => {
-      if (document.visibilityState === 'visible') refreshReports(true);
+      if (document.visibilityState === 'visible') requestRefresh();
     };
 
     // Window focus (SPA back-navigation)
-    const handleWindowFocus = () => refreshReports(true);
+    const handleWindowFocus = () => requestRefresh();
 
     // iPad/Safari bfcache restore
     const handlePageShow = (e: PageTransitionEvent) => {
       if (e.persisted) {
         if (import.meta.env.DEV) console.log('[Dashboard] bfcache restore - refreshing');
-        refreshReports(true);
+        requestRefresh();
       }
     };
 
@@ -599,7 +642,7 @@ export default function Dashboard() {
     window.addEventListener('focus', handleWindowFocus);
     window.addEventListener('pageshow', handlePageShow);
     document.addEventListener('visibilitychange', handleVisibilityChange);
-    const handleDashboardStale = () => refreshReports(true);
+    const handleDashboardStale = () => requestRefresh();
     window.addEventListener('dashboard-stale', handleDashboardStale);
 
     return () => {
@@ -611,6 +654,10 @@ export default function Dashboard() {
       window.removeEventListener('dashboard-stale', handleDashboardStale);
       subscription.unsubscribe();
       unsubscribeSyncComplete();
+      if (refreshScheduledRef.current) {
+        clearTimeout(refreshScheduledRef.current);
+        refreshScheduledRef.current = null;
+      }
     };
   }, []);
 
@@ -664,7 +711,7 @@ export default function Dashboard() {
     const dashboardChannel = supabase
       .channel(`dashboard-realtime:${userId}:${isSuperAdmin ? 'admin' : 'self'}`)
       .on('postgres_changes', baseConfig('inspections'), (payload: RealtimePostgresChangesPayload<DbRow>) => {
-        setInspectionsValidated(true);
+        setInspectionsValidated(prev => prev ? prev : true);
         if (payload.eventType === 'DELETE') {
           const id = payload.old?.id;
           if (id) setInspections((prev) => removeRow(prev, id));
@@ -679,7 +726,7 @@ export default function Dashboard() {
         setInspections((prev) => mergeRow(prev, row));
       })
       .on('postgres_changes', baseConfig('trainings'), (payload: RealtimePostgresChangesPayload<DbRow>) => {
-        setTrainingsValidated(true);
+        setTrainingsValidated(prev => prev ? prev : true);
         if (payload.eventType === 'DELETE') {
           const id = payload.old?.id;
           if (id) setTrainings((prev) => removeRow(prev, id));
@@ -694,7 +741,7 @@ export default function Dashboard() {
         setTrainings((prev) => mergeRow(prev, row));
       })
       .on('postgres_changes', baseConfig('daily_assessments'), (payload: RealtimePostgresChangesPayload<DbRow>) => {
-        setDailyValidated(true);
+        setDailyValidated(prev => prev ? prev : true);
         if (payload.eventType === 'DELETE') {
           const id = payload.old?.id;
           if (id) setDailyAssessments((prev) => removeRow(prev, id));
@@ -719,7 +766,7 @@ export default function Dashboard() {
         }
         if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT' || status === 'CLOSED') {
           console.warn('[Dashboard] realtime channel degraded:', status, '— scheduling fallback refetch');
-          setTimeout(() => refreshReports(true), 1500);
+          setTimeout(() => requestRefresh(), 1500);
         }
       });
 
@@ -847,7 +894,7 @@ export default function Dashboard() {
       const offlineDataRaw = await offlineWithTimeout;
       const offlineData = filterOutE2EFixtures(offlineDataRaw, E2E_INSPECTION_MARKER_COLUMNS);
       if (offlineData.length > 0) {
-        setInspections(offlineData);
+        applyRowsIfChanged(setInspections, offlineData);
         writeDashboardCache('dashboard-cache-inspections', offlineData);
         if (import.meta.env.DEV) {
           console.log('[Dashboard] Stale-while-revalidate inspections from cache:', offlineData.length);
@@ -858,7 +905,7 @@ export default function Dashboard() {
       if (navigator.onLine && sessionValid) {
         const networkData = await supabasePromise;
         if (networkData && networkData.length > 0) {
-          setInspections(networkData);
+          applyRowsIfChanged(setInspections, networkData);
           writeDashboardCache('dashboard-cache-inspections', networkData);
 
           // Reconcile: quarantine local rows the server no longer returns,
@@ -991,12 +1038,12 @@ export default function Dashboard() {
           return { networkSuccess: true, definitive: true };
         } else if (networkData !== null && sessionValid) {
           // Server confirmed zero reports — this is a definitive empty result
-          setInspections([]);
+          applyRowsIfChanged(setInspections, []);
           writeDashboardCache('dashboard-cache-inspections', []);
           return { networkSuccess: true, definitive: true };
         } else if (networkData === null && offlineData.length > 0) {
           // Network failed -- fall back to offline data (definitive from offline)
-          setInspections(offlineData);
+          applyRowsIfChanged(setInspections, offlineData);
           return { networkSuccess: false, definitive: true };
         }
         // networkData === null and no offline data — not definitive
@@ -1057,7 +1104,7 @@ export default function Dashboard() {
       
       const offlineData = await offlineWithTimeout;
       if (offlineData.length > 0) {
-        setTrainings(offlineData);
+        applyRowsIfChanged(setTrainings, offlineData);
         writeDashboardCache('dashboard-cache-trainings', offlineData);
         if (import.meta.env.DEV) {
           console.log('[Dashboard] Stale-while-revalidate trainings from cache:', offlineData.length);
@@ -1068,7 +1115,7 @@ export default function Dashboard() {
       if (navigator.onLine && sessionValid) {
         const networkData = await supabasePromise;
         if (networkData && networkData.length > 0) {
-          setTrainings(networkData);
+          applyRowsIfChanged(setTrainings, networkData);
           writeDashboardCache('dashboard-cache-trainings', networkData);
 
           reconcileServerDeletions({
@@ -1178,11 +1225,11 @@ export default function Dashboard() {
           }
           return { networkSuccess: true, definitive: true };
         } else if (networkData !== null && sessionValid) {
-          setTrainings([]);
+          applyRowsIfChanged(setTrainings, []);
           writeDashboardCache('dashboard-cache-trainings', []);
           return { networkSuccess: true, definitive: true };
         } else if (networkData === null && offlineData.length > 0) {
-          setTrainings(offlineData);
+          applyRowsIfChanged(setTrainings, offlineData);
           return { networkSuccess: false, definitive: true };
         }
         return { networkSuccess: false, definitive: offlineData.length > 0 };
@@ -1241,7 +1288,7 @@ export default function Dashboard() {
       
       const offlineData = await offlineWithTimeout;
       if (offlineData.length > 0) {
-        setDailyAssessments(offlineData);
+        applyRowsIfChanged(setDailyAssessments, offlineData);
         writeDashboardCache('dashboard-cache-daily', offlineData);
         if (import.meta.env.DEV) {
           console.log('[Dashboard] Stale-while-revalidate assessments from cache:', offlineData.length);
@@ -1252,7 +1299,7 @@ export default function Dashboard() {
       if (navigator.onLine && sessionValid) {
         const networkData = await supabasePromise;
         if (networkData && networkData.length > 0) {
-          setDailyAssessments(networkData);
+          applyRowsIfChanged(setDailyAssessments, networkData);
           writeDashboardCache('dashboard-cache-daily', networkData);
 
           reconcileServerDeletions({
@@ -1362,11 +1409,11 @@ export default function Dashboard() {
           }
           return { networkSuccess: true, definitive: true };
         } else if (networkData !== null && sessionValid) {
-          setDailyAssessments([]);
+          applyRowsIfChanged(setDailyAssessments, []);
           writeDashboardCache('dashboard-cache-daily', []);
           return { networkSuccess: true, definitive: true };
         } else if (networkData === null && offlineData.length > 0) {
-          setDailyAssessments(offlineData);
+          applyRowsIfChanged(setDailyAssessments, offlineData);
           return { networkSuccess: false, definitive: true };
         }
         return { networkSuccess: false, definitive: offlineData.length > 0 };
