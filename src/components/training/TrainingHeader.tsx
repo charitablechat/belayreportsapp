@@ -52,7 +52,11 @@ export default function TrainingHeader({ training, onUpdate, isReadOnly = false,
         <CardTitle>Training Information</CardTitle>
       </CardHeader>
       <CardContent className="space-y-4">
-        <div className="space-y-2">
+        <div
+          id="field-organization"
+          aria-invalid={isMissing('organization') || undefined}
+          className={cn("space-y-2", isMissing('organization') && missingRing)}
+        >
           <Label htmlFor="organization">Training Site (Name of facility, city, state) *</Label>
           <OrganizationAutocomplete
             value={training.organization || ''}
