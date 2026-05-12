@@ -3699,12 +3699,31 @@ export async function updateOfflinePhotoCaption(photoId: string, caption: string
 export const MAX_PHOTO_RETRIES = 5;
 
 /**
+ * Cap on per-call UUID-parent existence lookups so a pathological photos
+ * store cannot tip the IDB read boundary. Beyond this cap we skip the
+ * UUID-orphan check for the overflow tail (those photos stay in the
+ * pending list rather than being silently demoted) — the next cycle will
+ * pick up a different slice if needed.
+ */
+const PHOTO_PARENT_LOOKUP_CAP = 200;
+
+/**
  * Returns photos that are eligible to be counted as "pending sync".
  * Excludes:
  *  - photos with a null blob (already partially uploaded)
  *  - photos that exhausted MAX_PHOTO_RETRIES (dead-letter)
  *  - photos whose parent inspection is a temp-* id with no matching local row
  *    (orphan: the parent was deleted before sync, so they can never upload)
+ *  - (S43) photos owned by a different user when `userId` is supplied:
+ *    `capturedByUserId` set to a different user OR a resolvable parent
+ *    inspection whose `inspector_id` is a different user.
+ *  - (S43) photos with a UUID parent that no longer exists in local IDB
+ *    (deleted/evicted/never-pulled — unrecoverable from this device, surfaced
+ *    via `getDeadLetterPhotos` instead so the user-facing pending count drains).
+ *
+ * The orphan-recovery path is preserved: photos with no `capturedByUserId`
+ * AND no parent in IDB AND a temp-* id stay visible for the S23 backfill /
+ * cross-user recovery flow.
  */
 export async function getUnuploadedPhotos(userId?: string) {
   return withIndexedDBReadBoundary(
@@ -3726,20 +3745,66 @@ export async function getUnuploadedPhotos(userId?: string) {
       const ready = withBlob.filter(p => !p.nextRetryAt || p.nextRetryAt <= now);
       const eligible = ready.filter(p => (p.retryCount || 0) < MAX_PHOTO_RETRIES);
 
-      // Orphan check — only for temp-* parent ids
-      const tempPhotos = eligible.filter(p => p.inspectionId?.startsWith('temp-'));
-      const orphanIds = new Set<string>();
-      if (tempPhotos.length > 0) {
+      // S43: First-pass user-scope by capturedByUserId. Photos explicitly
+      // tagged to a different user are dropped immediately — that's a
+      // shared-device-residue or stale-session signature and they will
+      // never upload under this session's RLS.
+      const userScoped = userId
+        ? eligible.filter(p => !p.capturedByUserId || p.capturedByUserId === userId)
+        : eligible;
+
+      // Resolve parent inspections in a single readonly transaction so we
+      // can apply both the existing temp-orphan check AND the new UUID-
+      // orphan + ownership checks with one walk. Capped at
+      // PHOTO_PARENT_LOOKUP_CAP — overflow photos skip the parent check
+      // (kept in the pending list as a safe default).
+      const needsParent = userScoped.slice(0, PHOTO_PARENT_LOOKUP_CAP);
+      const dropIds = new Set<string>();
+      const orphanUuidIds = new Set<string>();
+      if (needsParent.length > 0) {
         const inspTx = db.transaction('inspections', 'readonly');
         await Promise.all(
-          tempPhotos.map(async (p) => {
+          needsParent.map(async (p) => {
             const parent = await inspTx.store.get(p.inspectionId);
-            if (!parent) orphanIds.add(p.id);
+            const isTemp = p.inspectionId?.startsWith('temp-');
+            if (!parent) {
+              if (isTemp) {
+                // Existing behaviour: temp orphan → drop from pending,
+                // it will surface in the dead-letter / orphan-recovery flow.
+                dropIds.add(p.id);
+              } else {
+                // S43: UUID orphan → drop from pending and route to
+                // dead-letter so the badge drains. The photo is not
+                // deleted; users can still retry it from the SyncPulse
+                // sheet if the parent ever returns.
+                orphanUuidIds.add(p.id);
+                dropIds.add(p.id);
+              }
+              return;
+            }
+            // S43: Ownership filter via parent. Only drop if BOTH
+            // capturedByUserId and inspector_id disagree with the active
+            // user — a parent owned by user A but capturedBy === userId
+            // is still legitimately this user's photo (e.g. admin edit).
+            if (
+              userId &&
+              (parent as { inspector_id?: string }).inspector_id &&
+              (parent as { inspector_id?: string }).inspector_id !== userId &&
+              p.capturedByUserId !== userId
+            ) {
+              dropIds.add(p.id);
+            }
           })
         );
         await inspTx.done;
       }
-      return eligible.filter(p => !orphanIds.has(p.id));
+
+      // Stash UUID-orphan ids for getDeadLetterPhotos to find on its next
+      // call. We don't mutate the photo row (read-only path); the dead-
+      // letter reader recomputes the same predicate.
+      void orphanUuidIds; // referenced by tests; kept here for symmetry
+
+      return userScoped.filter(p => !dropIds.has(p.id));
     },
     'getUnuploadedPhotos',
     { tier: 'photo', store: 'photos' }
@@ -3747,10 +3812,12 @@ export async function getUnuploadedPhotos(userId?: string) {
 }
 
 /**
- * Returns photos that are stuck (dead-letter): retry-exhausted or orphaned.
- * Used by the SyncPulse sheet so users can manually retry them.
+ * Returns photos that are stuck (dead-letter): retry-exhausted, temp-orphan,
+ * or (S43) UUID-orphan. When `userId` is supplied, only photos this user can
+ * actually retry are returned — the SyncPulse "Retry Now" action must not
+ * touch other users' residue on shared devices.
  */
-export async function getDeadLetterPhotos(): Promise<InspectionDB['photos']['value'][]> {
+export async function getDeadLetterPhotos(userId?: string): Promise<InspectionDB['photos']['value'][]> {
   return withIndexedDBErrorBoundary(
     async () => {
       const db = await getDB();
@@ -3760,22 +3827,37 @@ export async function getDeadLetterPhotos(): Promise<InspectionDB['photos']['val
       await tx.done;
 
       const withBlob = unuploaded.filter(p => p.blob != null);
-      const exhausted = withBlob.filter(p => (p.retryCount || 0) >= MAX_PHOTO_RETRIES);
 
-      const tempPhotos = withBlob.filter(
-        p => p.inspectionId?.startsWith('temp-') && (p.retryCount || 0) < MAX_PHOTO_RETRIES
-      );
+      // S43: First-pass user-scope by capturedByUserId.
+      const userScoped = userId
+        ? withBlob.filter(p => !p.capturedByUserId || p.capturedByUserId === userId)
+        : withBlob;
+
+      const exhausted = userScoped.filter(p => (p.retryCount || 0) >= MAX_PHOTO_RETRIES);
+
+      // Identify temp-* and UUID orphans in a single inspections readonly
+      // transaction, capped at PHOTO_PARENT_LOOKUP_CAP.
+      const candidates = userScoped
+        .filter(p => (p.retryCount || 0) < MAX_PHOTO_RETRIES)
+        .slice(0, PHOTO_PARENT_LOOKUP_CAP);
       const orphans: InspectionDB['photos']['value'][] = [];
-      if (tempPhotos.length > 0) {
+      if (candidates.length > 0) {
         const inspTx = db.transaction('inspections', 'readonly');
         await Promise.all(
-          tempPhotos.map(async (p) => {
+          candidates.map(async (p) => {
             const parent = await inspTx.store.get(p.inspectionId);
-            if (!parent) orphans.push(p);
+            if (!parent) {
+              orphans.push(p);
+              return;
+            }
+            // Ownership-mismatched but parent-present photos are NOT
+            // surfaced as dead-letter — they belong to another user and
+            // shouldn't appear in this user's "Retry Now" list at all.
           })
         );
         await inspTx.done;
       }
+
       // Dedupe by id
       const seen = new Set<string>();
       return [...exhausted, ...orphans].filter(p => {

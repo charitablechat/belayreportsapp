@@ -875,7 +875,7 @@ export default function Dashboard() {
           const now = new Date().toISOString();
           Promise.all(networkData.map(async (inspection) => {
             const localRecord = await getOfflineInspection(inspection.id);
-            if (shouldPreserveLocalRecord(localRecord)) {
+            if (shouldPreserveLocalRecord(localRecord, inspection)) {
               // Exception: if server synced_at >= local updated_at, the data WAS synced -- allow overwrite
               const serverSyncedAt = inspection.synced_at ? new Date(inspection.synced_at).getTime() : 0;
               const localUpdatedAt = localRecord?.updated_at ? new Date(localRecord.updated_at).getTime() : 0;
@@ -1081,7 +1081,7 @@ export default function Dashboard() {
           const nowT = new Date().toISOString();
           Promise.all(networkData.map(async (training) => {
             const localRecord = await getOfflineTraining(training.id);
-            if (shouldPreserveLocalRecord(localRecord)) {
+            if (shouldPreserveLocalRecord(localRecord, training)) {
               const serverSyncedAt = training.synced_at ? new Date(training.synced_at).getTime() : 0;
               const localUpdatedAt = localRecord?.updated_at ? new Date(localRecord.updated_at).getTime() : 0;
               if (serverSyncedAt < localUpdatedAt) {
@@ -1265,7 +1265,7 @@ export default function Dashboard() {
           const nowA = new Date().toISOString();
           Promise.all(networkData.map(async (assessment) => {
             const localRecord = await getOfflineDailyAssessment(assessment.id);
-            if (shouldPreserveLocalRecord(localRecord)) {
+            if (shouldPreserveLocalRecord(localRecord, assessment)) {
               const serverSyncedAt = assessment.synced_at ? new Date(assessment.synced_at).getTime() : 0;
               const localUpdatedAt = localRecord?.updated_at ? new Date(localRecord.updated_at).getTime() : 0;
               if (serverSyncedAt < localUpdatedAt) {

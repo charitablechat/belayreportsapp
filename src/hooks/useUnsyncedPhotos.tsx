@@ -88,7 +88,7 @@ export const useUnsyncedPhotos = () => {
       
       const [unuploadedResult, deadLetterResult, regressionEntries] = await Promise.all([
         getUnuploadedPhotos(user.id),
-        getDeadLetterPhotos(),
+        getDeadLetterPhotos(user.id),
         listRegressionSkips().catch(() => [] as RegressionSkipEntry[]),
       ]);
 

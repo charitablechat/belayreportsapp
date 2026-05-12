@@ -95,9 +95,18 @@ export function isLocalDataNewer(
  * Determines whether a local IndexedDB record should be preserved (not overwritten)
  * when the Dashboard caches server data locally. This prevents the destructive pattern
  * where server data with empty child records overwrites rich local data that hasn't synced yet.
+ *
+ * S43: Optional `serverRecord` argument lets the caller short-circuit the
+ * "local drift > tolerance ⇒ preserve" rule when the server confirms it has
+ * already absorbed this user's edit (`server.synced_at >= local.updated_at - tolerance`).
+ * Without this, a different device's push lands first, the dashboard re-fetches,
+ * but the local copy on the *other* device keeps shadowing the truth — producing
+ * the "stuck 1 pending" badge that never clears. Pre-existing single-argument
+ * call sites continue to work unchanged.
  */
 export function shouldPreserveLocalRecord(
-  localRecord: { synced_at?: string | null; updated_at?: string | null } | null | undefined
+  localRecord: { synced_at?: string | null; updated_at?: string | null } | null | undefined,
+  serverRecord?: { synced_at?: string | null; updated_at?: string | null } | null
 ): boolean {
   if (!localRecord) return false;
   // Never synced -- local data is the only copy
@@ -107,6 +116,15 @@ export function shouldPreserveLocalRecord(
     const updatedMs = new Date(localRecord.updated_at).getTime();
     const syncedMs = new Date(localRecord.synced_at).getTime();
     if (exceedsDriftTolerance(updatedMs, syncedMs)) {
+      // S43: Server already caught up to (or past) this local edit.
+      // Stop preserving — let the fresh server payload land so synced_at
+      // re-anchors and the user-facing pending badge drains.
+      if (serverRecord?.synced_at) {
+        const serverSyncedMs = new Date(serverRecord.synced_at).getTime();
+        if (serverSyncedMs >= updatedMs - SYNC_DRIFT_TOLERANCE_MS) {
+          return false;
+        }
+      }
       return true;
     }
   }
