@@ -91,14 +91,17 @@ describe('S43 — photo pending count is user-scoped', () => {
     expect(ids).not.toContain('photo-on-A');
   });
 
-  it('keeps temp-* orphan photos with no capturedByUserId visible (orphan-recovery path)', async () => {
+  it('temp-* orphan photos with no capturedByUserId surface in getDeadLetterPhotos for recovery', async () => {
     const mod = await import('../offline-storage');
     // No parent inspection saved — temp-* orphan with no user tag.
     await seedPhoto(mod, 'photo-orphan-temp', 'temp-abc-123', null);
 
-    const out = (await mod.getUnuploadedPhotos(USER_B)) as Array<{ id: string }>;
-    const ids = out.map((p) => p.id);
-    expect(ids).toContain('photo-orphan-temp');
+    // Excluded from pending (matches pre-existing temp-orphan filter).
+    const pending = (await mod.getUnuploadedPhotos(USER_B)) as Array<{ id: string }>;
+    expect(pending.find((p) => p.id === 'photo-orphan-temp')).toBeUndefined();
+    // But surfaces in the dead-letter / Retry-Now list (orphan-recovery path).
+    const dead = (await mod.getDeadLetterPhotos(USER_B)) as Array<{ id: string }>;
+    expect(dead.find((p) => p.id === 'photo-orphan-temp')).toBeDefined();
   });
 
   it('routes UUID-orphan photos to getDeadLetterPhotos, not getUnuploadedPhotos', async () => {
