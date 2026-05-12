@@ -182,7 +182,8 @@ function applyRowsIfChanged(
   const [showStaleDataBanner, setShowStaleDataBanner] = useState(false);
   const networkFailCountRef = React.useRef(0);
 
-  
+export default function Dashboard() {
+
   // Build unique inspector list from report data
   const uniqueInspectors = useMemo(() => {
     const map = new Map<string, string>();
