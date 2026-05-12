@@ -1,61 +1,114 @@
-# Fix the stuck "50 pending" badge
+## Why the dashboard flickers
 
-Two surgical fixes that together drain the iPad badge and prevent the same situation from re-accumulating. No behavioural change to actually-pending records, no UI rework.
+The flicker isn't the brutalist 2px loading bar — that only renders on first mount. It's the **reports list and StatsBar repainting every few seconds**. Three independent issues compound on `/dashboard`:
 
-Important update from your reply: the iPad has only ever held your account, and you have not signed in there for two months. That rules out the "shared device" theory but **strengthens** the "stale residue" theory — the ~49 phantom photos are almost certainly tied to inspections that have since been deleted, evicted, or whose UUID parent was never re-pulled into that iPad's IndexedDB. The orphan check below is what actually drains them.
+### Root cause 1 — Refresh storm with no coalescer
+
+`refreshReports(true)` is wired up to **seven** triggers in the same effect (Dashboard.tsx 433–615):
+
+- initial mount
+- `online` event
+- `focus` event
+- `pageshow` (bfcache restore)
+- `visibilitychange → visible`
+- `dashboard-stale` custom event
+- `onSyncComplete` (fires every auto-sync — your replay shows one every ~50s)
+- realtime channel error fallback (`setTimeout(refreshReports, 1500)`)
+
+There's no debounce and no "already in flight" guard. Tab focus + a sync completing + a realtime status flap can fire 3 refreshes within a second, each restarting the full inspections / trainings / daily-assessments pipeline. The console snapshot shows three back-to-back `Network query timed out after 15000 ms` from the same line — that's the storm.
+
+### Root cause 2 — Stale-while-revalidate replaces the array even when data is identical
+
+Each branch of `refreshReports` runs the same shape (Dashboard.tsx 847–862, 994, 999):
+
+```ts
+setInspections(offlineData);   // first paint from IDB
+...
+setInspections(networkData);   // second paint from Supabase
+```
+
+Both calls hand React a **brand-new array reference** even when every row's `id` + `updated_at` is unchanged. `DashboardReportsSection` is not memoized against value-equality, so its child rows unmount/remount on every refresh, which is what the eye perceives as the flicker (badges blink, hover state drops, scroll jiggles). With Root cause 1 layered on top, this happens many times a minute.
+
+### Root cause 3 — Validation flags flip on every realtime event
+
+`setInspectionsValidated(true)` / `setTrainingsValidated(true)` / `setDailyValidated(true)` (Dashboard.tsx 667, 682, 697) are called unconditionally inside each realtime payload handler. They're already `true` after the first refresh, but React still schedules a render because the setter is invoked from a different commit. Combined with realtime payloads arriving for every other tab-mate's edit (admin) or your own writes mirrored back, this is another constant source of re-renders that flow through the StatsBar.
+
+### Supporting evidence
+
+- **Console:** three sequential `[Dashboard] Network query timed out after 15000 ms` — only possible if refresh is being called repeatedly while the previous one is still pending.
+- **Session replay:** the sync chip pulses, returns green, idles, pulses again ~50 s later. Each pulse is an `onSyncComplete` → `refreshReports(true)` → double `setInspections` → list remount.
+- **Dashboard.tsx 615:** the giant mount effect has `[]` deps but reads `currentUser`, `isSuperAdmin`, etc. via closure — so it captures stale handlers but they still re-fire on every event.
+
+### Why it's worse for some users
+
+Admins (and Luke specifically) hit it harder because their realtime channel is **unfiltered** (line 658) — they receive every tenant's row event, and each one trips the validation-flag setter and the row-merge setter. On a normal user with the `inspector_id=eq.${userId}` filter, the cadence is much lower.
 
 ---
 
-## Change 1 — Cross-device "pending inspection" counter
+## Proposed fix (no code yet — confirm before I implement)
 
-File: `src/lib/local-data-guards.ts`
+All edits inside `src/pages/Dashboard.tsx`. No schema, no edge function, no realtime wiring change.
 
-Extend `shouldPreserveLocalRecord` to optionally take the matching server payload. When the server confirms it already has the edit (`server.synced_at >= local.updated_at - tolerance`), return `false` — the server has caught up, the local copy is no longer authoritative, and the dashboard ingest path is allowed to overwrite local IDB so `synced_at` re-anchors and the badge clears.
+### 1. Coalesce refresh triggers
 
-Existing single-argument signature stays as a back-compat wrapper. Every current call site keeps working unchanged.
+Add a small in-file helper:
 
-Update the dashboard cache-write call site to pass the server row it just fetched.
+```ts
+const refreshInFlightRef = useRef<Promise<unknown> | null>(null);
+const refreshScheduledRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-Stamp `last_sync_source = 'main_thread'` on the remaining write paths that currently leave it `NULL` (10 of 32 recent rows on the server today). This is purely diagnostic, but without it we cannot attribute future drift rows.
+const requestRefresh = useCallback(() => {
+  if (refreshInFlightRef.current) return;          // already running
+  if (refreshScheduledRef.current) return;         // already queued
+  refreshScheduledRef.current = setTimeout(() => {
+    refreshScheduledRef.current = null;
+    refreshInFlightRef.current = refreshReports(true)
+      .finally(() => { refreshInFlightRef.current = null; });
+  }, 250);
+}, []);
+```
 
-## Change 2 — Photo "pending" counter is not user-scoped
+Replace the seven `refreshReports(true)` call sites in the mount effect with `requestRefresh()`. Initial mount stays as a direct `refreshReports(true)` so the first paint isn't delayed.
 
-File: `src/lib/offline-storage.ts`
+### 2. Skip `setInspections` when the payload is unchanged
 
-`getUnuploadedPhotos(userId?)` accepts a `userId` argument and ignores it. The hook (`useUnsyncedPhotos`) already passes `user.id` — the function just needs to honour it.
+Introduce one tiny utility at the top of the file:
 
-Three surgical edits, all inside the existing read boundary:
+```ts
+const sameRows = (a: DbRow[], b: DbRow[]) => {
+  if (a.length !== b.length) return false;
+  for (let i = 0; i < a.length; i++) {
+    if (a[i].id !== b[i].id) return false;
+    if ((a[i].updated_at ?? '') !== (b[i].updated_at ?? '')) return false;
+  }
+  return true;
+};
+```
 
-1. **Honour `userId` in `getUnuploadedPhotos`.** When a `userId` is supplied, drop any photo where either:
-   - `capturedByUserId` is set and not equal to `userId`, OR
-   - the parent inspection exists in IDB, `inspector_id !== userId`, and `capturedByUserId !== userId`.
-   Photos with no `capturedByUserId` and no resolvable parent stay visible (orphan-recovery path used by the existing S23 backfill).
-2. **Add a UUID-parent existence check** mirroring the existing `temp-*` orphan check, capped at 200 parent lookups per call so a bloated store cannot tip the IDB read boundary. Photos whose UUID parent is missing from local IDB drop out of `getUnuploadedPhotos` and surface in `getDeadLetterPhotos` instead — they are unrecoverable from this device and should not block the badge.
-3. **Apply the same scoping (steps 1 + 2) to `getDeadLetterPhotos`** so the SyncPulse "Retry Now" action only ever touches photos this user can actually upload.
+Wrap each `setInspections / setTrainings / setDailyAssessments` call inside `refreshReports` with a functional setter that returns `prev` when `sameRows(prev, next)` — React then bails out without scheduling a render. Six call sites total (2 per table — offline + network). Cache writes to `dashboard-cache-*` stay outside the bail-out so disk stays warm.
 
-## Tests
+### 3. Stop re-flipping `*Validated` flags
 
-New file: `src/lib/__tests__/photo-unsynced-user-scope.test.ts` — locks four contracts:
+In each realtime handler (Dashboard.tsx 667, 682, 697) gate the setter:
 
-- Photos tagged `capturedByUserId = A` are excluded from `getUnuploadedPhotos(B)`.
-- Photos with no `capturedByUserId` whose parent inspection has `inspector_id = A` are excluded from `getUnuploadedPhotos(B)`.
-- Photos with no `capturedByUserId` and no parent in IDB are still returned by `getUnuploadedPhotos(B)` (orphan-recovery path).
-- Photos with a UUID parent that does not exist in IDB are returned by `getDeadLetterPhotos` (and not by `getUnuploadedPhotos`).
+```ts
+setInspectionsValidated(prev => prev ? prev : true);
+```
 
-Append one test to `src/lib/local-data-guards.test.ts` covering the new server-payload overload of `shouldPreserveLocalRecord`: when `server.synced_at >= local.updated_at - tolerance`, returns `false` even though local drift exceeds the tolerance.
+(The functional updater bails when value is unchanged — same render-skip mechanism as above.)
 
-## What the user will observe after deploy
+### 4. (Tiny) memo `DashboardReportsSection`
 
-- The iPad's "50 pending" badge will drop to whatever genuinely belongs to you on that device — almost certainly to `0` once the next sync cycle runs the new filter. No manual action needed.
-- The Camp Eagle row clears on the desktop the next time the dashboard re-fetches it from the server.
-- Future drift rows will carry `last_sync_source` so we can root-cause without asking you to reproduce.
+If the component file isn't already wrapped in `React.memo`, wrap it. With root cause 2 fixed the parent will stop handing it new array refs on no-op refreshes, so the memo will actually hit.
 
-## Out of scope
+### Out of scope
 
-- No change to `MAX_PHOTO_RETRIES`, no change to backoff windows, no change to `sync-quarantine`.
-- No automated cleanup of phantom photos in IDB — the filter alone is enough to drain the badge; a destructive purge would risk losing a real photo.
-- No edge function changes. Server is healthy.
+- No changes to `refreshReports` algorithm, timeouts, retries, orphan cleanup, or reconciliation logic.
+- No changes to realtime subscription scope (PR-D filter stays).
+- No new memory entry needed — these are local rendering hygiene fixes.
 
-## Memory updates after merge
+### Validation
 
-Add a short memory entry under `mem://constraints/photo-pending-user-scope` documenting that `getUnuploadedPhotos` and `getDeadLetterPhotos` MUST filter by `userId` and orphan UUID parents, with a pointer to the new test file.
+- Add a vitest under `src/pages/__tests__/dashboard-coalescer.test.ts` that fires `focus + visibilitychange + onSyncComplete` within 100ms and asserts `refreshReports` was invoked **once**.
+- Add an assertion-only test for `sameRows` covering: identical, length-diff, id-diff, updated_at-diff.
+- Manual check in preview: open `/dashboard`, alt-tab away and back 5×, confirm reports list does not visibly repaint (no badge flash, no scroll jiggle).
