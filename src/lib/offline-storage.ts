@@ -2448,7 +2448,7 @@ export async function getDB() {
     // Version 8: Add report_versions store for append-only versioning
     // DB_NAME and DB_VERSION shared with public/db-config.js for SW consistency
     const DB_NAME = 'rope-works-inspections';
-    const DB_VERSION = 18;
+    const DB_VERSION = 19;
 
     // Phase 5 — Schema Migration Safety. Now imported statically at the top
     // of this module (see comment there). Previously this was `await
@@ -2821,6 +2821,33 @@ export async function getDB() {
               }
             } catch (err) {
               console.warn('[Offline Storage] v18 photos.uploaded re-coercion failed:', err);
+            }
+          }
+
+          // === NEW in v19: coerce autocomplete_history.synced boolean → 0|1 ===
+          // L-3 (audit): same C1 contract as photos.by-uploaded — IDB silently
+          // drops booleans from indexes, so `by-synced` returned no results
+          // and `getUnsyncedAutocompleteEntries` always yielded []. Coerce
+          // legacy rows so the index actually keys them. Idempotent.
+          if (oldVersion < 19 && db.objectStoreNames.contains('autocomplete_history')) {
+            try {
+              const store = transaction.objectStore('autocomplete_history');
+              let cursor = await store.openCursor();
+              let rewritten = 0;
+              while (cursor) {
+                const v = cursor.value as { synced?: unknown };
+                if (typeof v.synced === 'boolean') {
+                  v.synced = v.synced ? 1 : 0;
+                  await cursor.update(v as never);
+                  rewritten++;
+                }
+                cursor = await cursor.continue();
+              }
+              if (import.meta.env.DEV) {
+                console.log(`[Offline Storage] v19: coerced autocomplete_history.synced on ${rewritten} legacy row(s)`);
+              }
+            } catch (err) {
+              console.warn('[Offline Storage] v19 autocomplete_history.synced coercion failed:', err);
             }
           }
         },
