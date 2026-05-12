@@ -176,6 +176,51 @@ export default function DailyAssessmentForm() {
   const [lastVersionNumber, setLastVersionNumber] = useState<number | undefined>(undefined);
   const [lastFieldCount, setLastFieldCount] = useState<number | undefined>(undefined);
 
+  // Required-field completion gate. Saves stay unblocked; only the
+  // explicit Complete action checks this list. See
+  // src/lib/required-fields.ts and mem://features/required-field-completion-gate.
+  const [missingRequiredFields, setMissingRequiredFields] = useState<MissingField[]>([]);
+  useEffect(() => {
+    if (!missingRequiredFields.length) return;
+    const stillMissing = getMissingAssessmentFields(assessment);
+    if (!stillMissing.length) {
+      toast.dismiss(`completion-blocked-${id}`);
+      setMissingRequiredFields([]);
+    } else if (stillMissing.length !== missingRequiredFields.length) {
+      setMissingRequiredFields(stillMissing);
+    }
+  }, [assessment?.organization, assessment?.assessment_date, missingRequiredFields.length, id]);
+
+  // Click handler for the Complete button. Required-field gate runs first;
+  // missing fields reject completion with a persistent toast + red pulse.
+  const handleCompleteClick = () => {
+    const missing = getMissingAssessmentFields(assessment);
+    if (missing.length) {
+      setMissingRequiredFields(missing);
+      toast.error('Cannot complete report', {
+        id: `completion-blocked-${id}`,
+        description: formatMissingDescription(missing),
+        duration: Infinity,
+        important: true,
+        className: 'border border-destructive-foreground/20',
+        style: {
+          background: 'hsl(var(--destructive))',
+          color: 'hsl(var(--destructive-foreground))',
+        },
+      });
+      document.getElementById(`field-${missing[0].key}`)
+        ?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      return;
+    }
+    toast.dismiss(`completion-blocked-${id}`);
+    setMissingRequiredFields([]);
+    if (assessment?.attestation_signed_at) {
+      setShowSubmitDialog(true);
+    } else {
+      setShowAttestationDialog(true);
+    }
+  };
+
   // Field-level click interception for locked reports (allow-list: only block editable elements)
   const handleLockedFieldClick = useCallback((e: React.MouseEvent | React.PointerEvent) => {
     if (!isCompletionLocked) return;
