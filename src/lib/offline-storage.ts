@@ -28,6 +28,7 @@ import { addSyncNotification as addSyncNotificationStatic } from './notification
 // static import here removes the latent regression cliff. `sync-quarantine`
 // only imports `sync-logger` — no circular-dependency risk. Module is ~5 KB.
 import { isQuarantined as isSessionQuarantined, jitteredPhotoBackoffMs } from './sync-quarantine';
+import { syncLog } from './sync-logger';
 
 /** Opaque DB row — fields vary across tables and are read/written structurally.
  *  Uses an `any` index signature so callers can structurally read/write
