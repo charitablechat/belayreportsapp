@@ -49,6 +49,7 @@ import {
   type IdbSaveErrorCode,
 } from "@/lib/offline-storage";
 import { validateInspectionPackage } from "@/lib/validation-schemas";
+import { getMissingInspectionFields, formatMissingDescription, type MissingField } from "@/lib/required-fields";
 import { AttestationDialog } from "@/components/AttestationDialog";
 import { useUserProfile } from "@/hooks/useUserProfile";
 import type { AttestationPayload } from "@/lib/attestation";
@@ -3317,6 +3318,7 @@ export default function InspectionForm() {
           onUpdate={effectiveReadOnly ? () => {} : handleHeaderUpdate}
           onImmediateSave={effectiveReadOnly ? undefined : stableTriggerImmediateSave}
           isReadOnly={effectiveReadOnly}
+          missingFieldKeys={missingRequiredFields.map(m => m.key)}
         />
 
         {id && currentUser?.id && (
