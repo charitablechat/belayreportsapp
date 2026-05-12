@@ -119,7 +119,30 @@ function writeDashboardCache(key: string, data: DbRow[]) {
   } catch {}
 }
 
-export default function Dashboard() {
+// Value-equality bail-out for dashboard row arrays. Compares by id +
+// updated_at so identical SWR refetches don't replace the array reference
+// and trigger DashboardReportsSection to remount its rows. See
+// .lovable/plan.md "Root cause 2" for context.
+function sameRows(a: DbRow[], b: DbRow[]): boolean {
+  if (a === b) return true;
+  if (a.length !== b.length) return false;
+  for (let i = 0; i < a.length; i++) {
+    if (a[i].id !== b[i].id) return false;
+    if ((a[i].updated_at ?? '') !== (b[i].updated_at ?? '')) return false;
+  }
+  return true;
+}
+
+// Functional setter that no-ops when the next array is row-equivalent to
+// the current one. React bails out of the render when the setter returns
+// the same reference.
+function applyRowsIfChanged(
+  setter: React.Dispatch<React.SetStateAction<DbRow[]>>,
+  next: DbRow[],
+) {
+  setter(prev => (sameRows(prev, next) ? prev : next));
+}
+
   const navigate = useNavigate();
   const location = useLocation();
   const [inspections, setInspections] = useState<DbRow[]>(() => readDashboardCache('dashboard-cache-inspections'));
