@@ -304,6 +304,24 @@ export default function InspectionForm() {
 
   const effectiveReadOnly = isReadOnly || isCompletionLocked;
 
+  // Required-field completion gate. Saves stay unblocked; only the
+  // explicit Complete action checks this list. See
+  // src/lib/required-fields.ts and mem://features/required-field-completion-gate.
+  const [missingRequiredFields, setMissingRequiredFields] = useState<MissingField[]>([]);
+  // Live-clear the persistent toast + pulse the moment the user fills
+  // the remaining required fields.
+  useEffect(() => {
+    if (!missingRequiredFields.length) return;
+    const stillMissing = getMissingInspectionFields(inspection);
+    if (!stillMissing.length) {
+      toast.dismiss(`completion-blocked-${id}`);
+      setMissingRequiredFields([]);
+    } else if (stillMissing.length !== missingRequiredFields.length) {
+      setMissingRequiredFields(stillMissing);
+    }
+  }, [inspection?.organization, inspection?.location, inspection?.inspection_date, missingRequiredFields.length, id]);
+
+
   // Field-level click interception for locked reports (allow-list: only block editable elements)
   const handleLockedFieldClick = useCallback((e: React.MouseEvent | React.PointerEvent) => {
     if (!isCompletionLocked) return;
