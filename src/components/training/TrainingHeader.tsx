@@ -78,7 +78,11 @@ export default function TrainingHeader({ training, onUpdate, isReadOnly = false,
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <div className="space-y-2">
+          <div
+            id="field-start_date"
+            aria-invalid={isMissing('start_date') || undefined}
+            className={cn("space-y-2", isMissing('start_date') && missingRing)}
+          >
             <Label>Start Date *</Label>
             <Popover>
               <PopoverTrigger asChild>
@@ -109,7 +113,11 @@ export default function TrainingHeader({ training, onUpdate, isReadOnly = false,
             </Popover>
           </div>
 
-          <div className="space-y-2">
+          <div
+            id="field-end_date"
+            aria-invalid={isMissing('end_date') || undefined}
+            className={cn("space-y-2", isMissing('end_date') && missingRing)}
+          >
             <Label>End Date *</Label>
             <Popover>
               <PopoverTrigger asChild>
