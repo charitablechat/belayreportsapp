@@ -2534,6 +2534,11 @@ export default function InspectionForm() {
         id: `completion-blocked-${id}`,
         description: formatMissingDescription(missing),
         duration: Infinity,
+        className: 'border border-destructive-foreground/20',
+        style: {
+          background: 'hsl(var(--destructive))',
+          color: 'hsl(var(--destructive-foreground))',
+        },
       });
       triggerHaptic('error');
       document.getElementById(`field-${missing[0].key}`)
