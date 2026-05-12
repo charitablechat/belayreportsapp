@@ -4,7 +4,7 @@ import { syncAllInspectionsAtomic, syncAllTrainingsAtomic, syncAllDailyAssessmen
 import { flushAdminEditQueue } from '@/lib/admin-edit-snapshot-queue';
 import { logError } from '@/lib/log-error';
 import { syncPhotos } from '@/lib/sync-manager';
-import { saveInspectionOffline, saveTrainingOffline, saveDailyAssessmentOffline } from '@/lib/offline-storage';
+import { ingestRemoteRecordOffline } from '@/lib/offline-storage';
 import { shouldPreserveLocalRecord } from '@/lib/local-data-guards';
 import { getUnsyncedInspections, getUnsyncedTrainings, getUnsyncedDailyAssessments, isIdbReadFailure, getCircuitBreakerStatus, resetCircuitBreaker, pruneOldSyncedPhotoBlobs, getQueuedOperations, removeQueuedOperation, getQueuedTrainingOperations, removeQueuedTrainingOperation, getQueuedAssessmentOperations, removeQueuedAssessmentOperation, withIDBTimeout, evictStuckTempPhotos, maybeRunQuarantineGc, subscribeToLayerBreakerClose, type DbRow } from '@/lib/offline-storage';
 // Audit M2: static-import the autosync drain modules so the cycle isn't gated
@@ -1207,16 +1207,20 @@ export const useAutoSync = () => {
               return;
             }
             if (shouldPreserveLocalRecord(record)) return; // don't overwrite richer local data
-            // F3: Re-align synced_at to the payload's own updated_at so the next
-            // unsynced-counts query doesn't immediately re-flag this record as dirty.
-            // Using `new Date()` here causes drift > tolerance vs. the server timestamp.
-            const enriched = { ...record, synced_at: record.updated_at || new Date().toISOString() };
-            if (payload.table === 'inspections') {
-              await saveInspectionOffline(enriched);
-            } else if (payload.table === 'trainings') {
-              await saveTrainingOffline(enriched);
-            } else if (payload.table === 'daily_assessments') {
-              await saveDailyAssessmentOffline(enriched);
+            // Mode B fix: route through `ingestRemoteRecordOffline`, NOT the
+            // user-facing saveXOffline helpers. The latter unconditionally
+            // stamp `dirty: true`, which on a cross-device account would put
+            // the freshly-server-confirmed record straight back into the
+            // unsynced bucket, fire another sync, broadcast another Realtime
+            // echo, and loop indefinitely. The ingest helper writes the row
+            // with `dirty: false` and `synced_at: record.updated_at` so the
+            // next `getUnsynced*` cycle correctly treats it as clean.
+            if (
+              payload.table === 'inspections' ||
+              payload.table === 'trainings' ||
+              payload.table === 'daily_assessments'
+            ) {
+              await ingestRemoteRecordOffline(payload.table, record);
             }
             // F3 backstop: notify the Dashboard so its in-memory list refreshes
             // even if the postgres_changes subscription isn't mounted (e.g. on a
