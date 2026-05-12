@@ -4997,6 +4997,70 @@ export async function saveTrainingOffline(
   return result;
 }
 
+/**
+ * Ingest a remote record (delivered via Realtime UPDATE/INSERT) into IndexedDB.
+ *
+ * Mode B fix — the cross-device "recurring pending sync" loop:
+ *
+ *   When two devices are logged in as the same user, every cross-device edit
+ *   triggers a Realtime broadcast. The receiving device used to route the
+ *   payload through `saveInspectionOffline` / `saveTrainingOffline` /
+ *   `saveDailyAssessmentOffline`, which unconditionally stamp `dirty: true`
+ *   because that flag is the authoritative "has unshipped edits" signal for
+ *   user-facing saves. Result: the receiving device immediately re-flagged
+ *   the record as unsynced, fired its own sync, broadcast a Realtime echo
+ *   back to the originator, which re-flagged the record on _that_ device,
+ *   and so on. The badge oscillated between PENDING / SYNCED forever and
+ *   users (especially those with tablet + desktop both signed in) saw
+ *   recurring "pending sync" notifications even when the record was already
+ *   on the server.
+ *
+ * This function exists to break that loop. It writes the remote payload to
+ * IndexedDB with:
+ *   - `dirty: false` (the server already has the row — no edits to upload)
+ *   - `synced_at: record.updated_at` (no drift vs the local copy)
+ *   - no `sync-records-updated` dispatch (would needlessly poke the autosync
+ *     scheduler down to the fast interval even though nothing is unsynced).
+ *
+ * The boundary wrapper is preserved so the same emergency-localStorage
+ * fallback / layer-breaker / circuit-breaker logic applies — Realtime
+ * ingest must not crash the autosync hook on a transient IDB failure.
+ */
+export async function ingestRemoteRecordOffline(
+  table: 'inspections' | 'trainings' | 'daily_assessments',
+  record: Record<string, unknown> & { id?: string; updated_at?: string | null },
+): Promise<SaveResult> {
+  const enriched = {
+    ...record,
+    synced_at: record.updated_at || new Date().toISOString(),
+    dirty: false,
+  };
+  return withIndexedDBSaveBoundary(
+    async () => {
+      const db = await getDB();
+      await db.put(table, enriched as never);
+      if (import.meta.env.DEV) {
+        const labels: Record<typeof table, string> = {
+          inspections: 'inspection',
+          trainings: 'training',
+          daily_assessments: 'daily assessment',
+        };
+        console.log(`[Offline Storage] Ingested remote ${labels[table]}:`, record.id);
+      }
+    },
+    // Operation name includes `save:` so the `withIndexedDBSaveBoundary`
+    // tier-selection at lines 2072-2090 routes inspections to the 8s `write`
+    // tier (matching `saveInspectionOffline`). Without `save:`, the inspections
+    // case matches no keyword and falls through to the 5s `light` tier —
+    // inconsistent with the user-facing save path and prone to spurious
+    // timeouts on stressed mobile devices. `trainings` and `daily_assessments`
+    // already match the earlier `training` / `assessment` keywords → batch tier.
+    `ingestRemoteRecordOffline:save:${table}`,
+    enriched,
+    { store: table },
+  );
+}
+
 export async function getOfflineTrainings(userId?: string, isSuperAdmin?: boolean) {
   return withIndexedDBErrorBoundary(
     async () => {
