@@ -28,6 +28,7 @@ import { addSyncNotification as addSyncNotificationStatic } from './notification
 // static import here removes the latent regression cliff. `sync-quarantine`
 // only imports `sync-logger` — no circular-dependency risk. Module is ~5 KB.
 import { isQuarantined as isSessionQuarantined, jitteredPhotoBackoffMs } from './sync-quarantine';
+import { syncLog } from './sync-logger';
 
 /** Opaque DB row — fields vary across tables and are read/written structurally.
  *  Uses an `any` index signature so callers can structurally read/write
@@ -2448,7 +2449,7 @@ export async function getDB() {
     // Version 8: Add report_versions store for append-only versioning
     // DB_NAME and DB_VERSION shared with public/db-config.js for SW consistency
     const DB_NAME = 'rope-works-inspections';
-    const DB_VERSION = 18;
+    const DB_VERSION = 19;
 
     // Phase 5 — Schema Migration Safety. Now imported statically at the top
     // of this module (see comment there). Previously this was `await
@@ -2821,6 +2822,33 @@ export async function getDB() {
               }
             } catch (err) {
               console.warn('[Offline Storage] v18 photos.uploaded re-coercion failed:', err);
+            }
+          }
+
+          // === NEW in v19: coerce autocomplete_history.synced boolean → 0|1 ===
+          // L-3 (audit): same C1 contract as photos.by-uploaded — IDB silently
+          // drops booleans from indexes, so `by-synced` returned no results
+          // and `getUnsyncedAutocompleteEntries` always yielded []. Coerce
+          // legacy rows so the index actually keys them. Idempotent.
+          if (oldVersion < 19 && db.objectStoreNames.contains('autocomplete_history')) {
+            try {
+              const store = transaction.objectStore('autocomplete_history');
+              let cursor = await store.openCursor();
+              let rewritten = 0;
+              while (cursor) {
+                const v = cursor.value as { synced?: unknown };
+                if (typeof v.synced === 'boolean') {
+                  v.synced = v.synced ? 1 : 0;
+                  await cursor.update(v as never);
+                  rewritten++;
+                }
+                cursor = await cursor.continue();
+              }
+              if (import.meta.env.DEV) {
+                console.log(`[Offline Storage] v19: coerced autocomplete_history.synced on ${rewritten} legacy row(s)`);
+              }
+            } catch (err) {
+              console.warn('[Offline Storage] v19 autocomplete_history.synced coercion failed:', err);
             }
           }
         },
@@ -3213,7 +3241,7 @@ export async function getUnsyncedInspections(userId?: string) {
         console.warn('[Offline Storage] Found orphaned temp-ID inspections:', { count: orphanCount });
       }
       
-      console.log('[Offline Storage] Unsynced inspections:', {
+      syncLog.log('[Offline Storage] Unsynced inspections:', {
         total: unsynced.length,
         userId: userId ? userId.substring(0, 8) + '...' : 'all',
       });
@@ -5639,11 +5667,23 @@ export async function getAutocompleteHistory(fieldType: string): Promise<Autocom
 /**
  * Put (create or update) an autocomplete entry in IndexedDB.
  */
+/**
+ * L-3 (audit): coerce `synced` to 0|1 at every write site so the
+ * `by-synced` IDB index keys the row. IDB silently drops booleans from
+ * indexes — see also `toUploadedFlag` for the photos contract.
+ */
+function toAutocompleteSyncedFlag(v: unknown): 0 | 1 {
+  return v === true || v === 1 ? 1 : 0;
+}
+
 export async function putAutocompleteEntry(entry: AutocompleteEntry): Promise<void> {
   return withIndexedDBErrorBoundary(
     async () => {
       const db = await getDB();
-      await db.put('autocomplete_history', entry);
+      await db.put('autocomplete_history', {
+        ...entry,
+        synced: toAutocompleteSyncedFlag(entry.synced) as unknown as boolean,
+      });
     },
     undefined,
     'putAutocompleteEntry'
@@ -5666,13 +5706,19 @@ export async function deleteAutocompleteEntry(id: string): Promise<void> {
 
 /**
  * Get all unsynced autocomplete entries (for background push to server).
+ * L-3 (audit): index now keys numeric 0|1; query with plain 0.
  */
 export async function getUnsyncedAutocompleteEntries(): Promise<AutocompleteEntry[]> {
   return withIndexedDBErrorBoundary(
     async () => {
       const db = await getDB();
-      // synced index stores boolean; false = unsynced
-      return await db.getAllFromIndex('autocomplete_history', 'by-synced', IDBKeyRange.only(0 as unknown as IDBValidKey));
+      const rows = await db.getAllFromIndex(
+        'autocomplete_history',
+        'by-synced',
+        IDBKeyRange.only(0 as unknown as IDBValidKey),
+      );
+      // Surface to callers as boolean for the public AutocompleteEntry type.
+      return rows.map(r => ({ ...r, synced: false }));
     },
     [],
     'getUnsyncedAutocompleteEntries'
@@ -5688,7 +5734,10 @@ export async function bulkPutAutocompleteEntries(entries: AutocompleteEntry[]): 
     async () => {
       const db = await getDB();
       const tx = db.transaction('autocomplete_history', 'readwrite');
-      await Promise.all(entries.map(e => tx.store.put(e)));
+      await Promise.all(entries.map(e => tx.store.put({
+        ...e,
+        synced: toAutocompleteSyncedFlag(e.synced) as unknown as boolean,
+      })));
       await tx.done;
     },
     undefined,
