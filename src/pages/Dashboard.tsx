@@ -143,6 +143,51 @@ function applyRowsIfChanged(
   setter(prev => (sameRows(prev, next) ? prev : next));
 }
 
+// Drift beacon: surface when offline IDB row count disagrees with the
+// server row count for a dashboard table. The flicker fix suppresses the
+// stale offline pre-paint on subsequent refreshes so users don't visibly
+// see the 54↔58 toggle, but that means the underlying save/reconcile
+// bug that lets IDB drift away from the server is no longer self-evident
+// from the UI. Forward each non-zero drift as a `warning`-level Sentry
+// event with a stable fingerprint so we can quantify it in production
+// without each occurrence generating an alert. Throttled to once per
+// 5 min per table to avoid Sentry spam during a real outage.
+const DRIFT_REPORT_THROTTLE_MS = 5 * 60 * 1000;
+const lastDriftReportAt = new Map<string, number>();
+function maybeReportDashboardDrift(
+  table: 'inspections' | 'trainings' | 'daily_assessments',
+  offlineCount: number,
+  networkCount: number,
+): void {
+  if (offlineCount === networkCount) return;
+  // Only report when the OFFLINE store has FEWER rows than the server
+  // (the case that produced Luke's flicker). Local > server is a
+  // different signal — usually means a row was queued locally and not
+  // yet synced — and is already covered by the unsynced bucket UI.
+  if (offlineCount >= networkCount) return;
+  const now = Date.now();
+  const last = lastDriftReportAt.get(table) ?? 0;
+  if (now - last < DRIFT_REPORT_THROTTLE_MS) return;
+  lastDriftReportAt.set(table, now);
+  // Lazy-import so the Sentry chunk stays out of the dashboard hot path
+  // when no drift is present. Never blocks rendering.
+  void import('@/lib/log-error')
+    .then(({ logError }) => {
+      logError(new Error('dashboard offline/server row count drift'), {
+        scope: 'Dashboard.refreshReports',
+        level: 'warning',
+        fingerprint: ['dashboard-drift', table, '{{default}}'],
+        extra: {
+          table,
+          offlineCount,
+          networkCount,
+          delta: networkCount - offlineCount,
+        },
+      });
+    })
+    .catch(() => {});
+}
+
 export default function Dashboard() {
   const navigate = useNavigate();
   const location = useLocation();
@@ -182,6 +227,20 @@ export default function Dashboard() {
   const REFRESH_THROTTLE_MS = 3000;
   const [showStaleDataBanner, setShowStaleDataBanner] = useState(false);
   const networkFailCountRef = React.useRef(0);
+
+  // Suppress stale-while-revalidate offline pre-paint on subsequent
+  // refreshes. The SWR pattern paints offlineData first, then networkData;
+  // when IDB drifts from server (e.g., records owned by other users that
+  // never ingested into local IDB), every refresh visibly toggles between
+  // the two row counts and the user sees a flicker. Once the first render
+  // has happened, the in-memory React state already holds rows from a
+  // previous cycle, so the offline pre-paint is pure regression — the
+  // network round-trip arrives within a few hundred ms and is the source
+  // of truth. Initial cold-mount still benefits from the pre-paint when
+  // the offline IDB has data and the network is slow.
+  const hasPaintedInspectionsRef = React.useRef(false);
+  const hasPaintedTrainingsRef = React.useRef(false);
+  const hasPaintedDailyAssessmentsRef = React.useRef(false);
 
   // Build unique inspector list from report data
   const uniqueInspectors = useMemo(() => {
@@ -893,7 +952,7 @@ export default function Dashboard() {
       // include leaked e2e fixture rows from a prior pre-filter session.
       const offlineDataRaw = await offlineWithTimeout;
       const offlineData = filterOutE2EFixtures(offlineDataRaw, E2E_INSPECTION_MARKER_COLUMNS);
-      if (offlineData.length > 0) {
+      if (offlineData.length > 0 && !hasPaintedInspectionsRef.current) {
         applyRowsIfChanged(setInspections, offlineData);
         writeDashboardCache('dashboard-cache-inspections', offlineData);
         if (import.meta.env.DEV) {
@@ -905,7 +964,13 @@ export default function Dashboard() {
       if (navigator.onLine && sessionValid) {
         const networkData = await supabasePromise;
         if (networkData && networkData.length > 0) {
+          // Drift beacon: surface when IDB and server disagree on row count
+          // so we can quantify how often the offline pre-paint suppression
+          // is masking a real save/reconcile bug. Throttled to once per
+          // 5 min per table to avoid Sentry spam.
+          maybeReportDashboardDrift('inspections', offlineData.length, networkData.length);
           applyRowsIfChanged(setInspections, networkData);
+          hasPaintedInspectionsRef.current = true;
           writeDashboardCache('dashboard-cache-inspections', networkData);
 
           // Reconcile: quarantine local rows the server no longer returns,
@@ -1103,7 +1168,7 @@ export default function Dashboard() {
       ]);
       
       const offlineData = await offlineWithTimeout;
-      if (offlineData.length > 0) {
+      if (offlineData.length > 0 && !hasPaintedTrainingsRef.current) {
         applyRowsIfChanged(setTrainings, offlineData);
         writeDashboardCache('dashboard-cache-trainings', offlineData);
         if (import.meta.env.DEV) {
@@ -1115,7 +1180,9 @@ export default function Dashboard() {
       if (navigator.onLine && sessionValid) {
         const networkData = await supabasePromise;
         if (networkData && networkData.length > 0) {
+          maybeReportDashboardDrift('trainings', offlineData.length, networkData.length);
           applyRowsIfChanged(setTrainings, networkData);
+          hasPaintedTrainingsRef.current = true;
           writeDashboardCache('dashboard-cache-trainings', networkData);
 
           reconcileServerDeletions({
@@ -1287,7 +1354,7 @@ export default function Dashboard() {
       ]);
       
       const offlineData = await offlineWithTimeout;
-      if (offlineData.length > 0) {
+      if (offlineData.length > 0 && !hasPaintedDailyAssessmentsRef.current) {
         applyRowsIfChanged(setDailyAssessments, offlineData);
         writeDashboardCache('dashboard-cache-daily', offlineData);
         if (import.meta.env.DEV) {
@@ -1299,7 +1366,9 @@ export default function Dashboard() {
       if (navigator.onLine && sessionValid) {
         const networkData = await supabasePromise;
         if (networkData && networkData.length > 0) {
+          maybeReportDashboardDrift('daily_assessments', offlineData.length, networkData.length);
           applyRowsIfChanged(setDailyAssessments, networkData);
+          hasPaintedDailyAssessmentsRef.current = true;
           writeDashboardCache('dashboard-cache-daily', networkData);
 
           reconcileServerDeletions({
