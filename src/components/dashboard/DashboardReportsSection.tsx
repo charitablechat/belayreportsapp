@@ -834,3 +834,6 @@ function CrossTabSection({ label, icon, reports, type, compact, viewMode, onDele
     </div>
   );
 }
+
+export const DashboardReportsSection = memo(DashboardReportsSectionImpl);
+
