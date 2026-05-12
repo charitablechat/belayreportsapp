@@ -228,7 +228,14 @@ export default function InspectionHeader({ inspection, userProfile, modifiedByPr
               <div className="space-y-1.5 p-3 rounded-lg bg-muted/30 border border-border/50">
                 {renderField("ACCT#", "acct_number", inspection?.acct_number)}
               </div>
-              <div className="space-y-1.5 p-3 rounded-lg bg-muted/30 border border-border/50">
+              <div
+                id="field-inspection_date"
+                aria-invalid={isMissing('inspection_date') || undefined}
+                className={cn(
+                  "space-y-1.5 p-3 rounded-lg bg-muted/30 border border-border/50",
+                  isMissing('inspection_date') && missingRing,
+                )}
+              >
                 <Label className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-1 block">Inspection Date</Label>
                 <Popover>
                   <PopoverTrigger asChild>
