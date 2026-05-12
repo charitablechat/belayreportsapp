@@ -57,6 +57,18 @@ describe('required-fields gate', () => {
       const r = getMissingAssessmentFields(undefined);
       expect(r.map(m => m.key)).toEqual(['organization', 'assessment_date']);
     });
+    it('treats whitespace-only organization as missing', () => {
+      const r = getMissingAssessmentFields({ organization: '   ', assessment_date: '2026-05-01' });
+      expect(r.map(m => m.key)).toEqual(['organization']);
+    });
+    it('treats null assessment_date as missing', () => {
+      const r = getMissingAssessmentFields({ organization: 'Acme', assessment_date: null });
+      expect(r.map(m => m.key)).toEqual(['assessment_date']);
+    });
+    it('uses Assessment date label', () => {
+      const r = getMissingAssessmentFields({});
+      expect(r[1]).toEqual({ key: 'assessment_date', label: 'Assessment date' });
+    });
   });
 
   describe('formatMissingDescription', () => {
