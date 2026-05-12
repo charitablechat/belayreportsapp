@@ -5666,11 +5666,23 @@ export async function getAutocompleteHistory(fieldType: string): Promise<Autocom
 /**
  * Put (create or update) an autocomplete entry in IndexedDB.
  */
+/**
+ * L-3 (audit): coerce `synced` to 0|1 at every write site so the
+ * `by-synced` IDB index keys the row. IDB silently drops booleans from
+ * indexes — see also `toUploadedFlag` for the photos contract.
+ */
+function toAutocompleteSyncedFlag(v: unknown): 0 | 1 {
+  return v === true || v === 1 ? 1 : 0;
+}
+
 export async function putAutocompleteEntry(entry: AutocompleteEntry): Promise<void> {
   return withIndexedDBErrorBoundary(
     async () => {
       const db = await getDB();
-      await db.put('autocomplete_history', entry);
+      await db.put('autocomplete_history', {
+        ...entry,
+        synced: toAutocompleteSyncedFlag(entry.synced) as unknown as boolean,
+      });
     },
     undefined,
     'putAutocompleteEntry'
@@ -5693,13 +5705,19 @@ export async function deleteAutocompleteEntry(id: string): Promise<void> {
 
 /**
  * Get all unsynced autocomplete entries (for background push to server).
+ * L-3 (audit): index now keys numeric 0|1; query with plain 0.
  */
 export async function getUnsyncedAutocompleteEntries(): Promise<AutocompleteEntry[]> {
   return withIndexedDBErrorBoundary(
     async () => {
       const db = await getDB();
-      // synced index stores boolean; false = unsynced
-      return await db.getAllFromIndex('autocomplete_history', 'by-synced', IDBKeyRange.only(0 as unknown as IDBValidKey));
+      const rows = await db.getAllFromIndex(
+        'autocomplete_history',
+        'by-synced',
+        IDBKeyRange.only(0 as unknown as IDBValidKey),
+      );
+      // Surface to callers as boolean for the public AutocompleteEntry type.
+      return rows.map(r => ({ ...r, synced: false }));
     },
     [],
     'getUnsyncedAutocompleteEntries'
@@ -5715,7 +5733,10 @@ export async function bulkPutAutocompleteEntries(entries: AutocompleteEntry[]): 
     async () => {
       const db = await getDB();
       const tx = db.transaction('autocomplete_history', 'readwrite');
-      await Promise.all(entries.map(e => tx.store.put(e)));
+      await Promise.all(entries.map(e => tx.store.put({
+        ...e,
+        synced: toAutocompleteSyncedFlag(e.synced) as unknown as boolean,
+      })));
       await tx.done;
     },
     undefined,
