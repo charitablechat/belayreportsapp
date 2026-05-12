@@ -453,6 +453,26 @@ export default function Dashboard() {
     }
   }, []);
 
+  // Coalescer for refresh triggers (focus, visibility, sync-complete,
+  // pageshow, online, dashboard-stale, realtime fallback). Without this
+  // the seven event sources can stack three refreshes inside a second,
+  // each restarting the full inspections/trainings/assessments pipeline
+  // and re-replacing the React arrays — the visible "flicker" on
+  // /dashboard. See .lovable/plan.md "Root cause 1".
+  const refreshScheduledRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const requestRefresh = useCallback(() => {
+    if (refreshScheduledRef.current) return; // already queued
+    if (refreshInFlightRef.current) {
+      // Let the in-flight pendingRefresh trailer handle it
+      pendingRefreshRef.current = true;
+      return;
+    }
+    refreshScheduledRef.current = setTimeout(() => {
+      refreshScheduledRef.current = null;
+      refreshReports(true);
+    }, 250);
+  }, [refreshReports]);
+
   useEffect(() => {
     setLoading(true);
     // Fix 2: only show skeletons if we truly have nothing cached. If cache
