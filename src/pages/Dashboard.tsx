@@ -875,7 +875,7 @@ export default function Dashboard() {
           const now = new Date().toISOString();
           Promise.all(networkData.map(async (inspection) => {
             const localRecord = await getOfflineInspection(inspection.id);
-            if (shouldPreserveLocalRecord(localRecord)) {
+            if (shouldPreserveLocalRecord(localRecord, inspection)) {
               // Exception: if server synced_at >= local updated_at, the data WAS synced -- allow overwrite
               const serverSyncedAt = inspection.synced_at ? new Date(inspection.synced_at).getTime() : 0;
               const localUpdatedAt = localRecord?.updated_at ? new Date(localRecord.updated_at).getTime() : 0;
