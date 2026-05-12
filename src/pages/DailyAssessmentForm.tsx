@@ -1944,13 +1944,7 @@ export default function DailyAssessmentForm() {
               {assessment?.status !== 'completed' && (
               <Button 
                 size={isMobileView ? "default" : "sm"} 
-                onClick={() => {
-                  if (assessment?.attestation_signed_at) {
-                    setShowSubmitDialog(true);
-                  } else {
-                    setShowAttestationDialog(true);
-                  }
-                }} 
+                onClick={handleCompleteClick}
                 disabled={saving || submitting}
                 className={isMobileView ? "min-w-[100px] h-10 text-sm font-medium" : ""}
               >
