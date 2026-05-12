@@ -190,13 +190,42 @@ export async function syncPhotos(signal?: AbortSignal): Promise<{ remaining: num
         }
 
         if (photo.inspectionId?.startsWith('temp-')) {
-          syncLog.warn('[Sync Manager] Skipping photo with temporary inspection ID:', photo.id);
-          // S13: Count temp-parent skips toward retry ceiling so chronically
-          // stuck photos eventually surface in the dead-letter UI instead of
-          // being silently invisible. Age-based GC (evictStuckTempPhotos)
-          // handles the long-tail cleanup.
-          await incrementPhotoRetryCount(photo.id);
-          changedCount++;
+          // The photo's parent record is still on a `temp-*` id, i.e. the
+          // parent hasn't yet swapped to its permanent server UUID.
+          //
+          // `syncAllInspectionsAtomic` / `syncAllTrainingsAtomic` /
+          // `syncAllDailyAssessmentsAtomic` run BEFORE `syncPhotos` in
+          // every cycle (see `useAutoSync.tsx:584-595`). If the parent
+          // had been ready to sync, it would have received its real UUID
+          // already and the post-sync `relinkPhotosToNewInspectionId`
+          // call would have rewritten this photo's `inspectionId` onto
+          // that UUID. The fact that the photo is still `temp-` means
+          // the *parent's* sync is blocked (validation, RLS, transient
+          // network, IDB-boundary failure on relink, etc.) — NOT that
+          // the photo itself is broken.
+          //
+          // CRITICAL: Do NOT bump `retryCount` here. The previous behavior
+          // (S13) was conflating two distinct failure modes:
+          //   a) photo upload is broken (rightly burns retry budget)
+          //   b) parent record is slow to sync (photo is healthy and
+          //      should wait — burning retry budget silently dead-letters
+          //      it through no fault of its own)
+          //
+          // With `MAX_PHOTO_RETRIES = 5` and the active sync cadence
+          // (~30s), a slow-to-sync parent could push otherwise-healthy
+          // photos into dead-letter in ~2.5 min — well within plausible
+          // iPad network and server-side validation windows. That's the
+          // most likely root cause behind "50 pending photos, none drain"
+          // reports on cross-device users (the audit's Mode B context).
+          //
+          // True orphans (parent deleted locally, never coming back) are
+          // already filtered out upstream by `getUnuploadedPhotos`'s
+          // orphan check (`offline-storage.ts:3729-3742`) — they never
+          // reach this branch at all. Long-tail GC for parents that
+          // never sync (validation/RLS failures, abandoned drafts) is
+          // handled by the age-based `evictStuckTempPhotos` (30d, fired
+          // in the autosync post-cycle).
+          syncLog.warn('[Sync Manager] Skipping photo with temporary inspection ID (parent not yet synced):', photo.id);
           return;
         }
 
