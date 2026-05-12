@@ -25,9 +25,18 @@ interface InspectionHeaderProps {
   onUpdate: (field: string, value: string) => void;
   onImmediateSave?: () => void;
   isReadOnly?: boolean;
+  /**
+   * Keys of header fields that the user attempted to complete the report
+   * without filling. Drives a red pulse + aria-invalid on the offending
+   * input. See src/lib/required-fields.ts.
+   */
+  missingFieldKeys?: string[];
 }
 
-export default function InspectionHeader({ inspection, userProfile, modifiedByProfile, onUpdate, onImmediateSave, isReadOnly = false }: InspectionHeaderProps) {
+export default function InspectionHeader({ inspection, userProfile, modifiedByProfile, onUpdate, onImmediateSave, isReadOnly = false, missingFieldKeys = [] }: InspectionHeaderProps) {
+  const isMissing = (key: string) => missingFieldKeys.includes(key);
+  const missingRing = "animate-pulse ring-2 ring-destructive ring-offset-2";
+
   const [locationLoading, setLocationLoading] = useState(false);
 
   const handleLocationCapture = async () => {
