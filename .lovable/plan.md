@@ -1,70 +1,61 @@
-# Fix scroll-to-top on Equipment / Systems / Ziplines inputs
+# Fix the stuck "50 pending" badge
 
-## Root-cause findings
+Two surgical fixes that together drain the iPad badge and prevent the same situation from re-accumulating. No behavioural change to actually-pending records, no UI rework.
 
-There is **no `<form>` wrapper** around any report (Inspection, Training, Daily Assessment), so the "scroll to top on Enter" symptom is **not** caused by implicit form submission. It is caused by two interacting behaviors:
+Important update from your reply: the iPad has only ever held your account, and you have not signed in there for two months. That rules out the "shared device" theory but **strengthens** the "stale residue" theory — the ~49 phantom photos are almost certainly tied to inspections that have since been deleted, evicted, or whose UUID parent was never re-pulled into that iPad's IndexedDB. The orphan check below is what actually drains them.
 
-### Cause A — Smooth-center scroll in `focusNextCell`
-`src/lib/table-focus-utils.ts` is invoked on Enter inside every cell input across `EquipmentTable.tsx`, `OperatingSystemsTable.tsx`, and `ZiplinesTable.tsx`. After advancing focus it calls:
+---
 
-```text
-next.scrollIntoView({ behavior: 'smooth', block: 'center', inline: 'nearest' });
-```
+## Change 1 — Cross-device "pending inspection" counter
 
-`block: 'center'` re-centers the next field in the viewport on **every** Enter press — even when the field is already fully visible. On long tables this produces a pronounced "jump" that users perceive as a reset. When the row's selector finds no matching focusables (which happens when a `DebouncedInput` is wrapped or when the next cell is a rich-text editor or `Popover` trigger), the function falls through to the "next row" branch and re-centers an off-screen element, scrolling far away from where the user was working.
+File: `src/lib/local-data-guards.ts`
 
-### Cause B — Row remount on `onImmediateSave`
-Every cell `onBlur` calls `onImmediateSave`. That handler mutates parent state (and, after a sync, swaps `temp-xxx` row IDs for real UUIDs). Because rows use `key={item.id}`, the row **remounts** when the ID changes. The browser then drops focus to `<body>` and, with `scroll-behavior: smooth` enabled globally, scroll-anchoring sometimes resets the document scroll position toward the top — especially on tablets where the soft keyboard had been pushing the layout.
+Extend `shouldPreserveLocalRecord` to optionally take the matching server payload. When the server confirms it already has the edit (`server.synced_at >= local.updated_at - tolerance`), return `false` — the server has caught up, the local copy is no longer authoritative, and the dashboard ingest path is allowed to overwrite local IDB so `synced_at` re-anchors and the badge clears.
 
-`GlobalEnterToBlur` already snapshots and restores `scrollY` across two animation frames, but it only fires on the **Enter** path. The **blur-by-tap** path (Cause B) has no such guard, which is why users also see the jump when they simply tap elsewhere.
+Existing single-argument signature stays as a back-compat wrapper. Every current call site keeps working unchanged.
 
-### Why prior `e.preventDefault()` calls didn't fix it
-Each cell's `onKeyDown` already calls `e.preventDefault()`, but `GlobalEnterToBlur` runs first in the capture phase with `stopPropagation()`, so the cell's `onKeyDown` (including its `focusNextCell` call) often never runs from Enter. The visible jump on Enter is therefore Cause A only when the global handler is bypassed (e.g., focus is inside an open combobox `aria-expanded="true"`, or the target is a textarea without Cmd/Ctrl). The blur path is Cause B.
+Update the dashboard cache-write call site to pass the server row it just fetched.
 
-## Fix
+Stamp `last_sync_source = 'main_thread'` on the remaining write paths that currently leave it `NULL` (10 of 32 recent rows on the server today). This is purely diagnostic, but without it we cannot attribute future drift rows.
 
-Three small, surgical changes — all presentation-layer, no business-logic impact.
+## Change 2 — Photo "pending" counter is not user-scoped
 
-### 1. `src/lib/table-focus-utils.ts` — stop the re-centering jump
-Change the two `scrollIntoView` calls to:
-```text
-scrollIntoView({ behavior: 'auto', block: 'nearest', inline: 'nearest' });
-```
-`block: 'nearest'` scrolls only when the target is actually off-screen; `behavior: 'auto'` removes the smooth animation that makes the movement look like a reset. No focus behavior changes.
+File: `src/lib/offline-storage.ts`
 
-### 2. New helper `preserveScroll(fn)` in `src/lib/table-focus-utils.ts`
-A tiny wrapper that snapshots `window.scrollX/scrollY`, invokes `fn()`, and restores scroll across two `requestAnimationFrame`s — mirroring what `GlobalEnterToBlur` already does. Reused everywhere `onImmediateSave` runs.
+`getUnuploadedPhotos(userId?)` accepts a `userId` argument and ignores it. The hook (`useUnsyncedPhotos`) already passes `user.id` — the function just needs to honour it.
 
-```text
-export function preserveScroll<T>(fn: () => T): T {
-  const x = window.scrollX, y = window.scrollY;
-  const result = fn();
-  requestAnimationFrame(() => {
-    window.scrollTo(x, y);
-    requestAnimationFrame(() => window.scrollTo(x, y));
-  });
-  return result;
-}
-```
+Three surgical edits, all inside the existing read boundary:
 
-### 3. Wrap blur handlers in `EquipmentTable.tsx`, `OperatingSystemsTable.tsx`, `ZiplinesTable.tsx`
-Replace bare `onBlur={onImmediateSave}` with `onBlur={() => preserveScroll(() => onImmediateSave?.())}` on every cell input in those three files. Same for the custom blur callbacks (production year normalizer, divider text, etc.) and the Enter `onKeyDown` paths — wrap the `onImmediateSave?.()` call there too, so even if the row remounts after save, the page lands where it started.
+1. **Honour `userId` in `getUnuploadedPhotos`.** When a `userId` is supplied, drop any photo where either:
+   - `capturedByUserId` is set and not equal to `userId`, OR
+   - the parent inspection exists in IDB, `inspector_id !== userId`, and `capturedByUserId !== userId`.
+   Photos with no `capturedByUserId` and no resolvable parent stay visible (orphan-recovery path used by the existing S23 backfill).
+2. **Add a UUID-parent existence check** mirroring the existing `temp-*` orphan check, capped at 200 parent lookups per call so a bloated store cannot tip the IDB read boundary. Photos whose UUID parent is missing from local IDB drop out of `getUnuploadedPhotos` and surface in `getDeadLetterPhotos` instead — they are unrecoverable from this device and should not block the badge.
+3. **Apply the same scoping (steps 1 + 2) to `getDeadLetterPhotos`** so the SyncPulse "Retry Now" action only ever touches photos this user can actually upload.
 
-No other files change. `GlobalEnterToBlur`, `useEnterToBlur`, and `useKeyboardAvoidance` already handle scroll correctly and are left alone.
+## Tests
 
-## Verification
+New file: `src/lib/__tests__/photo-unsynced-user-scope.test.ts` — locks four contracts:
 
-1. **Vitest**: add a focused unit test on `preserveScroll` (mock `window.scrollTo`, assert it is called twice with the saved coords across two rAF ticks).
-2. **Browser preview at 820×1180 (tablet) and 1366×768 (desktop)** on `/inspection/:id`:
-   - Scroll halfway down the Equipment list, tap a cell, type, press Enter → scroll stays put, focus advances to next cell.
-   - Same flow on Ziplines and Operating Systems tabs.
-   - Tap an input, then tap blank space (blur without Enter) → scroll stays put.
-   - Open the Equipment type combobox on a populated row → no scroll movement (was already fixed in the prior tablet-edit work; this change does not touch combobox code).
-3. **Existing regression tests** for combobox edit persistence must still pass (`bunx vitest run` on the three test files added previously).
+- Photos tagged `capturedByUserId = A` are excluded from `getUnuploadedPhotos(B)`.
+- Photos with no `capturedByUserId` whose parent inspection has `inspector_id = A` are excluded from `getUnuploadedPhotos(B)`.
+- Photos with no `capturedByUserId` and no parent in IDB are still returned by `getUnuploadedPhotos(B)` (orphan-recovery path).
+- Photos with a UUID parent that does not exist in IDB are returned by `getDeadLetterPhotos` (and not by `getUnuploadedPhotos`).
+
+Append one test to `src/lib/local-data-guards.test.ts` covering the new server-payload overload of `shouldPreserveLocalRecord`: when `server.synced_at >= local.updated_at - tolerance`, returns `false` even though local drift exceeds the tolerance.
+
+## What the user will observe after deploy
+
+- The iPad's "50 pending" badge will drop to whatever genuinely belongs to you on that device — almost certainly to `0` once the next sync cycle runs the new filter. No manual action needed.
+- The Camp Eagle row clears on the desktop the next time the dashboard re-fetches it from the server.
+- Future drift rows will carry `last_sync_source` so we can root-cause without asking you to reproduce.
 
 ## Out of scope
 
-- No business-logic / save-pipeline changes.
-- No changes to combobox, rich-text editor, or keyboard-avoidance behavior.
-- No changes to `GlobalEnterToBlur` / `useEnterToBlur` (already correct).
-- No changes to `useScrollRestoration` (that handles route changes, not in-form interaction).
+- No change to `MAX_PHOTO_RETRIES`, no change to backoff windows, no change to `sync-quarantine`.
+- No automated cleanup of phantom photos in IDB — the filter alone is enough to drain the badge; a destructive purge would risk losing a real photo.
+- No edge function changes. Server is healthy.
+
+## Memory updates after merge
+
+Add a short memory entry under `mem://constraints/photo-pending-user-scope` documenting that `getUnuploadedPhotos` and `getDeadLetterPhotos` MUST filter by `userId` and orphan UUID parents, with a pointer to the new test file.
