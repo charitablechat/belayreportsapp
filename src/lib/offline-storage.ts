@@ -3240,7 +3240,7 @@ export async function getUnsyncedInspections(userId?: string) {
         console.warn('[Offline Storage] Found orphaned temp-ID inspections:', { count: orphanCount });
       }
       
-      console.log('[Offline Storage] Unsynced inspections:', {
+      syncLog.log('[Offline Storage] Unsynced inspections:', {
         total: unsynced.length,
         userId: userId ? userId.substring(0, 8) + '...' : 'all',
       });
