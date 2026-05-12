@@ -532,7 +532,7 @@ export default function Dashboard() {
       setIsOnline(true);
       invalidateSuperAdminCache();
       queryClient.invalidateQueries({ queryKey: ["is-super-admin"] });
-      refreshReports(true);
+      requestRefresh();
     };
     const handleOffline = () => setIsOnline(false);
 
@@ -541,22 +541,22 @@ export default function Dashboard() {
       if (import.meta.env.DEV) console.log('[Dashboard] Sync complete - refreshing');
       invalidateSuperAdminCache();
       queryClient.invalidateQueries({ queryKey: ["is-super-admin"] });
-      refreshReports(true);
+      requestRefresh();
     });
 
     // Visibility change (tab switch, app resume)
     const handleVisibilityChange = () => {
-      if (document.visibilityState === 'visible') refreshReports(true);
+      if (document.visibilityState === 'visible') requestRefresh();
     };
 
     // Window focus (SPA back-navigation)
-    const handleWindowFocus = () => refreshReports(true);
+    const handleWindowFocus = () => requestRefresh();
 
     // iPad/Safari bfcache restore
     const handlePageShow = (e: PageTransitionEvent) => {
       if (e.persisted) {
         if (import.meta.env.DEV) console.log('[Dashboard] bfcache restore - refreshing');
-        refreshReports(true);
+        requestRefresh();
       }
     };
 
@@ -642,7 +642,7 @@ export default function Dashboard() {
     window.addEventListener('focus', handleWindowFocus);
     window.addEventListener('pageshow', handlePageShow);
     document.addEventListener('visibilitychange', handleVisibilityChange);
-    const handleDashboardStale = () => refreshReports(true);
+    const handleDashboardStale = () => requestRefresh();
     window.addEventListener('dashboard-stale', handleDashboardStale);
 
     return () => {
@@ -762,7 +762,7 @@ export default function Dashboard() {
         }
         if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT' || status === 'CLOSED') {
           console.warn('[Dashboard] realtime channel degraded:', status, '— scheduling fallback refetch');
-          setTimeout(() => refreshReports(true), 1500);
+          setTimeout(() => requestRefresh(), 1500);
         }
       });
 
