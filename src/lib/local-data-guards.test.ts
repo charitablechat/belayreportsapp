@@ -176,3 +176,42 @@ describe('drift tolerance boundary contract', () => {
     expect(shouldPreserveLocalRecord({ synced_at: baseSynced, updated_at: updated })).toBe(false);
   });
 });
+
+describe('S43 — shouldPreserveLocalRecord with server payload (catch-up override)', () => {
+  it('returns false when local drift exceeds tolerance but server.synced_at >= local.updated_at - tolerance', () => {
+    // Local edit at T+10min, never re-synced locally → would normally preserve.
+    // But the server already absorbed it (synced_at one second after the edit).
+    const localUpdated = '2025-01-01T12:10:00.000Z';
+    const localSynced = '2025-01-01T12:00:00.000Z';
+    const serverSynced = '2025-01-01T12:10:01.000Z'; // server caught up
+    expect(
+      shouldPreserveLocalRecord(
+        { synced_at: localSynced, updated_at: localUpdated },
+        { synced_at: serverSynced, updated_at: localUpdated },
+      ),
+    ).toBe(false);
+  });
+
+  it('still preserves when server.synced_at is meaningfully behind local.updated_at', () => {
+    const localUpdated = '2025-01-01T12:10:00.000Z';
+    const localSynced = '2025-01-01T12:00:00.000Z';
+    // Server's synced_at is ~5 minutes behind the local edit — tolerance window
+    // is 30s, so this is well outside it. Preserve local.
+    const serverSynced = '2025-01-01T12:05:00.000Z';
+    expect(
+      shouldPreserveLocalRecord(
+        { synced_at: localSynced, updated_at: localUpdated },
+        { synced_at: serverSynced, updated_at: localUpdated },
+      ),
+    ).toBe(true);
+  });
+
+  it('back-compat: single-arg signature still works (legacy callers)', () => {
+    expect(
+      shouldPreserveLocalRecord({
+        synced_at: '2025-01-01T12:00:00.000Z',
+        updated_at: '2025-01-01T12:10:00.000Z',
+      }),
+    ).toBe(true);
+  });
+});
