@@ -17,9 +17,18 @@ interface DailyAssessmentHeaderProps {
   isReadOnly?: boolean;
   userProfile?: { first_name?: string; last_name?: string } | null;
   modifiedByProfile?: { first_name?: string; last_name?: string } | null;
+  /**
+   * Header field keys (e.g. 'organization', 'assessment_date') the user
+   * tried to "Complete" without filling. Drives the .field-invalid pulse
+   * + aria-invalid on the offending input. See src/lib/required-fields.ts.
+   */
+  missingFieldKeys?: string[];
 }
 
-export default function DailyAssessmentHeader({ assessment, onUpdate, isReadOnly = false, userProfile, modifiedByProfile }: DailyAssessmentHeaderProps) {
+export default function DailyAssessmentHeader({ assessment, onUpdate, isReadOnly = false, userProfile, modifiedByProfile, missingFieldKeys = [] }: DailyAssessmentHeaderProps) {
+  const isMissing = (key: string) => missingFieldKeys.includes(key);
+  const missingRing = "field-invalid p-2";
+
   // Build trainer name from the original owner's profile
   const trainerName = userProfile?.first_name && userProfile?.last_name
     ? `${userProfile.first_name} ${userProfile.last_name}`
@@ -34,7 +43,11 @@ export default function DailyAssessmentHeader({ assessment, onUpdate, isReadOnly
     <Card>
       <CardContent className="pt-6 space-y-4">
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <div>
+          <div
+            id="field-assessment_date"
+            aria-invalid={isMissing('assessment_date') || undefined}
+            className={cn(isMissing('assessment_date') && missingRing)}
+          >
             <Label htmlFor="assessment-date">Date</Label>
             <Popover>
               <PopoverTrigger asChild>
@@ -78,7 +91,11 @@ export default function DailyAssessmentHeader({ assessment, onUpdate, isReadOnly
             />
           </div>
 
-          <div>
+          <div
+            id="field-organization"
+            aria-invalid={isMissing('organization') || undefined}
+            className={cn(isMissing('organization') && missingRing)}
+          >
             <Label htmlFor="organization">Organization</Label>
             <OrganizationAutocomplete
               value={assessment.organization || ''}
