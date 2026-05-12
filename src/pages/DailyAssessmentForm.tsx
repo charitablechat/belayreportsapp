@@ -2073,6 +2073,7 @@ export default function DailyAssessmentForm() {
           isReadOnly={effectiveReadOnly}
           userProfile={inspectorProfile as { first_name?: string; last_name?: string } | null}
           modifiedByProfile={modifiedByProfile as { first_name?: string; last_name?: string } | null}
+          missingFieldKeys={missingRequiredFields.map(m => m.key)}
         />
         {id && currentUser?.id && (
           <CollaboratorPresence
