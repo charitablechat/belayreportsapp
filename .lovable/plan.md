@@ -1,114 +1,110 @@
-## Why the dashboard flickers
+## Block "Complete" until required header fields are filled
 
-The flicker isn't the brutalist 2px loading bar — that only renders on first mount. It's the **reports list and StatsBar repainting every few seconds**. Three independent issues compound on `/dashboard`:
+Saving stays unrestricted (drafts can be empty). The **Complete** action is the only new gate, with three signals when it's blocked: rejection, persistent toast at top of screen, and a red pulse on the offending field(s).
 
-### Root cause 1 — Refresh storm with no coalescer
+### Required fields per report
 
-`refreshReports(true)` is wired up to **seven** triggers in the same effect (Dashboard.tsx 433–615):
+Sourced from the existing zod schemas — no new rules introduced:
 
-- initial mount
-- `online` event
-- `focus` event
-- `pageshow` (bfcache restore)
-- `visibilitychange → visible`
-- `dashboard-stale` custom event
-- `onSyncComplete` (fires every auto-sync — your replay shows one every ~50s)
-- realtime channel error fallback (`setTimeout(refreshReports, 1500)`)
+| Report | Required header fields |
+|---|---|
+| Inspection | `organization`, `location`, `inspection_date` |
+| Training | `organization` (Training Site), `start_date`, `end_date` |
+| Daily Assessment | `organization`, `assessment_date` |
 
-There's no debounce and no "already in flight" guard. Tab focus + a sync completing + a realtime status flap can fire 3 refreshes within a second, each restarting the full inspections / trainings / daily-assessments pipeline. The console snapshot shows three back-to-back `Network query timed out after 15000 ms` from the same line — that's the storm.
+(Attestation signature stays gated separately — already wired.)
 
-### Root cause 2 — Stale-while-revalidate replaces the array even when data is identical
+### New shared helper — `src/lib/required-fields.ts`
 
-Each branch of `refreshReports` runs the same shape (Dashboard.tsx 847–862, 994, 999):
+Single source of truth so the three forms can't drift:
 
 ```ts
-setInspections(offlineData);   // first paint from IDB
-...
-setInspections(networkData);   // second paint from Supabase
+export type MissingField = { key: string; label: string };
+
+export function getMissingInspectionFields(i: Partial<DbRow>): MissingField[] { ... }
+export function getMissingTrainingFields(t: Partial<DbRow>): MissingField[] { ... }
+export function getMissingAssessmentFields(a: Partial<DbRow>): MissingField[] { ... }
 ```
 
-Both calls hand React a **brand-new array reference** even when every row's `id` + `updated_at` is unchanged. `DashboardReportsSection` is not memoized against value-equality, so its child rows unmount/remount on every refresh, which is what the eye perceives as the flicker (badges blink, hover state drops, scroll jiggles). With Root cause 1 layered on top, this happens many times a minute.
+Each returns `[]` when complete. Empty string, whitespace-only, `null`, and `undefined` all count as missing.
 
-### Root cause 3 — Validation flags flip on every realtime event
+### Form wiring (same shape in all three forms)
 
-`setInspectionsValidated(true)` / `setTrainingsValidated(true)` / `setDailyValidated(true)` (Dashboard.tsx 667, 682, 697) are called unconditionally inside each realtime payload handler. They're already `true` after the first refresh, but React still schedules a render because the setter is invoked from a different commit. Combined with realtime payloads arriving for every other tab-mate's edit (admin) or your own writes mirrored back, this is another constant source of re-renders that flow through the StatsBar.
+In `InspectionForm.tsx`, `TrainingForm.tsx`, `DailyAssessmentForm.tsx`:
 
-### Supporting evidence
+1. Add state `const [missingFields, setMissingFields] = useState<MissingField[]>([])`.
+2. Wrap `handleCompleteClick` (or the equivalent in Training/Assessment):
+   ```ts
+   const missing = getMissingInspectionFields(inspection);
+   if (missing.length) {
+     setMissingFields(missing);
+     toast.error('Cannot complete report', {
+       id: `completion-blocked-${id}`,
+       description: `Required fields missing: ${missing.map(m => m.label).join(', ')}`,
+       duration: Infinity,
+     });
+     // Scroll the first missing field into view
+     document.getElementById(`field-${missing[0].key}`)?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+     return; // reject — do NOT open attestation, do NOT call completeXxx
+   }
+   toast.dismiss(`completion-blocked-${id}`);
+   setMissingFields([]);
+   // existing flow continues (attestation dialog or completeXxx)
+   ```
+3. Live-clear the toast and pulse as the user fixes fields:
+   ```ts
+   useEffect(() => {
+     if (!missingFields.length) return;
+     const stillMissing = getMissingInspectionFields(inspection);
+     if (!stillMissing.length) {
+       toast.dismiss(`completion-blocked-${id}`);
+       setMissingFields([]);
+     } else {
+       setMissingFields(stillMissing);
+     }
+   }, [inspection?.organization, inspection?.location, inspection?.inspection_date]);
+   ```
 
-- **Console:** three sequential `[Dashboard] Network query timed out after 15000 ms` — only possible if refresh is being called repeatedly while the previous one is still pending.
-- **Session replay:** the sync chip pulses, returns green, idles, pulses again ~50 s later. Each pulse is an `onSyncComplete` → `refreshReports(true)` → double `setInspections` → list remount.
-- **Dashboard.tsx 615:** the giant mount effect has `[]` deps but reads `currentUser`, `isSuperAdmin`, etc. via closure — so it captures stale handlers but they still re-fire on every event.
+### Field-level pulse
 
-### Why it's worse for some users
+Each header input that can be required gets:
+- `id={`field-${key}`}` for scrolling
+- a className gated on `missingFields.some(m => m.key === key)`:
+  ```tsx
+  className={cn(
+    "...existing classes",
+    isMissing && "animate-pulse ring-2 ring-destructive ring-offset-2 rounded-md",
+  )}
+  ```
+- `aria-invalid={isMissing}` so screen readers announce it.
 
-Admins (and Luke specifically) hit it harder because their realtime channel is **unfiltered** (line 658) — they receive every tenant's row event, and each one trips the validation-flag setter and the row-merge setter. On a normal user with the `inspector_id=eq.${userId}` filter, the cadence is much lower.
+The pulse stops the moment the field is non-empty (Step 3 above clears `missingFields`).
 
----
+### Toast behavior
 
-## Proposed fix (no code yet — confirm before I implement)
+- Single sonner toast per report, keyed by `completion-blocked-${reportId}` so re-clicking Complete updates the same toast instead of stacking.
+- `duration: Infinity` keeps it on screen until either (a) the user fills every missing field (auto-dismiss via the effect), or (b) the user explicitly dismisses it.
+- Description text lists the human labels: `"Required fields missing: Organization, Location, Inspection date"`.
+- Plays well with the offline-first model: this is a pure client-side gate, no network calls, works offline.
 
-All edits inside `src/pages/Dashboard.tsx`. No schema, no edge function, no realtime wiring change.
+### What stays unchanged
 
-### 1. Coalesce refresh triggers
+- `saveProgress` / autosave / IndexedDB writes — still accept empty fields.
+- Existing `Report Completion Bypass` memory (non-blocking completion ignores schema validation **errors**) — still applies to the rest of the schema. We're carving out **only** the per-form `getMissing*Fields` check, which lives outside the zod parse.
+- Attestation dialog flow.
+- Admin re-complete flow (`inspection.attestation_signed_at` shortcut) — gets the same gate up front.
+- Lock dialog after completion.
+- No DB migration, no edge-function change, no schema change.
 
-Add a small in-file helper:
+### Tests
 
-```ts
-const refreshInFlightRef = useRef<Promise<unknown> | null>(null);
-const refreshScheduledRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+`src/lib/__tests__/required-fields.test.ts` covering, for each report type:
+- all-filled returns `[]`
+- single missing field returns just that field
+- whitespace-only counts as missing
+- `null` / `undefined` count as missing
+- field order in the returned array matches form display order (so the toast reads top-down)
 
-const requestRefresh = useCallback(() => {
-  if (refreshInFlightRef.current) return;          // already running
-  if (refreshScheduledRef.current) return;         // already queued
-  refreshScheduledRef.current = setTimeout(() => {
-    refreshScheduledRef.current = null;
-    refreshInFlightRef.current = refreshReports(true)
-      .finally(() => { refreshInFlightRef.current = null; });
-  }, 250);
-}, []);
-```
+### Memory update
 
-Replace the seven `refreshReports(true)` call sites in the mount effect with `requestRefresh()`. Initial mount stays as a direct `refreshReports(true)` so the first paint isn't delayed.
-
-### 2. Skip `setInspections` when the payload is unchanged
-
-Introduce one tiny utility at the top of the file:
-
-```ts
-const sameRows = (a: DbRow[], b: DbRow[]) => {
-  if (a.length !== b.length) return false;
-  for (let i = 0; i < a.length; i++) {
-    if (a[i].id !== b[i].id) return false;
-    if ((a[i].updated_at ?? '') !== (b[i].updated_at ?? '')) return false;
-  }
-  return true;
-};
-```
-
-Wrap each `setInspections / setTrainings / setDailyAssessments` call inside `refreshReports` with a functional setter that returns `prev` when `sameRows(prev, next)` — React then bails out without scheduling a render. Six call sites total (2 per table — offline + network). Cache writes to `dashboard-cache-*` stay outside the bail-out so disk stays warm.
-
-### 3. Stop re-flipping `*Validated` flags
-
-In each realtime handler (Dashboard.tsx 667, 682, 697) gate the setter:
-
-```ts
-setInspectionsValidated(prev => prev ? prev : true);
-```
-
-(The functional updater bails when value is unchanged — same render-skip mechanism as above.)
-
-### 4. (Tiny) memo `DashboardReportsSection`
-
-If the component file isn't already wrapped in `React.memo`, wrap it. With root cause 2 fixed the parent will stop handing it new array refs on no-op refreshes, so the memo will actually hit.
-
-### Out of scope
-
-- No changes to `refreshReports` algorithm, timeouts, retries, orphan cleanup, or reconciliation logic.
-- No changes to realtime subscription scope (PR-D filter stays).
-- No new memory entry needed — these are local rendering hygiene fixes.
-
-### Validation
-
-- Add a vitest under `src/pages/__tests__/dashboard-coalescer.test.ts` that fires `focus + visibilitychange + onSyncComplete` within 100ms and asserts `refreshReports` was invoked **once**.
-- Add an assertion-only test for `sameRows` covering: identical, length-diff, id-diff, updated_at-diff.
-- Manual check in preview: open `/dashboard`, alt-tab away and back 5×, confirm reports list does not visibly repaint (no badge flash, no scroll jiggle).
+After implementation I'll add a memory entry under `mem://features/required-field-completion-gate` and reference it from the index. It will say: completion is gated on header fields per report; gate is client-only, lives in `src/lib/required-fields.ts`, surfaces via persistent sonner toast keyed `completion-blocked-${id}` plus `animate-pulse ring-destructive` on the offending field; saves remain unblocked.
