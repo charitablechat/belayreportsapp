@@ -143,6 +143,7 @@ function applyRowsIfChanged(
   setter(prev => (sameRows(prev, next) ? prev : next));
 }
 
+export default function Dashboard() {
   const navigate = useNavigate();
   const location = useLocation();
   const [inspections, setInspections] = useState<DbRow[]>(() => readDashboardCache('dashboard-cache-inspections'));
@@ -181,8 +182,6 @@ function applyRowsIfChanged(
   const REFRESH_THROTTLE_MS = 3000;
   const [showStaleDataBanner, setShowStaleDataBanner] = useState(false);
   const networkFailCountRef = React.useRef(0);
-
-export default function Dashboard() {
 
   // Build unique inspector list from report data
   const uniqueInspectors = useMemo(() => {
