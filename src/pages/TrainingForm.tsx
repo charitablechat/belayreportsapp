@@ -33,6 +33,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import TrainingHeader from "@/components/training/TrainingHeader";
+import { getMissingTrainingFields, formatMissingDescription, type MissingField } from "@/lib/required-fields";
 import { CollaboratorPresence } from "@/components/CollaboratorPresence";
 import DeliveryApproachSection from "@/components/training/DeliveryApproachSection";
 import OperatingSystemsSection from "@/components/training/OperatingSystemsSection";
@@ -166,6 +167,19 @@ export default function TrainingForm() {
   });
 
   const effectiveReadOnly = isReadOnly || isCompletionLocked;
+
+  const [missingRequiredFields, setMissingRequiredFields] = useState<MissingField[]>([]);
+  useEffect(() => {
+    if (!missingRequiredFields.length) return;
+    const stillMissing = getMissingTrainingFields(training);
+    if (!stillMissing.length) {
+      toast.dismiss(`completion-blocked-${id}`);
+      setMissingRequiredFields([]);
+    } else if (stillMissing.length !== missingRequiredFields.length) {
+      setMissingRequiredFields(stillMissing);
+    }
+  }, [training?.organization, training?.start_date, training?.end_date, missingRequiredFields.length, id]);
+
   const [versionPanelOpen, setVersionPanelOpen] = useState(false);
   const [lastVersionNumber, setLastVersionNumber] = useState<number | undefined>(undefined);
   const [lastFieldCount, setLastFieldCount] = useState<number | undefined>(undefined);
@@ -1847,12 +1861,26 @@ export default function TrainingForm() {
               <Button 
                 size={isMobile ? "default" : "sm"} 
                 onClick={() => {
+                  const missing = getMissingTrainingFields(training);
+                  if (missing.length) {
+                    setMissingRequiredFields(missing);
+                    toast.error('Cannot complete report', {
+                      id: `completion-blocked-${id}`,
+                      description: formatMissingDescription(missing),
+                      duration: Infinity,
+                    });
+                    document.getElementById(`field-${missing[0].key}`)
+                      ?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                    return;
+                  }
+                  toast.dismiss(`completion-blocked-${id}`);
+                  setMissingRequiredFields([]);
                   if (training?.attestation_signed_at) {
                     setShowCompleteDialog(true);
                   } else {
                     setShowAttestationDialog(true);
                   }
-                }} 
+                }}
                 disabled={isSaving}
                 className={isMobile ? "min-w-[100px] h-10 text-sm font-medium" : ""}
               >
@@ -2020,6 +2048,7 @@ export default function TrainingForm() {
                   isReadOnly={effectiveReadOnly}
                   userProfile={inspectorProfile as { first_name?: string; last_name?: string } | null}
                   modifiedByProfile={modifiedByProfile as { first_name?: string; last_name?: string } | null}
+                  missingFieldKeys={missingRequiredFields.map(m => m.key)}
                 />
                 {id && currentUser?.id && (
                   <CollaboratorPresence

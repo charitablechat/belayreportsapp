@@ -49,6 +49,7 @@ import {
   type IdbSaveErrorCode,
 } from "@/lib/offline-storage";
 import { validateInspectionPackage } from "@/lib/validation-schemas";
+import { getMissingInspectionFields, formatMissingDescription, type MissingField } from "@/lib/required-fields";
 import { AttestationDialog } from "@/components/AttestationDialog";
 import { useUserProfile } from "@/hooks/useUserProfile";
 import type { AttestationPayload } from "@/lib/attestation";
@@ -302,6 +303,24 @@ export default function InspectionForm() {
   });
 
   const effectiveReadOnly = isReadOnly || isCompletionLocked;
+
+  // Required-field completion gate. Saves stay unblocked; only the
+  // explicit Complete action checks this list. See
+  // src/lib/required-fields.ts and mem://features/required-field-completion-gate.
+  const [missingRequiredFields, setMissingRequiredFields] = useState<MissingField[]>([]);
+  // Live-clear the persistent toast + pulse the moment the user fills
+  // the remaining required fields.
+  useEffect(() => {
+    if (!missingRequiredFields.length) return;
+    const stillMissing = getMissingInspectionFields(inspection);
+    if (!stillMissing.length) {
+      toast.dismiss(`completion-blocked-${id}`);
+      setMissingRequiredFields([]);
+    } else if (stillMissing.length !== missingRequiredFields.length) {
+      setMissingRequiredFields(stillMissing);
+    }
+  }, [inspection?.organization, inspection?.location, inspection?.inspection_date, missingRequiredFields.length, id]);
+
 
   // Field-level click interception for locked reports (allow-list: only block editable elements)
   const handleLockedFieldClick = useCallback((e: React.MouseEvent | React.PointerEvent) => {
@@ -2505,7 +2524,24 @@ export default function InspectionForm() {
 
   // Click handler for the Complete button — opens attestation on first sign,
   // skips it on subsequent re-completions (original signature stays valid).
+  // Required-field gate runs first; missing fields reject completion with a
+  // persistent toast + red pulse on the offending input.
   const handleCompleteClick = () => {
+    const missing = getMissingInspectionFields(inspection);
+    if (missing.length) {
+      setMissingRequiredFields(missing);
+      toast.error('Cannot complete report', {
+        id: `completion-blocked-${id}`,
+        description: formatMissingDescription(missing),
+        duration: Infinity,
+      });
+      triggerHaptic('error');
+      document.getElementById(`field-${missing[0].key}`)
+        ?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      return;
+    }
+    toast.dismiss(`completion-blocked-${id}`);
+    setMissingRequiredFields([]);
     if (inspection?.attestation_signed_at) {
       // Already signed — just re-complete silently (admin re-edit flow)
       completeInspection();
@@ -2513,6 +2549,7 @@ export default function InspectionForm() {
       setShowAttestationDialog(true);
     }
   };
+
 
   const handleGeneratePDF = async () => {
     console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
@@ -3317,6 +3354,7 @@ export default function InspectionForm() {
           onUpdate={effectiveReadOnly ? () => {} : handleHeaderUpdate}
           onImmediateSave={effectiveReadOnly ? undefined : stableTriggerImmediateSave}
           isReadOnly={effectiveReadOnly}
+          missingFieldKeys={missingRequiredFields.map(m => m.key)}
         />
 
         {id && currentUser?.id && (

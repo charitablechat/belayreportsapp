@@ -17,6 +17,10 @@ interface TrainingHeaderProps {
   isReadOnly?: boolean;
   userProfile?: { first_name?: string; last_name?: string } | null;
   modifiedByProfile?: { first_name?: string; last_name?: string } | null;
+  /**
+   * Required-field gate keys; see src/lib/required-fields.ts.
+   */
+  missingFieldKeys?: string[];
 }
 
 // Parse date string as local time to avoid timezone shifting
@@ -28,7 +32,10 @@ const parseLocalDate = (dateStr: string | null | undefined) => {
   return new Date(year, month - 1, day);
 };
 
-export default function TrainingHeader({ training, onUpdate, isReadOnly = false, userProfile, modifiedByProfile }: TrainingHeaderProps) {
+export default function TrainingHeader({ training, onUpdate, isReadOnly = false, userProfile, modifiedByProfile, missingFieldKeys = [] }: TrainingHeaderProps) {
+  const isMissing = (key: string) => missingFieldKeys.includes(key);
+  const missingRing = "animate-pulse ring-2 ring-destructive ring-offset-2 rounded-md p-2";
+
   // Build trainer name from the original owner's profile
   const trainerName = userProfile?.first_name && userProfile?.last_name
     ? `${userProfile.first_name} ${userProfile.last_name}`
@@ -45,7 +52,11 @@ export default function TrainingHeader({ training, onUpdate, isReadOnly = false,
         <CardTitle>Training Information</CardTitle>
       </CardHeader>
       <CardContent className="space-y-4">
-        <div className="space-y-2">
+        <div
+          id="field-organization"
+          aria-invalid={isMissing('organization') || undefined}
+          className={cn("space-y-2", isMissing('organization') && missingRing)}
+        >
           <Label htmlFor="organization">Training Site (Name of facility, city, state) *</Label>
           <OrganizationAutocomplete
             value={training.organization || ''}
@@ -67,7 +78,11 @@ export default function TrainingHeader({ training, onUpdate, isReadOnly = false,
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <div className="space-y-2">
+          <div
+            id="field-start_date"
+            aria-invalid={isMissing('start_date') || undefined}
+            className={cn("space-y-2", isMissing('start_date') && missingRing)}
+          >
             <Label>Start Date *</Label>
             <Popover>
               <PopoverTrigger asChild>
@@ -98,7 +113,11 @@ export default function TrainingHeader({ training, onUpdate, isReadOnly = false,
             </Popover>
           </div>
 
-          <div className="space-y-2">
+          <div
+            id="field-end_date"
+            aria-invalid={isMissing('end_date') || undefined}
+            className={cn("space-y-2", isMissing('end_date') && missingRing)}
+          >
             <Label>End Date *</Label>
             <Popover>
               <PopoverTrigger asChild>

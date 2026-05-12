@@ -25,9 +25,18 @@ interface InspectionHeaderProps {
   onUpdate: (field: string, value: string) => void;
   onImmediateSave?: () => void;
   isReadOnly?: boolean;
+  /**
+   * Keys of header fields that the user attempted to complete the report
+   * without filling. Drives a red pulse + aria-invalid on the offending
+   * input. See src/lib/required-fields.ts.
+   */
+  missingFieldKeys?: string[];
 }
 
-export default function InspectionHeader({ inspection, userProfile, modifiedByProfile, onUpdate, onImmediateSave, isReadOnly = false }: InspectionHeaderProps) {
+export default function InspectionHeader({ inspection, userProfile, modifiedByProfile, onUpdate, onImmediateSave, isReadOnly = false, missingFieldKeys = [] }: InspectionHeaderProps) {
+  const isMissing = (key: string) => missingFieldKeys.includes(key);
+  const missingRing = "animate-pulse ring-2 ring-destructive ring-offset-2";
+
   const [locationLoading, setLocationLoading] = useState(false);
 
   const handleLocationCapture = async () => {
@@ -127,7 +136,14 @@ export default function InspectionHeader({ inspection, userProfile, modifiedByPr
                   />
                 </div>
               )}
-              <div className="space-y-1.5 p-3 rounded-lg bg-muted/30 border border-border/50">
+              <div
+                id="field-organization"
+                aria-invalid={isMissing('organization') || undefined}
+                className={cn(
+                  "space-y-1.5 p-3 rounded-lg bg-muted/30 border border-border/50",
+                  isMissing('organization') && missingRing,
+                )}
+              >
                 <Label className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-1 block">Facility Name</Label>
                 <OrganizationAutocomplete
                   value={inspection?.organization || ""}
@@ -142,7 +158,14 @@ export default function InspectionHeader({ inspection, userProfile, modifiedByPr
                   disabled={isReadOnly}
                 />
               </div>
-              <div className="space-y-1.5 p-3 rounded-lg bg-muted/30 border border-border/50">
+              <div
+                id="field-location"
+                aria-invalid={isMissing('location') || undefined}
+                className={cn(
+                  "space-y-1.5 p-3 rounded-lg bg-muted/30 border border-border/50",
+                  isMissing('location') && missingRing,
+                )}
+              >
                 <Label className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-1 block">Location</Label>
                 <div className="flex gap-2">
                   <div className="flex-1">
@@ -205,7 +228,14 @@ export default function InspectionHeader({ inspection, userProfile, modifiedByPr
               <div className="space-y-1.5 p-3 rounded-lg bg-muted/30 border border-border/50">
                 {renderField("ACCT#", "acct_number", inspection?.acct_number)}
               </div>
-              <div className="space-y-1.5 p-3 rounded-lg bg-muted/30 border border-border/50">
+              <div
+                id="field-inspection_date"
+                aria-invalid={isMissing('inspection_date') || undefined}
+                className={cn(
+                  "space-y-1.5 p-3 rounded-lg bg-muted/30 border border-border/50",
+                  isMissing('inspection_date') && missingRing,
+                )}
+              >
                 <Label className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-1 block">Inspection Date</Label>
                 <Popover>
                   <PopoverTrigger asChild>
