@@ -143,6 +143,25 @@ function applyRowsIfChanged(
   setter(prev => (sameRows(prev, next) ? prev : next));
 }
 
+// Read offline IDB with a hard timeout. The result discriminates between
+// "IDB actually finished and returned N rows" (kind: 'data') and "the
+// timeout fired before IDB resolved" (kind: 'timeout'), so callers can
+// tell whether an empty array means "IDB has zero rows" or "we never
+// heard back from IDB". Without the discriminator the dashboard drift
+// beacon would fire false positives every time IDB is slow.
+type OfflineReadResult = { kind: 'data'; rows: DbRow[] } | { kind: 'timeout' };
+function readOfflineWithTimeout(
+  promise: Promise<DbRow[]>,
+  timeoutMs: number,
+): Promise<OfflineReadResult> {
+  return Promise.race<OfflineReadResult>([
+    promise.then(rows => ({ kind: 'data' as const, rows })),
+    new Promise<OfflineReadResult>((resolve) =>
+      setTimeout(() => resolve({ kind: 'timeout' as const }), timeoutMs),
+    ),
+  ]);
+}
+
 // Drift beacon: surface when offline IDB row count disagrees with the
 // server row count for a dashboard table. The flicker fix suppresses the
 // stale offline pre-paint on subsequent refreshes so users don't visibly
@@ -158,7 +177,13 @@ function maybeReportDashboardDrift(
   table: 'inspections' | 'trainings' | 'daily_assessments',
   offlineCount: number,
   networkCount: number,
+  offlineReadCompleted: boolean,
 ): void {
+  // Skip when the offline IDB read timed out — we don't actually know what
+  // IDB has in that case, only that we didn't get an answer within 4s.
+  // Reporting `offlineCount=0` here would pollute the metric with a flood
+  // of false positives on slow iOS devices.
+  if (!offlineReadCompleted) return;
   if (offlineCount === networkCount) return;
   // Only report when the OFFLINE store has FEWER rows than the server
   // (the case that produced Luke's flicker). Local > server is a
@@ -941,16 +966,14 @@ export default function Dashboard() {
       }
 
       // IndexedDB timeout (4s) — increased from 2s to avoid empty results on slow iOS devices
-      const offlineWithTimeout = Promise.race([
-        offlinePromise,
-        new Promise<DbRow[]>((resolve) => setTimeout(() => resolve([]), 4000))
-      ]);
-      
+      const offlineResult = await readOfflineWithTimeout(offlinePromise, 4000);
+      const offlineReadCompleted = offlineResult.kind === 'data';
+
       // Show offline/cached data immediately (stale-while-revalidate).
       // Defensive client-side filter on top of the server-side `.not.ilike`
       // — IDB-sourced rows haven't been through the server filter and may
       // include leaked e2e fixture rows from a prior pre-filter session.
-      const offlineDataRaw = await offlineWithTimeout;
+      const offlineDataRaw = offlineResult.kind === 'data' ? offlineResult.rows : [];
       const offlineData = filterOutE2EFixtures(offlineDataRaw, E2E_INSPECTION_MARKER_COLUMNS);
       if (offlineData.length > 0 && !hasPaintedInspectionsRef.current) {
         applyRowsIfChanged(setInspections, offlineData);
@@ -967,8 +990,9 @@ export default function Dashboard() {
           // Drift beacon: surface when IDB and server disagree on row count
           // so we can quantify how often the offline pre-paint suppression
           // is masking a real save/reconcile bug. Throttled to once per
-          // 5 min per table to avoid Sentry spam.
-          maybeReportDashboardDrift('inspections', offlineData.length, networkData.length);
+          // 5 min per table to avoid Sentry spam. Skipped when the offline
+          // read timed out so we don't pollute the metric with false zeros.
+          maybeReportDashboardDrift('inspections', offlineData.length, networkData.length, offlineReadCompleted);
           applyRowsIfChanged(setInspections, networkData);
           hasPaintedInspectionsRef.current = true;
           writeDashboardCache('dashboard-cache-inspections', networkData);
@@ -1104,6 +1128,10 @@ export default function Dashboard() {
         } else if (networkData !== null && sessionValid) {
           // Server confirmed zero reports — this is a definitive empty result
           applyRowsIfChanged(setInspections, []);
+          // The empty network result IS authoritative, so subsequent
+          // refreshes should skip the offline pre-paint even though the
+          // happy-path setter above wasn't reached.
+          hasPaintedInspectionsRef.current = true;
           writeDashboardCache('dashboard-cache-inspections', []);
           return { networkSuccess: true, definitive: true };
         } else if (networkData === null && offlineData.length > 0) {
@@ -1162,12 +1190,9 @@ export default function Dashboard() {
       }
 
       // IndexedDB timeout (4s) — increased from 2s to avoid empty results on slow iOS devices
-      const offlineWithTimeout = Promise.race([
-        offlinePromise,
-        new Promise<DbRow[]>((resolve) => setTimeout(() => resolve([]), 4000))
-      ]);
-      
-      const offlineData = await offlineWithTimeout;
+      const offlineResult = await readOfflineWithTimeout(offlinePromise, 4000);
+      const offlineReadCompleted = offlineResult.kind === 'data';
+      const offlineData = offlineResult.kind === 'data' ? offlineResult.rows : [];
       if (offlineData.length > 0 && !hasPaintedTrainingsRef.current) {
         applyRowsIfChanged(setTrainings, offlineData);
         writeDashboardCache('dashboard-cache-trainings', offlineData);
@@ -1180,7 +1205,7 @@ export default function Dashboard() {
       if (navigator.onLine && sessionValid) {
         const networkData = await supabasePromise;
         if (networkData && networkData.length > 0) {
-          maybeReportDashboardDrift('trainings', offlineData.length, networkData.length);
+          maybeReportDashboardDrift('trainings', offlineData.length, networkData.length, offlineReadCompleted);
           applyRowsIfChanged(setTrainings, networkData);
           hasPaintedTrainingsRef.current = true;
           writeDashboardCache('dashboard-cache-trainings', networkData);
@@ -1293,6 +1318,7 @@ export default function Dashboard() {
           return { networkSuccess: true, definitive: true };
         } else if (networkData !== null && sessionValid) {
           applyRowsIfChanged(setTrainings, []);
+          hasPaintedTrainingsRef.current = true;
           writeDashboardCache('dashboard-cache-trainings', []);
           return { networkSuccess: true, definitive: true };
         } else if (networkData === null && offlineData.length > 0) {
@@ -1348,12 +1374,9 @@ export default function Dashboard() {
       }
 
       // IndexedDB timeout (4s) — increased from 2s to avoid empty results on slow iOS devices
-      const offlineWithTimeout = Promise.race([
-        offlinePromise,
-        new Promise<DbRow[]>((resolve) => setTimeout(() => resolve([]), 4000))
-      ]);
-      
-      const offlineData = await offlineWithTimeout;
+      const offlineResult = await readOfflineWithTimeout(offlinePromise, 4000);
+      const offlineReadCompleted = offlineResult.kind === 'data';
+      const offlineData = offlineResult.kind === 'data' ? offlineResult.rows : [];
       if (offlineData.length > 0 && !hasPaintedDailyAssessmentsRef.current) {
         applyRowsIfChanged(setDailyAssessments, offlineData);
         writeDashboardCache('dashboard-cache-daily', offlineData);
@@ -1366,7 +1389,7 @@ export default function Dashboard() {
       if (navigator.onLine && sessionValid) {
         const networkData = await supabasePromise;
         if (networkData && networkData.length > 0) {
-          maybeReportDashboardDrift('daily_assessments', offlineData.length, networkData.length);
+          maybeReportDashboardDrift('daily_assessments', offlineData.length, networkData.length, offlineReadCompleted);
           applyRowsIfChanged(setDailyAssessments, networkData);
           hasPaintedDailyAssessmentsRef.current = true;
           writeDashboardCache('dashboard-cache-daily', networkData);
@@ -1479,6 +1502,7 @@ export default function Dashboard() {
           return { networkSuccess: true, definitive: true };
         } else if (networkData !== null && sessionValid) {
           applyRowsIfChanged(setDailyAssessments, []);
+          hasPaintedDailyAssessmentsRef.current = true;
           writeDashboardCache('dashboard-cache-daily', []);
           return { networkSuccess: true, definitive: true };
         } else if (networkData === null && offlineData.length > 0) {
