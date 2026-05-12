@@ -1265,7 +1265,7 @@ export default function Dashboard() {
           const nowA = new Date().toISOString();
           Promise.all(networkData.map(async (assessment) => {
             const localRecord = await getOfflineDailyAssessment(assessment.id);
-            if (shouldPreserveLocalRecord(localRecord)) {
+            if (shouldPreserveLocalRecord(localRecord, assessment)) {
               const serverSyncedAt = assessment.synced_at ? new Date(assessment.synced_at).getTime() : 0;
               const localUpdatedAt = localRecord?.updated_at ? new Date(localRecord.updated_at).getTime() : 0;
               if (serverSyncedAt < localUpdatedAt) {
