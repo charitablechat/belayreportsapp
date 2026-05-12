@@ -17,6 +17,10 @@ interface TrainingHeaderProps {
   isReadOnly?: boolean;
   userProfile?: { first_name?: string; last_name?: string } | null;
   modifiedByProfile?: { first_name?: string; last_name?: string } | null;
+  /**
+   * Required-field gate keys; see src/lib/required-fields.ts.
+   */
+  missingFieldKeys?: string[];
 }
 
 // Parse date string as local time to avoid timezone shifting
@@ -28,7 +32,10 @@ const parseLocalDate = (dateStr: string | null | undefined) => {
   return new Date(year, month - 1, day);
 };
 
-export default function TrainingHeader({ training, onUpdate, isReadOnly = false, userProfile, modifiedByProfile }: TrainingHeaderProps) {
+export default function TrainingHeader({ training, onUpdate, isReadOnly = false, userProfile, modifiedByProfile, missingFieldKeys = [] }: TrainingHeaderProps) {
+  const isMissing = (key: string) => missingFieldKeys.includes(key);
+  const missingRing = "animate-pulse ring-2 ring-destructive ring-offset-2 rounded-md p-2";
+
   // Build trainer name from the original owner's profile
   const trainerName = userProfile?.first_name && userProfile?.last_name
     ? `${userProfile.first_name} ${userProfile.last_name}`
