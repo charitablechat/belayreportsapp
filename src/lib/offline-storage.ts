@@ -5048,7 +5048,14 @@ export async function ingestRemoteRecordOffline(
         console.log(`[Offline Storage] Ingested remote ${labels[table]}:`, record.id);
       }
     },
-    `ingestRemoteRecordOffline:${table}`,
+    // Operation name includes `save:` so the `withIndexedDBSaveBoundary`
+    // tier-selection at lines 2072-2090 routes inspections to the 8s `write`
+    // tier (matching `saveInspectionOffline`). Without `save:`, the inspections
+    // case matches no keyword and falls through to the 5s `light` tier —
+    // inconsistent with the user-facing save path and prone to spurious
+    // timeouts on stressed mobile devices. `trainings` and `daily_assessments`
+    // already match the earlier `training` / `assessment` keywords → batch tier.
+    `ingestRemoteRecordOffline:save:${table}`,
     enriched,
     { store: table },
   );
