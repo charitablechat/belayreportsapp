@@ -711,7 +711,7 @@ export default function Dashboard() {
     const dashboardChannel = supabase
       .channel(`dashboard-realtime:${userId}:${isSuperAdmin ? 'admin' : 'self'}`)
       .on('postgres_changes', baseConfig('inspections'), (payload: RealtimePostgresChangesPayload<DbRow>) => {
-        setInspectionsValidated(true);
+        setInspectionsValidated(prev => prev ? prev : true);
         if (payload.eventType === 'DELETE') {
           const id = payload.old?.id;
           if (id) setInspections((prev) => removeRow(prev, id));
@@ -726,7 +726,7 @@ export default function Dashboard() {
         setInspections((prev) => mergeRow(prev, row));
       })
       .on('postgres_changes', baseConfig('trainings'), (payload: RealtimePostgresChangesPayload<DbRow>) => {
-        setTrainingsValidated(true);
+        setTrainingsValidated(prev => prev ? prev : true);
         if (payload.eventType === 'DELETE') {
           const id = payload.old?.id;
           if (id) setTrainings((prev) => removeRow(prev, id));
@@ -741,7 +741,7 @@ export default function Dashboard() {
         setTrainings((prev) => mergeRow(prev, row));
       })
       .on('postgres_changes', baseConfig('daily_assessments'), (payload: RealtimePostgresChangesPayload<DbRow>) => {
-        setDailyValidated(true);
+        setDailyValidated(prev => prev ? prev : true);
         if (payload.eventType === 'DELETE') {
           const id = payload.old?.id;
           if (id) setDailyAssessments((prev) => removeRow(prev, id));
