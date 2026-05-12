@@ -200,6 +200,7 @@ export default {
         "slide-up": "slide-up 0.3s ease-out",
         "pulse-soft": "pulse-soft 2s ease-in-out infinite",
         "pulse-calm": "pulse-calm 4s ease-in-out infinite",
+        "pulse-error": "pulse-error 1.6s ease-in-out infinite",
       },
     },
   },
