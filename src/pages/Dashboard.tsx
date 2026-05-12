@@ -894,7 +894,7 @@ export default function Dashboard() {
       const offlineDataRaw = await offlineWithTimeout;
       const offlineData = filterOutE2EFixtures(offlineDataRaw, E2E_INSPECTION_MARKER_COLUMNS);
       if (offlineData.length > 0) {
-        setInspections(offlineData);
+        applyRowsIfChanged(setInspections, offlineData);
         writeDashboardCache('dashboard-cache-inspections', offlineData);
         if (import.meta.env.DEV) {
           console.log('[Dashboard] Stale-while-revalidate inspections from cache:', offlineData.length);
@@ -905,7 +905,7 @@ export default function Dashboard() {
       if (navigator.onLine && sessionValid) {
         const networkData = await supabasePromise;
         if (networkData && networkData.length > 0) {
-          setInspections(networkData);
+          applyRowsIfChanged(setInspections, networkData);
           writeDashboardCache('dashboard-cache-inspections', networkData);
 
           // Reconcile: quarantine local rows the server no longer returns,
@@ -1038,12 +1038,12 @@ export default function Dashboard() {
           return { networkSuccess: true, definitive: true };
         } else if (networkData !== null && sessionValid) {
           // Server confirmed zero reports — this is a definitive empty result
-          setInspections([]);
+          applyRowsIfChanged(setInspections, []);
           writeDashboardCache('dashboard-cache-inspections', []);
           return { networkSuccess: true, definitive: true };
         } else if (networkData === null && offlineData.length > 0) {
           // Network failed -- fall back to offline data (definitive from offline)
-          setInspections(offlineData);
+          applyRowsIfChanged(setInspections, offlineData);
           return { networkSuccess: false, definitive: true };
         }
         // networkData === null and no offline data — not definitive
@@ -1104,7 +1104,7 @@ export default function Dashboard() {
       
       const offlineData = await offlineWithTimeout;
       if (offlineData.length > 0) {
-        setTrainings(offlineData);
+        applyRowsIfChanged(setTrainings, offlineData);
         writeDashboardCache('dashboard-cache-trainings', offlineData);
         if (import.meta.env.DEV) {
           console.log('[Dashboard] Stale-while-revalidate trainings from cache:', offlineData.length);
@@ -1115,7 +1115,7 @@ export default function Dashboard() {
       if (navigator.onLine && sessionValid) {
         const networkData = await supabasePromise;
         if (networkData && networkData.length > 0) {
-          setTrainings(networkData);
+          applyRowsIfChanged(setTrainings, networkData);
           writeDashboardCache('dashboard-cache-trainings', networkData);
 
           reconcileServerDeletions({
@@ -1225,11 +1225,11 @@ export default function Dashboard() {
           }
           return { networkSuccess: true, definitive: true };
         } else if (networkData !== null && sessionValid) {
-          setTrainings([]);
+          applyRowsIfChanged(setTrainings, []);
           writeDashboardCache('dashboard-cache-trainings', []);
           return { networkSuccess: true, definitive: true };
         } else if (networkData === null && offlineData.length > 0) {
-          setTrainings(offlineData);
+          applyRowsIfChanged(setTrainings, offlineData);
           return { networkSuccess: false, definitive: true };
         }
         return { networkSuccess: false, definitive: offlineData.length > 0 };
@@ -1288,7 +1288,7 @@ export default function Dashboard() {
       
       const offlineData = await offlineWithTimeout;
       if (offlineData.length > 0) {
-        setDailyAssessments(offlineData);
+        applyRowsIfChanged(setDailyAssessments, offlineData);
         writeDashboardCache('dashboard-cache-daily', offlineData);
         if (import.meta.env.DEV) {
           console.log('[Dashboard] Stale-while-revalidate assessments from cache:', offlineData.length);
@@ -1299,7 +1299,7 @@ export default function Dashboard() {
       if (navigator.onLine && sessionValid) {
         const networkData = await supabasePromise;
         if (networkData && networkData.length > 0) {
-          setDailyAssessments(networkData);
+          applyRowsIfChanged(setDailyAssessments, networkData);
           writeDashboardCache('dashboard-cache-daily', networkData);
 
           reconcileServerDeletions({
@@ -1409,11 +1409,11 @@ export default function Dashboard() {
           }
           return { networkSuccess: true, definitive: true };
         } else if (networkData !== null && sessionValid) {
-          setDailyAssessments([]);
+          applyRowsIfChanged(setDailyAssessments, []);
           writeDashboardCache('dashboard-cache-daily', []);
           return { networkSuccess: true, definitive: true };
         } else if (networkData === null && offlineData.length > 0) {
-          setDailyAssessments(offlineData);
+          applyRowsIfChanged(setDailyAssessments, offlineData);
           return { networkSuccess: false, definitive: true };
         }
         return { networkSuccess: false, definitive: offlineData.length > 0 };
