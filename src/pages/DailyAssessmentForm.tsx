@@ -4,6 +4,7 @@ import { useReportTabHistory } from "@/hooks/useReportTabHistory";
 import { isLocalDataNewer } from "@/lib/local-data-guards";
 import { applyTrackedFieldWrite, mergeRecordFields, TRACKED_FIELDS } from "@/lib/field-merge";
 import { checkRequiredHeaderFields, formatMissingFieldLabels } from "@/lib/header-required-fields";
+import { getMissingAssessmentFields, formatMissingDescription, type MissingField } from "@/lib/required-fields";
 import { useParams, useNavigate } from "react-router-dom";
 import { goBack } from "@/lib/navigation";
 import { markPendingDashboardRefresh, markDashboardStaleTimestamp, registerActiveFormRecord, unregisterActiveFormRecord, onPendingRemoteUpdate, isRecentSelfWrite } from "@/lib/sync-events";
