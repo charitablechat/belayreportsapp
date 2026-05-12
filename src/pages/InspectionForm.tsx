@@ -2524,7 +2524,24 @@ export default function InspectionForm() {
 
   // Click handler for the Complete button — opens attestation on first sign,
   // skips it on subsequent re-completions (original signature stays valid).
+  // Required-field gate runs first; missing fields reject completion with a
+  // persistent toast + red pulse on the offending input.
   const handleCompleteClick = () => {
+    const missing = getMissingInspectionFields(inspection);
+    if (missing.length) {
+      setMissingRequiredFields(missing);
+      toast.error('Cannot complete report', {
+        id: `completion-blocked-${id}`,
+        description: formatMissingDescription(missing),
+        duration: Infinity,
+      });
+      triggerHaptic('error');
+      document.getElementById(`field-${missing[0].key}`)
+        ?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      return;
+    }
+    toast.dismiss(`completion-blocked-${id}`);
+    setMissingRequiredFields([]);
     if (inspection?.attestation_signed_at) {
       // Already signed — just re-complete silently (admin re-edit flow)
       completeInspection();
@@ -2532,6 +2549,7 @@ export default function InspectionForm() {
       setShowAttestationDialog(true);
     }
   };
+
 
   const handleGeneratePDF = async () => {
     console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
