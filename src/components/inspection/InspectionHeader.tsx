@@ -158,7 +158,14 @@ export default function InspectionHeader({ inspection, userProfile, modifiedByPr
                   disabled={isReadOnly}
                 />
               </div>
-              <div className="space-y-1.5 p-3 rounded-lg bg-muted/30 border border-border/50">
+              <div
+                id="field-location"
+                aria-invalid={isMissing('location') || undefined}
+                className={cn(
+                  "space-y-1.5 p-3 rounded-lg bg-muted/30 border border-border/50",
+                  isMissing('location') && missingRing,
+                )}
+              >
                 <Label className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-1 block">Location</Label>
                 <div className="flex gap-2">
                   <div className="flex-1">
