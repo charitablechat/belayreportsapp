@@ -15,9 +15,6 @@ import {
   resetPhotoRetryCounts,
   resetLayerBreakerOnUserActivity,
   forceCloseAndReopenDB,
-  deleteOfflineInspection,
-  deleteOfflineTraining,
-  deleteOfflineDailyAssessment,
   forceDeleteLocalRecord,
 } from '@/lib/offline-storage';
 import {
