@@ -14,6 +14,7 @@ import {
   getDeadLetterPhotos,
   resetPhotoRetryCounts,
   resetLayerBreakerOnUserActivity,
+  forceCloseAndReopenDB,
 } from '@/lib/offline-storage';
 import {
   runSyncDiagnostic,
