@@ -88,11 +88,20 @@ export const pwaConfig = VitePWA({
     // Exclude version.json from precache — it must always be fresh
     globPatterns: ['**/*.{js,css,html,ico,png,svg,woff,woff2,avif}'],
     globIgnores: ['**/version.json'],
-    // Keep index.html in the precache, but let sw-offline-navigation.js own
-    // document requests. That script is imported before Workbox, avoids lazy
-    // route gaps, and has its own last-resort offline fallback for cold starts.
+    // Workbox-native SPA navigation fallback. `sw-offline-navigation.js` runs
+    // FIRST (imported before Workbox) and handles the network-first-then-
+    // shell flow for every navigation, but we keep this fallback enabled as a
+    // backstop so any navigation that escapes the custom handler (race with
+    // SW install, edge-cased route) still resolves to the React app shell
+    // instead of the browser's native "You're offline" surface.
+    //
+    // Denylist the small set of paths that must NEVER be served the SPA
+    // shell: OAuth callbacks, the always-fresh version probe, and any
+    // future API-style routes. Everything else (`/`, `/dashboard`,
+    // `/inspection/:id`, etc.) gets `/index.html` and React Router takes
+    // over once the bundle hydrates.
     navigateFallback: '/index.html',
-    navigateFallbackDenylist: [/./],
+    navigateFallbackDenylist: [/^\/~oauth/, /^\/api\//, /^\/version\.json$/],
     importScripts: ['/sw-offline-navigation.js', '/db-config.js', '/sw-push.js', '/sw-sync.js'],
     runtimeCaching: [
       {
