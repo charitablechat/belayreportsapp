@@ -976,6 +976,16 @@ export const useAutoSync = () => {
 
       if (total > 0) {
         syncLog.log('[AutoSync] Unsynced count:', total);
+        // Step 1 diagnostics: break down the badge so we can see whether records
+        // are stuck on temp- IDs (the most common cause of photo-sync stalls).
+        const tempCount = (rows: DbRow[]) =>
+          rows.filter(r => typeof (r as { id?: string }).id === 'string' && (r as { id: string }).id.startsWith('temp-')).length;
+        const inspTemp = tempCount(inspections);
+        const trainTemp = tempCount(trainings);
+        const assessTemp = tempCount(assessments);
+        console.warn(
+          `[AutoSync] Pending breakdown: inspections=${inspections.length} (temp=${inspTemp}) trainings=${trainings.length} (temp=${trainTemp}) daily=${assessments.length} (temp=${assessTemp})`
+        );
       }
     } catch (error) {
       console.error('[AutoSync] Error updating unsynced counts:', error);

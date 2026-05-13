@@ -359,7 +359,7 @@ type DynamicSupabaseClient = {
  *
  * Returns true if it's safe to proceed with sync, false otherwise.
  */
-async function assertRealSessionForSync(ctx: string): Promise<boolean> {
+export async function assertRealSessionForSync(ctx: string): Promise<boolean> {
   try {
     // Hard guard: a guest session must NEVER attempt to sync. The id has no
     // corresponding `auth.users` row, so every Supabase request would 401
