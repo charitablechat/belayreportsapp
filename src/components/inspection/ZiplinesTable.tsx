@@ -173,14 +173,14 @@ function ZiplinesTable({ ziplines, onUpdate, onImmediateSave: rawOnImmediateSave
                       onGalleryRefresh={onGalleryRefresh}
                     />
                   </div>
-                  <div className="p-1 border-r border-border">
+                  <div className="p-1 border-r border-border min-w-0">
                     <GlobalAutocomplete
                       value={zipline.zipline_name}
                       onChange={(value) => updateZipline(zipline, "zipline_name", value)}
                       onBlur={onImmediateSave}
                       fieldType="zipline_name"
                       placeholder="Name"
-                      className="border-0 bg-transparent h-8 text-xs"
+                      className="border-0 bg-transparent h-8 text-xs w-full"
                     />
                   </div>
                   <div className="p-1 border-r border-border">
