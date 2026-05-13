@@ -114,6 +114,16 @@ export const SyncPulse = ({ className }: { className?: string }) => {
   // the right edge so users couldn't tell the section was interactive.
   const [selfCheckExpanded, setSelfCheckExpanded] = useState(false);
   const [diagnosticExpanded, setDiagnosticExpanded] = useState(false);
+  // Per-category disclosure state for the Sync Terminal sheet. Actionable
+  // problem categories default-open so the user immediately sees what's
+  // blocking sync; informational ones default-closed.
+  const [pendingReportsExpanded, setPendingReportsExpanded] = useState(true);
+  const [pendingPhotosExpanded, setPendingPhotosExpanded] = useState(true);
+  const [stuckValidationExpanded, setStuckValidationExpanded] = useState(true);
+  const [heldBackExpanded, setHeldBackExpanded] = useState(false);
+  const [quarantinedExpanded, setQuarantinedExpanded] = useState(true);
+  const [failedPhotosExpanded, setFailedPhotosExpanded] = useState(true);
+  const [orphanRecordsExpanded, setOrphanRecordsExpanded] = useState(true);
   // Sprint 1D: per-photo retry-state breakdown (READY/RETRYING/STUCK)
   // — see src/lib/photo-retry-buckets.ts. Refreshed on every
   // `sync-photos-updated` event and on a 1Hz tick while the sheet is
