@@ -288,6 +288,23 @@ export const SyncPulse = ({ className }: { className?: string }) => {
     return unsub;
   }, []);
 
+  // Multi-tab block listener — `getDB()` dispatches `sync-multi-tab-block`
+  // when an upgrade is blocked >3s by another tab/SW holding the connection.
+  // Auto-clears 30s after the last fire so the banner doesn't get stuck on.
+  useEffect(() => {
+    let clearT: ReturnType<typeof setTimeout> | null = null;
+    const handler = () => {
+      setMultiTabBlock(true);
+      if (clearT) clearTimeout(clearT);
+      clearT = setTimeout(() => setMultiTabBlock(false), 30_000);
+    };
+    window.addEventListener('sync-multi-tab-block', handler as EventListener);
+    return () => {
+      window.removeEventListener('sync-multi-tab-block', handler as EventListener);
+      if (clearT) clearTimeout(clearT);
+    };
+  }, []);
+
   // 1Hz tick while a countdown halt is active, so the rendered "Auto-resumes
   // in Ns" text stays current. Stops when no countdown is outstanding.
   useEffect(() => {
