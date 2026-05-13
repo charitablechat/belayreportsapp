@@ -108,6 +108,12 @@ export const SyncPulse = ({ className }: { className?: string }) => {
   const [diagnosticRunning, setDiagnosticRunning] = useState(false);
   const [diagnosticReport, setDiagnosticReport] = useState<SyncDiagnosticReport | null>(null);
   const [diagnosticCopied, setDiagnosticCopied] = useState(false);
+  // Collapsible disclosure state for the SELF-CHECK and DIAGNOSTIC panels.
+  // The ▸/▾ caret in the header doubles as a tap-target that toggles each
+  // panel — on small screens the action button was getting clipped off
+  // the right edge so users couldn't tell the section was interactive.
+  const [selfCheckExpanded, setSelfCheckExpanded] = useState(false);
+  const [diagnosticExpanded, setDiagnosticExpanded] = useState(false);
   // Sprint 1D: per-photo retry-state breakdown (READY/RETRYING/STUCK)
   // — see src/lib/photo-retry-buckets.ts. Refreshed on every
   // `sync-photos-updated` event and on a 1Hz tick while the sheet is
@@ -780,26 +786,36 @@ export const SyncPulse = ({ className }: { className?: string }) => {
 
             {/* Self-check — proves whether JWT + RLS visibility are healthy. */}
             <div className="space-y-1.5 border-t border-green-900/40 pt-2">
-              <div className="flex items-center justify-between">
-                <span className="text-green-400 text-[10px] uppercase tracking-wider">▸ Self-check</span>
-                <button
-                  type="button"
-                  disabled={selfCheckRunning || !isOnline}
-                  onClick={runSelfCheck}
-                  className="text-[10px] uppercase tracking-wider px-2 py-0.5 rounded border border-green-700/60 text-green-300 hover:bg-green-900/30 disabled:opacity-50"
-                >
-                  {selfCheckRunning ? 'RUNNING…' : 'RUN SELF-CHECK'}
-                </button>
-              </div>
-              {selfCheckResult && (
-                <p className={cn(
-                  'text-[10px] rounded px-2 py-1 border',
-                  selfCheckResult.ok
-                    ? 'text-green-300 bg-green-950/30 border-green-900/40'
-                    : 'text-amber-300 bg-amber-950/30 border-amber-900/40',
-                )}>
-                  {selfCheckResult.label}{selfCheckResult.detail ? `: ${selfCheckResult.detail}` : ''}
-                </p>
+              <button
+                type="button"
+                onClick={() => setSelfCheckExpanded(v => !v)}
+                aria-expanded={selfCheckExpanded}
+                className="w-full flex items-center justify-between text-left text-green-400 text-[10px] uppercase tracking-wider hover:text-green-300 active:text-green-300 py-1 -my-1"
+              >
+                <span>{selfCheckExpanded ? '▾' : '▸'} Self-check</span>
+                <span className="text-green-700 text-[9px]">{selfCheckExpanded ? 'TAP TO HIDE' : 'TAP TO OPEN'}</span>
+              </button>
+              {selfCheckExpanded && (
+                <div className="space-y-1.5 pl-3">
+                  <button
+                    type="button"
+                    disabled={selfCheckRunning || !isOnline}
+                    onClick={runSelfCheck}
+                    className="w-full text-[10px] uppercase tracking-wider px-2 py-1.5 rounded border border-green-700/60 text-green-300 hover:bg-green-900/30 disabled:opacity-50"
+                  >
+                    {selfCheckRunning ? 'RUNNING…' : 'RUN SELF-CHECK'}
+                  </button>
+                  {selfCheckResult && (
+                    <p className={cn(
+                      'text-[10px] rounded px-2 py-1 border',
+                      selfCheckResult.ok
+                        ? 'text-green-300 bg-green-950/30 border-green-900/40'
+                        : 'text-amber-300 bg-amber-950/30 border-amber-900/40',
+                    )}>
+                      {selfCheckResult.label}{selfCheckResult.detail ? `: ${selfCheckResult.detail}` : ''}
+                    </p>
+                  )}
+                </div>
               )}
             </div>
 
@@ -811,65 +827,72 @@ export const SyncPulse = ({ className }: { className?: string }) => {
              * user can copy/paste it back to support without a screenshot.
              */}
             <div className="space-y-1.5 border-t border-green-900/40 pt-2">
-              <div className="flex items-center justify-between">
-                <span className="text-green-400 text-[10px] uppercase tracking-wider">▸ Diagnostic</span>
-                <button
-                  type="button"
-                  disabled={diagnosticRunning}
-                  onClick={async () => {
-                    setDiagnosticRunning(true);
-                    setDiagnosticCopied(false);
-                    try {
-                      const report = await runSyncDiagnostic();
-                      setDiagnosticReport(report);
-                    } catch (e) {
-                      // runSyncDiagnostic catches everything internally; this
-                      // is belt-and-suspenders for an unexpected throw at
-                      // the boundary.
-                      console.warn('[SyncPulse] Diagnostic threw:', e);
-                    } finally {
-                      setDiagnosticRunning(false);
-                    }
-                  }}
-                  className="text-[10px] uppercase tracking-wider px-2 py-0.5 rounded border border-green-700/60 text-green-300 hover:bg-green-900/30 disabled:opacity-50"
-                >
-                  {diagnosticRunning ? 'PROBING…' : 'RUN DIAGNOSTIC'}
-                </button>
-              </div>
-              {diagnosticReport && (
-                <div className="space-y-1.5">
-                  <div className="flex items-center justify-between">
-                    <span className="text-green-700 text-[9px] italic">
-                      Captured {new Date(diagnosticReport.timestamp).toLocaleTimeString()}
-                    </span>
-                    <button
-                      type="button"
-                      onClick={async () => {
-                        const text = formatSyncDiagnostic(diagnosticReport);
-                        try {
-                          if (navigator.clipboard?.writeText) {
-                            await navigator.clipboard.writeText(text);
-                            setDiagnosticCopied(true);
-                            setTimeout(() => setDiagnosticCopied(false), 2500);
-                          }
-                        } catch {
-                          // Clipboard can fail in non-secure contexts or if the
-                          // user denied permission. The `<pre>` below already
-                          // shows the text, so the user can long-press to
-                          // select / copy manually.
-                        }
-                      }}
-                      className="text-[9px] uppercase tracking-wider px-1.5 py-0.5 rounded border border-green-700/60 text-green-300 hover:bg-green-900/30"
-                    >
-                      {diagnosticCopied ? 'COPIED ✓' : 'COPY'}
-                    </button>
-                  </div>
-                  <pre className="text-[9px] leading-snug font-mono text-green-300/90 bg-black/40 border border-green-900/40 rounded px-2 py-1.5 max-h-64 overflow-auto whitespace-pre-wrap break-all">
-                    {formatSyncDiagnostic(diagnosticReport)}
-                  </pre>
-                  <p className="text-green-700 text-[9px] italic">
-                    Tap COPY (or long-press the text above to select) and paste this into a reply email so we can triage without a screenshot.
-                  </p>
+              <button
+                type="button"
+                onClick={() => setDiagnosticExpanded(v => !v)}
+                aria-expanded={diagnosticExpanded}
+                className="w-full flex items-center justify-between text-left text-green-400 text-[10px] uppercase tracking-wider hover:text-green-300 active:text-green-300 py-1 -my-1"
+              >
+                <span>{diagnosticExpanded ? '▾' : '▸'} Diagnostic</span>
+                <span className="text-green-700 text-[9px]">{diagnosticExpanded ? 'TAP TO HIDE' : 'TAP TO OPEN'}</span>
+              </button>
+              {diagnosticExpanded && (
+                <div className="space-y-1.5 pl-3">
+                  <button
+                    type="button"
+                    disabled={diagnosticRunning}
+                    onClick={async () => {
+                      setDiagnosticRunning(true);
+                      setDiagnosticCopied(false);
+                      try {
+                        const report = await runSyncDiagnostic();
+                        setDiagnosticReport(report);
+                      } catch (e) {
+                        console.warn('[SyncPulse] Diagnostic threw:', e);
+                      } finally {
+                        setDiagnosticRunning(false);
+                      }
+                    }}
+                    className="w-full text-[10px] uppercase tracking-wider px-2 py-1.5 rounded border border-green-700/60 text-green-300 hover:bg-green-900/30 disabled:opacity-50"
+                  >
+                    {diagnosticRunning ? 'PROBING…' : 'RUN DIAGNOSTIC'}
+                  </button>
+                  {diagnosticReport && (
+                    <div className="space-y-1.5">
+                      <div className="flex items-center justify-between">
+                        <span className="text-green-700 text-[9px] italic">
+                          Captured {new Date(diagnosticReport.timestamp).toLocaleTimeString()}
+                        </span>
+                        <button
+                          type="button"
+                          onClick={async () => {
+                            const text = formatSyncDiagnostic(diagnosticReport);
+                            try {
+                              if (navigator.clipboard?.writeText) {
+                                await navigator.clipboard.writeText(text);
+                                setDiagnosticCopied(true);
+                                setTimeout(() => setDiagnosticCopied(false), 2500);
+                              }
+                            } catch {
+                              // Clipboard can fail in non-secure contexts or if the
+                              // user denied permission. The `<pre>` below already
+                              // shows the text, so the user can long-press to
+                              // select / copy manually.
+                            }
+                          }}
+                          className="text-[9px] uppercase tracking-wider px-1.5 py-0.5 rounded border border-green-700/60 text-green-300 hover:bg-green-900/30"
+                        >
+                          {diagnosticCopied ? 'COPIED ✓' : 'COPY'}
+                        </button>
+                      </div>
+                      <pre className="text-[9px] leading-snug font-mono text-green-300/90 bg-black/40 border border-green-900/40 rounded px-2 py-1.5 max-h-64 overflow-auto whitespace-pre-wrap break-all">
+                        {formatSyncDiagnostic(diagnosticReport)}
+                      </pre>
+                      <p className="text-green-700 text-[9px] italic">
+                        Tap COPY (or long-press the text above to select) and paste this into a reply email so we can triage without a screenshot.
+                      </p>
+                    </div>
+                  )}
                 </div>
               )}
             </div>
