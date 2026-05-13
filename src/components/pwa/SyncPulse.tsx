@@ -114,6 +114,16 @@ export const SyncPulse = ({ className }: { className?: string }) => {
   // the right edge so users couldn't tell the section was interactive.
   const [selfCheckExpanded, setSelfCheckExpanded] = useState(false);
   const [diagnosticExpanded, setDiagnosticExpanded] = useState(false);
+  // Per-category disclosure state for the Sync Terminal sheet. Actionable
+  // problem categories default-open so the user immediately sees what's
+  // blocking sync; informational ones default-closed.
+  const [pendingReportsExpanded, setPendingReportsExpanded] = useState(true);
+  const [pendingPhotosExpanded, setPendingPhotosExpanded] = useState(true);
+  const [stuckValidationExpanded, setStuckValidationExpanded] = useState(true);
+  const [heldBackExpanded, setHeldBackExpanded] = useState(false);
+  const [quarantinedExpanded, setQuarantinedExpanded] = useState(true);
+  const [failedPhotosExpanded, setFailedPhotosExpanded] = useState(true);
+  const [orphanRecordsExpanded, setOrphanRecordsExpanded] = useState(true);
   // Sprint 1D: per-photo retry-state breakdown (READY/RETRYING/STUCK)
   // — see src/lib/photo-retry-buckets.ts. Refreshed on every
   // `sync-photos-updated` event and on a 1Hz tick while the sheet is
@@ -475,30 +485,39 @@ export const SyncPulse = ({ className }: { className?: string }) => {
             {/* Pending reports */}
             {unsyncedCount > 0 && (
               <div className="space-y-1.5 border-t border-green-900/40 pt-2">
-                <p className="text-green-400 text-[10px] uppercase tracking-wider">
-                  ▸ Pending reports ({unsyncedCount})
-                </p>
-                <div className="space-y-1 max-h-48 overflow-y-auto">
-                  {unsyncedInspections.map((item) => (
-                    <div key={item.id} className="pl-3 border-l border-blue-500/50 text-green-300/70">
-                      <span className="text-[9px] font-bold uppercase tracking-wider text-blue-400 mr-1.5">INS</span>
-                      <span className="truncate">{item.organization || 'Untitled'}</span>
-                      {item.location && <span className="text-green-600 ml-1">@ {item.location}</span>}
-                    </div>
-                  ))}
-                  {unsyncedTrainings.map((item) => (
-                    <div key={item.id} className="pl-3 border-l border-purple-500/50 text-green-300/70">
-                      <span className="text-[9px] font-bold uppercase tracking-wider text-purple-400 mr-1.5">TRN</span>
-                      <span className="truncate">{item.organization || 'Untitled'}</span>
-                    </div>
-                  ))}
-                  {unsyncedAssessments.map((item) => (
-                    <div key={item.id} className="pl-3 border-l border-amber-500/50 text-green-300/70">
-                      <span className="text-[9px] font-bold uppercase tracking-wider text-amber-400 mr-1.5">ASM</span>
-                      <span className="truncate">{item.organization || item.site || 'Untitled'}</span>
-                    </div>
-                  ))}
-                </div>
+                <button
+                  type="button"
+                  onClick={() => setPendingReportsExpanded(v => !v)}
+                  aria-expanded={pendingReportsExpanded}
+                  style={{ touchAction: 'manipulation' }}
+                  className="w-full min-h-[44px] flex items-center justify-between text-left text-green-400 text-[10px] uppercase tracking-wider hover:text-green-300 active:text-green-300 py-2 -my-1"
+                >
+                  <span>{pendingReportsExpanded ? '▾' : '▸'} Pending reports ({unsyncedCount})</span>
+                  <span className="text-green-700 text-[9px]">{pendingReportsExpanded ? 'TAP TO HIDE' : 'TAP TO OPEN'}</span>
+                </button>
+                {pendingReportsExpanded && (
+                  <div className="space-y-1 max-h-48 overflow-y-auto">
+                    {unsyncedInspections.map((item) => (
+                      <div key={item.id} className="pl-3 border-l border-blue-500/50 text-green-300/70">
+                        <span className="text-[9px] font-bold uppercase tracking-wider text-blue-400 mr-1.5">INS</span>
+                        <span className="truncate">{item.organization || 'Untitled'}</span>
+                        {item.location && <span className="text-green-600 ml-1">@ {item.location}</span>}
+                      </div>
+                    ))}
+                    {unsyncedTrainings.map((item) => (
+                      <div key={item.id} className="pl-3 border-l border-purple-500/50 text-green-300/70">
+                        <span className="text-[9px] font-bold uppercase tracking-wider text-purple-400 mr-1.5">TRN</span>
+                        <span className="truncate">{item.organization || 'Untitled'}</span>
+                      </div>
+                    ))}
+                    {unsyncedAssessments.map((item) => (
+                      <div key={item.id} className="pl-3 border-l border-amber-500/50 text-green-300/70">
+                        <span className="text-[9px] font-bold uppercase tracking-wider text-amber-400 mr-1.5">ASM</span>
+                        <span className="truncate">{item.organization || item.site || 'Untitled'}</span>
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
             )}
 
@@ -508,64 +527,71 @@ export const SyncPulse = ({ className }: { className?: string }) => {
                 they wait — getUnuploadedPhotos excludes nextRetryAt > now, but
                 bucketPhotos correctly classifies those as RETRYING. */}
             {photoBucketTotal > 0 && (
-              <div className="space-y-1">
-                <div className="flex items-center justify-between text-green-300/60 text-[10px] uppercase tracking-wider">
-                  <span>PENDING_PHOTOS</span>
-                  <span>{photoBucketTotal}</span>
-                </div>
-                {photoBuckets.ready > 0 && (
-                  <div className="flex items-center justify-between pl-3 text-green-300/80">
-                    <span className="text-green-400">▸ READY</span>
-                    <span>{photoBuckets.ready}</span>
-                  </div>
-                )}
-                {photoBuckets.retrying > 0 && (
-                  <div className="flex items-center justify-between pl-3 text-green-300/80">
-                    <span className="text-amber-400">
-                      ▸ RETRYING
-                      {photoBuckets.retryingMinNextRetryAt && (
-                        <span className="ml-1 text-amber-300/70 font-mono text-[10px]">
-                          ({formatRetryCountdown(photoBuckets.retryingMinNextRetryAt, retryingTick)})
+              <div className="space-y-1 border-t border-green-900/40 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setPendingPhotosExpanded(v => !v)}
+                  aria-expanded={pendingPhotosExpanded}
+                  style={{ touchAction: 'manipulation' }}
+                  className="w-full min-h-[44px] flex items-center justify-between text-left text-green-400 text-[10px] uppercase tracking-wider hover:text-green-300 active:text-green-300 py-2 -my-1"
+                >
+                  <span>{pendingPhotosExpanded ? '▾' : '▸'} Pending photos ({photoBucketTotal})</span>
+                  <span className="text-green-700 text-[9px]">{pendingPhotosExpanded ? 'TAP TO HIDE' : 'TAP TO OPEN'}</span>
+                </button>
+                {pendingPhotosExpanded && (
+                  <div className="space-y-1">
+                    {photoBuckets.ready > 0 && (
+                      <div className="flex items-center justify-between pl-3 text-green-300/80">
+                        <span className="text-green-400">▸ READY</span>
+                        <span>{photoBuckets.ready}</span>
+                      </div>
+                    )}
+                    {photoBuckets.retrying > 0 && (
+                      <div className="flex items-center justify-between pl-3 text-green-300/80">
+                        <span className="text-amber-400">
+                          ▸ RETRYING
+                          {photoBuckets.retryingMinNextRetryAt && (
+                            <span className="ml-1 text-amber-300/70 font-mono text-[10px]">
+                              ({formatRetryCountdown(photoBuckets.retryingMinNextRetryAt, retryingTick)})
+                            </span>
+                          )}
                         </span>
-                      )}
-                    </span>
-                    <span>{photoBuckets.retrying}</span>
-                  </div>
-                )}
-                {photoBuckets.stuck > 0 && (
-                  <div className="flex items-center justify-between pl-3 text-red-300/90">
-                    <span className="flex items-center gap-1.5">
-                      <span className="text-red-400">▸ STUCK</span>
-                      <button
-                        type="button"
-                        disabled={retrying}
-                        onClick={async () => {
-                          try {
-                            setRetrying(true);
-                            // Reset retryCount + clear nextRetryAt on the
-                            // STUCK photos and force-trigger a sync. Mirrors
-                            // the existing dead-letter Retry button below
-                            // but scoped to the STUCK subset.
-                            const ids = photoBuckets.stuckIds;
-                            if (ids.length > 0) {
-                              await resetPhotoRetryCounts(ids);
-                            }
-                            await updatePhotoCount();
-                            const fresh = await getPhotoRetryBuckets();
-                            setPhotoBuckets(fresh);
-                            resetLayerBreakerOnUserActivity('SyncPulse retry'); await forceSync();
-                          } catch (e) {
-                            console.warn('[SyncPulse] Stuck-photo retry failed:', e);
-                          } finally {
-                            setRetrying(false);
-                          }
-                        }}
-                        className="text-[9px] uppercase tracking-wider px-1.5 py-0.5 rounded border border-red-700/60 text-red-300 hover:bg-red-900/30 disabled:opacity-50"
-                      >
-                        {retrying ? 'RETRYING…' : 'RETRY NOW'}
-                      </button>
-                    </span>
-                    <span>{photoBuckets.stuck}</span>
+                        <span>{photoBuckets.retrying}</span>
+                      </div>
+                    )}
+                    {photoBuckets.stuck > 0 && (
+                      <div className="flex items-center justify-between pl-3 text-red-300/90">
+                        <span className="flex items-center gap-1.5">
+                          <span className="text-red-400">▸ STUCK</span>
+                          <button
+                            type="button"
+                            disabled={retrying}
+                            onClick={async (e) => {
+                              e.stopPropagation();
+                              try {
+                                setRetrying(true);
+                                const ids = photoBuckets.stuckIds;
+                                if (ids.length > 0) {
+                                  await resetPhotoRetryCounts(ids);
+                                }
+                                await updatePhotoCount();
+                                const fresh = await getPhotoRetryBuckets();
+                                setPhotoBuckets(fresh);
+                                resetLayerBreakerOnUserActivity('SyncPulse retry'); await forceSync();
+                              } catch (err) {
+                                console.warn('[SyncPulse] Stuck-photo retry failed:', err);
+                              } finally {
+                                setRetrying(false);
+                              }
+                            }}
+                            className="text-[9px] uppercase tracking-wider px-1.5 py-0.5 rounded border border-red-700/60 text-red-300 hover:bg-red-900/30 disabled:opacity-50"
+                          >
+                            {retrying ? 'RETRYING…' : 'RETRY NOW'}
+                          </button>
+                        </span>
+                        <span>{photoBuckets.stuck}</span>
+                      </div>
+                    )}
                   </div>
                 )}
               </div>
@@ -577,185 +603,237 @@ export const SyncPulse = ({ className }: { className?: string }) => {
                 existing stranded ones so the user can recover them in-place. */}
             {validationStuck.count > 0 && (
               <div className="space-y-1.5 border-t border-green-900/40 pt-2">
-                <div className="flex items-center justify-between text-[10px] uppercase tracking-wider">
-                  <span className="text-red-300">STUCK_VALIDATION</span>
-                  <span className="text-red-300">{validationStuck.count}</span>
-                </div>
-                <p className="text-green-700 text-[10px] italic">
-                  ▸ These records can't sync until the listed fields are filled in.
-                </p>
-                <div className="space-y-1">
-                  {validationStuck.records.map((record) => {
-                    const kindLabel =
-                      record.kind === 'inspection' ? 'INSP'
-                      : record.kind === 'training' ? 'TRN'
-                      : 'ASM';
-                    const missingDisplay = record.missingFields.length > 0
-                      ? record.missingFields.join(', ')
-                      : 'required fields';
-                    return (
-                      <div
-                        key={`${record.kind}-${record.id}`}
-                        className="flex items-start justify-between gap-2 pl-3 border-l border-red-500/50 text-red-300/90"
-                      >
-                        <div className="min-w-0 flex-1">
-                          <div className="flex items-center gap-1.5">
-                            <span className="text-[9px] font-bold uppercase tracking-wider text-red-400">
-                              {kindLabel}
-                            </span>
-                            <span className="truncate">{record.label}</span>
+                <button
+                  type="button"
+                  onClick={() => setStuckValidationExpanded(v => !v)}
+                  aria-expanded={stuckValidationExpanded}
+                  style={{ touchAction: 'manipulation' }}
+                  className="w-full min-h-[44px] flex items-center justify-between text-left text-[10px] uppercase tracking-wider text-red-300 hover:text-red-200 active:text-red-200 py-2 -my-1"
+                >
+                  <span>{stuckValidationExpanded ? '▾' : '▸'} Stuck validation ({validationStuck.count})</span>
+                  <span className="text-green-700 text-[9px]">{stuckValidationExpanded ? 'TAP TO HIDE' : 'TAP TO OPEN'}</span>
+                </button>
+                {stuckValidationExpanded && (
+                  <>
+                    <p className="text-green-700 text-[10px] italic">
+                      ▸ These records can't sync until the listed fields are filled in.
+                    </p>
+                    <div className="space-y-1">
+                      {validationStuck.records.map((record) => {
+                        const kindLabel =
+                          record.kind === 'inspection' ? 'INSP'
+                          : record.kind === 'training' ? 'TRN'
+                          : 'ASM';
+                        const missingDisplay = record.missingFields.length > 0
+                          ? record.missingFields.join(', ')
+                          : 'required fields';
+                        return (
+                          <div
+                            key={`${record.kind}-${record.id}`}
+                            className="flex items-start justify-between gap-2 pl-3 border-l border-red-500/50 text-red-300/90"
+                          >
+                            <div className="min-w-0 flex-1">
+                              <div className="flex items-center gap-1.5">
+                                <span className="text-[9px] font-bold uppercase tracking-wider text-red-400">
+                                  {kindLabel}
+                                </span>
+                                <span className="truncate">{record.label}</span>
+                              </div>
+                              <div className="text-[10px] text-red-300/70 truncate">
+                                Missing: {missingDisplay}
+                              </div>
+                            </div>
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setOpen(false);
+                                navigate(record.deepLinkPath);
+                              }}
+                              className="flex-shrink-0 text-[9px] uppercase tracking-wider px-1.5 py-0.5 rounded border border-red-700/60 text-red-300 hover:bg-red-900/30"
+                            >
+                              FIX
+                            </button>
                           </div>
-                          <div className="text-[10px] text-red-300/70 truncate">
-                            Missing: {missingDisplay}
-                          </div>
-                        </div>
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setOpen(false);
-                            navigate(record.deepLinkPath);
-                          }}
-                          className="flex-shrink-0 text-[9px] uppercase tracking-wider px-1.5 py-0.5 rounded border border-red-700/60 text-red-300 hover:bg-red-900/30"
-                        >
-                          FIX
-                        </button>
-                      </div>
-                    );
-                  })}
-                </div>
+                        );
+                      })}
+                    </div>
+                  </>
+                )}
               </div>
             )}
 
-            {/* S39: Held-back records (regression guard). Read-only here; deep actions live in SyncDiagnosticsSheet. */}
+            {/* S39: Held-back records (regression guard). */}
             {regressionSkipCount > 0 && (
               <div className="space-y-1 border-t border-green-900/40 pt-2">
-                <div className="flex items-center justify-between text-green-300/80">
-                  <span>HELD_BACK</span>
-                  <span className="text-amber-400">{regressionSkipCount}</span>
-                </div>
-                <p className="text-green-700 text-[10px] italic">
-                  ▸ Tap diagnostics for details
-                </p>
+                <button
+                  type="button"
+                  onClick={() => setHeldBackExpanded(v => !v)}
+                  aria-expanded={heldBackExpanded}
+                  style={{ touchAction: 'manipulation' }}
+                  className="w-full min-h-[44px] flex items-center justify-between text-left text-[10px] uppercase tracking-wider text-green-300/80 hover:text-green-200 active:text-green-200 py-2 -my-1"
+                >
+                  <span>{heldBackExpanded ? '▾' : '▸'} Held back ({regressionSkipCount})</span>
+                  <span className="text-green-700 text-[9px]">{heldBackExpanded ? 'TAP TO HIDE' : 'TAP TO OPEN'}</span>
+                </button>
+                {heldBackExpanded && (
+                  <p className="text-green-700 text-[10px] italic pl-3">
+                    ▸ Tap diagnostics for details
+                  </p>
+                )}
               </div>
             )}
 
-            {/* S41 (Fix E + option i): session-quarantined records the sync gave up on this session */}
+            {/* S41: session-quarantined records the sync gave up on this session */}
             {quarantinedCount > 0 && (
               <div className="space-y-1.5 border-t border-green-900/40 pt-2">
-                <div className="flex items-center justify-between">
-                  <span className="text-amber-400 text-[10px] uppercase tracking-wider">
-                    ▸ Quarantined ({quarantinedCount})
-                  </span>
-                  <button
-                    type="button"
-                    disabled={retrying}
-                    onClick={async () => {
-                      try {
-                        setRetrying(true);
-                        clearAllQuarantines();
-                        setQuarantinedCount(0);
-                        resetLayerBreakerOnUserActivity('SyncPulse retry'); await forceSync();
-                      } catch (e) {
-                        console.warn('[SyncPulse] Quarantine retry failed:', e);
-                      } finally {
-                        setRetrying(false);
-                      }
-                    }}
-                    className="text-[10px] uppercase tracking-wider px-2 py-0.5 rounded border border-amber-700/60 text-amber-300 hover:bg-amber-900/30 disabled:opacity-50"
-                  >
-                    {retrying ? 'RETRYING…' : 'RETRY NOW'}
-                  </button>
-                </div>
-                <p className="text-green-700 text-[10px] italic">
-                  Sync paused after repeated failures. Auto-retries tomorrow, or tap Retry Now.
-                </p>
+                <button
+                  type="button"
+                  onClick={() => setQuarantinedExpanded(v => !v)}
+                  aria-expanded={quarantinedExpanded}
+                  style={{ touchAction: 'manipulation' }}
+                  className="w-full min-h-[44px] flex items-center justify-between text-left text-[10px] uppercase tracking-wider text-amber-400 hover:text-amber-300 active:text-amber-300 py-2 -my-1"
+                >
+                  <span>{quarantinedExpanded ? '▾' : '▸'} Quarantined ({quarantinedCount})</span>
+                  <span className="text-green-700 text-[9px]">{quarantinedExpanded ? 'TAP TO HIDE' : 'TAP TO OPEN'}</span>
+                </button>
+                {quarantinedExpanded && (
+                  <div className="space-y-1.5 pl-3">
+                    <button
+                      type="button"
+                      disabled={retrying}
+                      onClick={async (e) => {
+                        e.stopPropagation();
+                        try {
+                          setRetrying(true);
+                          clearAllQuarantines();
+                          setQuarantinedCount(0);
+                          resetLayerBreakerOnUserActivity('SyncPulse retry'); await forceSync();
+                        } catch (err) {
+                          console.warn('[SyncPulse] Quarantine retry failed:', err);
+                        } finally {
+                          setRetrying(false);
+                        }
+                      }}
+                      className="text-[10px] uppercase tracking-wider px-2 py-0.5 rounded border border-amber-700/60 text-amber-300 hover:bg-amber-900/30 disabled:opacity-50"
+                    >
+                      {retrying ? 'RETRYING…' : 'RETRY NOW'}
+                    </button>
+                    <p className="text-green-700 text-[10px] italic">
+                      Sync paused after repeated failures. Auto-retries tomorrow, or tap Retry Now.
+                    </p>
+                  </div>
+                )}
               </div>
             )}
 
             {/* Failed (dead-letter) photos — retry-exhausted or orphaned */}
             {deadLetterCount > 0 && (
               <div className="space-y-1.5 border-t border-green-900/40 pt-2">
-                <div className="flex items-center justify-between">
-                  <span className="text-green-400 text-[10px] uppercase tracking-wider">
-                    ▸ Failed photos ({deadLetterCount})
-                  </span>
-                  <button
-                    type="button"
-                    disabled={retrying}
-                    onClick={async () => {
-                      try {
-                        setRetrying(true);
-                        const dead = await getDeadLetterPhotos();
-                        const ids = dead.map((p: any) => p.id);
-                        if (ids.length > 0) {
-                          await resetPhotoRetryCounts(ids);
+                <button
+                  type="button"
+                  onClick={() => setFailedPhotosExpanded(v => !v)}
+                  aria-expanded={failedPhotosExpanded}
+                  style={{ touchAction: 'manipulation' }}
+                  className="w-full min-h-[44px] flex items-center justify-between text-left text-[10px] uppercase tracking-wider text-green-400 hover:text-green-300 active:text-green-300 py-2 -my-1"
+                >
+                  <span>{failedPhotosExpanded ? '▾' : '▸'} Failed photos ({deadLetterCount})</span>
+                  <span className="text-green-700 text-[9px]">{failedPhotosExpanded ? 'TAP TO HIDE' : 'TAP TO OPEN'}</span>
+                </button>
+                {failedPhotosExpanded && (
+                  <div className="space-y-1.5 pl-3">
+                    <button
+                      type="button"
+                      disabled={retrying}
+                      onClick={async (e) => {
+                        e.stopPropagation();
+                        try {
+                          setRetrying(true);
+                          const dead = await getDeadLetterPhotos();
+                          const ids = dead.map((p: any) => p.id);
+                          if (ids.length > 0) {
+                            await resetPhotoRetryCounts(ids);
+                          }
+                          await updatePhotoCount();
+                          resetLayerBreakerOnUserActivity('SyncPulse retry'); await forceSync();
+                        } catch (err) {
+                          console.warn('[SyncPulse] Retry failed:', err);
+                        } finally {
+                          setRetrying(false);
                         }
-                        await updatePhotoCount();
-                        resetLayerBreakerOnUserActivity('SyncPulse retry'); await forceSync();
-                      } catch (e) {
-                        console.warn('[SyncPulse] Retry failed:', e);
-                      } finally {
-                        setRetrying(false);
-                      }
-                    }}
-                    className="text-[10px] uppercase tracking-wider px-2 py-0.5 rounded border border-amber-700/60 text-amber-300 hover:bg-amber-900/30 disabled:opacity-50"
-                  >
-                    {retrying ? 'RETRYING…' : 'RETRY'}
-                  </button>
-                </div>
-                <p className="text-green-700 text-[10px] italic">
-                  These photos exhausted upload retries or have no parent record. Tap Retry to attempt again.
-                </p>
+                      }}
+                      className="text-[10px] uppercase tracking-wider px-2 py-0.5 rounded border border-amber-700/60 text-amber-300 hover:bg-amber-900/30 disabled:opacity-50"
+                    >
+                      {retrying ? 'RETRYING…' : 'RETRY'}
+                    </button>
+                    <p className="text-green-700 text-[10px] italic">
+                      These photos exhausted upload retries or have no parent record. Tap Retry to attempt again.
+                    </p>
+                  </div>
+                )}
               </div>
             )}
 
             {/* Orphan records — temp-* rows owned by another user (shared device leftovers). */}
             {diag.orphanRecords.length > 0 && (
               <div className="space-y-1.5 border-t border-green-900/40 pt-2">
-                <p className="text-amber-400 text-[10px] uppercase tracking-wider">
-                  ▸ Orphan records ({diag.orphanRecords.length})
-                </p>
-                <p className="text-green-700 text-[10px] italic">
-                  These were started on this device by another sign-in and won't sync as you. Reassign to push under your account, or remove.
-                </p>
-                <div className="space-y-1 max-h-48 overflow-y-auto">
-                  {diag.orphanRecords.map((o) => (
-                    <div key={o.id} className="flex items-center justify-between gap-2 pl-2 border-l border-amber-500/40">
-                      <span className="text-green-300/80 truncate text-[10px]">
-                        <span className="text-amber-400 mr-1.5">{o.table.slice(0,3).toUpperCase()}</span>
-                        {o.organization || 'Untitled'}
-                      </span>
-                      <span className="flex gap-1 shrink-0">
-                        <button
-                          type="button"
-                          disabled={busyOrphanId === o.id}
-                          onClick={async () => {
-                            setBusyOrphanId(o.id);
-                            try {
-                              await reassignOrphanToCurrentUser(o.table, o.id);
-                              await refreshDiagnostics();
-                              resetLayerBreakerOnUserActivity('SyncPulse retry'); await forceSync();
-                            } finally { setBusyOrphanId(null); }
-                          }}
-                          className="text-[9px] uppercase tracking-wider px-1.5 py-0.5 rounded border border-green-700/60 text-green-300 hover:bg-green-900/30 disabled:opacity-50"
-                        >REASSIGN</button>
-                        <button
-                          type="button"
-                          disabled={busyOrphanId === o.id}
-                          onClick={async () => {
-                            if (!confirm('Permanently remove this orphan record from this device?')) return;
-                            setBusyOrphanId(o.id);
-                            try {
-                              await deleteOrphanLocally(o.table, o.id);
-                              await refreshDiagnostics();
-                            } finally { setBusyOrphanId(null); }
-                          }}
-                          className="text-[9px] uppercase tracking-wider px-1.5 py-0.5 rounded border border-red-700/60 text-red-300 hover:bg-red-900/30 disabled:opacity-50"
-                        >DELETE</button>
-                      </span>
+                <button
+                  type="button"
+                  onClick={() => setOrphanRecordsExpanded(v => !v)}
+                  aria-expanded={orphanRecordsExpanded}
+                  style={{ touchAction: 'manipulation' }}
+                  className="w-full min-h-[44px] flex items-center justify-between text-left text-[10px] uppercase tracking-wider text-amber-400 hover:text-amber-300 active:text-amber-300 py-2 -my-1"
+                >
+                  <span>{orphanRecordsExpanded ? '▾' : '▸'} Orphan records ({diag.orphanRecords.length})</span>
+                  <span className="text-green-700 text-[9px]">{orphanRecordsExpanded ? 'TAP TO HIDE' : 'TAP TO OPEN'}</span>
+                </button>
+                {orphanRecordsExpanded && (
+                  <>
+                    <p className="text-green-700 text-[10px] italic">
+                      These were started on this device by another sign-in and won't sync as you. Reassign to push under your account, or remove.
+                    </p>
+                    <div className="space-y-1 max-h-48 overflow-y-auto">
+                      {diag.orphanRecords.map((o) => (
+                        <div key={o.id} className="flex items-center justify-between gap-2 pl-2 border-l border-amber-500/40">
+                          <span className="text-green-300/80 truncate text-[10px]">
+                            <span className="text-amber-400 mr-1.5">{o.table.slice(0,3).toUpperCase()}</span>
+                            {o.organization || 'Untitled'}
+                          </span>
+                          <span className="flex gap-1 shrink-0">
+                            <button
+                              type="button"
+                              disabled={busyOrphanId === o.id}
+                              onClick={async (e) => {
+                                e.stopPropagation();
+                                setBusyOrphanId(o.id);
+                                try {
+                                  await reassignOrphanToCurrentUser(o.table, o.id);
+                                  await refreshDiagnostics();
+                                  resetLayerBreakerOnUserActivity('SyncPulse retry'); await forceSync();
+                                } finally { setBusyOrphanId(null); }
+                              }}
+                              className="text-[9px] uppercase tracking-wider px-1.5 py-0.5 rounded border border-green-700/60 text-green-300 hover:bg-green-900/30 disabled:opacity-50"
+                            >REASSIGN</button>
+                            <button
+                              type="button"
+                              disabled={busyOrphanId === o.id}
+                              onClick={async (e) => {
+                                e.stopPropagation();
+                                if (!confirm('Permanently remove this orphan record from this device?')) return;
+                                setBusyOrphanId(o.id);
+                                try {
+                                  await deleteOrphanLocally(o.table, o.id);
+                                  await refreshDiagnostics();
+                                } finally { setBusyOrphanId(null); }
+                              }}
+                              className="text-[9px] uppercase tracking-wider px-1.5 py-0.5 rounded border border-red-700/60 text-red-300 hover:bg-red-900/30 disabled:opacity-50"
+                            >DELETE</button>
+                          </span>
+                        </div>
+                      ))}
                     </div>
-                  ))}
-                </div>
+                  </>
+                )}
               </div>
             )}
 
