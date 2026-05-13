@@ -90,6 +90,9 @@ export const SyncPulse = ({ className }: { className?: string }) => {
   const [previousSyncingState, setPreviousSyncingState] = useState(false);
   const [open, setOpen] = useState(false);
   const [retrying, setRetrying] = useState(false);
+  const [recovering, setRecovering] = useState(false);
+  const [recoverResult, setRecoverResult] = useState<null | { ok: boolean; message: string }>(null);
+  const [multiTabBlock, setMultiTabBlock] = useState(false);
   const [quarantinedCount, setQuarantinedCount] = useState(0);
   const [diag, setDiag] = useState<SyncDiagnosticsReport>({ orphanRecords: [], tempParentPhotos: [], partial: false });
   const [haltState, setHaltState] = useState<SyncHaltState | null>(() => getSyncHaltState());
