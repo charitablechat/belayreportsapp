@@ -142,6 +142,23 @@ export async function syncPhotos(signal?: AbortSignal): Promise<{ remaining: num
     return { remaining: 0, changed: 0 };
   }
 
+  // Fix B: Mirror the records pipeline. If we don't have a real JWT (offline
+  // placeholder session, guest, or expired), do NOT attempt Storage PUTs —
+  // every one would 401-RLS-deny and burn `nextRetryAt` backoff on otherwise
+  // healthy photos. The records pipeline already guards this at
+  // atomic-sync-manager.ts:1557 / 2618 / 3522.
+  try {
+    const { assertRealSessionForSync } = await import('./atomic-sync-manager');
+    const ok = await assertRealSessionForSync('photos');
+    if (!ok) {
+      syncLog.warn('[Sync Manager] Photos sync skipped — no real session (placeholder/guest/expired)');
+      return { remaining: 0, changed: 0 };
+    }
+  } catch (e) {
+    // Fail-open on import error: matches assertRealSessionForSync's own fail-open behaviour.
+    console.warn('[Sync Manager] Session pre-flight import failed (continuing):', e);
+  }
+
   syncLog.log('[Sync Manager] Starting photo sync...');
 
   try {
@@ -157,7 +174,40 @@ export async function syncPhotos(signal?: AbortSignal): Promise<{ remaining: num
     const skippedCount = unuploadedPhotos.length - eligiblePhotos.length;
     const batch = eligiblePhotos.slice(0, MAX_PHOTO_BATCH_SIZE);
     const remaining = Math.max(0, eligiblePhotos.length - MAX_PHOTO_BATCH_SIZE);
-    
+
+    // Step 1 diagnostics: per-cycle breakdown so we can see exactly where the
+    // queue jams on a given device. Single line, no PII, runs only when there
+    // is actually pending work to summarise.
+    if (unuploadedPhotos.length > 0) {
+      const now = Date.now();
+      const withTempParent = unuploadedPhotos.filter(p => p.inspectionId?.startsWith('temp-')).length;
+      const inBackoff = unuploadedPhotos.filter(p => p.nextRetryAt && p.nextRetryAt > now).length;
+      const retrySaturated = skippedCount;
+      const ready = batch.length;
+      console.warn(
+        `[Sync Manager] Photo cycle breakdown: total=${unuploadedPhotos.length} withTempParent=${withTempParent} inBackoff=${inBackoff} retrySaturated=${retrySaturated} readyThisBatch=${ready} remainingAfter=${remaining}`
+      );
+
+      // Surface up to 3 temp-parent photos with their parent's last sync error,
+      // so we can see *why* the parent isn't promoting.
+      if (withTempParent > 0) {
+        try {
+          const { getOfflineInspection } = await import('./offline-storage');
+          const sample = unuploadedPhotos.filter(p => p.inspectionId?.startsWith('temp-')).slice(0, 3);
+          for (const p of sample) {
+            const parent = await getOfflineInspection(p.inspectionId).catch(() => null);
+            const parentInfo = parent
+              ? `lastSyncError="${(parent as { last_sync_error?: string }).last_sync_error || '(none)'}" updated_at=${(parent as { updated_at?: string }).updated_at || '(none)'} retryCount=${(parent as { syncRetryCount?: number }).syncRetryCount ?? 0}`
+              : 'parent=NOT_IN_IDB';
+            console.warn(`[Sync Manager] [stuck-photo] photoId=${p.id} parentId=${p.inspectionId} ${parentInfo}`);
+          }
+        } catch (e) {
+          // Diagnostic is best-effort.
+          console.warn('[Sync Manager] Diagnostic parent lookup failed:', e);
+        }
+      }
+    }
+
     if (skippedCount > 0) {
       syncLog.warn(`[Sync Manager] Skipping ${skippedCount} photos that exceeded ${MAX_PHOTO_RETRIES} retries`);
     }
