@@ -32,7 +32,7 @@ interface ZiplinesTableProps {
   onGalleryRefresh?: () => void;
 }
 
-const ZIP_GRID_COLS = "grid-cols-[40px_88px_minmax(120px,1fr)_80px_80px_80px_80px_100px_80px_100px_80px_100px_100px_minmax(120px,1fr)_48px]";
+const ZIP_GRID_COLS = "grid-cols-[40px_88px_minmax(180px,1.5fr)_80px_80px_80px_80px_100px_80px_100px_80px_100px_100px_minmax(120px,1fr)_48px]";
 
 function ZiplinesTable({ ziplines, onUpdate, onImmediateSave: rawOnImmediateSave, inspectionId, onGalleryRefresh }: ZiplinesTableProps) {
   const [itemToDelete, setItemToDelete] = useState<{ id: string; name: string } | null>(null);
@@ -132,7 +132,7 @@ function ZiplinesTable({ ziplines, onUpdate, onImmediateSave: rawOnImmediateSave
 
         {/* Desktop grid view */}
         <div className="hidden lg:block overflow-x-auto">
-          <div className="min-w-[1200px]">
+          <div className="min-w-[1280px]">
             {/* Header */}
             <div className={`grid ${ZIP_GRID_COLS} bg-blue-50 dark:bg-blue-950/20 border-b border-border text-xs`}>
               <div className="p-2 text-center font-semibold border-r border-border"></div>
@@ -173,14 +173,14 @@ function ZiplinesTable({ ziplines, onUpdate, onImmediateSave: rawOnImmediateSave
                       onGalleryRefresh={onGalleryRefresh}
                     />
                   </div>
-                  <div className="p-1 border-r border-border">
+                  <div className="p-1 border-r border-border min-w-0">
                     <GlobalAutocomplete
                       value={zipline.zipline_name}
                       onChange={(value) => updateZipline(zipline, "zipline_name", value)}
                       onBlur={onImmediateSave}
                       fieldType="zipline_name"
                       placeholder="Name"
-                      className="border-0 bg-transparent h-8 text-xs"
+                      className="border-0 bg-transparent h-8 text-xs w-full"
                     />
                   </div>
                   <div className="p-1 border-r border-border">
