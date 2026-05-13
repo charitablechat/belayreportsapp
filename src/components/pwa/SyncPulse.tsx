@@ -485,30 +485,39 @@ export const SyncPulse = ({ className }: { className?: string }) => {
             {/* Pending reports */}
             {unsyncedCount > 0 && (
               <div className="space-y-1.5 border-t border-green-900/40 pt-2">
-                <p className="text-green-400 text-[10px] uppercase tracking-wider">
-                  ▸ Pending reports ({unsyncedCount})
-                </p>
-                <div className="space-y-1 max-h-48 overflow-y-auto">
-                  {unsyncedInspections.map((item) => (
-                    <div key={item.id} className="pl-3 border-l border-blue-500/50 text-green-300/70">
-                      <span className="text-[9px] font-bold uppercase tracking-wider text-blue-400 mr-1.5">INS</span>
-                      <span className="truncate">{item.organization || 'Untitled'}</span>
-                      {item.location && <span className="text-green-600 ml-1">@ {item.location}</span>}
-                    </div>
-                  ))}
-                  {unsyncedTrainings.map((item) => (
-                    <div key={item.id} className="pl-3 border-l border-purple-500/50 text-green-300/70">
-                      <span className="text-[9px] font-bold uppercase tracking-wider text-purple-400 mr-1.5">TRN</span>
-                      <span className="truncate">{item.organization || 'Untitled'}</span>
-                    </div>
-                  ))}
-                  {unsyncedAssessments.map((item) => (
-                    <div key={item.id} className="pl-3 border-l border-amber-500/50 text-green-300/70">
-                      <span className="text-[9px] font-bold uppercase tracking-wider text-amber-400 mr-1.5">ASM</span>
-                      <span className="truncate">{item.organization || item.site || 'Untitled'}</span>
-                    </div>
-                  ))}
-                </div>
+                <button
+                  type="button"
+                  onClick={() => setPendingReportsExpanded(v => !v)}
+                  aria-expanded={pendingReportsExpanded}
+                  style={{ touchAction: 'manipulation' }}
+                  className="w-full min-h-[44px] flex items-center justify-between text-left text-green-400 text-[10px] uppercase tracking-wider hover:text-green-300 active:text-green-300 py-2 -my-1"
+                >
+                  <span>{pendingReportsExpanded ? '▾' : '▸'} Pending reports ({unsyncedCount})</span>
+                  <span className="text-green-700 text-[9px]">{pendingReportsExpanded ? 'TAP TO HIDE' : 'TAP TO OPEN'}</span>
+                </button>
+                {pendingReportsExpanded && (
+                  <div className="space-y-1 max-h-48 overflow-y-auto">
+                    {unsyncedInspections.map((item) => (
+                      <div key={item.id} className="pl-3 border-l border-blue-500/50 text-green-300/70">
+                        <span className="text-[9px] font-bold uppercase tracking-wider text-blue-400 mr-1.5">INS</span>
+                        <span className="truncate">{item.organization || 'Untitled'}</span>
+                        {item.location && <span className="text-green-600 ml-1">@ {item.location}</span>}
+                      </div>
+                    ))}
+                    {unsyncedTrainings.map((item) => (
+                      <div key={item.id} className="pl-3 border-l border-purple-500/50 text-green-300/70">
+                        <span className="text-[9px] font-bold uppercase tracking-wider text-purple-400 mr-1.5">TRN</span>
+                        <span className="truncate">{item.organization || 'Untitled'}</span>
+                      </div>
+                    ))}
+                    {unsyncedAssessments.map((item) => (
+                      <div key={item.id} className="pl-3 border-l border-amber-500/50 text-green-300/70">
+                        <span className="text-[9px] font-bold uppercase tracking-wider text-amber-400 mr-1.5">ASM</span>
+                        <span className="truncate">{item.organization || item.site || 'Untitled'}</span>
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
             )}
 
