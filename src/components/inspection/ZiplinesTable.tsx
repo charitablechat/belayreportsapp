@@ -132,7 +132,7 @@ function ZiplinesTable({ ziplines, onUpdate, onImmediateSave: rawOnImmediateSave
 
         {/* Desktop grid view */}
         <div className="hidden lg:block overflow-x-auto">
-          <div className="min-w-[1200px]">
+          <div className="min-w-[1280px]">
             {/* Header */}
             <div className={`grid ${ZIP_GRID_COLS} bg-blue-50 dark:bg-blue-950/20 border-b border-border text-xs`}>
               <div className="p-2 text-center font-semibold border-r border-border"></div>
