@@ -1,73 +1,36 @@
-## Real root cause (corrected)
+## What's going on
 
-The diagnostic proves it:
+"Airiel Crawler World" (an Assessment, not a Crawler report) was already soft-deleted on the server on April 24, 2026 (`daily_assessments.id = c24b6198-4a5f-4541-ad0c-825b27f3bdc0`). It's stuck on this device only — IndexedDB still holds a dirty copy and keeps trying to sync it, so it shows in **PENDING REPORTS (1)** in the Sync Terminal. Because the server row is `deleted_at IS NOT NULL`, the sync push round-trips with no progress and the local copy never clears.
 
-- `idb.getDB timed out after 3000ms` — IndexedDB connection can't open at all
-- `photos.getPhotoRetryBuckets timed out after 5000ms` — same wedge, downstream
-- `syncEngine.halt = circuit_breaker_open / COOLDOWN` — auto-resume in ~3 min
-- `JWT_FAIL: Failed to send a request to the Edge Function` — Self-Check can't reach the network either, but `navigator.onLine = true`
-- 57 inspections + 21 trainings + 9 daily assessments stranded
-- Platform: **Win32 / Chrome 148** (not iPad — earlier assumption was wrong)
-- Console shows `[vite] server connection lost. Polling for restart...` and Realtime `CHANNEL_ERROR`
-
-When `getDB()` itself hangs, every retry burns its full 5-15s budget, the per-op breaker trips into the 1-4 min cooldown, and the Sync Terminal becomes the only escape — but its Retry button just calls `forceSync()` which re-enters the same wedge.
-
-The most common causes of an `openDB` hang on desktop Chrome:
-
-1. **Another tab of the same app holds an open v19 connection**, blocking a transaction the new caller wants. The existing `blocked()` handler asks the SW to release its handle, but does NOT ask other tabs to close, and `navigator.serviceWorker.ready` inside `blocked()` can itself hang indefinitely.
-2. **Stale service worker** holding an IDB handle that won't release.
-3. **Cached `dbPromise` resolved to a connection whose underlying DB was force-closed** by the browser or another tab — every subsequent `await getDB()` then times out on the first transaction.
+There's no source-code reference to "Airiel Crawler World" — it's pure user data.
 
 ## Plan
 
-### 1. Make `getDB()` self-heal when wedged
+### 1. One-time hard-delete on the server
+Permanently remove the soft-deleted assessment row and any child rows (so it can never resurrect into anyone's device on a restore):
+- `daily_assessments` row `c24b6198-4a5f-4541-ad0c-825b27f3bdc0`
+- Any related `daily_assessment_*` child rows / photos via cascade
 
-In `src/lib/offline-storage.ts`:
+Done via a one-shot migration.
 
-- When `getDB()` rejects with "IndexedDB open timed out", clear `dbPromise`, attempt one quick recovery pass: close the previously cached handle if any, then retry `openDB` once with a short budget. Only after that second failure do we surface the timeout.
-- Bound the `navigator.serviceWorker.ready` await inside the `blocked()` handler with a 1500 ms timeout — it must never extend the open budget.
-- When the per-op layer breaker is open AND the diagnostic shows `idb.error`, expose a `forceCloseAndReopenDB()` helper that:
-  - Sets `dbPromise = null`
-  - Calls `db.close()` on any cached handle reachable through the in-flight promise
-  - Resets `layerBreakerConsecutiveTimeouts` and `circuitBreaker.byStore`
-  - Re-runs one `openDB` with the upgrade-grade timeout
+### 2. Auto-reconcile server-deleted records on push (the real fix)
+Update the assessment push path in `src/lib/sync-manager.ts` so that when an `UPDATE` to `daily_assessments` returns "row not found" or the row has `deleted_at IS NOT NULL`, the local IDB copy is dropped instead of being retried forever. Mirror the same guard for `inspections` and `trainings` push paths so this class of "ghost pending" can't recur.
 
-### 2. Add a real recovery button to the Sync Terminal
+### 3. Per-row DROP control in Sync Terminal (escape hatch)
+In `src/components/pwa/SyncPulse.tsx`, add a small `DROP` button on each row inside **PENDING REPORTS** (next to INS / TRN / ASM). Tapping it:
+- Confirms once (`window.confirm("Discard this local draft? It cannot be recovered.")`)
+- Deletes the local IDB record from the matching store
+- Refreshes the unsynced counts
 
-In `src/components/pwa/SyncPulse.tsx`:
+This lets the user clear any future stuck draft without waiting on us.
 
-- New top-level "RECOVER STORAGE" action visible only when `haltState.code === 'circuit_breaker_open'` OR the last diagnostic shows `idb.error`.
-- The button:
-  1. Calls `forceCloseAndReopenDB()`.
-  2. Unregisters the active service worker if present (`navigator.serviceWorker.getRegistrations().then(rs => rs.forEach(r => r.unregister()))`) and posts a `CLOSE_IDB_FOR_UPGRADE` message first so the SW releases its IDB handle cleanly.
-  3. Calls `clearAllQuarantines()` and `resetLayerBreakerOnUserActivity('manual recover')`.
-  4. Triggers a fresh `forceSync()`.
-  5. If the open still fails, surfaces a clear message: "Close any other browser tabs of this app, then tap Recover again." This is the single most common cause of a persistent open block, and we currently don't tell the user.
+## Out of scope
+- IndexedDB open/wedge logic (separate issue, already handled by RECOVER STORAGE)
+- Photo retry buckets
+- RLS / auth
 
-### 3. Detect and warn about multi-tab blocking
-
-- In the existing `blocked()` handler, after the SW ping, set a 3 s deadline. If `getDB()` hasn't resolved by then, dispatch a `sync-multi-tab-block` event. `SyncPulse` listens and shows an amber banner: "Another tab of this app is blocking sync. Close other tabs to continue."
-
-### 4. Diagnostic improvements
-
-- Surface in the diagnostic JSON: `idb.openMs` for the failed attempt, `idb.dbHandleCached` (was `dbPromise` set?), and `serviceWorker: { controller, registrations: count }`. This lets us confirm the SW-vs-tab cause from a single copy/paste in future support sessions.
-
-### 5. Verify
-
-- Browser-test the recovery button at desktop width (Windows-style 1332×1882 viewport already present), confirming:
-  - Button only appears when wedged
-  - After tap, status flips out of COOLDOWN within 3 s on a healthy DB
-  - On a still-blocked DB, the multi-tab warning surfaces
-- Re-run the diagnostic before/after to confirm `idb.readable: true`.
-
-### Out of scope (intentionally not changing)
-
-- IDB timeout values (already tuned per-tier)
-- Sync engine batching / drain order — those work fine once the DB handle is healthy
-- Any RLS / edge function logic — JWT_FAIL here is a downstream symptom of the IDB wedge, not an auth defect
-
-### Files touched
-
-- `src/lib/offline-storage.ts` — bounded SW await, `forceCloseAndReopenDB()`, multi-tab block event
-- `src/components/pwa/SyncPulse.tsx` — RECOVER STORAGE button + multi-tab banner + listener
-- `src/lib/sync-diagnostic-probe.ts` — extra fields (`dbHandleCached`, SW info)
+## Files
+- `supabase/migrations/<new>.sql` — hard-delete the one ghost row
+- `src/lib/sync-manager.ts` — auto-purge local on server-side delete
+- `src/components/pwa/SyncPulse.tsx` — per-row DROP button
+- `src/lib/offline-storage.ts` — small helper `deleteLocalRecord(table, id)` if one doesn't already exist

@@ -15,6 +15,9 @@ import {
   resetPhotoRetryCounts,
   resetLayerBreakerOnUserActivity,
   forceCloseAndReopenDB,
+  deleteOfflineInspection,
+  deleteOfflineTraining,
+  deleteOfflineDailyAssessment,
 } from '@/lib/offline-storage';
 import {
   runSyncDiagnostic,
@@ -577,23 +580,41 @@ export const SyncPulse = ({ className }: { className?: string }) => {
                 {pendingReportsExpanded && (
                   <div className="space-y-1 max-h-48 overflow-y-auto">
                     {unsyncedInspections.map((item) => (
-                      <div key={item.id} className="pl-3 border-l border-blue-500/50 text-green-300/70">
-                        <span className="text-[9px] font-bold uppercase tracking-wider text-blue-400 mr-1.5">INS</span>
-                        <span className="truncate">{item.organization || 'Untitled'}</span>
-                        {item.location && <span className="text-green-600 ml-1">@ {item.location}</span>}
-                      </div>
+                      <PendingReportRow
+                        key={item.id}
+                        kind="INS"
+                        accent="blue"
+                        label={item.organization || 'Untitled'}
+                        sublabel={item.location ? `@ ${item.location}` : undefined}
+                        onDrop={async () => {
+                          await deleteOfflineInspection(item.id);
+                          await forceSync();
+                        }}
+                      />
                     ))}
                     {unsyncedTrainings.map((item) => (
-                      <div key={item.id} className="pl-3 border-l border-purple-500/50 text-green-300/70">
-                        <span className="text-[9px] font-bold uppercase tracking-wider text-purple-400 mr-1.5">TRN</span>
-                        <span className="truncate">{item.organization || 'Untitled'}</span>
-                      </div>
+                      <PendingReportRow
+                        key={item.id}
+                        kind="TRN"
+                        accent="purple"
+                        label={item.organization || 'Untitled'}
+                        onDrop={async () => {
+                          await deleteOfflineTraining(item.id);
+                          await forceSync();
+                        }}
+                      />
                     ))}
                     {unsyncedAssessments.map((item) => (
-                      <div key={item.id} className="pl-3 border-l border-amber-500/50 text-green-300/70">
-                        <span className="text-[9px] font-bold uppercase tracking-wider text-amber-400 mr-1.5">ASM</span>
-                        <span className="truncate">{item.organization || item.site || 'Untitled'}</span>
-                      </div>
+                      <PendingReportRow
+                        key={item.id}
+                        kind="ASM"
+                        accent="amber"
+                        label={item.organization || item.site || 'Untitled'}
+                        onDrop={async () => {
+                          await deleteOfflineDailyAssessment(item.id);
+                          await forceSync();
+                        }}
+                      />
                     ))}
                   </div>
                 )}
@@ -1064,3 +1085,68 @@ export const SyncPulse = ({ className }: { className?: string }) => {
     </>
   );
 };
+
+type AccentName = 'blue' | 'purple' | 'amber';
+
+const ACCENT_BORDER: Record<AccentName, string> = {
+  blue: 'border-blue-500/50',
+  purple: 'border-purple-500/50',
+  amber: 'border-amber-500/50',
+};
+const ACCENT_TEXT: Record<AccentName, string> = {
+  blue: 'text-blue-400',
+  purple: 'text-purple-400',
+  amber: 'text-amber-400',
+};
+
+function PendingReportRow({
+  kind,
+  accent,
+  label,
+  sublabel,
+  onDrop,
+}: {
+  kind: string;
+  accent: AccentName;
+  label: string;
+  sublabel?: string;
+  onDrop: () => Promise<void>;
+}) {
+  const [busy, setBusy] = useState(false);
+  const handleDrop = async (e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (busy) return;
+    const ok = window.confirm(
+      `Discard the local draft "${label}"?\n\nThis cannot be undone. Use this only if the report no longer exists or is stuck syncing.`,
+    );
+    if (!ok) return;
+    try {
+      setBusy(true);
+      await onDrop();
+    } catch (err) {
+      console.error('[SyncPulse] Drop failed:', err);
+      window.alert('Could not drop the local draft. Try RECOVER STORAGE first, then try again.');
+    } finally {
+      setBusy(false);
+    }
+  };
+  return (
+    <div className={`pl-3 border-l ${ACCENT_BORDER[accent]} text-green-300/70 flex items-center justify-between gap-2`}>
+      <div className="min-w-0 flex-1 truncate">
+        <span className={`text-[9px] font-bold uppercase tracking-wider ${ACCENT_TEXT[accent]} mr-1.5`}>{kind}</span>
+        <span className="truncate">{label}</span>
+        {sublabel && <span className="text-green-600 ml-1">{sublabel}</span>}
+      </div>
+      <button
+        type="button"
+        disabled={busy}
+        onClick={handleDrop}
+        style={{ touchAction: 'manipulation' }}
+        className="shrink-0 min-h-[32px] px-2 text-[9px] uppercase tracking-wider text-red-400 hover:text-red-300 active:text-red-300 disabled:opacity-50 border border-red-900/60 hover:border-red-500/60 rounded-sm"
+        aria-label={`Drop local draft ${label}`}
+      >
+        {busy ? '…' : 'DROP'}
+      </button>
+    </div>
+  );
+}
