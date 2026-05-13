@@ -527,64 +527,71 @@ export const SyncPulse = ({ className }: { className?: string }) => {
                 they wait — getUnuploadedPhotos excludes nextRetryAt > now, but
                 bucketPhotos correctly classifies those as RETRYING. */}
             {photoBucketTotal > 0 && (
-              <div className="space-y-1">
-                <div className="flex items-center justify-between text-green-300/60 text-[10px] uppercase tracking-wider">
-                  <span>PENDING_PHOTOS</span>
-                  <span>{photoBucketTotal}</span>
-                </div>
-                {photoBuckets.ready > 0 && (
-                  <div className="flex items-center justify-between pl-3 text-green-300/80">
-                    <span className="text-green-400">▸ READY</span>
-                    <span>{photoBuckets.ready}</span>
-                  </div>
-                )}
-                {photoBuckets.retrying > 0 && (
-                  <div className="flex items-center justify-between pl-3 text-green-300/80">
-                    <span className="text-amber-400">
-                      ▸ RETRYING
-                      {photoBuckets.retryingMinNextRetryAt && (
-                        <span className="ml-1 text-amber-300/70 font-mono text-[10px]">
-                          ({formatRetryCountdown(photoBuckets.retryingMinNextRetryAt, retryingTick)})
+              <div className="space-y-1 border-t border-green-900/40 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setPendingPhotosExpanded(v => !v)}
+                  aria-expanded={pendingPhotosExpanded}
+                  style={{ touchAction: 'manipulation' }}
+                  className="w-full min-h-[44px] flex items-center justify-between text-left text-green-400 text-[10px] uppercase tracking-wider hover:text-green-300 active:text-green-300 py-2 -my-1"
+                >
+                  <span>{pendingPhotosExpanded ? '▾' : '▸'} Pending photos ({photoBucketTotal})</span>
+                  <span className="text-green-700 text-[9px]">{pendingPhotosExpanded ? 'TAP TO HIDE' : 'TAP TO OPEN'}</span>
+                </button>
+                {pendingPhotosExpanded && (
+                  <div className="space-y-1">
+                    {photoBuckets.ready > 0 && (
+                      <div className="flex items-center justify-between pl-3 text-green-300/80">
+                        <span className="text-green-400">▸ READY</span>
+                        <span>{photoBuckets.ready}</span>
+                      </div>
+                    )}
+                    {photoBuckets.retrying > 0 && (
+                      <div className="flex items-center justify-between pl-3 text-green-300/80">
+                        <span className="text-amber-400">
+                          ▸ RETRYING
+                          {photoBuckets.retryingMinNextRetryAt && (
+                            <span className="ml-1 text-amber-300/70 font-mono text-[10px]">
+                              ({formatRetryCountdown(photoBuckets.retryingMinNextRetryAt, retryingTick)})
+                            </span>
+                          )}
                         </span>
-                      )}
-                    </span>
-                    <span>{photoBuckets.retrying}</span>
-                  </div>
-                )}
-                {photoBuckets.stuck > 0 && (
-                  <div className="flex items-center justify-between pl-3 text-red-300/90">
-                    <span className="flex items-center gap-1.5">
-                      <span className="text-red-400">▸ STUCK</span>
-                      <button
-                        type="button"
-                        disabled={retrying}
-                        onClick={async () => {
-                          try {
-                            setRetrying(true);
-                            // Reset retryCount + clear nextRetryAt on the
-                            // STUCK photos and force-trigger a sync. Mirrors
-                            // the existing dead-letter Retry button below
-                            // but scoped to the STUCK subset.
-                            const ids = photoBuckets.stuckIds;
-                            if (ids.length > 0) {
-                              await resetPhotoRetryCounts(ids);
-                            }
-                            await updatePhotoCount();
-                            const fresh = await getPhotoRetryBuckets();
-                            setPhotoBuckets(fresh);
-                            resetLayerBreakerOnUserActivity('SyncPulse retry'); await forceSync();
-                          } catch (e) {
-                            console.warn('[SyncPulse] Stuck-photo retry failed:', e);
-                          } finally {
-                            setRetrying(false);
-                          }
-                        }}
-                        className="text-[9px] uppercase tracking-wider px-1.5 py-0.5 rounded border border-red-700/60 text-red-300 hover:bg-red-900/30 disabled:opacity-50"
-                      >
-                        {retrying ? 'RETRYING…' : 'RETRY NOW'}
-                      </button>
-                    </span>
-                    <span>{photoBuckets.stuck}</span>
+                        <span>{photoBuckets.retrying}</span>
+                      </div>
+                    )}
+                    {photoBuckets.stuck > 0 && (
+                      <div className="flex items-center justify-between pl-3 text-red-300/90">
+                        <span className="flex items-center gap-1.5">
+                          <span className="text-red-400">▸ STUCK</span>
+                          <button
+                            type="button"
+                            disabled={retrying}
+                            onClick={async (e) => {
+                              e.stopPropagation();
+                              try {
+                                setRetrying(true);
+                                const ids = photoBuckets.stuckIds;
+                                if (ids.length > 0) {
+                                  await resetPhotoRetryCounts(ids);
+                                }
+                                await updatePhotoCount();
+                                const fresh = await getPhotoRetryBuckets();
+                                setPhotoBuckets(fresh);
+                                resetLayerBreakerOnUserActivity('SyncPulse retry'); await forceSync();
+                              } catch (err) {
+                                console.warn('[SyncPulse] Stuck-photo retry failed:', err);
+                              } finally {
+                                setRetrying(false);
+                              }
+                            }}
+                            className="text-[9px] uppercase tracking-wider px-1.5 py-0.5 rounded border border-red-700/60 text-red-300 hover:bg-red-900/30 disabled:opacity-50"
+                          >
+                            {retrying ? 'RETRYING…' : 'RETRY NOW'}
+                          </button>
+                        </span>
+                        <span>{photoBuckets.stuck}</span>
+                      </div>
+                    )}
                   </div>
                 )}
               </div>
