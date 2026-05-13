@@ -588,8 +588,8 @@ export const SyncPulse = ({ className }: { className?: string }) => {
                         label={item.organization || 'Untitled'}
                         sublabel={item.location ? `@ ${item.location}` : undefined}
                         onDrop={async () => {
-                          await deleteOfflineInspection(item.id);
-                          await forceSync();
+                          await forceDeleteLocalRecord('inspections', item.id);
+                          try { await forceSync(); } catch { /* breaker open is fine */ }
                         }}
                       />
                     ))}
@@ -600,8 +600,8 @@ export const SyncPulse = ({ className }: { className?: string }) => {
                         accent="purple"
                         label={item.organization || 'Untitled'}
                         onDrop={async () => {
-                          await deleteOfflineTraining(item.id);
-                          await forceSync();
+                          await forceDeleteLocalRecord('trainings', item.id);
+                          try { await forceSync(); } catch { /* breaker open is fine */ }
                         }}
                       />
                     ))}
@@ -612,8 +612,8 @@ export const SyncPulse = ({ className }: { className?: string }) => {
                         accent="amber"
                         label={item.organization || item.site || 'Untitled'}
                         onDrop={async () => {
-                          await deleteOfflineDailyAssessment(item.id);
-                          await forceSync();
+                          await forceDeleteLocalRecord('daily_assessments', item.id);
+                          try { await forceSync(); } catch { /* breaker open is fine */ }
                         }}
                       />
                     ))}
