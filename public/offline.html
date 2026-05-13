@@ -3,7 +3,7 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
-    <title>Rope Works — Offline</title>
+    <title>Rope Works</title>
     <meta name="theme-color" content="#0b0f17" />
     <link rel="icon" type="image/png" href="/favicon.png" />
     <style>
@@ -19,34 +19,18 @@
         justify-content: center;
         padding: 24px;
       }
-      .card {
-        max-width: 420px;
-        width: 100%;
-        text-align: center;
-      }
+      .card { max-width: 420px; width: 100%; text-align: center; }
       img.logo {
-        width: 140px;
-        height: auto;
-        margin: 0 auto 24px;
-        display: block;
-        background: #fff;
-        border-radius: 16px;
-        padding: 12px;
+        width: 140px; height: auto; margin: 0 auto 24px; display: block;
+        background: #fff; border-radius: 16px; padding: 12px;
       }
       h1 { font-size: 22px; font-weight: 700; margin: 0 0 8px; }
       p { font-size: 15px; line-height: 1.5; margin: 0 0 20px; color: #cbd5e1; }
       .row { display: flex; flex-direction: column; gap: 10px; }
       a.btn, button.btn {
-        display: block;
-        width: 100%;
-        padding: 14px 16px;
-        font-size: 16px;
-        font-weight: 600;
-        border-radius: 10px;
-        border: 0;
-        cursor: pointer;
-        text-decoration: none;
-        text-align: center;
+        display: block; width: 100%; padding: 14px 16px; font-size: 16px;
+        font-weight: 600; border-radius: 10px; border: 0; cursor: pointer;
+        text-decoration: none; text-align: center;
       }
       .btn.primary { background: #1e40af; color: #fff; }
       .btn.secondary { background: transparent; color: #f8fafc; border: 1px solid #334155; }
@@ -56,19 +40,55 @@
   <body>
     <div class="card">
       <img class="logo" src="/rope-works-logo.avif" alt="Rope Works" onerror="this.style.display='none'" />
-      <h1>You're offline</h1>
-      <p>You can still use Rope Works without a connection. Your work will sync automatically once you're back online.</p>
+      <h1>Opening Rope Works…</h1>
+      <p>If this screen stays for more than a moment, tap below to continue.</p>
       <div class="row">
-        <a class="btn primary" href="/">Open the app</a>
+        <a class="btn primary" id="open-app" href="/?shell=1">Open the app</a>
         <a class="btn secondary" href="/?guest=1">Continue as Guest</a>
       </div>
-      <p class="hint">If this page keeps appearing, close and reopen the app.</p>
+      <p class="hint">Your saved work stays on this device until you reconnect.</p>
     </div>
     <script>
-      // Auto-retry when the network comes back.
-      window.addEventListener('online', function () {
-        window.location.replace('/');
-      });
+      // Self-heal: this page should never be a permanent destination.
+      // 1. If the app shell is reachable in any Cache Storage entry, redirect
+      //    into it immediately so React mounts and the user sees the real app.
+      // 2. Otherwise, retry navigating to "/" after a short delay — the
+      //    service worker's network-first navigation handler will serve the
+      //    cached shell on the next attempt.
+      // 3. If we come back online at any point, jump straight back to "/".
+      (function () {
+        var REDIRECTED_FLAG = 'rw-offline-self-heal';
+
+        function goToShell() {
+          try { sessionStorage.setItem(REDIRECTED_FLAG, String(Date.now())); } catch (e) {}
+          window.location.replace('/?shell=1');
+        }
+
+        async function tryShellRedirect() {
+          if (!('caches' in self)) return false;
+          try {
+            var keys = await caches.keys();
+            for (var i = 0; i < keys.length; i += 1) {
+              var cache = await caches.open(keys[i]);
+              var hit = await cache.match('/index.html', { ignoreSearch: true })
+                || await cache.match('/', { ignoreSearch: true });
+              if (hit) { goToShell(); return true; }
+            }
+          } catch (e) { /* ignore */ }
+          return false;
+        }
+
+        // Attempt immediately, then once more after the SW has had a chance
+        // to install / claim clients on a very fresh PWA install.
+        tryShellRedirect().then(function (ok) {
+          if (ok) return;
+          setTimeout(function () { tryShellRedirect(); }, 1500);
+        });
+
+        window.addEventListener('online', function () {
+          window.location.replace('/');
+        });
+      })();
     </script>
   </body>
 </html>
