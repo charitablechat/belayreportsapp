@@ -580,23 +580,41 @@ export const SyncPulse = ({ className }: { className?: string }) => {
                 {pendingReportsExpanded && (
                   <div className="space-y-1 max-h-48 overflow-y-auto">
                     {unsyncedInspections.map((item) => (
-                      <div key={item.id} className="pl-3 border-l border-blue-500/50 text-green-300/70">
-                        <span className="text-[9px] font-bold uppercase tracking-wider text-blue-400 mr-1.5">INS</span>
-                        <span className="truncate">{item.organization || 'Untitled'}</span>
-                        {item.location && <span className="text-green-600 ml-1">@ {item.location}</span>}
-                      </div>
+                      <PendingReportRow
+                        key={item.id}
+                        kind="INS"
+                        accent="blue"
+                        label={item.organization || 'Untitled'}
+                        sublabel={item.location ? `@ ${item.location}` : undefined}
+                        onDrop={async () => {
+                          await deleteOfflineInspection(item.id);
+                          await forceSync();
+                        }}
+                      />
                     ))}
                     {unsyncedTrainings.map((item) => (
-                      <div key={item.id} className="pl-3 border-l border-purple-500/50 text-green-300/70">
-                        <span className="text-[9px] font-bold uppercase tracking-wider text-purple-400 mr-1.5">TRN</span>
-                        <span className="truncate">{item.organization || 'Untitled'}</span>
-                      </div>
+                      <PendingReportRow
+                        key={item.id}
+                        kind="TRN"
+                        accent="purple"
+                        label={item.organization || 'Untitled'}
+                        onDrop={async () => {
+                          await deleteOfflineTraining(item.id);
+                          await forceSync();
+                        }}
+                      />
                     ))}
                     {unsyncedAssessments.map((item) => (
-                      <div key={item.id} className="pl-3 border-l border-amber-500/50 text-green-300/70">
-                        <span className="text-[9px] font-bold uppercase tracking-wider text-amber-400 mr-1.5">ASM</span>
-                        <span className="truncate">{item.organization || item.site || 'Untitled'}</span>
-                      </div>
+                      <PendingReportRow
+                        key={item.id}
+                        kind="ASM"
+                        accent="amber"
+                        label={item.organization || item.site || 'Untitled'}
+                        onDrop={async () => {
+                          await deleteOfflineDailyAssessment(item.id);
+                          await forceSync();
+                        }}
+                      />
                     ))}
                   </div>
                 )}
