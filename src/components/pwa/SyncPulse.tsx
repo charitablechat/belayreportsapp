@@ -18,6 +18,7 @@ import {
   deleteOfflineInspection,
   deleteOfflineTraining,
   deleteOfflineDailyAssessment,
+  forceDeleteLocalRecord,
 } from '@/lib/offline-storage';
 import {
   runSyncDiagnostic,
