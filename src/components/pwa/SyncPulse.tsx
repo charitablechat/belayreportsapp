@@ -14,6 +14,7 @@ import {
   getDeadLetterPhotos,
   resetPhotoRetryCounts,
   resetLayerBreakerOnUserActivity,
+  forceCloseAndReopenDB,
 } from '@/lib/offline-storage';
 import {
   runSyncDiagnostic,
@@ -89,6 +90,9 @@ export const SyncPulse = ({ className }: { className?: string }) => {
   const [previousSyncingState, setPreviousSyncingState] = useState(false);
   const [open, setOpen] = useState(false);
   const [retrying, setRetrying] = useState(false);
+  const [recovering, setRecovering] = useState(false);
+  const [recoverResult, setRecoverResult] = useState<null | { ok: boolean; message: string }>(null);
+  const [multiTabBlock, setMultiTabBlock] = useState(false);
   const [quarantinedCount, setQuarantinedCount] = useState(0);
   const [diag, setDiag] = useState<SyncDiagnosticsReport>({ orphanRecords: [], tempParentPhotos: [], partial: false });
   const [haltState, setHaltState] = useState<SyncHaltState | null>(() => getSyncHaltState());
@@ -282,6 +286,23 @@ export const SyncPulse = ({ className }: { className?: string }) => {
   useEffect(() => {
     const unsub = subscribeSyncHalt((s) => setHaltState(s));
     return unsub;
+  }, []);
+
+  // Multi-tab block listener — `getDB()` dispatches `sync-multi-tab-block`
+  // when an upgrade is blocked >3s by another tab/SW holding the connection.
+  // Auto-clears 30s after the last fire so the banner doesn't get stuck on.
+  useEffect(() => {
+    let clearT: ReturnType<typeof setTimeout> | null = null;
+    const handler = () => {
+      setMultiTabBlock(true);
+      if (clearT) clearTimeout(clearT);
+      clearT = setTimeout(() => setMultiTabBlock(false), 30_000);
+    };
+    window.addEventListener('sync-multi-tab-block', handler as EventListener);
+    return () => {
+      window.removeEventListener('sync-multi-tab-block', handler as EventListener);
+      if (clearT) clearTimeout(clearT);
+    };
   }, []);
 
   // 1Hz tick while a countdown halt is active, so the rendered "Auto-resumes
@@ -478,6 +499,64 @@ export const SyncPulse = ({ className }: { className?: string }) => {
                   <p className="text-yellow-300/70 text-[10px] italic">
                     {haltCountdown}
                   </p>
+                )}
+
+                {/* Last-resort recovery: when the layer breaker is open or
+                    a multi-tab block was detected, the local IDB handle is
+                    likely wedged. RETRY NOW just re-runs forceSync, which
+                    re-enters the same wedge. RECOVER STORAGE forcibly
+                    closes the cached handle, asks the SW to release its
+                    handle, resets all breakers, and re-opens. */}
+                {(haltState.code === 'circuit_breaker_open' || multiTabBlock) && (
+                  <div className="mt-2 pt-2 border-t border-yellow-900/40 space-y-1.5">
+                    <button
+                      type="button"
+                      disabled={recovering}
+                      onClick={async () => {
+                        setRecoverResult(null);
+                        setRecovering(true);
+                        try {
+                          const ok = await forceCloseAndReopenDB();
+                          if (ok) {
+                            try { clearAllQuarantines(); } catch { /* ignore */ }
+                            try { resetLayerBreakerOnUserActivity('SyncPulse recover'); } catch { /* ignore */ }
+                            try { await forceSync(); } catch { /* ignore */ }
+                            setRecoverResult({ ok: true, message: 'STORAGE RECOVERED — sync resumed.' });
+                            setMultiTabBlock(false);
+                          } else {
+                            setRecoverResult({
+                              ok: false,
+                              message: 'STILL WEDGED — close any other browser tabs of this app, then tap RECOVER again.',
+                            });
+                          }
+                        } catch (e) {
+                          console.warn('[SyncPulse] forceCloseAndReopenDB failed:', e);
+                          setRecoverResult({
+                            ok: false,
+                            message: 'RECOVERY FAILED — close all other tabs of this app and refresh the page.',
+                          });
+                        } finally {
+                          setRecovering(false);
+                        }
+                      }}
+                      className="w-full text-[10px] uppercase tracking-wider px-2 py-1.5 rounded border border-red-600/70 text-red-300 hover:bg-red-900/30 disabled:opacity-50 min-h-[36px]"
+                    >
+                      {recovering ? 'RECOVERING…' : 'RECOVER STORAGE'}
+                    </button>
+                    {multiTabBlock && (
+                      <p className="text-amber-300/90 text-[10px] leading-relaxed">
+                        Another tab of this app is blocking sync. Close other tabs of RopeWorks, then tap RECOVER STORAGE.
+                      </p>
+                    )}
+                    {recoverResult && (
+                      <p className={cn(
+                        'text-[10px] leading-relaxed',
+                        recoverResult.ok ? 'text-green-300' : 'text-red-300',
+                      )}>
+                        {recoverResult.message}
+                      </p>
+                    )}
+                  </div>
                 )}
               </div>
             )}

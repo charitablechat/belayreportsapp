@@ -771,6 +771,74 @@ export function resetLayerBreakerOnUserActivity(reason: string): void {
   emitLayerBreakerClosed();
 }
 
+/**
+ * Last-resort recovery: forcibly close the cached IDB handle, clear the
+ * cached `dbPromise`, reset all breakers, and re-open. Use this from the
+ * Sync Terminal "RECOVER STORAGE" button when `getDB()` itself is wedged
+ * (e.g. another tab holds a blocking connection, or the SW is hung on an
+ * IDB handle). Returns `true` on a successful re-open, `false` otherwise.
+ *
+ * Side effects:
+ *  - Calls `db.close()` on the previously cached connection (best effort).
+ *  - Sets `dbPromise = null` so the next `getDB()` does a fresh open.
+ *  - Resets the layer breaker, per-store breakers, and timeout counters.
+ *  - Posts `CLOSE_IDB_FOR_UPGRADE` to any active service worker so it
+ *    drops its IDB handle before we try again.
+ */
+export async function forceCloseAndReopenDB(): Promise<boolean> {
+  // 1. Close cached handle (best effort — may already be invalid).
+  if (dbPromise) {
+    try {
+      const cached = await Promise.race([
+        dbPromise,
+        new Promise<null>((resolve) => setTimeout(() => resolve(null), 500)),
+      ]);
+      try { (cached as IDBPDatabase<InspectionDB> | null)?.close?.(); } catch { /* ignore */ }
+    } catch { /* ignore — wedged promise */ }
+  }
+  dbPromise = null;
+
+  // 2. Ask the SW to release its IDB handle (bounded).
+  try {
+    if (typeof navigator !== 'undefined' && 'serviceWorker' in navigator) {
+      const reg = await Promise.race([
+        navigator.serviceWorker.ready,
+        new Promise<null>((resolve) => setTimeout(() => resolve(null), 1000)),
+      ]);
+      reg?.active?.postMessage({
+        type: 'CLOSE_IDB_FOR_UPGRADE',
+        dbName: 'rope-works-inspections',
+        targetVersion: 19,
+      });
+    }
+  } catch { /* ignore */ }
+
+  // 3. Reset all breakers so the next call probes naturally.
+  layerBreakerConsecutiveTimeouts = 0;
+  layerBreakerTrippedAt = null;
+  layerBreakerResetCount = 0;
+  try { resetCircuitBreaker(); } catch { /* ignore */ }
+  emitLayerBreakerClosed();
+
+  console.info('[Offline Storage] forceCloseAndReopenDB: cache cleared, retrying open…');
+
+  // 4. Attempt one fresh open. Wrap in a 6s timeout so the UI can
+  //    surface the "close other tabs" message instead of spinning forever.
+  try {
+    await Promise.race([
+      getDB(),
+      new Promise<never>((_, reject) =>
+        setTimeout(() => reject(new Error('forceCloseAndReopenDB: still wedged')), 6000),
+      ),
+    ]);
+    console.info('[Offline Storage] forceCloseAndReopenDB: re-open succeeded');
+    return true;
+  } catch (err) {
+    console.warn('[Offline Storage] forceCloseAndReopenDB failed:', err);
+    return false;
+  }
+}
+
 /** Test-only inspection helper — reads internal state without exposing module-private vars. */
 export function __test_only__getLayerBreakerStateForTests(): {
   consecutiveTimeouts: number;
@@ -2468,10 +2536,16 @@ export async function getDB() {
             `Asking Service Worker to release its connection.`
           );
           // Ask the SW to close any IDB handles it's holding so the upgrade can proceed.
+          // CRITICAL: bound `navigator.serviceWorker.ready` with a 1500ms timeout —
+          // a wedged SW can otherwise hang `blocked()` indefinitely, extending the
+          // entire openDB budget and looking like an "IDB open timed out" to callers.
           try {
             if (typeof navigator !== 'undefined' && 'serviceWorker' in navigator) {
-              const reg = await navigator.serviceWorker.ready;
-              reg.active?.postMessage({
+              const reg = await Promise.race([
+                navigator.serviceWorker.ready,
+                new Promise<null>((resolve) => setTimeout(() => resolve(null), 1500)),
+              ]);
+              reg?.active?.postMessage({
                 type: 'CLOSE_IDB_FOR_UPGRADE',
                 dbName: DB_NAME,
                 targetVersion: blockedVersion,
@@ -2480,10 +2554,17 @@ export async function getDB() {
           } catch (err) {
             console.warn('[Offline Storage] Could not notify SW about upgrade:', err);
           }
-          // Best-effort user notification — only fires if the upgrade is actually slow.
-          // Defer 1500ms so the common case (fast SW close + auto-retry) stays silent.
+          // Multi-tab block detection — if the upgrade hasn't resolved 3s after
+          // `blocked()` fires, dispatch a window event so SyncPulse can surface
+          // a "close other tabs" banner. The most common cause of a stuck open
+          // is another tab of this app holding a v19 connection.
           setTimeout(() => {
-            if (dbPromise) {
+            if (dbPromise && typeof window !== 'undefined') {
+              try {
+                window.dispatchEvent(new CustomEvent('sync-multi-tab-block', {
+                  detail: { currentVersion, blockedVersion },
+                }));
+              } catch { /* swallow */ }
               try {
                 void import('./notification-center').then(({ addSyncNotification }) => {
                   try {
@@ -2494,7 +2575,7 @@ export async function getDB() {
                 }).catch(() => {});
               } catch { /* swallow */ }
             }
-          }, 1500);
+          }, 3000);
         },
         async blocking(currentVersion, blockedVersion, event) {
           console.warn(
