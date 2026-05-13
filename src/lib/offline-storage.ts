@@ -6512,3 +6512,159 @@ export function __resetQuarantineGcStateForTests(): void {
   gcCycleCounter = 0;
   lastGcRunAt = 0;
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// forceDeleteLocalRecord
+//
+// Surgical delete that bypasses the IDB layer breaker / circuit breaker. Used
+// by the Sync Terminal "DROP" button so users can clear ghost pending rows
+// even when the breaker is open and the normal `deleteOffline*` helpers would
+// silently no-op into the localStorage fallback (which doesn't hold the row).
+//
+// Strategy:
+//   1. Try the normal delete path with a short timeout (1.5s). When the
+//      breaker is closed and IDB is healthy this is the cheapest path and
+//      also clears any sibling caches that the normal helper knows about.
+//   2. If that fails or times out, open a short-lived `idb.openDB(name)`
+//      connection (no version) directly. This skips `getDB()` / circuit
+//      breaker / health check entirely and just tries to delete by key.
+//   3. Independently, scrub the localStorage emergency-save snapshot
+//      (`rw_backup_<reportType>_<id>`) so the wedge-ledger fallback path
+//      doesn't keep re-surfacing the row in unsynced counts.
+// ─────────────────────────────────────────────────────────────────────────────
+
+const STORE_FOR_TABLE = {
+  inspections: 'inspections',
+  trainings: 'trainings',
+  daily_assessments: 'daily_assessments',
+} as const;
+const BACKUP_KEY_PREFIX = {
+  inspections: 'rw_backup_inspection_',
+  trainings: 'rw_backup_training_',
+  daily_assessments: 'rw_backup_daily_assessment_',
+} as const;
+
+export type ForceDeletableTable = keyof typeof STORE_FOR_TABLE;
+
+export interface ForceDeleteResult {
+  deletedFromIdb: boolean;
+  deletedFromLocalStorage: boolean;
+  bypassedBreaker: boolean;
+  error?: string;
+}
+
+async function deleteByDirectOpen(
+  table: ForceDeletableTable,
+  id: string,
+): Promise<boolean> {
+  // Direct openDB(name) — no version, no schema upgrade, no circuit breaker.
+  // 2s hard timeout so a wedged factory can't hang the user gesture.
+  const DB_NAME = 'rope-works-inspections';
+  let db: IDBPDatabase<unknown> | null = null;
+  try {
+    db = await Promise.race<IDBPDatabase<unknown>>([
+      openDB<unknown>(DB_NAME) as unknown as Promise<IDBPDatabase<unknown>>,
+      new Promise<IDBPDatabase<unknown>>((_, reject) =>
+        setTimeout(() => reject(new Error('direct_openDB_timeout')), 2000),
+      ),
+    ]);
+    const storeName = STORE_FOR_TABLE[table];
+    if (!db.objectStoreNames.contains(storeName)) return false;
+    await Promise.race<void>([
+      (db.delete(storeName as never, id) as unknown as Promise<void>),
+      new Promise<void>((_, reject) =>
+        setTimeout(() => reject(new Error('direct_delete_timeout')), 1500),
+      ),
+    ]);
+    return true;
+  } catch (err) {
+    console.warn('[forceDeleteLocalRecord] direct-open delete failed:', err);
+    return false;
+  } finally {
+    try { db?.close(); } catch { /* noop */ }
+  }
+}
+
+function purgeLocalStorageBackup(table: ForceDeletableTable, id: string): boolean {
+  try {
+    const key = BACKUP_KEY_PREFIX[table] + id;
+    const had = localStorage.getItem(key) !== null;
+    if (had) localStorage.removeItem(key);
+    return had;
+  } catch {
+    return false;
+  }
+}
+
+export async function forceDeleteLocalRecord(
+  table: ForceDeletableTable,
+  id: string,
+): Promise<ForceDeleteResult> {
+  const result: ForceDeleteResult = {
+    deletedFromIdb: false,
+    deletedFromLocalStorage: false,
+    bypassedBreaker: false,
+  };
+
+  // Always scrub localStorage backup — it's cheap and synchronous.
+  result.deletedFromLocalStorage = purgeLocalStorageBackup(table, id);
+
+  // 1) Try the normal helper with a tight timeout. When healthy this also
+  //    clears child caches the normal helper knows about.
+  const normalHelper =
+    table === 'inspections'
+      ? deleteOfflineInspection
+      : table === 'trainings'
+        ? deleteOfflineTraining
+        : deleteOfflineDailyAssessment;
+  try {
+    await Promise.race<void>([
+      Promise.resolve(normalHelper(id)).then(() => undefined),
+      new Promise<void>((_, reject) =>
+        setTimeout(() => reject(new Error('normal_delete_timeout')), 1500),
+      ),
+    ]);
+    result.deletedFromIdb = true;
+  } catch (err) {
+    console.warn('[forceDeleteLocalRecord] normal helper failed, falling back:', err);
+    // 2) Bypass: open IDB directly and delete the row.
+    const ok = await deleteByDirectOpen(table, id);
+    result.deletedFromIdb = ok;
+    result.bypassedBreaker = true;
+    if (!ok) result.error = 'idb_unreachable';
+  }
+
+  console.warn('[forceDeleteLocalRecord] result', { table, id: id.substring(0, 8), ...result });
+  return result;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// One-shot purge of the known "Airiel Crawler World" ghost.
+// The server row was permanently deleted in the May 2026 cleanup migration,
+// but devices that were offline during the deletion still hold the local
+// daily_assessments row and keep showing it in PENDING REPORTS forever.
+// Self-removes after one successful run via a localStorage flag.
+// ─────────────────────────────────────────────────────────────────────────────
+const GHOST_PURGE_FLAG = '__rw_purged_airiel_v1';
+const AIRIEL_GHOST_ID = 'c24b6198-4a5f-4541-ad0c-825b27f3bdc0';
+
+export async function runOneShotGhostPurge(): Promise<void> {
+  try {
+    if (localStorage.getItem(GHOST_PURGE_FLAG) === 'true') return;
+    const result = await forceDeleteLocalRecord('daily_assessments', AIRIEL_GHOST_ID);
+    if (result.deletedFromIdb || result.deletedFromLocalStorage) {
+      console.warn('[ghost-purge] Removed Airiel Crawler World ghost', result);
+    }
+    // Mark done either way — if the row didn't exist, there's nothing to do
+    // on subsequent boots either.
+    localStorage.setItem(GHOST_PURGE_FLAG, 'true');
+  } catch (err) {
+    console.warn('[ghost-purge] purge attempt failed (will retry next boot):', err);
+  }
+}
+
+// Fire-and-forget on module load. Delayed slightly so it doesn't compete
+// with cold-start IDB open during the first paint.
+if (typeof window !== 'undefined') {
+  setTimeout(() => { void runOneShotGhostPurge(); }, 8000);
+}
