@@ -108,6 +108,12 @@ export const SyncPulse = ({ className }: { className?: string }) => {
   const [diagnosticRunning, setDiagnosticRunning] = useState(false);
   const [diagnosticReport, setDiagnosticReport] = useState<SyncDiagnosticReport | null>(null);
   const [diagnosticCopied, setDiagnosticCopied] = useState(false);
+  // Collapsible disclosure state for the SELF-CHECK and DIAGNOSTIC panels.
+  // The ▸/▾ caret in the header doubles as a tap-target that toggles each
+  // panel — on small screens the action button was getting clipped off
+  // the right edge so users couldn't tell the section was interactive.
+  const [selfCheckExpanded, setSelfCheckExpanded] = useState(false);
+  const [diagnosticExpanded, setDiagnosticExpanded] = useState(false);
   // Sprint 1D: per-photo retry-state breakdown (READY/RETRYING/STUCK)
   // — see src/lib/photo-retry-buckets.ts. Refreshed on every
   // `sync-photos-updated` event and on a 1Hz tick while the sheet is
