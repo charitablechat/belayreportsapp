@@ -40,10 +40,18 @@ export interface PhotoRetryBuckets {
   retrying: number;
   /** Subset of READY: never attempted (0/0/null/null), age > 5min. */
   stuck: number;
+  /**
+   * P0 (audit): photos whose parent inspection is still on a `temp-*` id
+   * — `syncPhotos` skips these without bumping `retryCount`, so they sit
+   * in PENDING forever. The bottleneck is the parent record, not the photo.
+   */
+  blocked: number;
   /** Earliest `nextRetryAt` across the RETRYING bucket, or null. */
   retryingMinNextRetryAt: number | null;
   /** Photo IDs in the STUCK bucket (used by the "Retry now" button). */
   stuckIds: string[];
+  /** Distinct parent inspection ids in the BLOCKED bucket. */
+  blockedParentIds: string[];
 }
 
 interface PhotoLike {
@@ -54,6 +62,7 @@ interface PhotoLike {
   lastError?: string | null;
   blob?: Blob | null;
   timestamp?: number;
+  inspectionId?: string;
 }
 
 /**
