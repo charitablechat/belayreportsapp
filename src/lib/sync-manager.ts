@@ -716,18 +716,31 @@ export async function syncPhotos(signal?: AbortSignal): Promise<{ remaining: num
 
     // 1.C — Surface dead-letter crossings to the in-app notification center
     // so the user sees they have stuck photos to review (one notification per
-    // cycle, not per photo).
+    // cycle, not per photo). P2: also fired from the finally block on the
+    // outer-catch path so a thrown setup error doesn't swallow the signal.
+    return { remaining, changed: changedCount };
+  } catch (error) {
+    console.error('[Sync Manager] Photo sync error:', error);
+    return { remaining: 0, changed: 0 };
+  } finally {
+    // P2: Always flush the dead-letter notification, even when the outer try
+    // threw before the original notification site at end-of-cycle.
     if (newlyDeadLettered > 0) {
       const word = newlyDeadLettered === 1 ? 'photo' : 'photos';
       addSyncNotification(
         `${newlyDeadLettered} ${word} failed to upload and may be lost — open Sync Diagnostics to review.`
       );
     }
-
-    return { remaining, changed: changedCount };
-  } catch (error) {
-    console.error('[Sync Manager] Photo sync error:', error);
-    return { remaining: 0, changed: 0 };
+    // P0: Aged-pending escalation — single notification per cycle when
+    // there are photos > 24h old still waiting to upload that haven't
+    // dead-lettered. Closes the silent-rotting hole behind every "I thought
+    // they uploaded" report.
+    if (stuckAgedCount > 0) {
+      const word = stuckAgedCount === 1 ? 'photo has' : 'photos have';
+      addSyncNotification(
+        `${stuckAgedCount} ${word} been pending for over 24 hours — open Sync Diagnostics to review.`
+      );
+    }
   }
 }
 
