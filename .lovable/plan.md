@@ -1,59 +1,59 @@
-# Dropdown values lost on navigation — root cause and fix
+# Notes / comments fields lose values on navigation — same root cause
 
 ## What I found
 
-Across all three report types (Inspection / Training / Daily Assessment), every text input commits its value through an explicit `onBlur={onImmediateSave}` (or `Enter` key) which flushes the debounced auto-save into IndexedDB before navigation.
+The notes/comments fields across all three report types have the **same persistence gap** as the dropdowns: they only mutate React state and rely on the parent's 1.5-second debounced auto-save. Unlike single-line text inputs (which wire `onBlur={onImmediateSave}`), the rich-text editors and section-comment textareas are missing the blur-to-save bridge. If the user types a note and navigates within ~1.5 s, the note is dropped.
 
-**Dropdowns do not.** `updateEquipment`, `updateZipline`, `updateOperatingSystem`, and the Radix `<Select onValueChange>` calls only mutate React state and rely entirely on the parent's 1.5-second debounced `useEffect([systems, ziplines, equipment, ...])` auto-save. If the user picks a value and navigates within ~1.5s, three things can fail in combination:
+### Sites affected
 
-1. The debounce timer hasn't fired, so nothing has been written to IDB yet.
-2. `useUnsavedChanges` (`useBlocker`) only intercepts react-router navigation; it does **not** fire on tab switches inside the report or on a hard refresh fast enough to flush.
-3. When the user comes back and `loadInspection` runs, it rehydrates from IDB and the dropdown change is gone.
+1. **Inspection — Equipment notes** (`EquipmentTable.tsx`)
+   - Two `<LazyRichTextEditor>` instances for `item.comments` (desktop + mobile views) — no `onBlur`.
 
-There is no equivalent commit signal for `Select` (no blur event) — the dropdown close *is* the commit gesture, and it should behave identically to a text input losing focus.
+2. **Inspection — Operating Systems notes** (`OperatingSystemsTable.tsx`)
+   - Two `<VoiceRichTextEditor>` instances for `system.comments` — no `onBlur`.
 
-The header's `OrganizationAutocomplete` has an explicit comment warning that calling `onImmediateSave` synchronously after a value change races React's setState and ships a stale payload. So the fix has to **defer** the save by one tick.
+3. **Inspection — Ziplines notes** (`ZiplinesTable.tsx`)
+   - Two `<VoiceRichTextEditor>` instances for `zipline.comments` — no `onBlur`.
 
-## Fix — single, narrow pattern
+4. **Training — Summary section** (`TrainingSummarySection.tsx`)
+   - Two `<VoiceRichTextEditor>` instances (`observations`, `recommendations`) — no `onBlur`. Component doesn't even accept `onImmediateSave` today; need to add the prop and thread it from `TrainingForm.tsx`.
 
-Add a microtask-deferred immediate save right after every dropdown / select-style state mutation. After `setState` flushes on the next tick, the parent's `performSave` reads fresh state and writes to IDB.
+5. **Daily Assessment — Section comments** (`SectionComments.tsx` used by `OperatingSystemsSection`, `StructureChecksSection`, `EnvironmentChecksSection`, `EquipmentChecksSection`)
+   - `<DebouncedTextarea>` already flushes onBlur to its parent's `onChange`, but no `onBlur` is forwarded to trigger an immediate IDB save. The 300 ms internal debounce + 1.5 s form debounce stack to ~1.8 s of vulnerability.
+   - Component doesn't accept `onImmediateSave` today; need to add and thread it from `DailyAssessmentForm.tsx` through each `<*Section>`.
 
-```ts
-// pattern reused everywhere
-const commitImmediate = () => {
-  if (!onImmediateSave) return;
-  setTimeout(() => onImmediateSave(), 0); // wait for React to flush state
-};
-```
+(Inspection's `SummarySection.tsx` already wires `onBlur={onImmediateSave}` correctly — no change there.)
 
-### Files touched (presentation/wiring only — no business-logic changes)
+## Fix — same minimal pattern as the dropdown fix
 
-1. **`src/components/inspection/EquipmentTable.tsx`** — `updateEquipment`: when `field` is a select-style key (`result`, `equipment_category`, `equipment_type`), call `commitImmediate()` after `onUpdate`.
-2. **`src/components/inspection/ZiplinesTable.tsx`** — `updateZipline`: same treatment for `cable_type`, `cable_result`, `braking_system`, `braking_result`, `ead_system`, `ead_result`, `result`.
-3. **`src/components/inspection/OperatingSystemsTable.tsx`** — same for the two `<ResultSelect>` calls.
-4. **`src/components/inspection/InspectionHeader.tsx`** — `OrganizationAutocomplete` and any other `<Select>` callbacks: replace the warning-only path with deferred-immediate-save. (Keeps the existing comment's correctness — defer, don't sync.)
-5. **`src/components/training/TrainingHeader.tsx`** — `location` `<Select onValueChange>`: deferred-immediate-save.
-6. **`src/components/daily-assessment/*`** — any `<Select onValueChange>` paths (audited and patched the same way).
+For each editor above, pass `onBlur={onImmediateSave}` so leaving the field flushes the form's `performSave` immediately into IndexedDB. The underlying `LazyRichTextEditor`, `RichTextEditor`, and `DebouncedTextarea` already support this prop; we just need to wire it.
 
-Result-row dropdowns, system-type dropdowns, header dropdowns, and `EquipmentTypeCombobox` selections (already commits via `commitValue`, but doesn't call `onImmediateSave` — wire that too) all now commit instantly.
+### Concrete changes
+
+1. **`EquipmentTable.tsx`** — add `onBlur={onImmediateSave}` to both `<LazyRichTextEditor>` comment editors.
+2. **`OperatingSystemsTable.tsx`** — add `onBlur={onImmediateSave}` to both `<VoiceRichTextEditor>` comment editors.
+3. **`ZiplinesTable.tsx`** — add `onBlur={onImmediateSave}` to both `<VoiceRichTextEditor>` comment editors.
+4. **`TrainingSummarySection.tsx`** — add `onImmediateSave?: () => void` to props; wire `onBlur={onImmediateSave}` on both editors.
+5. **`TrainingForm.tsx`** — pass `stableTriggerImmediateSave` (or local equivalent) to `<TrainingSummarySection>`.
+6. **`SectionComments.tsx`** — add `onBlur?: () => void` to props; forward to `DebouncedTextarea`.
+7. **Daily Assessment section components** (`OperatingSystemsSection.tsx`, `StructureChecksSection.tsx`, `EnvironmentChecksSection.tsx`, `EquipmentChecksSection.tsx`) — add `onSectionCommentsBlur?: () => void` prop and wire to `<SectionComments>`.
+8. **`DailyAssessmentForm.tsx`** — pass the existing immediate-save trigger to those sections via the new prop.
 
 ### Why this is safe
 
 - We are **adding** a save trigger, not changing what or how data is saved.
-- It runs through the exact same `performSave` path as text-input blur, so all sync-deduplication, conflict-resolution, and offline queueing already in place is reused.
-- Deferring with `setTimeout(_, 0)` honors the existing race comment in `InspectionHeader.tsx`.
-- No schema, RLS, or edge-function changes. No secrets touched.
+- It runs through the same `performSave` pipeline as text-input blur. No backend, RLS, schema, secrets, or sync behavior changes.
+- Rich-text editors fire `onBlur` only when the user truly leaves the field (LazyRichTextEditor uses click-outside detection), so we won't double-fire while typing.
+- This complements — not replaces — the existing 1.5 s debounce.
 
 ## Verification
 
-- Unit-spec equivalent: open a report, change a dropdown, navigate away **without waiting** — return to confirm value persists.
-- Repeat across Inspection, Training, Daily Assessment.
-- Repeat offline (DevTools → offline) to confirm IDB persistence path.
-- Check console for no new "save in flight" warnings or stale-payload Realtime overwrites.
-- Existing `useUnsavedChanges` dialog should appear less often because changes are flushed sooner.
+- Type a note in each affected location, immediately navigate away, return — value persists.
+- Repeat offline (DevTools Network → Offline) to confirm IDB persistence.
+- Confirm no regression: the existing `useUnsavedChanges` "save on leave" dialog should appear less often (changes commit sooner).
+- Console should remain clean of new save-in-flight warnings.
 
 ## Out of scope
 
-- No changes to the auto-save debounce timing, save mutex, or Realtime reconciliation.
-- No changes to dropdown visuals.
-- No backend or RLS changes.
+- No changes to dropdowns (already shipped in the previous turn).
+- No changes to debounce timings, save mutex, Realtime reconciliation, or visual styling.
