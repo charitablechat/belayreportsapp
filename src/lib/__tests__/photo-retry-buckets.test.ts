@@ -15,6 +15,7 @@ interface Photo {
   lastError?: string | null;
   blob?: Blob | null;
   timestamp?: number;
+  inspectionId?: string;
 }
 
 const ready = (id: string): Photo => ({
