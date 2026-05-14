@@ -2,12 +2,17 @@ import { useEffect, useState } from 'react';
 import { useLocation } from 'react-router-dom';
 import { isIOS, isPWA } from '@/lib/mobile-detection';
 import { useUnsyncedPhotos } from '@/hooks/useUnsyncedPhotos';
+import { usePWA } from '@/hooks/usePWA';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
 import { Share, X } from 'lucide-react';
 
 const STORAGE_KEY = 'ios-install-prompt-dismissed-v1';
 const PUBLIC_ROUTES = ['/', '/welcome'];
+// When iOS Safari (browser-mode) accumulates this many unsynced items, the
+// install nudge becomes non-dismissible — Safari-tab lifecycle is too
+// punitive to drain reliably from there. Tunable via this single constant.
+const IOS_BROWSER_INSTALL_FORCE_THRESHOLD = 10;
 
 /**
  * Dismissible nudge for iOS Safari users to add the app to their Home Screen.
@@ -26,7 +31,11 @@ export const IOSInstallPromptOnce = () => {
   const [isPersisted, setIsPersisted] = useState<boolean | null>(null);
   const location = useLocation();
   const { unsyncedPhotoCount } = useUnsyncedPhotos();
-  const unsyncedCount = unsyncedPhotoCount ?? 0;
+  const { unsyncedCount: unsyncedRecordCount } = usePWA();
+  const photoPending = unsyncedPhotoCount ?? 0;
+  // For the force-install gate we care about ALL pending work, not just photos —
+  // 60 pending in the user's screenshot was a mix of records + photos.
+  const totalPending = (unsyncedRecordCount ?? 0) + photoPending;
   const isPublicRoute = PUBLIC_ROUTES.includes(location.pathname);
 
   // Probe persistent-storage state once on mount.
@@ -49,45 +58,62 @@ export const IOSInstallPromptOnce = () => {
     };
   }, []);
 
+  // Force-install state: any iOS Safari (browser-mode) session with enough
+  // pending data that Safari's tab-suspension rules will defeat foreground
+  // sync. The Alert renders non-dismissible in this state.
+  const forceInstall = isIOS() && !isPWA() &&
+    totalPending >= IOS_BROWSER_INSTALL_FORCE_THRESHOLD;
+
   useEffect(() => {
     if (isPublicRoute) return;
     if (!isIOS() || isPWA()) return;
 
     const dismissed = localStorage.getItem(STORAGE_KEY) === '1';
-    const atRisk = isPersisted === false && unsyncedCount > 0;
+    const atRisk = isPersisted === false && photoPending > 0;
 
-    // Always show if data is at risk, even after a previous dismissal.
-    if (atRisk) {
+    // Force-install or at-risk → always visible.
+    if (forceInstall || atRisk) {
       setShow(true);
       return;
     }
     if (dismissed) return;
     setShow(true);
-  }, [isPublicRoute, isPersisted, unsyncedCount]);
+  }, [isPublicRoute, isPersisted, photoPending, forceInstall]);
 
   if (isPublicRoute || !show) return null;
 
-  const atRisk = isPersisted === false && unsyncedCount > 0;
+  const atRisk = isPersisted === false && photoPending > 0;
 
   const dismiss = () => {
     localStorage.setItem(STORAGE_KEY, '1');
     setShow(false);
   };
 
+  // Severity ramp: forceInstall (red) > atRisk (red) > nudge (primary).
+  const severe = forceInstall || atRisk;
+
   return (
     <Alert
-      className={`mb-4 relative pr-10 ${
-        atRisk ? 'border-destructive/40 bg-destructive/10' : 'border-primary/30 bg-primary/5'
+      className={`mb-4 relative ${forceInstall ? '' : 'pr-10'} ${
+        severe ? 'border-destructive/40 bg-destructive/10' : 'border-primary/30 bg-primary/5'
       }`}
     >
-      <Share className={`h-4 w-4 ${atRisk ? 'text-destructive' : 'text-primary'}`} />
+      <Share className={`h-4 w-4 ${severe ? 'text-destructive' : 'text-primary'}`} />
       <AlertTitle className="text-foreground">
-        {atRisk
-          ? `You have ${unsyncedCount} unsynced ${unsyncedCount === 1 ? 'item' : 'items'} at risk`
-          : 'Add to Home Screen for reliable sync'}
+        {forceInstall
+          ? `${totalPending} items can't sync reliably in Safari`
+          : atRisk
+            ? `You have ${photoPending} unsynced ${photoPending === 1 ? 'item' : 'items'} at risk`
+            : 'Add to Home Screen for reliable sync'}
       </AlertTitle>
       <AlertDescription className="text-muted-foreground">
-        {atRisk ? (
+        {forceInstall ? (
+          <>
+            Safari suspends background tabs on iPad/iPhone, which is why your queue isn't draining.
+            Tap <span className="font-medium">Share</span> → <span className="font-medium">Add to Home Screen</span>,
+            then re-open from the new icon. Your data is safe — it will sync as soon as you do.
+          </>
+        ) : atRisk ? (
           <>
             iOS may delete your offline data after 7 days of inactivity. Tap the{' '}
             <span className="font-medium">Share</span> icon in Safari, then{' '}
@@ -101,15 +127,17 @@ export const IOSInstallPromptOnce = () => {
           </>
         )}
       </AlertDescription>
-      <Button
-        variant="ghost"
-        size="icon"
-        className="absolute top-2 right-2 h-6 w-6"
-        onClick={dismiss}
-        aria-label="Dismiss install prompt"
-      >
-        <X className="h-4 w-4" />
-      </Button>
+      {!forceInstall && (
+        <Button
+          variant="ghost"
+          size="icon"
+          className="absolute top-2 right-2 h-6 w-6"
+          onClick={dismiss}
+          aria-label="Dismiss install prompt"
+        >
+          <X className="h-4 w-4" />
+        </Button>
+      )}
     </Alert>
   );
 };

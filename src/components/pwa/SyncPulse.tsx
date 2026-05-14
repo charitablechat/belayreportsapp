@@ -45,6 +45,13 @@ import {
 } from '@/lib/sync-halt-tracker';
 import { supabase } from '@/integrations/supabase/client';
 import { getUserWithCache } from '@/lib/cached-auth';
+import {
+  startDrainMode,
+  stopDrainMode,
+  subscribeDrainMode,
+  isDrainModeActive,
+} from '@/lib/drain-mode';
+import { isWakeLockSupported } from '@/lib/wake-lock';
 
 type Phase = 'idle' | 'syncing' | 'synced' | 'unsynced' | 'paused' | 'error';
 
@@ -129,6 +136,20 @@ export const SyncPulse = ({ className }: { className?: string }) => {
   const [quarantinedExpanded, setQuarantinedExpanded] = useState(true);
   const [failedPhotosExpanded, setFailedPhotosExpanded] = useState(true);
   const [orphanRecordsExpanded, setOrphanRecordsExpanded] = useState(true);
+  // Drain Mode (foreground "push everything now"). Also tracks whether the
+  // wake-lock acquired so we can surface a fallback hint on iOS < 16.4 where
+  // the OS will still auto-lock the screen and suspend the tab.
+  const [drainActive, setDrainActive] = useState<boolean>(() => isDrainModeActive());
+  const [drainStarting, setDrainStarting] = useState(false);
+  const [drainWakeLockHeld, setDrainWakeLockHeld] = useState(true);
+  useEffect(() => subscribeDrainMode(setDrainActive), []);
+  // Auto-stop drain mode the moment the queue hits zero. The 10-min safety
+  // cap in drain-mode.ts is a backstop; this is the happy path.
+  useEffect(() => {
+    if (drainActive && unsyncedCount === 0 && unsyncedPhotoCount === 0) {
+      void stopDrainMode('complete');
+    }
+  }, [drainActive, unsyncedCount, unsyncedPhotoCount]);
   // Sprint 1D: per-photo retry-state breakdown (READY/RETRYING/STUCK)
   // — see src/lib/photo-retry-buckets.ts. Refreshed on every
   // `sync-photos-updated` event and on a 1Hz tick while the sheet is
@@ -436,6 +457,70 @@ export const SyncPulse = ({ className }: { className?: string }) => {
           </SheetHeader>
 
           <div className="crt-scanlines space-y-3 text-xs font-mono px-4 pb-5">
+            {/* Drain Pending — user-initiated foreground burst sync. Only
+                offered when there's actually something to push and we're
+                online. While active, useAutoSync polls every 5s and a
+                screen wake-lock keeps the iPad/iPhone tab alive past
+                auto-lock. Auto-stops when the queue hits 0 or after the
+                10-min safety cap in drain-mode.ts. */}
+            {totalUnsynced > 0 && isOnline && (
+              <div className={cn(
+                'rounded border p-2.5 space-y-1.5',
+                drainActive
+                  ? 'border-blue-700/60 bg-blue-950/40'
+                  : 'border-amber-700/60 bg-amber-950/30',
+              )}>
+                <div className="flex items-center justify-between gap-2">
+                  <div className="flex flex-col">
+                    <span className="text-[10px] uppercase tracking-wider text-amber-300">
+                      {drainActive ? 'DRAINING…' : 'DRAIN PENDING'}
+                    </span>
+                    <span className="text-[10px] text-green-300/70">
+                      {drainActive
+                        ? `${totalUnsynced} item${totalUnsynced === 1 ? '' : 's'} remaining`
+                        : `${totalUnsynced} item${totalUnsynced === 1 ? '' : 's'} waiting — push now`}
+                    </span>
+                  </div>
+                  <button
+                    type="button"
+                    disabled={drainStarting}
+                    onClick={async () => {
+                      if (drainActive) {
+                        await stopDrainMode('user');
+                        return;
+                      }
+                      setDrainStarting(true);
+                      try {
+                        const { wakeLockHeld } = await startDrainMode();
+                        setDrainWakeLockHeld(wakeLockHeld);
+                      } finally {
+                        setDrainStarting(false);
+                      }
+                    }}
+                    className={cn(
+                      'text-[10px] uppercase tracking-wider px-3 py-1.5 rounded border min-h-[36px] min-w-[88px] disabled:opacity-50',
+                      drainActive
+                        ? 'border-red-700/70 text-red-300 hover:bg-red-900/30'
+                        : 'border-amber-600/70 text-amber-200 hover:bg-amber-900/40',
+                    )}
+                  >
+                    {drainStarting ? 'STARTING…' : drainActive ? 'STOP' : 'DRAIN NOW'}
+                  </button>
+                </div>
+                {drainActive && !drainWakeLockHeld && (
+                  <p className="text-[10px] text-amber-200/80 leading-relaxed">
+                    Keep this screen on — your device doesn't support automatic
+                    wake-lock. Disable Auto-Lock in Settings while draining.
+                  </p>
+                )}
+                {!drainActive && isWakeLockSupported() && (
+                  <p className="text-[10px] text-green-300/60 leading-relaxed">
+                    Holds the screen awake and pushes every 5 seconds until the queue is empty.
+                  </p>
+                )}
+              </div>
+            )}
+
             {/* Status row */}
             <div className="flex items-center justify-between text-green-300/80">
               <span>STATUS</span>

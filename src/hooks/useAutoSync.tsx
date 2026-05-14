@@ -32,6 +32,12 @@ import { syncLog } from '@/lib/sync-logger';
 import { scanForStuckPhotos } from '@/lib/stuck-photo-beacon';
 import { recordSyncHalt, clearSyncHalt } from '@/lib/sync-halt-tracker';
 import { maybeRunPhotoRescueSweep } from '@/lib/photo-rescue-sweep';
+import {
+  isDrainModeActive,
+  subscribeDrainMode,
+  registerDrainRunner,
+  DRAIN_SYNC_INTERVAL_MS,
+} from '@/lib/drain-mode';
 
 /**
  * Result returned by each per-table atomic-sync helper
@@ -58,6 +64,13 @@ const DESKTOP_SYNC_INTERVAL = 30000; // 30 seconds for desktop
 const DESKTOP_IDLE_SYNC_INTERVAL = 120000; // 120 seconds when idle (no unsynced items)
 const MOBILE_SYNC_INTERVAL = 60000; // 60 seconds for mobile (reduced from 5min for faster sync)
 const MOBILE_IDLE_SYNC_INTERVAL = 180000; // 180 seconds when idle on mobile
+// Adaptive boost: when the tab is foreground+online AND there is pending data,
+// poll faster than the normal "active" cadence. This shrinks the window where
+// an iPad Safari user is staring at a stuck "N pending" badge waiting for the
+// next 60s tick. Battery cost is bounded — only fires while the user is
+// looking at the app AND there's actually something to push.
+const MOBILE_PENDING_VISIBLE_INTERVAL = 10000;  // 10s
+const DESKTOP_PENDING_VISIBLE_INTERVAL = 5000;  // 5s
 const MIN_SYNC_INTERVAL = 2000; // Minimum 2s between syncs (was 5s) — anti-thrash floor
 const INITIAL_SYNC_DELAY = 500; // 500ms initial sync delay (was 2s) — UI is paint-stable by then
 const BASE_SYNC_TIMEOUT = 30000; // Base 30 second timeout
@@ -1344,12 +1357,30 @@ export const useAutoSync = () => {
       window.addEventListener('focus', handleFocus);
     }
     
-    // Adaptive periodic sync: use shorter interval when items are pending, longer when idle
+    // Adaptive periodic sync. Interval picks the most aggressive applicable rate:
+    //   1. Drain Mode active                 → DRAIN_SYNC_INTERVAL_MS (5s, hard)
+    //   2. pending>0 + visible + online      → pending-visible boost (10s mobile / 5s desktop)
+    //   3. pending>0                         → activeSyncInterval (60s mobile / 30s desktop)
+    //   4. idle                              → idleSyncInterval
+    const pendingVisibleInterval = isMobileViewport
+      ? MOBILE_PENDING_VISIBLE_INTERVAL
+      : DESKTOP_PENDING_VISIBLE_INTERVAL;
+
+    const computeInterval = (): number => {
+      if (isDrainModeActive()) return DRAIN_SYNC_INTERVAL_MS;
+      const pending = unsyncedCountRef.current > 0;
+      if (!pending) return idleSyncInterval;
+      const visible = typeof document !== 'undefined' && !document.hidden;
+      const online = typeof navigator !== 'undefined' && navigator.onLine;
+      if (visible && online) return pendingVisibleInterval;
+      return activeSyncInterval;
+    };
+
     const scheduleNextSync = () => {
       if (periodicSyncIntervalRef.current) {
         clearInterval(periodicSyncIntervalRef.current);
       }
-      const currentInterval = unsyncedCountRef.current > 0 ? activeSyncInterval : idleSyncInterval;
+      const currentInterval = computeInterval();
       periodicSyncIntervalRef.current = setInterval(() => {
         if (!document.hidden && navigator.onLine) {
           performSync(true);
@@ -1357,10 +1388,17 @@ export const useAutoSync = () => {
       }, currentInterval);
     };
     scheduleNextSync();
-    
+
     // Re-schedule when unsynced count changes (adaptive interval)
     const handleSyncPhotosUpdated = () => scheduleNextSync();
     window.addEventListener('sync-photos-updated', handleSyncPhotosUpdated);
+
+    // Drain Mode toggles → re-pick the interval immediately so the user sees
+    // the cadence change the instant they tap DRAIN PENDING / STOP.
+    const unsubscribeDrainMode = subscribeDrainMode(() => scheduleNextSync());
+    // Drain Mode runner: when active, our 5s tick already drives forceSync,
+    // but the start() entry point also wants to kick one immediately.
+    const unregisterDrainRunner = registerDrainRunner(() => performSync(false));
 
     // Audit M3: also reschedule when an inspection / training / daily-assessment
     // is saved offline (or otherwise becomes dirty). saveInspectionOffline,
@@ -1385,7 +1423,7 @@ export const useAutoSync = () => {
         if (!document.hidden && navigator.onLine) {
           performSync(true);
         }
-      }, activeSyncInterval);
+      }, computeInterval());
     };
     window.addEventListener('sync-records-updated', handleSyncRecordsUpdated);
 
@@ -1551,6 +1589,8 @@ export const useAutoSync = () => {
       window.removeEventListener('sync-records-updated', handleSyncRecordsUpdated);
       unsubscribeRestoreLock();
       unsubscribeLayerBreakerClose();
+      unsubscribeDrainMode();
+      unregisterDrainRunner();
       document.removeEventListener('visibilitychange', handleVisibilityChange);
 
       // H1: tear down resume-triggered Realtime resubscribers
