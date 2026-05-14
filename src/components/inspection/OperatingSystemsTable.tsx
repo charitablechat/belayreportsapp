@@ -24,6 +24,7 @@ import {
 import { DraggableTableRow, DraggableMobileCard } from "./DraggableTableRow";
 import { useNativeDrag } from "@/hooks/useNativeDrag";
 import { useSystemTypeOptions } from "@/hooks/useSystemTypeOptions";
+import { useElementNameOptions } from "@/hooks/useElementNameOptions";
 import { useMemo } from "react";
 
 interface OperatingSystemsTableProps {
