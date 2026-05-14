@@ -1,20 +1,15 @@
 /**
  * Onsite-contact persistence regression lock.
  *
- * The bug: after a dropdown selection, Radix's PopoverContent unmounts and
- * its FocusScope auto-restores focus to the trigger Input. The trigger's
- * onFocus handler (`handleTriggerFocus`) then re-entered edit mode and
- * reopened the popover, masking the fact that `onChange` had already
- * committed the selection upstream — to inspectors it looked like the
- * field "didn't persist" the value they just picked.
- *
- * These tests pin the post-selection contract:
+ * Contract (post flicker-fix):
  *   1. `onChange` is called exactly once with the selected value.
  *   2. The trigger Input shows the selected value (not "" and not stale).
- *   3. The popover stays closed after selection — the focus-restore
- *      auto-fire is suppressed by `justSelectedRef`.
- *   4. A genuine subsequent re-focus by the user (after the suppression
- *      window) reopens the popover normally.
+ *   3. The popover STAYS OPEN after a selection — closure is user-initiated
+ *      only (click outside, Escape, Tab away, X clear button). This kills
+ *      the unmount → focus-restore → reopen flicker the previous
+ *      `justSelectedRef` workaround was trying to mask.
+ *   4. Closing via Radix `onOpenChange(false)` (outside click) closes it,
+ *      and a subsequent re-focus reopens it normally.
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent, act, cleanup } from '@testing-library/react';
