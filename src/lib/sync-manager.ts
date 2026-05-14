@@ -683,8 +683,9 @@ export async function syncPhotos(signal?: AbortSignal): Promise<{ remaining: num
           // L5: Stamp lastError + nextRetryAt (jittered) so this catch-all
           // path also backs off instead of being immediately eligible —
           // mirrors the explicit upload + DB-insert transient paths above.
-          // retryCount is intentionally NOT bumped.
-          await markPhotoTransientFailure(photo.id, cls.message);
+          // retryCount is intentionally NOT bumped. P1: budget-checked.
+          const t = await handleTransientPhotoFailure(photo, cls.message);
+          if (t.deadLettered) { newlyDeadLettered++; changedCount++; }
           return;
         }
         const r = await handlePermanentPhotoFailure(photo, cls.message);
