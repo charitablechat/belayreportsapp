@@ -147,7 +147,7 @@ describe('GlobalAutocomplete onsite_contact dropdown persistence', () => {
     expect(trigger.value).toBe('Charlie Brown');
   });
 
-  it('the focus-restore that fires immediately after a dropdown selection does NOT reopen the popover', async () => {
+  it('popover stays open after a selection (no flicker) and the trigger Input shows the picked value', async () => {
     render(<ControlledHarness existingValues={['Alice Smith']} />);
     const trigger = screen.getByRole('combobox') as HTMLInputElement;
 
@@ -161,19 +161,19 @@ describe('GlobalAutocomplete onsite_contact dropdown persistence', () => {
       fireEvent.click(option);
     });
 
-    // Simulate Radix FocusScope's auto-restore-focus firing on PopoverContent
-    // unmount: the trigger Input gets focused again. Without `justSelectedRef`
-    // the popover would reopen and the field would appear "still in edit
-    // mode" to the inspector.
+    // Popover remains open after selection — closure is user-initiated only.
+    expect(trigger.getAttribute('aria-expanded')).toBe('true');
+    expect(trigger.value).toBe('Alice Smith');
+
+    // A subsequent focus restoration is a no-op (already open).
     await act(async () => {
       fireEvent.focus(trigger);
     });
-
-    expect(trigger.getAttribute('aria-expanded')).toBe('false');
+    expect(trigger.getAttribute('aria-expanded')).toBe('true');
     expect(trigger.value).toBe('Alice Smith');
   });
 
-  it('after the suppression window elapses, a genuine re-focus reopens the popover normally', async () => {
+  it('explicit dismissal closes the popover and a subsequent focus reopens it', async () => {
     render(<ControlledHarness existingValues={['Alice Smith']} />);
     const trigger = screen.getByRole('combobox') as HTMLInputElement;
 
@@ -184,19 +184,15 @@ describe('GlobalAutocomplete onsite_contact dropdown persistence', () => {
     await act(async () => {
       fireEvent.click(option);
     });
+    expect(trigger.getAttribute('aria-expanded')).toBe('true');
 
-    // First simulated post-select auto-restore is consumed by the guard.
+    // Explicit dismissal: Escape key closes.
     await act(async () => {
-      fireEvent.focus(trigger);
+      fireEvent.keyDown(trigger, { key: 'Escape' });
     });
     expect(trigger.getAttribute('aria-expanded')).toBe('false');
 
-    // Wait past the 200ms suppression window.
-    await act(async () => {
-      await new Promise((resolve) => setTimeout(resolve, 250));
-    });
-
-    // A NEW user-initiated focus must reopen the popover.
+    // A new user-initiated focus reopens the popover normally.
     await act(async () => {
       fireEvent.focus(trigger);
     });
