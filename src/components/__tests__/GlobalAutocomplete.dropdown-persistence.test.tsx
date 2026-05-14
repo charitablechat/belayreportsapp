@@ -165,9 +165,10 @@ describe('GlobalAutocomplete onsite_contact dropdown persistence', () => {
     expect(trigger.getAttribute('aria-expanded')).toBe('true');
     expect(trigger.value).toBe('Alice Smith');
 
-    // A subsequent focus restoration is a no-op (already open).
+    // Selecting another item keeps the popover open and re-commits.
+    const option2 = await screen.findByText('Alice Smith');
     await act(async () => {
-      fireEvent.focus(trigger);
+      fireEvent.click(option2);
     });
     expect(trigger.getAttribute('aria-expanded')).toBe('true');
     expect(trigger.value).toBe('Alice Smith');
