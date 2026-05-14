@@ -4108,6 +4108,8 @@ export async function markPhotoAsUploaded(id: string, photoUrl: string) {
         // L5: Successful upload clears the backoff window so an immediate
         // re-upload (e.g. after a manual edit) is eligible right away.
         photo.nextRetryAt = null;
+        // P1: Reset transient-loop counter on success.
+        photo.transientCount = 0;
         // N-G: centralised photo write.
         await putPhotoRecord(db, photo);
         
