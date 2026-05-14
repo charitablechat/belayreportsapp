@@ -51,6 +51,12 @@ import {
   resetSyncSkipCounters,
   type SyncSkipCountersSnapshot,
 } from '@/lib/sync-skip-counters';
+import {
+  clearRescueSweepMarker,
+  getRescueSweepLastRun,
+  runPhotoRescueSweep,
+} from '@/lib/photo-rescue-sweep';
+import { getUserWithCache } from '@/lib/cached-auth';
 
 interface DiagnosticsState {
   swRegistered: boolean;
