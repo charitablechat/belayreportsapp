@@ -311,6 +311,17 @@ export default function DailyAssessmentForm() {
   }, []);
   saveBeforeLeaveRef.current = handleSaveAndLeave;
 
+  // Stable immediate-save trigger for child fields (e.g. notes onBlur).
+  // Flushes pending debounce timer and performs save now so values persist
+  // before navigation. Identity is stable to keep React.memo children happy.
+  const triggerImmediateSave = useCallback(() => {
+    if (autoSaveTimerRef.current) {
+      clearTimeout(autoSaveTimerRef.current);
+      autoSaveTimerRef.current = null;
+    }
+    return handleSaveProgressRef.current?.() ?? Promise.resolve();
+  }, []);
+
   // Unsaved changes protection
   const { isBlocked, confirmNavigation, cancelNavigation, saveAndLeave, bypassAndProceed } = useUnsavedChanges({
     hasUnsavedChanges: hasUnsavedChanges && (assessment?.status !== 'completed' || completionLockOverridden),
