@@ -651,8 +651,9 @@ export async function syncPhotos(signal?: AbortSignal): Promise<{ remaining: num
               syncLog.log('[Sync Manager] Unique constraint hit (race OK), treating as success:', photo.id);
             } else if (cls.kind === 'transient') {
               console.warn('[Sync Manager] Transient DB insert error, will retry after backoff:', photo.id, cls.message);
-              // L5: see upload-error path above.
-              await markPhotoTransientFailure(photo.id, cls.message);
+              // L5: see upload-error path above. P1: budget-checked.
+              const t = await handleTransientPhotoFailure(photo, cls.message);
+              if (t.deadLettered) { newlyDeadLettered++; changedCount++; }
               return;
             } else {
               console.error('[Sync Manager] Permanent DB insert error for photo:', photo.id, cls.message);
