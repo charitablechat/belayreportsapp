@@ -692,6 +692,18 @@ export const SyncPulse = ({ className }: { className?: string }) => {
                         <span>{photoBuckets.stuck}</span>
                       </div>
                     )}
+                    {photoBuckets.blocked > 0 && (
+                      <div
+                        className="flex items-center justify-between text-amber-300"
+                        title={`Parent record(s) still on temp ID: ${photoBuckets.blockedParentIds.slice(0, 3).join(', ')}${photoBuckets.blockedParentIds.length > 3 ? '…' : ''}`}
+                      >
+                        <span className="flex items-center gap-1.5">
+                          <span className="text-amber-400">▸ BLOCKED</span>
+                          <span className="opacity-70">— parent not synced</span>
+                        </span>
+                        <span>{photoBuckets.blocked}</span>
+                      </div>
+                    )}
                   </div>
                 )}
               </div>
