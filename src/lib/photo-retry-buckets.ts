@@ -89,8 +89,10 @@ const EMPTY: PhotoRetryBuckets = {
   ready: 0,
   retrying: 0,
   stuck: 0,
+  blocked: 0,
   retryingMinNextRetryAt: null,
   stuckIds: [],
+  blockedParentIds: [],
 };
 
 /**
@@ -103,12 +105,22 @@ export function bucketPhotos(
   let ready = 0;
   let retrying = 0;
   let stuck = 0;
+  let blocked = 0;
   let retryingMinNextRetryAt: number | null = null;
   const stuckIds: string[] = [];
+  const blockedParents = new Set<string>();
 
   for (const photo of photos) {
     if (!photo.blob) continue;
     if ((photo.retryCount ?? 0) >= MAX_PHOTO_RETRIES) continue;
+
+    // BLOCKED takes precedence: parent inspection still on a temp-* id,
+    // so syncPhotos will skip this photo regardless of backoff state.
+    if (typeof photo.inspectionId === 'string' && photo.inspectionId.startsWith('temp-')) {
+      blocked += 1;
+      blockedParents.add(photo.inspectionId);
+      continue;
+    }
 
     if (photo.nextRetryAt && photo.nextRetryAt > now) {
       retrying += 1;
@@ -130,7 +142,15 @@ export function bucketPhotos(
     ready += 1;
   }
 
-  return { ready, retrying, stuck, retryingMinNextRetryAt, stuckIds };
+  return {
+    ready,
+    retrying,
+    stuck,
+    blocked,
+    retryingMinNextRetryAt,
+    stuckIds,
+    blockedParentIds: Array.from(blockedParents),
+  };
 }
 
 /**
