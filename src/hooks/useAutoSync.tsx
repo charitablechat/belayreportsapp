@@ -1589,6 +1589,8 @@ export const useAutoSync = () => {
       window.removeEventListener('sync-records-updated', handleSyncRecordsUpdated);
       unsubscribeRestoreLock();
       unsubscribeLayerBreakerClose();
+      unsubscribeDrainMode();
+      unregisterDrainRunner();
       document.removeEventListener('visibilitychange', handleVisibilityChange);
 
       // H1: tear down resume-triggered Realtime resubscribers
