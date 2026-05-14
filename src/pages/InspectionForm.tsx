@@ -2108,12 +2108,18 @@ export default function InspectionForm() {
                 dbOp(supabase.from("inspection_equipment").insert(newEquipment as never))
               );
               
-              // Replace temp items in-place, preserving position (no reordering)
+              // Replace temp items in-place, preserving position (no reordering).
+              // CRITICAL: only adopt the server-assigned id/inspection_id — preserve all
+              // other fields from the live React state. Replacing the whole row from the
+              // pre-save snapshot would clobber any edits the user made between when the
+              // snapshot was taken and when this microtask runs (e.g. picking an equipment
+              // type from the combobox immediately after adding the row).
               queueMicrotask(() => {
                 isInternalUpdateRef.current = true;
                 setEquipment(prev => prev.map(e => {
                   if (e.id && e.id.startsWith('temp-') && equipmentTempToNewMap.has(e.id)) {
-                    return equipmentTempToNewMap.get(e.id)!;
+                    const replacement = equipmentTempToNewMap.get(e.id)!;
+                    return { ...e, id: replacement.id, inspection_id: replacement.inspection_id };
                   }
                   return e;
                 }));
