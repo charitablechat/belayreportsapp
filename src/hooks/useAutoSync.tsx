@@ -1357,12 +1357,30 @@ export const useAutoSync = () => {
       window.addEventListener('focus', handleFocus);
     }
     
-    // Adaptive periodic sync: use shorter interval when items are pending, longer when idle
+    // Adaptive periodic sync. Interval picks the most aggressive applicable rate:
+    //   1. Drain Mode active                 → DRAIN_SYNC_INTERVAL_MS (5s, hard)
+    //   2. pending>0 + visible + online      → pending-visible boost (10s mobile / 5s desktop)
+    //   3. pending>0                         → activeSyncInterval (60s mobile / 30s desktop)
+    //   4. idle                              → idleSyncInterval
+    const pendingVisibleInterval = isMobileViewport
+      ? MOBILE_PENDING_VISIBLE_INTERVAL
+      : DESKTOP_PENDING_VISIBLE_INTERVAL;
+
+    const computeInterval = (): number => {
+      if (isDrainModeActive()) return DRAIN_SYNC_INTERVAL_MS;
+      const pending = unsyncedCountRef.current > 0;
+      if (!pending) return idleSyncInterval;
+      const visible = typeof document !== 'undefined' && !document.hidden;
+      const online = typeof navigator !== 'undefined' && navigator.onLine;
+      if (visible && online) return pendingVisibleInterval;
+      return activeSyncInterval;
+    };
+
     const scheduleNextSync = () => {
       if (periodicSyncIntervalRef.current) {
         clearInterval(periodicSyncIntervalRef.current);
       }
-      const currentInterval = unsyncedCountRef.current > 0 ? activeSyncInterval : idleSyncInterval;
+      const currentInterval = computeInterval();
       periodicSyncIntervalRef.current = setInterval(() => {
         if (!document.hidden && navigator.onLine) {
           performSync(true);
@@ -1370,10 +1388,17 @@ export const useAutoSync = () => {
       }, currentInterval);
     };
     scheduleNextSync();
-    
+
     // Re-schedule when unsynced count changes (adaptive interval)
     const handleSyncPhotosUpdated = () => scheduleNextSync();
     window.addEventListener('sync-photos-updated', handleSyncPhotosUpdated);
+
+    // Drain Mode toggles → re-pick the interval immediately so the user sees
+    // the cadence change the instant they tap DRAIN PENDING / STOP.
+    const unsubscribeDrainMode = subscribeDrainMode(() => scheduleNextSync());
+    // Drain Mode runner: when active, our 5s tick already drives forceSync,
+    // but the start() entry point also wants to kick one immediately.
+    const unregisterDrainRunner = registerDrainRunner(() => performSync(false));
 
     // Audit M3: also reschedule when an inspection / training / daily-assessment
     // is saved offline (or otherwise becomes dirty). saveInspectionOffline,
@@ -1398,7 +1423,7 @@ export const useAutoSync = () => {
         if (!document.hidden && navigator.onLine) {
           performSync(true);
         }
-      }, activeSyncInterval);
+      }, computeInterval());
     };
     window.addEventListener('sync-records-updated', handleSyncRecordsUpdated);
 
