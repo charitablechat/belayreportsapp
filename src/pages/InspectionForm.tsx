@@ -1280,7 +1280,7 @@ export default function InspectionForm() {
       }
       if (offlineStandards.length > 0) {
         childDataLoadedRef.current.standards = true;
-        setStandards(mergeStandards(offlineStandards));
+        setStandards(prev => mergeStandardsPreserveLocal(offlineStandards, prev));
       }
       if (offlineSummary.length > 0) {
         childDataLoadedRef.current.summary = true;
@@ -1533,13 +1533,13 @@ export default function InspectionForm() {
 
           const { data: standardsData } = standardsResult;
           if (standardsData && standardsData.length > 0) {
-            setStandards(mergeStandards(standardsData));
+            setStandards(prev => mergeStandardsPreserveLocal(standardsData, prev));
             saveRelatedDataOffline('standards', id!, standardsData).catch(e =>
               console.warn('[InspectionForm] Non-critical: failed to cache standards', e)
             );
           } else if (offlineStandards.length > 0) {
             console.warn('[InspectionForm] Server returned empty standards but local has data -- preserving local');
-            setStandards(mergeStandards(offlineStandards));
+            setStandards(prev => mergeStandardsPreserveLocal(offlineStandards, prev));
           }
 
           const { data: summaryData } = summaryResult;
@@ -1619,7 +1619,7 @@ export default function InspectionForm() {
         setSystems(offSystems); childDataLoadedRef.current.systems = true;
         setZiplines(offZiplines); childDataLoadedRef.current.ziplines = true;
         setEquipment(offEquipment); childDataLoadedRef.current.equipment = true;
-        setStandards(mergeStandards(offStandards)); childDataLoadedRef.current.standards = true;
+        setStandards(prev => mergeStandardsPreserveLocal(offStandards, prev)); childDataLoadedRef.current.standards = true;
         if (offSummary.length > 0) { setSummary(offSummary[0] as typeof summary); }
         childDataLoadedRef.current.summary = true;
 
