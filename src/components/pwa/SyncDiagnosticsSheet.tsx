@@ -95,6 +95,7 @@ export const SyncDiagnosticsSheet = () => {
   const [busyPhotoFailureId, setBusyPhotoFailureId] = useState<string | null>(null);
   const [emergencyFailures, setEmergencyFailures] = useState<EmergencyFallbackFailure[]>([]);
   const [copyingDiag, setCopyingDiag] = useState(false);
+  const [skipCounters, setSkipCounters] = useState<SyncSkipCountersSnapshot>(() => getSyncSkipCounters());
   const [diag, setDiag] = useState<DiagnosticsState>({
     swRegistered: false,
     swController: false,
