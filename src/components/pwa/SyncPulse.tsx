@@ -45,6 +45,13 @@ import {
 } from '@/lib/sync-halt-tracker';
 import { supabase } from '@/integrations/supabase/client';
 import { getUserWithCache } from '@/lib/cached-auth';
+import {
+  startDrainMode,
+  stopDrainMode,
+  subscribeDrainMode,
+  isDrainModeActive,
+} from '@/lib/drain-mode';
+import { isWakeLockSupported } from '@/lib/wake-lock';
 
 type Phase = 'idle' | 'syncing' | 'synced' | 'unsynced' | 'paused' | 'error';
 
