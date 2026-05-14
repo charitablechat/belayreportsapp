@@ -1,3 +1,4 @@
+import { useRef } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
@@ -6,7 +7,7 @@ import { triggerHaptic } from "@/lib/haptics";
 
 interface StandardsTableProps {
   standards: any[];
-  onUpdate: (standards: any[]) => void;
+  onUpdate: (next: any[] | ((prev: any[]) => any[])) => void;
   onImmediateSave?: () => void;
 }
 
