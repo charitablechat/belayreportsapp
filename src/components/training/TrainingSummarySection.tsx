@@ -12,11 +12,12 @@ import { VoiceRichTextEditor } from "@/components/ui/voice-rich-text-editor";
 interface TrainingSummarySectionProps {
   summary: any;
   onUpdate: (field: string, value: any) => void;
+  onImmediateSave?: () => void;
 }
 
 import React from "react";
 
-const TrainingSummarySection = React.memo(function TrainingSummarySection({ summary, onUpdate }: TrainingSummarySectionProps) {
+const TrainingSummarySection = React.memo(function TrainingSummarySection({ summary, onUpdate, onImmediateSave }: TrainingSummarySectionProps) {
   return (
     <Card>
       <CardHeader>
@@ -31,6 +32,7 @@ const TrainingSummarySection = React.memo(function TrainingSummarySection({ summ
           <VoiceRichTextEditor
             content={summary?.observations || ''}
             onChange={(value) => onUpdate('observations', value)}
+            onBlur={onImmediateSave}
             placeholder="Enter your observations here..."
           />
         </div>
@@ -43,6 +45,7 @@ const TrainingSummarySection = React.memo(function TrainingSummarySection({ summ
           <VoiceRichTextEditor
             content={summary?.recommendations || ''}
             onChange={(value) => onUpdate('recommendations', value)}
+            onBlur={onImmediateSave}
             placeholder="Enter your recommendations here..."
           />
         </div>

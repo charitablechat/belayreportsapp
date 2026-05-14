@@ -2152,6 +2152,7 @@ export default function DailyAssessmentForm() {
                   onUpdate={handleOperatingSystemsUpdate}
                   sectionComments={assessment?.systems_comments || ''}
                   onSectionCommentsChange={(value) => handleUpdateAssessment('systems_comments', value)}
+                  onSectionCommentsBlur={triggerImmediateSave}
                 />
               </TabsContent>
 
@@ -2168,6 +2169,7 @@ export default function DailyAssessmentForm() {
                   onUpdate={handleStructureChecksUpdate}
                   sectionComments={assessment?.structure_comments || ''}
                   onSectionCommentsChange={(value) => handleUpdateAssessment('structure_comments', value)}
+                  onSectionCommentsBlur={triggerImmediateSave}
                 />
               </TabsContent>
 
@@ -2177,6 +2179,7 @@ export default function DailyAssessmentForm() {
                   onUpdate={handleEnvironmentChecksUpdate}
                   sectionComments={assessment?.environment_comments || ''}
                   onSectionCommentsChange={(value) => handleUpdateAssessment('environment_comments', value)}
+                  onSectionCommentsBlur={triggerImmediateSave}
                 />
               </TabsContent>
 

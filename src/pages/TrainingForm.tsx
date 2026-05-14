@@ -2110,6 +2110,7 @@ export default function TrainingForm() {
                 <TrainingSummarySection 
                   summary={summary} 
                   onUpdate={updateSummaryField} 
+                  onImmediateSave={triggerImmediateSave}
                 />
               </TabsContent>
 
