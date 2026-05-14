@@ -247,6 +247,16 @@ export async function syncPhotos(signal?: AbortSignal): Promise<{ remaining: num
         `[Sync Manager] Photo cycle breakdown: total=${unuploadedPhotos.length} withTempParent=${withTempParent} inBackoff=${inBackoff} retrySaturated=${retrySaturated} readyThisBatch=${ready} remainingAfter=${remaining} agedOver24h=${stuckAgedCount}`
       );
 
+      // P1 (audit): Surface temp-parent skips in the Sync Diagnostics counters
+      // so the user sees the bottleneck (parent inspection isn't promoting)
+      // without opening the console.
+      if (withTempParent > 0) {
+        try {
+          const { recordSyncSkip } = await import('./sync-skip-counters');
+          recordSyncSkip('parent-temp-id', withTempParent);
+        } catch { /* telemetry best-effort */ }
+      }
+
       // Surface up to 3 temp-parent photos with their parent's last sync error,
       // so we can see *why* the parent isn't promoting.
       if (withTempParent > 0) {
