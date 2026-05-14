@@ -8,6 +8,10 @@ import { Share, X } from 'lucide-react';
 
 const STORAGE_KEY = 'ios-install-prompt-dismissed-v1';
 const PUBLIC_ROUTES = ['/', '/welcome'];
+// When iOS Safari (browser-mode) accumulates this many unsynced items, the
+// install nudge becomes non-dismissible — Safari-tab lifecycle is too
+// punitive to drain reliably from there. Tunable via this single constant.
+const IOS_BROWSER_INSTALL_FORCE_THRESHOLD = 10;
 
 /**
  * Dismissible nudge for iOS Safari users to add the app to their Home Screen.
