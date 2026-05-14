@@ -457,15 +457,6 @@ export function GlobalAutocomplete({
   };
 
   const handleTriggerFocus = () => {
-    // Suppress this focus event if it's the auto-restore that fires when
-    // Radix's FocusScope unmounts after a dropdown selection. Otherwise the
-    // popover would reopen immediately, defeating the user's commit gesture.
-    // Consume the flag once — a genuine subsequent re-focus from the user
-    // (tap, tab, etc.) opens the popover normally.
-    if (justSelectedRef.current) {
-      justSelectedRef.current = false;
-      return;
-    }
     // Only seed inputValue from the prop `value` when transitioning into
     // edit mode (from non-editing). Re-seeding on every focus event clobbers
     // any in-flight local edit the user has typed but not yet committed —
