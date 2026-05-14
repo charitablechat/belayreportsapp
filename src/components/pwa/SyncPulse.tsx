@@ -137,8 +137,10 @@ export const SyncPulse = ({ className }: { className?: string }) => {
     ready: 0,
     retrying: 0,
     stuck: 0,
+    blocked: 0,
     retryingMinNextRetryAt: null,
     stuckIds: [],
+    blockedParentIds: [],
   });
   const [retryingTick, setRetryingTick] = useState(0);
   // PR #2 (Sync Terminal STUCK-validation bucket): parent records that
