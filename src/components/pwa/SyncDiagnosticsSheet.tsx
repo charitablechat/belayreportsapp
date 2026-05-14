@@ -269,6 +269,48 @@ export const SyncDiagnosticsSheet = () => {
             )}
           </Section>
 
+          <Section title="Photo Rescue Sweep">
+            <Row
+              label="Last run"
+              value={
+                getRescueSweepLastRun()
+                  ? formatDistanceToNow(new Date(getRescueSweepLastRun() as string), { addSuffix: true })
+                  : 'Never'
+              }
+            />
+            <p className="text-xs text-muted-foreground pt-1">
+              One-time re-queue of photos that were stuck or dead-lettered before the latest sync fix. Use only if photos from older reports are still missing on the server.
+            </p>
+            <div className="pt-1">
+              <Button
+                variant="outline"
+                size="sm"
+                className="h-7 text-xs"
+                onClick={async () => {
+                  clearRescueSweepMarker();
+                  const u = await getUserWithCache();
+                  if (!u?.id) {
+                    toast.error('Sign in required to run rescue sweep');
+                    return;
+                  }
+                  const result = await runPhotoRescueSweep(u.id);
+                  try {
+                    localStorage.setItem('photo-rescue-sweep-v1-completed', new Date().toISOString());
+                  } catch { /* noop */ }
+                  if (result.rescued > 0) {
+                    toast.success(`Re-queued ${result.rescued} photo${result.rescued === 1 ? '' : 's'} for upload`);
+                  } else {
+                    toast.message('No eligible photos to rescue', {
+                      description: `Scanned ${result.scanned} pending photo${result.scanned === 1 ? '' : 's'}.`,
+                    });
+                  }
+                }}
+              >
+                Re-run rescue sweep
+              </Button>
+            </div>
+          </Section>
+
           <Section title="App Updates">
             <Row label="Installed version" value={`v${import.meta.env.APP_VERSION || '0.0.0'}`} />
             <Row label="Update available" value={needsUpdate ? 'Yes' : 'No'} />
