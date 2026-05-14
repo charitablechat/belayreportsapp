@@ -21,20 +21,32 @@ const STANDARDS_LIST = [
 ];
 
 export default function StandardsTable({ standards, onUpdate, onImmediateSave }: StandardsTableProps) {
+  const saveScheduledRef = useRef(false);
+  const scheduleSave = () => {
+    if (saveScheduledRef.current) return;
+    saveScheduledRef.current = true;
+    queueMicrotask(() => {
+      saveScheduledRef.current = false;
+      onImmediateSave?.();
+    });
+  };
+
   const updateStandard = (index: number, has_documentation: boolean | null) => {
     triggerHaptic('light');
-    const updated = [...standards];
     const inspectionId = window.location.pathname.split('/').pop();
-    const existing = updated[index] || {};
-    updated[index] = { 
-      ...existing, 
-      id: existing.id || crypto.randomUUID(),
-      inspection_id: inspectionId,
-      standard_name: STANDARDS_LIST[index].name,
-      has_documentation 
-    };
-    onUpdate(updated);
-    onImmediateSave?.();
+    onUpdate(prev => {
+      const updated = [...prev];
+      const existing = updated[index] || {};
+      updated[index] = {
+        ...existing,
+        id: existing.id || crypto.randomUUID(),
+        inspection_id: inspectionId,
+        standard_name: STANDARDS_LIST[index].name,
+        has_documentation,
+      };
+      return updated;
+    });
+    scheduleSave();
   };
 
   // Handle YES checkbox: toggle between true and null
