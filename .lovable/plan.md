@@ -1,36 +1,36 @@
-## Finding
+## Plan
 
-The "Element Name" field in `OperatingSystemsTable.tsx` is **already** a Popover + Command combobox (`GlobalAutocomplete`, `fieldType="operating_system_element"`). It opens on focus, filters as you type, lets you select a previous entry, and lets you commit a custom value via Enter or "Create …".
+Mirror the `useSystemTypeOptions` pattern for the Element Name field so new accounts see seeded suggestions in the existing `GlobalAutocomplete` dropdown. No changes to `GlobalAutocomplete`, no new shadcn components, no styling/placeholder changes.
 
-What the user is experiencing is the empty-state: on a fresh device the only sources of suggestions are
-1. `historyOptions` from IndexedDB / `global_field_history` (empty for new users), and
-2. `existingValues` derived from rows already in the current report (empty until they type one).
+### Files
 
-So the popover does open, but it shows "No entries found. Type to add new." — which reads as "no dropdown".
+1. **`src/hooks/useElementNameOptions.ts`** (new) — direct copy of `useSystemTypeOptions.ts` with:
+   - `CATEGORY = "operating_system_elements"`
+   - `DEFAULT_ELEMENT_NAMES = ["Tower", "Two Line Bridge", "Base Station", "Signal Repeater", "Power Module"]`
+   - Hook renamed `useElementNameOptions`
+   - Reuses the existing `equipment_type_options` table + `getEquipmentTypeOptions` / `bulkPutEquipmentTypeOptions` / `putEquipmentTypeOption` IDB helpers (same offline behavior as the sibling). React-Query cache key `["equipment-type-options", "operating_system_elements"]` keeps it isolated from the Operating System list.
+   - Same exported shape `{ options, isLoading, addOption }`.
 
-## Fix
+2. **`src/components/inspection/OperatingSystemsTable.tsx`**
+   - Import and call `useElementNameOptions(existingElementNames)`.
+   - Pass returned `options` as `existingValues` on the Element Name `<GlobalAutocomplete>` (desktop ~line 234 and the mobile mirror).
+   - Revert/remove the inline `DEFAULT_ELEMENT_NAMES` seed added in the previous turn — the hook is now the source of truth.
+   - No other props change. `fieldType="operating_system_element"`, placeholder `"Enter or select name"`, and `className` stay as-is.
 
-Seed the `operating_system_element` field with a small set of common defaults so the dropdown is meaningfully populated the first time a user clicks the field, while preserving every existing behavior (custom typing, selecting saves to history, blue focus outline, placeholder unchanged).
-
-### Changes
-
-1. **`src/components/inspection/OperatingSystemsTable.tsx`**
-   - Add a module-level constant `DEFAULT_ELEMENT_NAMES = ["Tower", "Two Line Bridge", "Base Station", "Signal Repeater", "Power Module"]`.
-   - Merge it into `existingElementNames` (deduped, case-insensitive) before passing to `<GlobalAutocomplete existingValues={…} />`, in both desktop and mobile branches.
-
-That's the entire fix. No other file needs to change:
-- `GlobalAutocomplete` already merges `existingValues` into the dropdown list (`mergedOptions`) and already supports click-to-select + free-form typing.
-- "Operating System" and "Result" styling parity is already in place — `GlobalAutocomplete` is the same control used by other Element-Name instances; it keeps the blue focus ring and the existing `placeholder="Enter or select name"`.
-- Selecting a default writes it to history via `saveToHistory`, so it persists per-user/team going forward exactly like a typed value.
+3. **`src/hooks/__tests__/useElementNameOptions.test.tsx`** (new)
+   - There is no existing test for `useSystemTypeOptions`, so this is a fresh minimal spec following the project's vitest + `@testing-library/react` `renderHook` conventions.
+   - Mocks `@/integrations/supabase/client`, `@/lib/offline-storage`, `@/lib/cached-auth`, `@/hooks/useNetworkStatus`.
+   - Cases:
+     1. Returns `DEFAULT_ELEMENT_NAMES` when offline and IDB cache is empty.
+     2. Returns IDB cache labels when offline with cached entries.
+     3. When online and DB returns rows, returns those labels and writes them to IDB via `bulkPutEquipmentTypeOptions`.
+     4. When online and DB returns no rows, seeds defaults via `supabase.from("equipment_type_options").insert(...)` and returns `DEFAULT_ELEMENT_NAMES`.
+     5. `addOption("Custom")` writes to IDB and inserts to Supabase, dedupes case-insensitively.
+     6. `mergeExisting` behavior: in-progress `existingValues` not already in `options` are appended (case-insensitive dedupe).
+   - Wraps the hook in a fresh `QueryClientProvider` per test.
 
 ### Out of scope
 
-- No changes to `GlobalAutocomplete.tsx` (current dropdown / focus / commit behavior is correct).
-- No DB migration — defaults are client-side seeds; once a user picks one, normal `global_field_history` persistence takes over.
-- No changes to other tables (Equipment, Ziplines) — request is scoped to the Element Name field in the system components table.
-
-### Verification
-
-- Open an inspection → Operating Systems → Add System → click Element Name.
-- Expect the popover to show "Previous entries" with the five seeded names plus any prior history.
-- Typing filters them; pressing Enter on a non-matching string still creates the value; clicking a row commits it and closes the popover.
+- No DB migration. `equipment_type_options` already accepts arbitrary `equipment_category` values; the new `"operating_system_elements"` category is created on first seed insert. (Confirm by inspection in implementation step; if a CHECK constraint blocks it, fall back to a migration.)
+- No edits to `GlobalAutocomplete`, `SystemTypeSelect`, or any other report's Element Name field.
+- No final-list curation — the five defaults are the placeholder list per the task; Belay can edit them later through the same `equipment_type_options` mechanism.

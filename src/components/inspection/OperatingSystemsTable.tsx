@@ -24,6 +24,7 @@ import {
 import { DraggableTableRow, DraggableMobileCard } from "./DraggableTableRow";
 import { useNativeDrag } from "@/hooks/useNativeDrag";
 import { useSystemTypeOptions } from "@/hooks/useSystemTypeOptions";
+import { useElementNameOptions } from "@/hooks/useElementNameOptions";
 import { useMemo } from "react";
 
 interface OperatingSystemsTableProps {
@@ -35,16 +36,6 @@ interface OperatingSystemsTableProps {
 }
 
 const OS_GRID_COLS = "grid-cols-[40px_88px_minmax(180px,1fr)_minmax(160px,1fr)_192px_minmax(150px,1fr)_64px]";
-
-// Default seeds so the Element Name combobox is meaningfully populated on
-// first click for new users (before any history accumulates).
-const DEFAULT_ELEMENT_NAMES = [
-  "Tower",
-  "Two Line Bridge",
-  "Base Station",
-  "Signal Repeater",
-  "Power Module",
-];
 
 function OperatingSystemsTable({ systems, onUpdate, onImmediateSave: rawOnImmediateSave, inspectionId, onGalleryRefresh }: OperatingSystemsTableProps) {
   const [itemToDelete, setItemToDelete] = useState<{ id: string; name: string } | null>(null);
@@ -64,25 +55,14 @@ function OperatingSystemsTable({ systems, onUpdate, onImmediateSave: rawOnImmedi
     return [...new Set(systems.filter(s => !s.is_divider && s.system_name?.trim()).map(s => s.system_name.trim()))];
   }, [systems]);
 
-  // Collect existing element name values for persistent auto-populate,
-  // merged with default seeds (deduped, case-insensitive).
+  // Collect existing element name values from in-progress rows; the hook
+  // merges these with the seeded/server-backed options.
   const existingElementNames = useMemo(() => {
-    const fromRows = systems
-      .filter(s => !s.is_divider && s.name?.trim())
-      .map(s => s.name.trim());
-    const seen = new Set<string>();
-    const merged: string[] = [];
-    for (const v of [...fromRows, ...DEFAULT_ELEMENT_NAMES]) {
-      const k = v.toLowerCase();
-      if (!seen.has(k)) {
-        seen.add(k);
-        merged.push(v);
-      }
-    }
-    return merged;
+    return [...new Set(systems.filter(s => !s.is_divider && s.name?.trim()).map(s => s.name.trim()))];
   }, [systems]);
 
   const { options: systemTypeOptions, addOption: addSystemTypeOption } = useSystemTypeOptions(existingSystemNames);
+  const { options: elementNameOptions } = useElementNameOptions(existingElementNames);
 
   useEffect(() => {
     if (!newItemId) return;
@@ -254,7 +234,7 @@ function OperatingSystemsTable({ systems, onUpdate, onImmediateSave: rawOnImmedi
                         fieldType="operating_system_element"
                         placeholder="Enter or select name"
                         className="border-0 bg-transparent"
-                        existingValues={existingElementNames}
+                        existingValues={elementNameOptions}
                       />
                     </div>
                     <div className="p-2 border-r border-border">
@@ -350,7 +330,7 @@ function OperatingSystemsTable({ systems, onUpdate, onImmediateSave: rawOnImmedi
                             onBlur={onImmediateSave}
                             fieldType="operating_system_element"
                             placeholder="Enter or select name"
-                            existingValues={existingElementNames}
+                            existingValues={elementNameOptions}
                           />
                         </div>
                       </div>
