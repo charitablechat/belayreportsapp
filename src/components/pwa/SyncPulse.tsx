@@ -323,7 +323,7 @@ export const SyncPulse = ({ className }: { className?: string }) => {
   // getPhotoRetryBuckets() resolve, where photoBuckets is still all-zeros but
   // useUnsyncedPhotos may already report a count.
   const photoBucketTotal =
-    photoBuckets.ready + photoBuckets.retrying + photoBuckets.stuck;
+    photoBuckets.ready + photoBuckets.retrying + photoBuckets.stuck + photoBuckets.blocked;
   const photoCountForIndicator = Math.max(unsyncedPhotoCount, photoBucketTotal);
   const totalUnsynced = unsyncedCount + photoCountForIndicator;
 
