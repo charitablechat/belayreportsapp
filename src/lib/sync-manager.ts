@@ -164,6 +164,10 @@ export async function syncPhotos(signal?: AbortSignal): Promise<{ remaining: num
   if (signal?.aborted) return { remaining: 0, changed: 0 };
   if (!navigator.onLine) {
     syncLog.log('[Sync Manager] Offline - skipping photo sync');
+    try {
+      const { recordSyncSkip } = await import('./sync-skip-counters');
+      recordSyncSkip('offline');
+    } catch { /* telemetry best-effort */ }
     return { remaining: 0, changed: 0 };
   }
 
@@ -177,6 +181,12 @@ export async function syncPhotos(signal?: AbortSignal): Promise<{ remaining: num
     const ok = await assertRealSessionForSync('photos');
     if (!ok) {
       syncLog.warn('[Sync Manager] Photos sync skipped — no real session (placeholder/guest/expired)');
+      // P1 (audit): surface the skip so the user can see "online but never syncs"
+      // without opening the console.
+      try {
+        const { recordSyncSkip } = await import('./sync-skip-counters');
+        recordSyncSkip('no-real-session');
+      } catch { /* telemetry best-effort */ }
       return { remaining: 0, changed: 0 };
     }
   } catch (e) {
