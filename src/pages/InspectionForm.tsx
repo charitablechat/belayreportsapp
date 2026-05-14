@@ -135,6 +135,25 @@ const mergeStandards = (loaded: DbRow[]) => {
   });
 };
 
+// Reload-time merge that prefers a locally-set has_documentation when the
+// loaded row is still null/undefined. Prevents an in-flight server fetch
+// (realtime/sync) from blanking a Yes/No checkbox the user just clicked.
+const mergeStandardsPreserveLocal = (loaded: DbRow[], local: DbRow[]) => {
+  return STANDARDS_TEMPLATE.map(template => {
+    const loadedMatch = loaded.find((s) => s.standard_name === template.standard_name);
+    const localMatch = local.find((s) => s.standard_name === template.standard_name);
+    if (loadedMatch && localMatch) {
+      const localHas = (localMatch as { has_documentation?: boolean | null }).has_documentation;
+      const loadedHas = (loadedMatch as { has_documentation?: boolean | null }).has_documentation;
+      if ((loadedHas === null || loadedHas === undefined) && (localHas === true || localHas === false)) {
+        return { ...loadedMatch, has_documentation: localHas };
+      }
+      return loadedMatch;
+    }
+    return loadedMatch || localMatch || { ...template, id: crypto.randomUUID() };
+  });
+};
+
 export default function InspectionForm() {
   const { id } = useParams();
   const navigate = useNavigate();
