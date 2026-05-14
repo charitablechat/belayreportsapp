@@ -186,6 +186,13 @@ export async function syncPhotos(signal?: AbortSignal): Promise<{ remaining: num
 
   syncLog.log('[Sync Manager] Starting photo sync...');
 
+  // P2: Hoisted out of the try-block so the finally clause can always flush
+  // the user-facing dead-letter notification, even when the outer try throws
+  // before the original notification site at end-of-cycle.
+  let newlyDeadLettered = 0;
+  // P0: One-per-cycle "stuck > 24h" notification flag.
+  let stuckAgedCount = 0;
+
   try {
     const { isIdbReadFailure } = await import('./offline-storage');
     const unuploadedPhotosResult = await getUnuploadedPhotos();
