@@ -110,6 +110,13 @@ interface InspectionDB extends DBSchema {
       // and > Date.now(), getUnuploadedPhotos skips the photo so a herd of
       // co-failed photos doesn't pound the network in the next cycle.
       nextRetryAt?: number | null;
+      // P1 (audit Mode-13B): Number of consecutive *transient* failures (network /
+      // 5xx / abort) for this photo. Independent of `retryCount` (which only counts
+      // permanent failures). Used by `syncPhotos` to demote a photo to dead-letter
+      // after `MAX_TRANSIENT_PHOTO_ATTEMPTS` so a photo can't loop forever in the
+      // RETRYING bucket on a persistent classify-as-transient failure mode.
+      // Cleared on success / manual retry. Optional for back-compat with v15- rows.
+      transientCount?: number;
       capturedByUserId?: string | null; // S23: User-id active when this photo was staged
     };
     indexes: { 'by-inspection': string; 'by-uploaded': number };
