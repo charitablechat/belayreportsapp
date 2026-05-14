@@ -222,3 +222,110 @@ export function shouldKeepEditedChild(
   if (!parentLastPulledAt || !child.updated_at) return false;
   return new Date(child.updated_at).getTime() > new Date(parentLastPulledAt).getTime();
 }
+
+/** Row shape any child-array row must satisfy for `mergeChildArray`. */
+export interface ChildArrayRow extends MergeableRecord {
+  id: string;
+  display_order?: number | null;
+}
+
+/** Options for `mergeChildArray`. */
+export interface MergeChildArrayOptions<T extends ChildArrayRow> {
+  /**
+   * Per-field merge for rows present on both sides. When omitted (or empty),
+   * the server row wins wholesale on overlap (callers that don't yet have
+   * per-row `field_timestamps` populated server-side). Local-only rows are
+   * still preserved regardless of this option — that's the bug class this
+   * helper was introduced to fix.
+   */
+  trackedFields?: readonly string[];
+  /**
+   * Called once per merge invocation when at least one **non-`temp-*`** local
+   * row was preserved (i.e. the server is missing rows the user thinks are
+   * already synced — a real drift signal). Use for Sentry beacons. Receives
+   * the count of preserved non-temp rows and an optional caller-supplied
+   * table label.
+   */
+  onLocalOnlyPreserved?: (nonTempCount: number, table?: string) => void;
+  /** Optional label forwarded to `onLocalOnlyPreserved` for telemetry. */
+  table?: string;
+  /**
+   * Custom merge hook for rows present on both sides. When provided, this
+   * overrides the default `trackedFields`-based merge. Used by callers that
+   * have table-specific reconciliation logic (e.g. `mergeStandardsPreserveLocal`).
+   */
+  mergeRow?: (local: T, server: T) => T;
+}
+
+/**
+ * Merge a server-returned child-row array with the current local React state.
+ *
+ * The historical (and bug-causing) pattern across all three forms was
+ * `setX(serverData)` — a wholesale replacement that silently drops:
+ *   - `temp-*` rows the user just added but whose INSERT hasn't yet been
+ *     acknowledged by the server,
+ *   - any locally-newer field edits on a row that exists on both sides,
+ *   - any non-temp row that the server view is transiently missing (e.g.
+ *     RLS hiccup, replication lag) — preserved here, beaconed via the
+ *     `onLocalOnlyPreserved` hook so we can quantify drift in prod.
+ *
+ * Ordering: server order is respected for rows present on the server.
+ * Local-only rows are appended in their original local order. If both sides
+ * carry a numeric `display_order`, the final array is stable-sorted by it
+ * (ascending) so newly-added local rows land where the user placed them.
+ */
+export function mergeChildArray<T extends ChildArrayRow>(
+  local: T[],
+  server: T[],
+  options: MergeChildArrayOptions<T> = {},
+): T[] {
+  const { trackedFields, onLocalOnlyPreserved, table, mergeRow } = options;
+  const serverIds = new Set(server.map(r => r.id));
+  const localById = new Map(local.map(r => [r.id, r]));
+  const out: T[] = [];
+
+  // 1. Walk server order; merge field-level for rows present on both sides.
+  for (const sr of server) {
+    const lr = localById.get(sr.id);
+    if (!lr) {
+      out.push(sr);
+      continue;
+    }
+    if (mergeRow) {
+      out.push(mergeRow(lr, sr));
+    } else if (trackedFields && trackedFields.length > 0) {
+      out.push(mergeRecordFields(lr, sr, [...trackedFields]));
+    } else {
+      // No per-field merge available — server wins on overlap. Still safe
+      // because the dangerous case (local-only rows) is handled in step 2.
+      out.push(sr);
+    }
+  }
+
+  // 2. Preserve local-only rows. Iterate `local` (not `localById`) to keep
+  //    the user's order for these stragglers.
+  let nonTempPreserved = 0;
+  for (const lr of local) {
+    if (serverIds.has(lr.id)) continue;
+    out.push(lr);
+    if (!lr.id.startsWith('temp-')) nonTempPreserved += 1;
+  }
+
+  if (nonTempPreserved > 0 && onLocalOnlyPreserved) {
+    try {
+      onLocalOnlyPreserved(nonTempPreserved, table);
+    } catch {
+      // Telemetry must never break the merge.
+    }
+  }
+
+  // 3. If every row carries a numeric `display_order`, sort by it so newly
+  //    added rows land at the position the user picked (forms set negative
+  //    `display_order` to prepend). Falls back to insertion order otherwise.
+  const allOrdered = out.length > 0 && out.every(r => typeof r.display_order === 'number');
+  if (allOrdered) {
+    out.sort((a, b) => (a.display_order as number) - (b.display_order as number));
+  }
+
+  return out;
+}
