@@ -1,20 +1,15 @@
 /**
  * Onsite-contact persistence regression lock.
  *
- * The bug: after a dropdown selection, Radix's PopoverContent unmounts and
- * its FocusScope auto-restores focus to the trigger Input. The trigger's
- * onFocus handler (`handleTriggerFocus`) then re-entered edit mode and
- * reopened the popover, masking the fact that `onChange` had already
- * committed the selection upstream — to inspectors it looked like the
- * field "didn't persist" the value they just picked.
- *
- * These tests pin the post-selection contract:
+ * Contract (post flicker-fix):
  *   1. `onChange` is called exactly once with the selected value.
  *   2. The trigger Input shows the selected value (not "" and not stale).
- *   3. The popover stays closed after selection — the focus-restore
- *      auto-fire is suppressed by `justSelectedRef`.
- *   4. A genuine subsequent re-focus by the user (after the suppression
- *      window) reopens the popover normally.
+ *   3. The popover STAYS OPEN after a selection — closure is user-initiated
+ *      only (click outside, Escape, Tab away, X clear button). This kills
+ *      the unmount → focus-restore → reopen flicker the previous
+ *      `justSelectedRef` workaround was trying to mask.
+ *   4. Closing via Radix `onOpenChange(false)` (outside click) closes it,
+ *      and a subsequent re-focus reopens it normally.
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent, act, cleanup } from '@testing-library/react';
@@ -152,7 +147,7 @@ describe('GlobalAutocomplete onsite_contact dropdown persistence', () => {
     expect(trigger.value).toBe('Charlie Brown');
   });
 
-  it('the focus-restore that fires immediately after a dropdown selection does NOT reopen the popover', async () => {
+  it('popover stays open after a selection (no flicker) and the trigger Input shows the picked value', async () => {
     render(<ControlledHarness existingValues={['Alice Smith']} />);
     const trigger = screen.getByRole('combobox') as HTMLInputElement;
 
@@ -166,19 +161,20 @@ describe('GlobalAutocomplete onsite_contact dropdown persistence', () => {
       fireEvent.click(option);
     });
 
-    // Simulate Radix FocusScope's auto-restore-focus firing on PopoverContent
-    // unmount: the trigger Input gets focused again. Without `justSelectedRef`
-    // the popover would reopen and the field would appear "still in edit
-    // mode" to the inspector.
-    await act(async () => {
-      fireEvent.focus(trigger);
-    });
+    // Popover remains open after selection — closure is user-initiated only.
+    expect(trigger.getAttribute('aria-expanded')).toBe('true');
+    expect(trigger.value).toBe('Alice Smith');
 
-    expect(trigger.getAttribute('aria-expanded')).toBe('false');
+    // Selecting another item keeps the popover open and re-commits.
+    const option2 = await screen.findByText('Alice Smith');
+    await act(async () => {
+      fireEvent.click(option2);
+    });
+    expect(trigger.getAttribute('aria-expanded')).toBe('true');
     expect(trigger.value).toBe('Alice Smith');
   });
 
-  it('after the suppression window elapses, a genuine re-focus reopens the popover normally', async () => {
+  it('explicit dismissal closes the popover and a subsequent focus reopens it', async () => {
     render(<ControlledHarness existingValues={['Alice Smith']} />);
     const trigger = screen.getByRole('combobox') as HTMLInputElement;
 
@@ -189,19 +185,15 @@ describe('GlobalAutocomplete onsite_contact dropdown persistence', () => {
     await act(async () => {
       fireEvent.click(option);
     });
+    expect(trigger.getAttribute('aria-expanded')).toBe('true');
 
-    // First simulated post-select auto-restore is consumed by the guard.
+    // Explicit dismissal: Escape key closes.
     await act(async () => {
-      fireEvent.focus(trigger);
+      fireEvent.keyDown(trigger, { key: 'Escape' });
     });
     expect(trigger.getAttribute('aria-expanded')).toBe('false');
 
-    // Wait past the 200ms suppression window.
-    await act(async () => {
-      await new Promise((resolve) => setTimeout(resolve, 250));
-    });
-
-    // A NEW user-initiated focus must reopen the popover.
+    // A new user-initiated focus reopens the popover normally.
     await act(async () => {
       fireEvent.focus(trigger);
     });

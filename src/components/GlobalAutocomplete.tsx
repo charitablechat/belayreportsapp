@@ -142,14 +142,6 @@ export function GlobalAutocomplete({
   const hasFetchedFromDb = useRef(false);
   const lastSavedValue = useRef<string | null>(null);
   const triggerInputRef = useRef<HTMLInputElement>(null);
-  // Set true for a short window after a dropdown selection so the focus-
-  // restore that fires when PopoverContent unmounts (Radix FocusScope's
-  // `onCloseAutoFocus`) does NOT re-enter edit mode and reopen the popover.
-  // Without this guard, picking a contact from the dropdown immediately
-  // reopens the popover with the selected value as a search query — looking
-  // (to inspectors) as if the field "didn't persist" even though the parent
-  // state has already been updated.
-  const justSelectedRef = useRef(false);
 
   // Load from IndexedDB on mount, then optionally sync with server
   useEffect(() => {
@@ -369,32 +361,16 @@ export function GlobalAutocomplete({
     !mergedOptions.some(opt => opt.value.toLowerCase() === inputValue.toLowerCase().trim());
 
   const handleSelect = (selectedValue: string) => {
-    // Mark the upcoming focus-restore as "ignore me" BEFORE we mutate any
-    // state — handleTriggerFocus may fire during the same React batch when
-    // PopoverContent unmounts and Radix's FocusScope returns focus to the
-    // trigger Input. Without this, the just-dismissed popover reopens.
-    // The flag is consumed by the next focus event OR cleared by the timer
-    // below, whichever fires first. The timer guarantees that a later
-    // genuine user re-focus is never permanently suppressed if focus moved
-    // elsewhere first (e.g. Enter → focusNextCell).
-    justSelectedRef.current = true;
-    setTimeout(() => { justSelectedRef.current = false; }, 400);
     onChange(selectedValue);
     saveToHistory(selectedValue);
-    setOpen(false);
-    // Mirror the selected value into local input state instead of "" so that
-    // any race window where the trigger Input briefly renders with
-    // `isEditing=true` (e.g. focus restoration before parent state commits)
-    // still shows the selection rather than an empty field. When isEditing
-    // flips back to false, the input falls through to the prop `value` which
-    // is the same selected value — so this is a strict robustness improvement
-    // with no behaviour change in the happy path.
+    // Keep the popover open — closure is user-initiated only (click
+    // outside, Escape, Tab away, or the X button). Closing here caused
+    // a flicker: PopoverContent unmount → Radix FocusScope restores
+    // focus to the trigger Input → onFocus reopens the popover.
     setInputValue(selectedValue);
     setIsEditing(false);
     // Defer onBlur (which usually triggers an immediate save) so React commits
-    // the onChange above before the parent reads state in performSave. Calling
-    // it synchronously races setState and ships the stale (empty) value — same
-    // pattern as the dropdown commit fix.
+    // the onChange above before the parent reads state in performSave.
     if (onBlur) setTimeout(() => onBlur(), 0);
   };
 
@@ -481,15 +457,6 @@ export function GlobalAutocomplete({
   };
 
   const handleTriggerFocus = () => {
-    // Suppress this focus event if it's the auto-restore that fires when
-    // Radix's FocusScope unmounts after a dropdown selection. Otherwise the
-    // popover would reopen immediately, defeating the user's commit gesture.
-    // Consume the flag once — a genuine subsequent re-focus from the user
-    // (tap, tab, etc.) opens the popover normally.
-    if (justSelectedRef.current) {
-      justSelectedRef.current = false;
-      return;
-    }
     // Only seed inputValue from the prop `value` when transitioning into
     // edit mode (from non-editing). Re-seeding on every focus event clobbers
     // any in-flight local edit the user has typed but not yet committed —
