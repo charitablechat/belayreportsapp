@@ -253,8 +253,9 @@ export async function syncPhotos(signal?: AbortSignal): Promise<{ remaining: num
     let changedCount = 0;
     // 1.C — Per-cycle count of photos that JUST crossed the dead-letter
     // threshold this cycle. Drives a single user-facing notification at end
-    // of cycle (instead of one per photo).
-    let newlyDeadLettered = 0;
+    // of cycle (instead of one per photo). P2: hoisted to outer scope so
+    // the finally clause can flush even on outer-throw.
+    newlyDeadLettered = 0;
     // Track IDs already processed in this batch to skip duplicates without N+1 queries.
     // Read-then-await pattern below makes this safe under bounded concurrency.
     const processedIds = new Set<string>();
