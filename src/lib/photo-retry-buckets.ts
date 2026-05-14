@@ -40,10 +40,18 @@ export interface PhotoRetryBuckets {
   retrying: number;
   /** Subset of READY: never attempted (0/0/null/null), age > 5min. */
   stuck: number;
+  /**
+   * P0 (audit): photos whose parent inspection is still on a `temp-*` id
+   * — `syncPhotos` skips these without bumping `retryCount`, so they sit
+   * in PENDING forever. The bottleneck is the parent record, not the photo.
+   */
+  blocked: number;
   /** Earliest `nextRetryAt` across the RETRYING bucket, or null. */
   retryingMinNextRetryAt: number | null;
   /** Photo IDs in the STUCK bucket (used by the "Retry now" button). */
   stuckIds: string[];
+  /** Distinct parent inspection ids in the BLOCKED bucket. */
+  blockedParentIds: string[];
 }
 
 interface PhotoLike {
@@ -54,6 +62,7 @@ interface PhotoLike {
   lastError?: string | null;
   blob?: Blob | null;
   timestamp?: number;
+  inspectionId?: string;
 }
 
 /**
@@ -80,8 +89,10 @@ const EMPTY: PhotoRetryBuckets = {
   ready: 0,
   retrying: 0,
   stuck: 0,
+  blocked: 0,
   retryingMinNextRetryAt: null,
   stuckIds: [],
+  blockedParentIds: [],
 };
 
 /**
@@ -94,12 +105,22 @@ export function bucketPhotos(
   let ready = 0;
   let retrying = 0;
   let stuck = 0;
+  let blocked = 0;
   let retryingMinNextRetryAt: number | null = null;
   const stuckIds: string[] = [];
+  const blockedParents = new Set<string>();
 
   for (const photo of photos) {
     if (!photo.blob) continue;
     if ((photo.retryCount ?? 0) >= MAX_PHOTO_RETRIES) continue;
+
+    // BLOCKED takes precedence: parent inspection still on a temp-* id,
+    // so syncPhotos will skip this photo regardless of backoff state.
+    if (typeof photo.inspectionId === 'string' && photo.inspectionId.startsWith('temp-')) {
+      blocked += 1;
+      blockedParents.add(photo.inspectionId);
+      continue;
+    }
 
     if (photo.nextRetryAt && photo.nextRetryAt > now) {
       retrying += 1;
@@ -121,7 +142,15 @@ export function bucketPhotos(
     ready += 1;
   }
 
-  return { ready, retrying, stuck, retryingMinNextRetryAt, stuckIds };
+  return {
+    ready,
+    retrying,
+    stuck,
+    blocked,
+    retryingMinNextRetryAt,
+    stuckIds,
+    blockedParentIds: Array.from(blockedParents),
+  };
 }
 
 /**

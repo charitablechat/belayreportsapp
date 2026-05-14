@@ -137,8 +137,10 @@ export const SyncPulse = ({ className }: { className?: string }) => {
     ready: 0,
     retrying: 0,
     stuck: 0,
+    blocked: 0,
     retryingMinNextRetryAt: null,
     stuckIds: [],
+    blockedParentIds: [],
   });
   const [retryingTick, setRetryingTick] = useState(0);
   // PR #2 (Sync Terminal STUCK-validation bucket): parent records that
@@ -321,7 +323,7 @@ export const SyncPulse = ({ className }: { className?: string }) => {
   // getPhotoRetryBuckets() resolve, where photoBuckets is still all-zeros but
   // useUnsyncedPhotos may already report a count.
   const photoBucketTotal =
-    photoBuckets.ready + photoBuckets.retrying + photoBuckets.stuck;
+    photoBuckets.ready + photoBuckets.retrying + photoBuckets.stuck + photoBuckets.blocked;
   const photoCountForIndicator = Math.max(unsyncedPhotoCount, photoBucketTotal);
   const totalUnsynced = unsyncedCount + photoCountForIndicator;
 
@@ -688,6 +690,18 @@ export const SyncPulse = ({ className }: { className?: string }) => {
                           </button>
                         </span>
                         <span>{photoBuckets.stuck}</span>
+                      </div>
+                    )}
+                    {photoBuckets.blocked > 0 && (
+                      <div
+                        className="flex items-center justify-between text-amber-300"
+                        title={`Parent record(s) still on temp ID: ${photoBuckets.blockedParentIds.slice(0, 3).join(', ')}${photoBuckets.blockedParentIds.length > 3 ? '…' : ''}`}
+                      >
+                        <span className="flex items-center gap-1.5">
+                          <span className="text-amber-400">▸ BLOCKED</span>
+                          <span className="opacity-70">— parent not synced</span>
+                        </span>
+                        <span>{photoBuckets.blocked}</span>
                       </div>
                     )}
                   </div>

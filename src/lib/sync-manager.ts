@@ -46,8 +46,15 @@ export function classifyPhotoError(err: unknown): { kind: PhotoErrorClass; messa
   if (code === '23505' || msg.includes('duplicate key')) {
     return { kind: 'success-equivalent', message: rawMsg };
   }
-  // Storage "duplicate" with upsert — treat as success.
-  if (status === 409 && (msg.includes('duplicate') || msg.includes('already exists'))) {
+  // Storage "duplicate" — treat as success. Most servers return 409, but the
+  // audit (P2) flagged that some Supabase Storage paths return 400 with the
+  // same body shape ("The resource already exists" / "Duplicate"). Either
+  // status with that message means the object is on the server, so we
+  // intentionally accept both rather than dead-letter a successful upload.
+  if (
+    (status === 409 || status === 400) &&
+    (msg.includes('duplicate') || msg.includes('already exists') || msg.includes('resource already exists'))
+  ) {
     return { kind: 'success-equivalent', message: rawMsg };
   }
 
@@ -164,6 +171,10 @@ export async function syncPhotos(signal?: AbortSignal): Promise<{ remaining: num
   if (signal?.aborted) return { remaining: 0, changed: 0 };
   if (!navigator.onLine) {
     syncLog.log('[Sync Manager] Offline - skipping photo sync');
+    try {
+      const { recordSyncSkip } = await import('./sync-skip-counters');
+      recordSyncSkip('offline');
+    } catch { /* telemetry best-effort */ }
     return { remaining: 0, changed: 0 };
   }
 
@@ -177,6 +188,12 @@ export async function syncPhotos(signal?: AbortSignal): Promise<{ remaining: num
     const ok = await assertRealSessionForSync('photos');
     if (!ok) {
       syncLog.warn('[Sync Manager] Photos sync skipped — no real session (placeholder/guest/expired)');
+      // P1 (audit): surface the skip so the user can see "online but never syncs"
+      // without opening the console.
+      try {
+        const { recordSyncSkip } = await import('./sync-skip-counters');
+        recordSyncSkip('no-real-session');
+      } catch { /* telemetry best-effort */ }
       return { remaining: 0, changed: 0 };
     }
   } catch (e) {
@@ -229,6 +246,16 @@ export async function syncPhotos(signal?: AbortSignal): Promise<{ remaining: num
       console.warn(
         `[Sync Manager] Photo cycle breakdown: total=${unuploadedPhotos.length} withTempParent=${withTempParent} inBackoff=${inBackoff} retrySaturated=${retrySaturated} readyThisBatch=${ready} remainingAfter=${remaining} agedOver24h=${stuckAgedCount}`
       );
+
+      // P1 (audit): Surface temp-parent skips in the Sync Diagnostics counters
+      // so the user sees the bottleneck (parent inspection isn't promoting)
+      // without opening the console.
+      if (withTempParent > 0) {
+        try {
+          const { recordSyncSkip } = await import('./sync-skip-counters');
+          recordSyncSkip('parent-temp-id', withTempParent);
+        } catch { /* telemetry best-effort */ }
+      }
 
       // Surface up to 3 temp-parent photos with their parent's last sync error,
       // so we can see *why* the parent isn't promoting.

@@ -46,6 +46,11 @@ import {
 } from '@/lib/empty-local-conflict-store';
 import { markUserCleared } from '@/lib/clear-intent';
 import { supabase } from '@/integrations/supabase/client';
+import {
+  getSyncSkipCounters,
+  resetSyncSkipCounters,
+  type SyncSkipCountersSnapshot,
+} from '@/lib/sync-skip-counters';
 
 interface DiagnosticsState {
   swRegistered: boolean;
@@ -90,6 +95,7 @@ export const SyncDiagnosticsSheet = () => {
   const [busyPhotoFailureId, setBusyPhotoFailureId] = useState<string | null>(null);
   const [emergencyFailures, setEmergencyFailures] = useState<EmergencyFallbackFailure[]>([]);
   const [copyingDiag, setCopyingDiag] = useState(false);
+  const [skipCounters, setSkipCounters] = useState<SyncSkipCountersSnapshot>(() => getSyncSkipCounters());
   const [diag, setDiag] = useState<DiagnosticsState>({
     swRegistered: false,
     swController: false,
@@ -126,6 +132,11 @@ export const SyncDiagnosticsSheet = () => {
       setEmergencyFailures(getEmergencyFallbackFailures());
     } catch {
       setEmergencyFailures([]);
+    }
+    try {
+      setSkipCounters(getSyncSkipCounters());
+    } catch {
+      /* ignore */
     }
     setDiag({
       swRegistered,
@@ -211,6 +222,45 @@ export const SyncDiagnosticsSheet = () => {
             <Row label="Last sync" value={formatDate(lastSyncTime)} />
             <Row label="Pending records" value={String(unsyncedCount)} />
             <Row label="Pending photos" value={String(unsyncedPhotoCount)} />
+          </Section>
+
+          <Section title="Photo Sync Skips">
+            <Row
+              label="Skipped (no real session)"
+              value={String(skipCounters.noRealSession)}
+            />
+            <Row
+              label="Skipped (offline)"
+              value={String(skipCounters.offline)}
+            />
+            <Row
+              label="Blocked (parent on temp ID)"
+              value={String(skipCounters.parentTempId)}
+            />
+            <Row
+              label="Last skip"
+              value={
+                skipCounters.lastSkipAt
+                  ? `${formatDistanceToNow(new Date(skipCounters.lastSkipAt), { addSuffix: true })}${skipCounters.lastReason ? ` (${skipCounters.lastReason})` : ''}`
+                  : '—'
+              }
+            />
+            {(skipCounters.noRealSession + skipCounters.offline + skipCounters.parentTempId) > 0 && (
+              <div className="pt-1">
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="h-7 text-xs"
+                  onClick={() => {
+                    resetSyncSkipCounters();
+                    setSkipCounters(getSyncSkipCounters());
+                    toast.success('Counters reset');
+                  }}
+                >
+                  Reset counters
+                </Button>
+              </div>
+            )}
           </Section>
 
           <Section title="App Updates">

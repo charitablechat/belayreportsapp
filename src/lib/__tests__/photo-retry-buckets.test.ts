@@ -15,6 +15,7 @@ interface Photo {
   lastError?: string | null;
   blob?: Blob | null;
   timestamp?: number;
+  inspectionId?: string;
 }
 
 const ready = (id: string): Photo => ({
@@ -98,9 +99,28 @@ describe('bucketPhotos', () => {
       ready: 0,
       retrying: 0,
       stuck: 0,
+      blocked: 0,
       retryingMinNextRetryAt: null,
       stuckIds: [],
+      blockedParentIds: [],
     });
+  });
+
+  it('classifies photos with temp-* parent as BLOCKED, regardless of backoff', () => {
+    const tempParent: Photo & { inspectionId: string } = {
+      id: 'p1',
+      uploaded: 0,
+      retryCount: 0,
+      nextRetryAt: null,
+      lastError: null,
+      blob: FAKE_BLOB,
+      timestamp: Date.now() - 60_000,
+      inspectionId: 'temp-abc-123',
+    };
+    const r = bucketPhotos([tempParent, ready('r1')]);
+    expect(r.blocked).toBe(1);
+    expect(r.blockedParentIds).toEqual(['temp-abc-123']);
+    expect(r.ready).toBe(1);
   });
 
   it('counts READY photos (recent, no nextRetryAt, retryCount=0)', () => {
