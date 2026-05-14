@@ -224,6 +224,45 @@ export const SyncDiagnosticsSheet = () => {
             <Row label="Pending photos" value={String(unsyncedPhotoCount)} />
           </Section>
 
+          <Section title="Photo Sync Skips">
+            <Row
+              label="Skipped (no real session)"
+              value={String(skipCounters.noRealSession)}
+            />
+            <Row
+              label="Skipped (offline)"
+              value={String(skipCounters.offline)}
+            />
+            <Row
+              label="Blocked (parent on temp ID)"
+              value={String(skipCounters.parentTempId)}
+            />
+            <Row
+              label="Last skip"
+              value={
+                skipCounters.lastSkipAt
+                  ? `${formatDistanceToNow(new Date(skipCounters.lastSkipAt), { addSuffix: true })}${skipCounters.lastReason ? ` (${skipCounters.lastReason})` : ''}`
+                  : '—'
+              }
+            />
+            {(skipCounters.noRealSession + skipCounters.offline + skipCounters.parentTempId) > 0 && (
+              <div className="pt-1">
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="h-7 text-xs"
+                  onClick={() => {
+                    resetSyncSkipCounters();
+                    setSkipCounters(getSyncSkipCounters());
+                    toast.success('Counters reset');
+                  }}
+                >
+                  Reset counters
+                </Button>
+              </div>
+            )}
+          </Section>
+
           <Section title="App Updates">
             <Row label="Installed version" value={`v${import.meta.env.APP_VERSION || '0.0.0'}`} />
             <Row label="Update available" value={needsUpdate ? 'Yes' : 'No'} />
