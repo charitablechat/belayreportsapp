@@ -24,11 +24,12 @@ interface OperatingSystemsSectionProps {
   onUpdate: (systems: any[]) => void;
   sectionComments: string;
   onSectionCommentsChange: (value: string) => void;
+  onSectionCommentsBlur?: () => void;
 }
 
 import React from "react";
 
-const OperatingSystemsSection = React.memo(function OperatingSystemsSection({ systems, onUpdate, sectionComments, onSectionCommentsChange }: OperatingSystemsSectionProps) {
+const OperatingSystemsSection = React.memo(function OperatingSystemsSection({ systems, onUpdate, sectionComments, onSectionCommentsChange, onSectionCommentsBlur }: OperatingSystemsSectionProps) {
   const handleToggle = (systemName: string) => {
     triggerHaptic('light');
     const exists = systems.some(s => s.system_name === systemName);
@@ -139,6 +140,7 @@ const OperatingSystemsSection = React.memo(function OperatingSystemsSection({ sy
         <SectionComments
           value={sectionComments}
           onChange={onSectionCommentsChange}
+          onBlur={onSectionCommentsBlur}
           placeholder="Add notes about operating systems, specific configurations, or special considerations..."
           label="Systems Notes"
         />

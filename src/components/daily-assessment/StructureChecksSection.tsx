@@ -19,11 +19,12 @@ interface StructureChecksSectionProps {
   onUpdate: (checks: any[]) => void;
   sectionComments: string;
   onSectionCommentsChange: (value: string) => void;
+  onSectionCommentsBlur?: () => void;
 }
 
 import React from "react";
 
-const StructureChecksSection = React.memo(function StructureChecksSection({ checks, onUpdate, sectionComments, onSectionCommentsChange }: StructureChecksSectionProps) {
+const StructureChecksSection = React.memo(function StructureChecksSection({ checks, onUpdate, sectionComments, onSectionCommentsChange, onSectionCommentsBlur }: StructureChecksSectionProps) {
   const handleToggle = (itemKey: string) => {
     triggerHaptic('light');
     const existingCheck = checks.find(c => c.item_key === itemKey);
@@ -71,6 +72,7 @@ const StructureChecksSection = React.memo(function StructureChecksSection({ chec
         <SectionComments
           value={sectionComments}
           onChange={onSectionCommentsChange}
+          onBlur={onSectionCommentsBlur}
           placeholder="Add notes about structural observations, damage, or maintenance needs..."
           label="Structure Notes"
         />

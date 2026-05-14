@@ -280,6 +280,17 @@ export default function TrainingForm() {
   }, []);
   saveBeforeLeaveRef.current = handleSaveAndLeave;
 
+  // Stable immediate-save trigger for child fields (e.g. notes onBlur).
+  // Flushes pending debounce timer and performs save now so values persist
+  // before navigation. Identity is stable to keep React.memo children happy.
+  const triggerImmediateSave = useCallback(() => {
+    if (autoSaveTimer.current) {
+      clearTimeout(autoSaveTimer.current);
+      autoSaveTimer.current = null;
+    }
+    return saveTrainingRef.current?.() ?? Promise.resolve();
+  }, []);
+
   // Unsaved changes protection
   const { isBlocked, confirmNavigation, cancelNavigation, saveAndLeave, bypassAndProceed } = useUnsavedChanges({
     hasUnsavedChanges: hasUnsavedChanges && (training?.status !== 'completed' || completionLockOverridden),
@@ -2099,6 +2110,7 @@ export default function TrainingForm() {
                 <TrainingSummarySection 
                   summary={summary} 
                   onUpdate={updateSummaryField} 
+                  onImmediateSave={triggerImmediateSave}
                 />
               </TabsContent>
 

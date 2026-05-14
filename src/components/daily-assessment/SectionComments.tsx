@@ -9,6 +9,7 @@ import { MessageSquare } from "lucide-react";
 interface SectionCommentsProps {
   value: string;
   onChange: (value: string) => void;
+  onBlur?: () => void;
   placeholder?: string;
   label?: string;
 }
@@ -16,6 +17,7 @@ interface SectionCommentsProps {
 export function SectionComments({ 
   value, 
   onChange, 
+  onBlur,
   placeholder = "Add notes or comments...",
   label = "Section Notes"
 }: SectionCommentsProps) {
@@ -28,6 +30,7 @@ export function SectionComments({
       <DebouncedTextarea
         value={value || ''}
         onChange={onChange}
+        onBlur={onBlur}
         placeholder={placeholder}
         rows={3}
         className="font-mono text-sm bg-amber-50 dark:bg-amber-950/30 border-amber-300 dark:border-amber-700 focus:border-amber-500 placeholder:text-amber-800/40 dark:placeholder:text-amber-300/40 text-black dark:text-amber-100 resize-y"

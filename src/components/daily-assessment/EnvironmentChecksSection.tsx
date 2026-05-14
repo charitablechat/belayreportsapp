@@ -15,11 +15,12 @@ interface EnvironmentChecksSectionProps {
   onUpdate: (checks: any[]) => void;
   sectionComments: string;
   onSectionCommentsChange: (value: string) => void;
+  onSectionCommentsBlur?: () => void;
 }
 
 import React from "react";
 
-const EnvironmentChecksSection = React.memo(function EnvironmentChecksSection({ checks, onUpdate, sectionComments, onSectionCommentsChange }: EnvironmentChecksSectionProps) {
+const EnvironmentChecksSection = React.memo(function EnvironmentChecksSection({ checks, onUpdate, sectionComments, onSectionCommentsChange, onSectionCommentsBlur }: EnvironmentChecksSectionProps) {
   const handleToggle = (itemKey: string) => {
     triggerHaptic('light');
     const existingCheck = checks.find(c => c.item_key === itemKey);
@@ -67,6 +68,7 @@ const EnvironmentChecksSection = React.memo(function EnvironmentChecksSection({ 
         <SectionComments
           value={sectionComments}
           onChange={onSectionCommentsChange}
+          onBlur={onSectionCommentsBlur}
           placeholder="Add notes about environmental conditions, weather concerns, or other observations..."
           label="Environment Notes"
         />
