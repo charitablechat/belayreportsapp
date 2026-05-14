@@ -4247,6 +4247,8 @@ export async function resetPhotoForRetry(id: string): Promise<boolean> {
       // immediately on the next sync cycle, not after waiting out the prior
       // failure's window.
       photo.nextRetryAt = null;
+      // P1: Manual retry also clears the transient-loop budget.
+      photo.transientCount = 0;
       // N-G: centralised photo write.
       await putPhotoRecord(db, photo);
       return true;
