@@ -32,6 +32,12 @@ import { syncLog } from '@/lib/sync-logger';
 import { scanForStuckPhotos } from '@/lib/stuck-photo-beacon';
 import { recordSyncHalt, clearSyncHalt } from '@/lib/sync-halt-tracker';
 import { maybeRunPhotoRescueSweep } from '@/lib/photo-rescue-sweep';
+import {
+  isDrainModeActive,
+  subscribeDrainMode,
+  registerDrainRunner,
+  DRAIN_SYNC_INTERVAL_MS,
+} from '@/lib/drain-mode';
 
 /**
  * Result returned by each per-table atomic-sync helper
@@ -58,6 +64,13 @@ const DESKTOP_SYNC_INTERVAL = 30000; // 30 seconds for desktop
 const DESKTOP_IDLE_SYNC_INTERVAL = 120000; // 120 seconds when idle (no unsynced items)
 const MOBILE_SYNC_INTERVAL = 60000; // 60 seconds for mobile (reduced from 5min for faster sync)
 const MOBILE_IDLE_SYNC_INTERVAL = 180000; // 180 seconds when idle on mobile
+// Adaptive boost: when the tab is foreground+online AND there is pending data,
+// poll faster than the normal "active" cadence. This shrinks the window where
+// an iPad Safari user is staring at a stuck "N pending" badge waiting for the
+// next 60s tick. Battery cost is bounded — only fires while the user is
+// looking at the app AND there's actually something to push.
+const MOBILE_PENDING_VISIBLE_INTERVAL = 10000;  // 10s
+const DESKTOP_PENDING_VISIBLE_INTERVAL = 5000;  // 5s
 const MIN_SYNC_INTERVAL = 2000; // Minimum 2s between syncs (was 5s) — anti-thrash floor
 const INITIAL_SYNC_DELAY = 500; // 500ms initial sync delay (was 2s) — UI is paint-stable by then
 const BASE_SYNC_TIMEOUT = 30000; // Base 30 second timeout
