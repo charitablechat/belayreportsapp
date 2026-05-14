@@ -126,11 +126,18 @@ function OperatingSystemsTable({ systems, onUpdate, onImmediateSave: rawOnImmedi
     });
   }, [onUpdate]);
 
+  // Dropdown / select-style fields commit on selection (no blur event), so we
+  // defer an immediate save by one tick to flush IDB before navigation.
+  const COMMIT_FIELDS = new Set(['result', 'system_name']);
+
   const updateSystem = useCallback((item: any, field: string, value: any) => {
     onUpdate(prev => prev.map(s =>
       s.id === item.id ? { ...s, [field]: value } : s
     ));
-  }, [onUpdate]);
+    if (COMMIT_FIELDS.has(field) && onImmediateSave) {
+      setTimeout(() => onImmediateSave(), 0);
+    }
+  }, [onUpdate, onImmediateSave]);
 
   const handleDeleteConfirm = useCallback(() => {
     if (itemToDelete) {
