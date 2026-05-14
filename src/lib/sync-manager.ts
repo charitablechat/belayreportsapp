@@ -212,12 +212,22 @@ export async function syncPhotos(signal?: AbortSignal): Promise<{ remaining: num
     // is actually pending work to summarise.
     if (unuploadedPhotos.length > 0) {
       const now = Date.now();
+      const STUCK_AGE_MS = 24 * 60 * 60 * 1000; // 24h
       const withTempParent = unuploadedPhotos.filter(p => p.inspectionId?.startsWith('temp-')).length;
       const inBackoff = unuploadedPhotos.filter(p => p.nextRetryAt && p.nextRetryAt > now).length;
       const retrySaturated = skippedCount;
       const ready = batch.length;
+      // P0: Aged-pending photos (uploaded=0, never dead-lettered, > 24h old).
+      // Drives a single user-facing notification per cycle in the finally block
+      // so the user sees that photos are silently rotting before they have to
+      // open the Sync Terminal.
+      stuckAgedCount = unuploadedPhotos.filter(p =>
+        (p.retryCount || 0) < MAX_PHOTO_RETRIES &&
+        typeof p.timestamp === 'number' &&
+        (now - p.timestamp) > STUCK_AGE_MS
+      ).length;
       console.warn(
-        `[Sync Manager] Photo cycle breakdown: total=${unuploadedPhotos.length} withTempParent=${withTempParent} inBackoff=${inBackoff} retrySaturated=${retrySaturated} readyThisBatch=${ready} remainingAfter=${remaining}`
+        `[Sync Manager] Photo cycle breakdown: total=${unuploadedPhotos.length} withTempParent=${withTempParent} inBackoff=${inBackoff} retrySaturated=${retrySaturated} readyThisBatch=${ready} remainingAfter=${remaining} agedOver24h=${stuckAgedCount}`
       );
 
       // Surface up to 3 temp-parent photos with their parent's last sync error,
