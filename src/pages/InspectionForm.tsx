@@ -2079,12 +2079,15 @@ export default function InspectionForm() {
                 dbOp(supabase.from("inspection_ziplines").insert(newZiplines as never))
               );
               
-              // Replace temp items in-place, preserving position (no reordering)
+              // Replace temp items in-place, preserving position (no reordering).
+              // Adopt only the server-assigned id/inspection_id; keep all other fields
+              // from live React state to avoid clobbering in-flight user edits.
               queueMicrotask(() => {
                 isInternalUpdateRef.current = true;
                 setZiplines(prev => prev.map(z => {
                   if (z.id && z.id.startsWith('temp-') && ziplineTempToNewMap.has(z.id)) {
-                    return ziplineTempToNewMap.get(z.id)!;
+                    const replacement = ziplineTempToNewMap.get(z.id)!;
+                    return { ...z, id: replacement.id, inspection_id: replacement.inspection_id };
                   }
                   return z;
                 }));
