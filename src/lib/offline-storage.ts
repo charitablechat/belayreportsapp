@@ -110,6 +110,13 @@ interface InspectionDB extends DBSchema {
       // and > Date.now(), getUnuploadedPhotos skips the photo so a herd of
       // co-failed photos doesn't pound the network in the next cycle.
       nextRetryAt?: number | null;
+      // P1 (audit Mode-13B): Number of consecutive *transient* failures (network /
+      // 5xx / abort) for this photo. Independent of `retryCount` (which only counts
+      // permanent failures). Used by `syncPhotos` to demote a photo to dead-letter
+      // after `MAX_TRANSIENT_PHOTO_ATTEMPTS` so a photo can't loop forever in the
+      // RETRYING bucket on a persistent classify-as-transient failure mode.
+      // Cleared on success / manual retry. Optional for back-compat with v15- rows.
+      transientCount?: number;
       capturedByUserId?: string | null; // S23: User-id active when this photo was staged
     };
     indexes: { 'by-inspection': string; 'by-uploaded': number };
@@ -4101,6 +4108,8 @@ export async function markPhotoAsUploaded(id: string, photoUrl: string) {
         // L5: Successful upload clears the backoff window so an immediate
         // re-upload (e.g. after a manual edit) is eligible right away.
         photo.nextRetryAt = null;
+        // P1: Reset transient-loop counter on success.
+        photo.transientCount = 0;
         // N-G: centralised photo write.
         await putPhotoRecord(db, photo);
         
@@ -4169,7 +4178,7 @@ export async function incrementPhotoRetryCount(id: string): Promise<number> {
  * hit a transient flake gets attempt-1 spacing (~5s), and a photo that
  * already has permanent failures gets a slightly longer window.
  */
-export async function markPhotoTransientFailure(id: string, message: string): Promise<void> {
+export async function markPhotoTransientFailure(id: string, message: string): Promise<number> {
   return withIndexedDBErrorBoundary(
     async () => {
       const db = await getDB();
@@ -4179,14 +4188,25 @@ export async function markPhotoTransientFailure(id: string, message: string): Pr
         const now = Date.now();
         photo.lastErrorAt = now;
         photo.nextRetryAt = now + jitteredPhotoBackoffMs((photo.retryCount || 0) + 1);
+        // P1: Bump the transient-loop counter and return the new value so
+        // the sync layer can demote a photo to dead-letter once it has been
+        // looping in the RETRYING bucket past the budget (default 20 cycles).
+        photo.transientCount = (photo.transientCount || 0) + 1;
         // N-G: centralised photo write.
         await putPhotoRecord(db, photo);
+        return photo.transientCount;
       }
+      return 0;
     },
-    undefined,
+    0,
     'markPhotoTransientFailure'
   );
 }
+
+/** P1: Budget for consecutive transient failures before a photo is demoted to
+ *  dead-letter. ~20 cycles ≈ 20 jittered backoff windows; with the current
+ *  ramp this is well over an hour of give-up time on a healthy connection. */
+export const MAX_TRANSIENT_PHOTO_ATTEMPTS = 20;
 
 /**
  * S22: Stamp a human-readable last-error message on a photo so the diagnostics
@@ -4227,6 +4247,8 @@ export async function resetPhotoForRetry(id: string): Promise<boolean> {
       // immediately on the next sync cycle, not after waiting out the prior
       // failure's window.
       photo.nextRetryAt = null;
+      // P1: Manual retry also clears the transient-loop budget.
+      photo.transientCount = 0;
       // N-G: centralised photo write.
       await putPhotoRecord(db, photo);
       return true;

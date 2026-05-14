@@ -9,6 +9,7 @@ import {
   updatePhotoPath,
   recordPhotoUploadFailure,
   MAX_PHOTO_RETRIES,
+  MAX_TRANSIENT_PHOTO_ATTEMPTS,
 } from "./offline-storage";
 import { addSyncNotification } from "./notification-center";
 import { syncLog } from "./sync-logger";
@@ -135,6 +136,30 @@ async function handlePermanentPhotoFailure(
   return { retryCount, crossedThreshold };
 }
 
+/**
+ * P1 (Mode 13B): Wrap `markPhotoTransientFailure` with a budget check. If a
+ * photo has accumulated `MAX_TRANSIENT_PHOTO_ATTEMPTS` consecutive transient
+ * failures it gets demoted to a permanent dead-letter so it surfaces in the
+ * Sync Diagnostics UI instead of looping in the RETRYING bucket forever.
+ *
+ * Returns `{ deadLettered: true }` when the demotion fires so the caller can
+ * bump the per-cycle `newlyDeadLettered` counter (drives the end-of-cycle
+ * user notification).
+ */
+async function handleTransientPhotoFailure(
+  photo: PhotoForFailure,
+  message: string
+): Promise<{ deadLettered: boolean }> {
+  const transientCount = await markPhotoTransientFailure(photo.id, message);
+  if (transientCount >= MAX_TRANSIENT_PHOTO_ATTEMPTS) {
+    const reason = `Repeated transient failures (${transientCount}× ${message}). Open Sync Diagnostics to retry.`;
+    console.warn('[Sync Manager] Demoting photo to dead-letter after transient-budget exhaustion:', photo.id, reason);
+    const r = await handlePermanentPhotoFailure(photo, reason);
+    return { deadLettered: r.crossedThreshold };
+  }
+  return { deadLettered: false };
+}
+
 export async function syncPhotos(signal?: AbortSignal): Promise<{ remaining: number; changed?: number; error?: string }> {
   if (signal?.aborted) return { remaining: 0, changed: 0 };
   if (!navigator.onLine) {
@@ -161,6 +186,13 @@ export async function syncPhotos(signal?: AbortSignal): Promise<{ remaining: num
 
   syncLog.log('[Sync Manager] Starting photo sync...');
 
+  // P2: Hoisted out of the try-block so the finally clause can always flush
+  // the user-facing dead-letter notification, even when the outer try throws
+  // before the original notification site at end-of-cycle.
+  let newlyDeadLettered = 0;
+  // P0: One-per-cycle "stuck > 24h" notification flag.
+  let stuckAgedCount = 0;
+
   try {
     const { isIdbReadFailure } = await import('./offline-storage');
     const unuploadedPhotosResult = await getUnuploadedPhotos();
@@ -180,12 +212,22 @@ export async function syncPhotos(signal?: AbortSignal): Promise<{ remaining: num
     // is actually pending work to summarise.
     if (unuploadedPhotos.length > 0) {
       const now = Date.now();
+      const STUCK_AGE_MS = 24 * 60 * 60 * 1000; // 24h
       const withTempParent = unuploadedPhotos.filter(p => p.inspectionId?.startsWith('temp-')).length;
       const inBackoff = unuploadedPhotos.filter(p => p.nextRetryAt && p.nextRetryAt > now).length;
       const retrySaturated = skippedCount;
       const ready = batch.length;
+      // P0: Aged-pending photos (uploaded=0, never dead-lettered, > 24h old).
+      // Drives a single user-facing notification per cycle in the finally block
+      // so the user sees that photos are silently rotting before they have to
+      // open the Sync Terminal.
+      stuckAgedCount = unuploadedPhotos.filter(p =>
+        (p.retryCount || 0) < MAX_PHOTO_RETRIES &&
+        typeof p.timestamp === 'number' &&
+        (now - p.timestamp) > STUCK_AGE_MS
+      ).length;
       console.warn(
-        `[Sync Manager] Photo cycle breakdown: total=${unuploadedPhotos.length} withTempParent=${withTempParent} inBackoff=${inBackoff} retrySaturated=${retrySaturated} readyThisBatch=${ready} remainingAfter=${remaining}`
+        `[Sync Manager] Photo cycle breakdown: total=${unuploadedPhotos.length} withTempParent=${withTempParent} inBackoff=${inBackoff} retrySaturated=${retrySaturated} readyThisBatch=${ready} remainingAfter=${remaining} agedOver24h=${stuckAgedCount}`
       );
 
       // Surface up to 3 temp-parent photos with their parent's last sync error,
@@ -221,8 +263,9 @@ export async function syncPhotos(signal?: AbortSignal): Promise<{ remaining: num
     let changedCount = 0;
     // 1.C — Per-cycle count of photos that JUST crossed the dead-letter
     // threshold this cycle. Drives a single user-facing notification at end
-    // of cycle (instead of one per photo).
-    let newlyDeadLettered = 0;
+    // of cycle (instead of one per photo). P2: hoisted to outer scope so
+    // the finally clause can flush even on outer-throw.
+    newlyDeadLettered = 0;
     // Track IDs already processed in this batch to skip duplicates without N+1 queries.
     // Read-then-await pattern below makes this safe under bounded concurrency.
     const processedIds = new Set<string>();
@@ -527,7 +570,10 @@ export async function syncPhotos(signal?: AbortSignal): Promise<{ remaining: num
             // backs off on subsequent cycles instead of being eligible
             // immediately. retryCount is intentionally NOT bumped — a
             // transient flake should never push a photo toward dead-letter.
-            await markPhotoTransientFailure(photo.id, cls.message);
+            // P1: budget check — if the photo has been looping too long it
+            // gets demoted to permanent dead-letter inside the helper.
+            const t = await handleTransientPhotoFailure(photo, cls.message);
+            if (t.deadLettered) { newlyDeadLettered++; changedCount++; }
             return;
           } else {
             // permanent
@@ -623,8 +669,9 @@ export async function syncPhotos(signal?: AbortSignal): Promise<{ remaining: num
               syncLog.log('[Sync Manager] Unique constraint hit (race OK), treating as success:', photo.id);
             } else if (cls.kind === 'transient') {
               console.warn('[Sync Manager] Transient DB insert error, will retry after backoff:', photo.id, cls.message);
-              // L5: see upload-error path above.
-              await markPhotoTransientFailure(photo.id, cls.message);
+              // L5: see upload-error path above. P1: budget-checked.
+              const t = await handleTransientPhotoFailure(photo, cls.message);
+              if (t.deadLettered) { newlyDeadLettered++; changedCount++; }
               return;
             } else {
               console.error('[Sync Manager] Permanent DB insert error for photo:', photo.id, cls.message);
@@ -654,8 +701,9 @@ export async function syncPhotos(signal?: AbortSignal): Promise<{ remaining: num
           // L5: Stamp lastError + nextRetryAt (jittered) so this catch-all
           // path also backs off instead of being immediately eligible —
           // mirrors the explicit upload + DB-insert transient paths above.
-          // retryCount is intentionally NOT bumped.
-          await markPhotoTransientFailure(photo.id, cls.message);
+          // retryCount is intentionally NOT bumped. P1: budget-checked.
+          const t = await handleTransientPhotoFailure(photo, cls.message);
+          if (t.deadLettered) { newlyDeadLettered++; changedCount++; }
           return;
         }
         const r = await handlePermanentPhotoFailure(photo, cls.message);
@@ -668,18 +716,31 @@ export async function syncPhotos(signal?: AbortSignal): Promise<{ remaining: num
 
     // 1.C — Surface dead-letter crossings to the in-app notification center
     // so the user sees they have stuck photos to review (one notification per
-    // cycle, not per photo).
+    // cycle, not per photo). P2: also fired from the finally block on the
+    // outer-catch path so a thrown setup error doesn't swallow the signal.
+    return { remaining, changed: changedCount };
+  } catch (error) {
+    console.error('[Sync Manager] Photo sync error:', error);
+    return { remaining: 0, changed: 0 };
+  } finally {
+    // P2: Always flush the dead-letter notification, even when the outer try
+    // threw before the original notification site at end-of-cycle.
     if (newlyDeadLettered > 0) {
       const word = newlyDeadLettered === 1 ? 'photo' : 'photos';
       addSyncNotification(
         `${newlyDeadLettered} ${word} failed to upload and may be lost — open Sync Diagnostics to review.`
       );
     }
-
-    return { remaining, changed: changedCount };
-  } catch (error) {
-    console.error('[Sync Manager] Photo sync error:', error);
-    return { remaining: 0, changed: 0 };
+    // P0: Aged-pending escalation — single notification per cycle when
+    // there are photos > 24h old still waiting to upload that haven't
+    // dead-lettered. Closes the silent-rotting hole behind every "I thought
+    // they uploaded" report.
+    if (stuckAgedCount > 0) {
+      const word = stuckAgedCount === 1 ? 'photo has' : 'photos have';
+      addSyncNotification(
+        `${stuckAgedCount} ${word} been pending for over 24 hours — open Sync Diagnostics to review.`
+      );
+    }
   }
 }
 
