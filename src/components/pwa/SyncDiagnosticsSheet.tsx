@@ -133,6 +133,11 @@ export const SyncDiagnosticsSheet = () => {
     } catch {
       setEmergencyFailures([]);
     }
+    try {
+      setSkipCounters(getSyncSkipCounters());
+    } catch {
+      /* ignore */
+    }
     setDiag({
       swRegistered,
       swController,
