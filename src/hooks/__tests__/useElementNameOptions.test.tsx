@@ -129,7 +129,7 @@ describe("useElementNameOptions", () => {
     result.current.addOption("Brand New");
     await waitFor(() => expect(mockPutEquipmentTypeOption).toHaveBeenCalled());
     await waitFor(() => expect(mockInsert).toHaveBeenCalled());
-    const lastInsertCall = mockInsert.mock.calls[mockInsert.mock.calls.length - 1]![0] as any;
+    const lastInsertCall = (mockInsert.mock.calls[mockInsert.mock.calls.length - 1] as any)[0] as any;
     expect(lastInsertCall.label).toBe("Brand New");
 
     mockInsert.mockClear();
