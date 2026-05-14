@@ -135,6 +135,25 @@ const mergeStandards = (loaded: DbRow[]) => {
   });
 };
 
+// Reload-time merge that prefers a locally-set has_documentation when the
+// loaded row is still null/undefined. Prevents an in-flight server fetch
+// (realtime/sync) from blanking a Yes/No checkbox the user just clicked.
+const mergeStandardsPreserveLocal = (loaded: DbRow[], local: DbRow[]) => {
+  return STANDARDS_TEMPLATE.map(template => {
+    const loadedMatch = loaded.find((s) => s.standard_name === template.standard_name);
+    const localMatch = local.find((s) => s.standard_name === template.standard_name);
+    if (loadedMatch && localMatch) {
+      const localHas = (localMatch as { has_documentation?: boolean | null }).has_documentation;
+      const loadedHas = (loadedMatch as { has_documentation?: boolean | null }).has_documentation;
+      if ((loadedHas === null || loadedHas === undefined) && (localHas === true || localHas === false)) {
+        return { ...loadedMatch, has_documentation: localHas };
+      }
+      return loadedMatch;
+    }
+    return loadedMatch || localMatch || { ...template, id: crypto.randomUUID() };
+  });
+};
+
 export default function InspectionForm() {
   const { id } = useParams();
   const navigate = useNavigate();
@@ -1261,7 +1280,7 @@ export default function InspectionForm() {
       }
       if (offlineStandards.length > 0) {
         childDataLoadedRef.current.standards = true;
-        setStandards(mergeStandards(offlineStandards));
+        setStandards(prev => mergeStandardsPreserveLocal(offlineStandards, prev));
       }
       if (offlineSummary.length > 0) {
         childDataLoadedRef.current.summary = true;
@@ -1514,13 +1533,13 @@ export default function InspectionForm() {
 
           const { data: standardsData } = standardsResult;
           if (standardsData && standardsData.length > 0) {
-            setStandards(mergeStandards(standardsData));
+            setStandards(prev => mergeStandardsPreserveLocal(standardsData, prev));
             saveRelatedDataOffline('standards', id!, standardsData).catch(e =>
               console.warn('[InspectionForm] Non-critical: failed to cache standards', e)
             );
           } else if (offlineStandards.length > 0) {
             console.warn('[InspectionForm] Server returned empty standards but local has data -- preserving local');
-            setStandards(mergeStandards(offlineStandards));
+            setStandards(prev => mergeStandardsPreserveLocal(offlineStandards, prev));
           }
 
           const { data: summaryData } = summaryResult;
@@ -1600,7 +1619,7 @@ export default function InspectionForm() {
         setSystems(offSystems); childDataLoadedRef.current.systems = true;
         setZiplines(offZiplines); childDataLoadedRef.current.ziplines = true;
         setEquipment(offEquipment); childDataLoadedRef.current.equipment = true;
-        setStandards(mergeStandards(offStandards)); childDataLoadedRef.current.standards = true;
+        setStandards(prev => mergeStandardsPreserveLocal(offStandards, prev)); childDataLoadedRef.current.standards = true;
         if (offSummary.length > 0) { setSummary(offSummary[0] as typeof summary); }
         childDataLoadedRef.current.summary = true;
 
@@ -2045,13 +2064,15 @@ export default function InspectionForm() {
                 dbOp(supabase.from("inspection_systems").insert(newSystems as never))
               );
               
-              // Replace temp items in-place, preserving position (no reordering)
-              // Use queueMicrotask to stay within the same React render cycle
+              // Replace temp items in-place, preserving position (no reordering).
+              // Adopt only the server-assigned id/inspection_id; keep all other fields
+              // from live React state to avoid clobbering in-flight user edits.
               queueMicrotask(() => {
                 isInternalUpdateRef.current = true;
                 setSystems(prev => prev.map(s => {
                   if (s.id && s.id.startsWith('temp-') && systemTempToNewMap.has(s.id)) {
-                    return systemTempToNewMap.get(s.id)!;
+                    const replacement = systemTempToNewMap.get(s.id)!;
+                    return { ...s, id: replacement.id, inspection_id: replacement.inspection_id };
                   }
                   return s;
                 }));
@@ -2077,12 +2098,15 @@ export default function InspectionForm() {
                 dbOp(supabase.from("inspection_ziplines").insert(newZiplines as never))
               );
               
-              // Replace temp items in-place, preserving position (no reordering)
+              // Replace temp items in-place, preserving position (no reordering).
+              // Adopt only the server-assigned id/inspection_id; keep all other fields
+              // from live React state to avoid clobbering in-flight user edits.
               queueMicrotask(() => {
                 isInternalUpdateRef.current = true;
                 setZiplines(prev => prev.map(z => {
                   if (z.id && z.id.startsWith('temp-') && ziplineTempToNewMap.has(z.id)) {
-                    return ziplineTempToNewMap.get(z.id)!;
+                    const replacement = ziplineTempToNewMap.get(z.id)!;
+                    return { ...z, id: replacement.id, inspection_id: replacement.inspection_id };
                   }
                   return z;
                 }));
@@ -2108,12 +2132,18 @@ export default function InspectionForm() {
                 dbOp(supabase.from("inspection_equipment").insert(newEquipment as never))
               );
               
-              // Replace temp items in-place, preserving position (no reordering)
+              // Replace temp items in-place, preserving position (no reordering).
+              // CRITICAL: only adopt the server-assigned id/inspection_id — preserve all
+              // other fields from the live React state. Replacing the whole row from the
+              // pre-save snapshot would clobber any edits the user made between when the
+              // snapshot was taken and when this microtask runs (e.g. picking an equipment
+              // type from the combobox immediately after adding the row).
               queueMicrotask(() => {
                 isInternalUpdateRef.current = true;
                 setEquipment(prev => prev.map(e => {
                   if (e.id && e.id.startsWith('temp-') && equipmentTempToNewMap.has(e.id)) {
-                    return equipmentTempToNewMap.get(e.id)!;
+                    const replacement = equipmentTempToNewMap.get(e.id)!;
+                    return { ...e, id: replacement.id, inspection_id: replacement.inspection_id };
                   }
                   return e;
                 }));
