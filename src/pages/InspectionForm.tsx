@@ -2045,13 +2045,15 @@ export default function InspectionForm() {
                 dbOp(supabase.from("inspection_systems").insert(newSystems as never))
               );
               
-              // Replace temp items in-place, preserving position (no reordering)
-              // Use queueMicrotask to stay within the same React render cycle
+              // Replace temp items in-place, preserving position (no reordering).
+              // Adopt only the server-assigned id/inspection_id; keep all other fields
+              // from live React state to avoid clobbering in-flight user edits.
               queueMicrotask(() => {
                 isInternalUpdateRef.current = true;
                 setSystems(prev => prev.map(s => {
                   if (s.id && s.id.startsWith('temp-') && systemTempToNewMap.has(s.id)) {
-                    return systemTempToNewMap.get(s.id)!;
+                    const replacement = systemTempToNewMap.get(s.id)!;
+                    return { ...s, id: replacement.id, inspection_id: replacement.inspection_id };
                   }
                   return s;
                 }));
