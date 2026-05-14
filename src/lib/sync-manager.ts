@@ -552,7 +552,10 @@ export async function syncPhotos(signal?: AbortSignal): Promise<{ remaining: num
             // backs off on subsequent cycles instead of being eligible
             // immediately. retryCount is intentionally NOT bumped — a
             // transient flake should never push a photo toward dead-letter.
-            await markPhotoTransientFailure(photo.id, cls.message);
+            // P1: budget check — if the photo has been looping too long it
+            // gets demoted to permanent dead-letter inside the helper.
+            const t = await handleTransientPhotoFailure(photo, cls.message);
+            if (t.deadLettered) { newlyDeadLettered++; changedCount++; }
             return;
           } else {
             // permanent
