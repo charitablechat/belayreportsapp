@@ -31,6 +31,7 @@ import { isRestoreInProgress, onRestoreLockChange } from '@/lib/restore-lock';
 import { syncLog } from '@/lib/sync-logger';
 import { scanForStuckPhotos } from '@/lib/stuck-photo-beacon';
 import { recordSyncHalt, clearSyncHalt } from '@/lib/sync-halt-tracker';
+import { maybeRunPhotoRescueSweep } from '@/lib/photo-rescue-sweep';
 
 /**
  * Result returned by each per-table atomic-sync helper
