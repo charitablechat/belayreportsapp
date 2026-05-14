@@ -98,11 +98,23 @@ function ZiplinesTable({ ziplines, onUpdate, onImmediateSave: rawOnImmediateSave
     });
   }, [onUpdate]);
 
+  // Dropdown / select-style fields commit on selection (no blur event), so we
+  // defer an immediate save by one tick to flush IDB before navigation.
+  const COMMIT_FIELDS = new Set([
+    'cable_type', 'cable_result',
+    'braking_system', 'braking_result',
+    'ead_system', 'ead_result',
+    'result',
+  ]);
+
   const updateZipline = useCallback((item: any, field: string, value: any) => {
     onUpdate(prev => prev.map(z =>
       z.id === item.id ? { ...z, [field]: value } : z
     ));
-  }, [onUpdate]);
+    if (COMMIT_FIELDS.has(field) && onImmediateSave) {
+      setTimeout(() => onImmediateSave(), 0);
+    }
+  }, [onUpdate, onImmediateSave]);
 
   const handleDeleteConfirm = useCallback(() => {
     if (itemToDelete) {
