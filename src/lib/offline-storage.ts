@@ -118,6 +118,11 @@ interface InspectionDB extends DBSchema {
       // Cleared on success / manual retry. Optional for back-compat with v15- rows.
       transientCount?: number;
       capturedByUserId?: string | null; // S23: User-id active when this photo was staged
+      // Rescue Sweep v1: timestamp set by runPhotoRescueSweep() when a previously
+      // dead-lettered or long-stuck photo has been re-queued one time under the
+      // post-fix sync logic. Presence makes the sweep idempotent per-photo and
+      // gives support a way to audit which photos were touched.
+      rescuedAt?: number;
     };
     indexes: { 'by-inspection': string; 'by-uploaded': number };
   };
