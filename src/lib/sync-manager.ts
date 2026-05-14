@@ -46,8 +46,15 @@ export function classifyPhotoError(err: unknown): { kind: PhotoErrorClass; messa
   if (code === '23505' || msg.includes('duplicate key')) {
     return { kind: 'success-equivalent', message: rawMsg };
   }
-  // Storage "duplicate" with upsert — treat as success.
-  if (status === 409 && (msg.includes('duplicate') || msg.includes('already exists'))) {
+  // Storage "duplicate" — treat as success. Most servers return 409, but the
+  // audit (P2) flagged that some Supabase Storage paths return 400 with the
+  // same body shape ("The resource already exists" / "Duplicate"). Either
+  // status with that message means the object is on the server, so we
+  // intentionally accept both rather than dead-letter a successful upload.
+  if (
+    (status === 409 || status === 400) &&
+    (msg.includes('duplicate') || msg.includes('already exists') || msg.includes('resource already exists'))
+  ) {
     return { kind: 'success-equivalent', message: rawMsg };
   }
 
