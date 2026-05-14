@@ -46,6 +46,11 @@ import {
 } from '@/lib/empty-local-conflict-store';
 import { markUserCleared } from '@/lib/clear-intent';
 import { supabase } from '@/integrations/supabase/client';
+import {
+  getSyncSkipCounters,
+  resetSyncSkipCounters,
+  type SyncSkipCountersSnapshot,
+} from '@/lib/sync-skip-counters';
 
 interface DiagnosticsState {
   swRegistered: boolean;
