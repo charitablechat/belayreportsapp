@@ -263,9 +263,25 @@ export default function Dashboard() {
   // network round-trip arrives within a few hundred ms and is the source
   // of truth. Initial cold-mount still benefits from the pre-paint when
   // the offline IDB has data and the network is slow.
-  const hasPaintedInspectionsRef = React.useRef(false);
-  const hasPaintedTrainingsRef = React.useRef(false);
-  const hasPaintedDailyAssessmentsRef = React.useRef(false);
+  //
+  // CRITICAL: initialise from cache state, not unconditionally `false`.
+  // React state above (lines 219–221) is seeded from session/localStorage,
+  // which survives unmount/remount within the session. The component-scoped
+  // refs were resetting to `false` on every remount (e.g. when the user
+  // alt-tabs back and Chrome remounts the dashboard tab), letting the
+  // stale offline pre-paint clobber the already-cached network state and
+  // producing the visible flicker Belay caught on video after PR #185.
+  // Mirror the cache check used by the state initialisers so the refs
+  // agree with what React state already holds.
+  const hasPaintedInspectionsRef = React.useRef(
+    readDashboardCache('dashboard-cache-inspections').length > 0,
+  );
+  const hasPaintedTrainingsRef = React.useRef(
+    readDashboardCache('dashboard-cache-trainings').length > 0,
+  );
+  const hasPaintedDailyAssessmentsRef = React.useRef(
+    readDashboardCache('dashboard-cache-daily').length > 0,
+  );
 
   // Build unique inspector list from report data
   const uniqueInspectors = useMemo(() => {
