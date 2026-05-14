@@ -391,7 +391,11 @@ export function GlobalAutocomplete({
     // with no behaviour change in the happy path.
     setInputValue(selectedValue);
     setIsEditing(false);
-    onBlur?.();
+    // Defer onBlur (which usually triggers an immediate save) so React commits
+    // the onChange above before the parent reads state in performSave. Calling
+    // it synchronously races setState and ships the stale (empty) value — same
+    // pattern as the dropdown commit fix.
+    if (onBlur) setTimeout(() => onBlur(), 0);
   };
 
   const handleInputChange = (searchValue: string) => {
@@ -545,7 +549,8 @@ export function GlobalAutocomplete({
     setInputValue("");
     setOpen(false);
     setIsEditing(false);
-    onBlur?.();
+    // Defer onBlur for the same reason as handleSelect — let onChange("") commit first.
+    if (onBlur) setTimeout(() => onBlur(), 0);
   };
 
   return (
