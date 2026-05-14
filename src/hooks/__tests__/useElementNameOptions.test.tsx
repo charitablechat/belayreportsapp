@@ -98,7 +98,7 @@ describe("useElementNameOptions", () => {
     const { result } = renderHook(() => useElementNameOptions(), { wrapper: wrapper() });
     await waitFor(() => expect(result.current.options).toEqual(DEFAULT_ELEMENT_NAMES));
     expect(mockInsert).toHaveBeenCalledTimes(1);
-    const inserted = mockInsert.mock.calls[0][0];
+    const inserted = mockInsert.mock.calls[0]![0] as any[];
     expect(Array.isArray(inserted)).toBe(true);
     expect(inserted.map((r: any) => r.label)).toEqual(DEFAULT_ELEMENT_NAMES);
     expect(inserted.every((r: any) => r.equipment_category === "operating_system_elements")).toBe(true);
@@ -129,7 +129,7 @@ describe("useElementNameOptions", () => {
     result.current.addOption("Brand New");
     await waitFor(() => expect(mockPutEquipmentTypeOption).toHaveBeenCalled());
     await waitFor(() => expect(mockInsert).toHaveBeenCalled());
-    const lastInsertCall = mockInsert.mock.calls[mockInsert.mock.calls.length - 1][0];
+    const lastInsertCall = mockInsert.mock.calls[mockInsert.mock.calls.length - 1]![0] as any;
     expect(lastInsertCall.label).toBe("Brand New");
 
     mockInsert.mockClear();
