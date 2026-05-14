@@ -246,7 +246,7 @@ function ZiplinesTable({ ziplines, onUpdate, onImmediateSave: rawOnImmediateSave
                     <ResultSelect value={zipline.result} onChange={(value) => updateZipline(zipline, "result", value)} />
                   </div>
                   <div className="p-1 border-r border-border min-w-0 overflow-hidden">
-                    <VoiceRichTextEditor content={zipline.comments || ""} onChange={(value) => updateZipline(zipline, "comments", value)} placeholder="Comments..." className="border-0 bg-transparent" />
+                    <VoiceRichTextEditor content={zipline.comments || ""} onChange={(value) => updateZipline(zipline, "comments", value)} onBlur={onImmediateSave} placeholder="Comments..." className="border-0 bg-transparent" />
                   </div>
                   <div className="p-1 text-center">
                     <Button variant="ghost" size="sm" onClick={() => setItemToDelete({ id: zipline.id, name: zipline.zipline_name || "this zipline" })} className="h-8 w-8 p-0 text-destructive hover:text-destructive hover:bg-destructive/10">
@@ -372,7 +372,7 @@ function ZiplinesTable({ ziplines, onUpdate, onImmediateSave: rawOnImmediateSave
                   
                   <div>
                     <Label className="text-xs text-muted-foreground">Comments / Changes</Label>
-                    <VoiceRichTextEditor content={zipline.comments || ""} onChange={(value) => updateZipline(zipline, "comments", value)} placeholder="Enter comments..." />
+                    <VoiceRichTextEditor content={zipline.comments || ""} onChange={(value) => updateZipline(zipline, "comments", value)} onBlur={onImmediateSave} placeholder="Enter comments..." />
                   </div>
                 </div>
               </div>

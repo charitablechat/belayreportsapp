@@ -530,6 +530,7 @@ function EquipmentTable({ category, displayName, equipment, onUpdate, onImmediat
                   <LazyRichTextEditor
                     content={item.comments || ""}
                     onChange={(value) => updateEquipment(item, "comments", value)}
+                    onBlur={onImmediateSave}
                     placeholder="Enter comments..."
                     className="border-0 bg-transparent"
                   />
@@ -650,7 +651,7 @@ function EquipmentTable({ category, displayName, equipment, onUpdate, onImmediat
                   
                   <div>
                     <Label className="text-xs text-muted-foreground">Comments / Changes</Label>
-                    <LazyRichTextEditor content={item.comments || ""} onChange={(value) => updateEquipment(item, "comments", value)} placeholder="Enter comments..." />
+                    <LazyRichTextEditor content={item.comments || ""} onChange={(value) => updateEquipment(item, "comments", value)} onBlur={onImmediateSave} placeholder="Enter comments..." />
                   </div>
                 </div>
               </div>

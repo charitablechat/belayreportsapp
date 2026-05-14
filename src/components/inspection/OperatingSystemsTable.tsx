@@ -252,6 +252,7 @@ function OperatingSystemsTable({ systems, onUpdate, onImmediateSave: rawOnImmedi
                       <VoiceRichTextEditor
                         content={system.comments || ""}
                         onChange={(value) => updateSystem(system, "comments", value)}
+                        onBlur={onImmediateSave}
                         placeholder="Enter comments..."
                         className="border-0 bg-transparent"
                       />
@@ -352,6 +353,7 @@ function OperatingSystemsTable({ systems, onUpdate, onImmediateSave: rawOnImmedi
                       <VoiceRichTextEditor
                         content={system.comments || ""}
                         onChange={(value) => updateSystem(system, "comments", value)}
+                        onBlur={onImmediateSave}
                         placeholder="Enter comments..."
                       />
                     </div>
