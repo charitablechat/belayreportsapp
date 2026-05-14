@@ -136,6 +136,20 @@ export const SyncPulse = ({ className }: { className?: string }) => {
   const [quarantinedExpanded, setQuarantinedExpanded] = useState(true);
   const [failedPhotosExpanded, setFailedPhotosExpanded] = useState(true);
   const [orphanRecordsExpanded, setOrphanRecordsExpanded] = useState(true);
+  // Drain Mode (foreground "push everything now"). Also tracks whether the
+  // wake-lock acquired so we can surface a fallback hint on iOS < 16.4 where
+  // the OS will still auto-lock the screen and suspend the tab.
+  const [drainActive, setDrainActive] = useState<boolean>(() => isDrainModeActive());
+  const [drainStarting, setDrainStarting] = useState(false);
+  const [drainWakeLockHeld, setDrainWakeLockHeld] = useState(true);
+  useEffect(() => subscribeDrainMode(setDrainActive), []);
+  // Auto-stop drain mode the moment the queue hits zero. The 10-min safety
+  // cap in drain-mode.ts is a backstop; this is the happy path.
+  useEffect(() => {
+    if (drainActive && unsyncedCount === 0 && unsyncedPhotoCount === 0) {
+      void stopDrainMode('complete');
+    }
+  }, [drainActive, unsyncedCount, unsyncedPhotoCount]);
   // Sprint 1D: per-photo retry-state breakdown (READY/RETRYING/STUCK)
   // — see src/lib/photo-retry-buckets.ts. Refreshed on every
   // `sync-photos-updated` event and on a 1Hz tick while the sheet is
