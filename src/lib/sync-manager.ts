@@ -136,6 +136,30 @@ async function handlePermanentPhotoFailure(
   return { retryCount, crossedThreshold };
 }
 
+/**
+ * P1 (Mode 13B): Wrap `markPhotoTransientFailure` with a budget check. If a
+ * photo has accumulated `MAX_TRANSIENT_PHOTO_ATTEMPTS` consecutive transient
+ * failures it gets demoted to a permanent dead-letter so it surfaces in the
+ * Sync Diagnostics UI instead of looping in the RETRYING bucket forever.
+ *
+ * Returns `{ deadLettered: true }` when the demotion fires so the caller can
+ * bump the per-cycle `newlyDeadLettered` counter (drives the end-of-cycle
+ * user notification).
+ */
+async function handleTransientPhotoFailure(
+  photo: PhotoForFailure,
+  message: string
+): Promise<{ deadLettered: boolean }> {
+  const transientCount = await markPhotoTransientFailure(photo.id, message);
+  if (transientCount >= MAX_TRANSIENT_PHOTO_ATTEMPTS) {
+    const reason = `Repeated transient failures (${transientCount}× ${message}). Open Sync Diagnostics to retry.`;
+    console.warn('[Sync Manager] Demoting photo to dead-letter after transient-budget exhaustion:', photo.id, reason);
+    const r = await handlePermanentPhotoFailure(photo, reason);
+    return { deadLettered: r.crossedThreshold };
+  }
+  return { deadLettered: false };
+}
+
 export async function syncPhotos(signal?: AbortSignal): Promise<{ remaining: number; changed?: number; error?: string }> {
   if (signal?.aborted) return { remaining: 0, changed: 0 };
   if (!navigator.onLine) {
