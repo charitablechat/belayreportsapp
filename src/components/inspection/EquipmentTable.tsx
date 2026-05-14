@@ -356,11 +356,21 @@ function EquipmentTable({ category, displayName, equipment, onUpdate, onImmediat
     });
   }, [category, onUpdate]);
 
+  // Fields whose change is a "commit gesture" (dropdown selection / category
+  // pick) — they have no blur event to trigger persistence, so we defer an
+  // immediate save by one tick (after React flushes setState) so the parent's
+  // performSave reads fresh state. Without this, picking a value and
+  // navigating away within the 1.5s debounce window silently drops the change.
+  const COMMIT_FIELDS = new Set(['result', 'equipment_category', 'equipment_type']);
+
   const updateEquipment = useCallback((item: any, field: string, value: any) => {
     onUpdate(prev => prev.map((eq) =>
       eq.id === item.id ? { ...eq, [field]: value } : eq
     ));
-  }, [onUpdate]);
+    if (COMMIT_FIELDS.has(field) && onImmediateSave) {
+      setTimeout(() => onImmediateSave(), 0);
+    }
+  }, [onUpdate, onImmediateSave]);
 
   const handleDeleteConfirm = useCallback(() => {
     if (itemToDelete) {
