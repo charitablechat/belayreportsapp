@@ -31,6 +31,7 @@ import { isRestoreInProgress, onRestoreLockChange } from '@/lib/restore-lock';
 import { syncLog } from '@/lib/sync-logger';
 import { scanForStuckPhotos } from '@/lib/stuck-photo-beacon';
 import { recordSyncHalt, clearSyncHalt } from '@/lib/sync-halt-tracker';
+import { maybeRunPhotoRescueSweep } from '@/lib/photo-rescue-sweep';
 
 /**
  * Result returned by each per-table atomic-sync helper
@@ -1300,6 +1301,13 @@ export const useAutoSync = () => {
     // PERFORMANCE: Defer initial sync to not block UI render
     // Dashboard data loads from Supabase directly, sync is for reconciliation
     const initialSyncTimer = setTimeout(() => {
+      // Rescue Sweep v1: one-time-per-device re-queue of photos that were
+      // dead-lettered or long-stuck before the post-fix sync logic shipped.
+      // Runs before performSync so re-queued photos are picked up immediately.
+      getUserWithCache()
+        .then((u) => maybeRunPhotoRescueSweep(u?.id))
+        .catch((e) => syncLog.log('[AutoSync] Rescue sweep skipped:', e));
+
       if (navigator.onLine) {
         performSync(true);
       }
