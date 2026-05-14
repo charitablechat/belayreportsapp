@@ -9,6 +9,7 @@ import {
   updatePhotoPath,
   recordPhotoUploadFailure,
   MAX_PHOTO_RETRIES,
+  MAX_TRANSIENT_PHOTO_ATTEMPTS,
 } from "./offline-storage";
 import { addSyncNotification } from "./notification-center";
 import { syncLog } from "./sync-logger";
