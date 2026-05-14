@@ -234,7 +234,7 @@ function OperatingSystemsTable({ systems, onUpdate, onImmediateSave: rawOnImmedi
                         fieldType="operating_system_element"
                         placeholder="Enter or select name"
                         className="border-0 bg-transparent"
-                        existingValues={existingElementNames}
+                        existingValues={elementNameOptions}
                       />
                     </div>
                     <div className="p-2 border-r border-border">
@@ -330,7 +330,7 @@ function OperatingSystemsTable({ systems, onUpdate, onImmediateSave: rawOnImmedi
                             onBlur={onImmediateSave}
                             fieldType="operating_system_element"
                             placeholder="Enter or select name"
-                            existingValues={existingElementNames}
+                            existingValues={elementNameOptions}
                           />
                         </div>
                       </div>
