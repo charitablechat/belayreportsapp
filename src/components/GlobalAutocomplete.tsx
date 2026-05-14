@@ -142,14 +142,6 @@ export function GlobalAutocomplete({
   const hasFetchedFromDb = useRef(false);
   const lastSavedValue = useRef<string | null>(null);
   const triggerInputRef = useRef<HTMLInputElement>(null);
-  // Set true for a short window after a dropdown selection so the focus-
-  // restore that fires when PopoverContent unmounts (Radix FocusScope's
-  // `onCloseAutoFocus`) does NOT re-enter edit mode and reopen the popover.
-  // Without this guard, picking a contact from the dropdown immediately
-  // reopens the popover with the selected value as a search query — looking
-  // (to inspectors) as if the field "didn't persist" even though the parent
-  // state has already been updated.
-  const justSelectedRef = useRef(false);
 
   // Load from IndexedDB on mount, then optionally sync with server
   useEffect(() => {

@@ -1,59 +1,34 @@
-# Notes / comments fields lose values on navigation — same root cause
+## Problem
 
-## What I found
+In `GlobalAutocomplete`, picking an item (or re-picking the same item) causes a visible flicker: the popover closes on selection, Radix's `FocusScope` restores focus to the trigger Input, and the trigger's `onFocus` handler is on the verge of reopening it. We currently paper over that race with a `justSelectedRef` 400ms suppression flag — which itself causes the "blink" the user is reporting and makes a genuine re-tap feel unreliable.
 
-The notes/comments fields across all three report types have the **same persistence gap** as the dropdowns: they only mutate React state and rely on the parent's 1.5-second debounced auto-save. Unlike single-line text inputs (which wire `onBlur={onImmediateSave}`), the rich-text editors and section-comment textareas are missing the blur-to-save bridge. If the user types a note and navigates within ~1.5 s, the note is dropped.
+The user wants the dropdown to behave like a stable menu: open on focus/click, **stay open** through selections, close only on explicit dismissal (click outside, Escape, or Tab away).
 
-### Sites affected
+## Fix
 
-1. **Inspection — Equipment notes** (`EquipmentTable.tsx`)
-   - Two `<LazyRichTextEditor>` instances for `item.comments` (desktop + mobile views) — no `onBlur`.
+Edit only `src/components/GlobalAutocomplete.tsx`. No behavior changes elsewhere.
 
-2. **Inspection — Operating Systems notes** (`OperatingSystemsTable.tsx`)
-   - Two `<VoiceRichTextEditor>` instances for `system.comments` — no `onBlur`.
-
-3. **Inspection — Ziplines notes** (`ZiplinesTable.tsx`)
-   - Two `<VoiceRichTextEditor>` instances for `zipline.comments` — no `onBlur`.
-
-4. **Training — Summary section** (`TrainingSummarySection.tsx`)
-   - Two `<VoiceRichTextEditor>` instances (`observations`, `recommendations`) — no `onBlur`. Component doesn't even accept `onImmediateSave` today; need to add the prop and thread it from `TrainingForm.tsx`.
-
-5. **Daily Assessment — Section comments** (`SectionComments.tsx` used by `OperatingSystemsSection`, `StructureChecksSection`, `EnvironmentChecksSection`, `EquipmentChecksSection`)
-   - `<DebouncedTextarea>` already flushes onBlur to its parent's `onChange`, but no `onBlur` is forwarded to trigger an immediate IDB save. The 300 ms internal debounce + 1.5 s form debounce stack to ~1.8 s of vulnerability.
-   - Component doesn't accept `onImmediateSave` today; need to add and thread it from `DailyAssessmentForm.tsx` through each `<*Section>`.
-
-(Inspection's `SummarySection.tsx` already wires `onBlur={onImmediateSave}` correctly — no change there.)
-
-## Fix — same minimal pattern as the dropdown fix
-
-For each editor above, pass `onBlur={onImmediateSave}` so leaving the field flushes the form's `performSave` immediately into IndexedDB. The underlying `LazyRichTextEditor`, `RichTextEditor`, and `DebouncedTextarea` already support this prop; we just need to wire it.
-
-### Concrete changes
-
-1. **`EquipmentTable.tsx`** — add `onBlur={onImmediateSave}` to both `<LazyRichTextEditor>` comment editors.
-2. **`OperatingSystemsTable.tsx`** — add `onBlur={onImmediateSave}` to both `<VoiceRichTextEditor>` comment editors.
-3. **`ZiplinesTable.tsx`** — add `onBlur={onImmediateSave}` to both `<VoiceRichTextEditor>` comment editors.
-4. **`TrainingSummarySection.tsx`** — add `onImmediateSave?: () => void` to props; wire `onBlur={onImmediateSave}` on both editors.
-5. **`TrainingForm.tsx`** — pass `stableTriggerImmediateSave` (or local equivalent) to `<TrainingSummarySection>`.
-6. **`SectionComments.tsx`** — add `onBlur?: () => void` to props; forward to `DebouncedTextarea`.
-7. **Daily Assessment section components** (`OperatingSystemsSection.tsx`, `StructureChecksSection.tsx`, `EnvironmentChecksSection.tsx`, `EquipmentChecksSection.tsx`) — add `onSectionCommentsBlur?: () => void` prop and wire to `<SectionComments>`.
-8. **`DailyAssessmentForm.tsx`** — pass the existing immediate-save trigger to those sections via the new prop.
-
-### Why this is safe
-
-- We are **adding** a save trigger, not changing what or how data is saved.
-- It runs through the same `performSave` pipeline as text-input blur. No backend, RLS, schema, secrets, or sync behavior changes.
-- Rich-text editors fire `onBlur` only when the user truly leaves the field (LazyRichTextEditor uses click-outside detection), so we won't double-fire while typing.
-- This complements — not replaces — the existing 1.5 s debounce.
-
-## Verification
-
-- Type a note in each affected location, immediately navigate away, return — value persists.
-- Repeat offline (DevTools Network → Offline) to confirm IDB persistence.
-- Confirm no regression: the existing `useUnsavedChanges` "save on leave" dialog should appear less often (changes commit sooner).
-- Console should remain clean of new save-in-flight warnings.
+1. **Keep the popover open on selection.** In `handleSelect`, remove `setOpen(false)`. Commit the value via `onChange`, mirror it into local state, persist to history, and defer `onBlur` (already does this) — but leave `open === true`.
+2. **Remove the `justSelectedRef` workaround.** Delete the ref, its setter in `handleSelect`, and the early-return branch in `handleTriggerFocus`. With the popover staying open there's no unmount → focus-restore → reopen race to suppress.
+3. **Explicit dismissal paths remain:**
+   - Click outside → Radix `onOpenChange(false)` → existing `handleOpenChange` commits and closes.
+   - `Escape` in trigger → existing branch in `handleTriggerKeyDown` already closes and blurs.
+   - `Enter` to commit + jump cell → still closes (`focusNextCell` moves focus away, Radix closes the popover via outside-focus).
+   - `handleClear` (the X button) → still closes explicitly.
+4. **Update the regression test** `src/components/__tests__/GlobalAutocomplete.dropdown-persistence.test.tsx`:
+   - Replace the "focus-restore does NOT reopen" test with "popover stays open after selection and the trigger Input shows the picked value".
+   - Replace the "after suppression window, re-focus reopens" test with "clicking outside (Radix onOpenChange false) closes the popover, and a subsequent focus reopens it".
+   - The `onChange called once` and `Enter commits typed value` tests stay as-is.
+5. **Update memory** `mem://constraints/autocomplete-select-defer-onblur.md` to reflect the new contract: "popover stays open through selection; closure is user-initiated only" and remove the now-stale `justSelectedRef` note.
 
 ## Out of scope
 
-- No changes to dropdowns (already shipped in the previous turn).
-- No changes to debounce timings, save mutex, Realtime reconciliation, or visual styling.
+- No changes to `SystemTypeSelect` or any other dropdown component.
+- No changes to save / sync / history logic.
+- No changes to styling beyond what already exists.
+
+## Files touched
+
+- `src/components/GlobalAutocomplete.tsx` (edit)
+- `src/components/__tests__/GlobalAutocomplete.dropdown-persistence.test.tsx` (edit)
+- `mem://constraints/autocomplete-select-defer-onblur.md` (edit)
