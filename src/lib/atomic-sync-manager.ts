@@ -1329,6 +1329,7 @@ export async function syncInspectionAtomic(inspectionId: string, preValidatedUse
       // Sanitize summary before sync - convert empty strings to null for date fields
       const sanitizedSummary = {
         ...summary,
+        id: (summary.id && !summary.id.startsWith('temp-')) ? summary.id : crypto.randomUUID(),
         next_inspection_date: summary.next_inspection_date === "" ? null : summary.next_inspection_date
       };
       
