@@ -20,6 +20,32 @@
  *    state reset to zero on reload).
  */
 
+import { stopDrainMode } from './drain-mode';
+
+/**
+ * Freeze the app: set the global reset flag and stop the drain-mode loop
+ * so useAutoSync skips every cycle, then drop SW caches so an in-flight
+ * fetch can't repopulate IDB before the reload lands.
+ */
+async function freezeApp(): Promise<void> {
+  try {
+    (window as any).__RW_RESETTING = true;
+  } catch { /* ignore */ }
+  try {
+    await stopDrainMode('reset' as any);
+  } catch (e) {
+    console.warn('[HardReset] stopDrainMode failed:', e);
+  }
+  try {
+    if ('caches' in window) {
+      const names = await caches.keys();
+      await Promise.all(names.map((n) => caches.delete(n).catch(() => false)));
+    }
+  } catch (e) {
+    console.warn('[HardReset] Failed to clear caches:', e);
+  }
+}
+
 // Known IDB databases this app uses. The primary offline DB is
 // `rope-works-inspections`; the auth-resilience layer keeps a small
 // migration-snapshots sibling DB.
