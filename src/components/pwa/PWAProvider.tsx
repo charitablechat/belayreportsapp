@@ -141,6 +141,7 @@ const PWAProviderContent = ({ children }: PWAProviderProps) => {
     syncError: autoSyncError,
     syncErrorSeverity: autoSyncErrorSeverity,
     updateUnsyncedCounts,
+    refreshSyncStateFromStorage,
     performSync
   } = useAutoSync();
   
