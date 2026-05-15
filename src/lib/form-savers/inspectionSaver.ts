@@ -164,7 +164,7 @@ export async function persistInspectionToOffline(
   },
 ): Promise<PersistResult> {
   const { id, inspection, systems, ziplines, equipment, standards, summary } = payload;
-  const { currentUserId, childDataLoaded, silent, onVersionAppended } = opts;
+  const { currentUserId, childDataLoaded, silent, onVersionAppended, onSnapshotSaved } = opts;
 
   // Stamp updated_at + last_modified_by (when current user isn't the owner)
   const baseInspectionToSave: DbRow = {
