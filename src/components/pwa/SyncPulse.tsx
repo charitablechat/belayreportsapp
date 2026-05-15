@@ -1182,6 +1182,80 @@ export const SyncPulse = ({ className }: { className?: string }) => {
               )}
             </div>
 
+            {/* TEMPORARY: Storage-source diagnostic. Read-only. Surfaces
+                exactly where each remaining pending report is stored
+                (IDB rows, rw_backup_ ledger, quarantine sessionStorage,
+                validation-stuck bucket, or stale React state) so we can
+                triage the "phantom rows after Hard Reset" report
+                without guessing. Nothing is mutated. */}
+            <div className="space-y-1.5 border-t border-amber-900/40 pt-2">
+              <div className="flex items-center justify-between gap-2">
+                <span className="text-amber-400 text-[10px] uppercase tracking-wider">
+                  ▸ Storage source diagnostic (temp)
+                </span>
+                {storageDiagReport && (
+                  <button
+                    type="button"
+                    onClick={async () => {
+                      try {
+                        await navigator.clipboard.writeText(storageDiagReport);
+                        setStorageDiagCopied(true);
+                        setTimeout(() => setStorageDiagCopied(false), 2000);
+                      } catch {
+                        /* clipboard may be denied — user can still select the <pre> */
+                      }
+                    }}
+                    className="text-[10px] uppercase tracking-wider px-2 py-1 rounded border border-amber-600/70 text-amber-300 hover:bg-amber-900/30 min-h-[28px]"
+                  >
+                    {storageDiagCopied ? 'COPIED ✓' : 'COPY'}
+                  </button>
+                )}
+              </div>
+              <p className="text-amber-300/70 text-[10px] leading-relaxed">
+                Read-only. Dumps IDB unsynced rows, rw_backup_ ledger,
+                quarantine map, validation-stuck bucket, and matching
+                storage keys. Nothing is deleted.
+              </p>
+              <button
+                type="button"
+                disabled={storageDiagRunning}
+                onClick={async () => {
+                  setStorageDiagRunning(true);
+                  setStorageDiagReport(null);
+                  try {
+                    const user = await getUserWithCache();
+                    const report = await runStorageSourceDiagnostic({
+                      unsyncedCount,
+                      unsyncedInspections: unsyncedInspections.length,
+                      unsyncedTrainings: unsyncedTrainings.length,
+                      unsyncedAssessments: unsyncedAssessments.length,
+                      quarantinedCount,
+                      currentUserId: user?.id ?? null,
+                    });
+                    setStorageDiagReport(JSON.stringify(report, null, 2));
+                  } catch (e) {
+                    setStorageDiagReport(
+                      JSON.stringify(
+                        { error: e instanceof Error ? e.message : String(e) },
+                        null,
+                        2,
+                      ),
+                    );
+                  } finally {
+                    setStorageDiagRunning(false);
+                  }
+                }}
+                className="w-full text-[10px] uppercase tracking-wider px-2 py-1.5 rounded border border-amber-600/70 text-amber-300 hover:bg-amber-900/30 disabled:opacity-50 min-h-[36px]"
+              >
+                {storageDiagRunning ? 'COLLECTING…' : 'SHOW STORAGE SOURCE DIAGNOSTIC'}
+              </button>
+              {storageDiagReport && (
+                <pre className="mt-1 max-h-[40vh] overflow-auto whitespace-pre-wrap break-all rounded border border-amber-900/40 bg-black/50 p-2 text-[10px] text-amber-200/90 leading-snug select-all">
+                  {storageDiagReport}
+                </pre>
+              )}
+            </div>
+
             {/* Last-resort recovery: nukes the offline IndexedDB and all
                 service workers, then hard-reloads. Auth lives in
                 localStorage and is preserved, so the user stays signed in. */}
