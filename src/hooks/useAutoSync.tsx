@@ -38,6 +38,7 @@ import {
   registerDrainRunner,
   DRAIN_SYNC_INTERVAL_MS,
 } from '@/lib/drain-mode';
+import { clearIdbClosingQuarantinesWhenInactive } from '@/lib/sync-quarantine';
 
 /**
  * Result returned by each per-table atomic-sync helper
@@ -1058,9 +1059,9 @@ export const useAutoSync = () => {
         return emptySnapshot;
       }
       const [insp, train, assess] = await Promise.all([
-        getUnsyncedInspections(user.id),
-        getUnsyncedTrainings(user.id),
-        getUnsyncedDailyAssessments(user.id),
+        getUnsyncedInspections(user.id, { allowLedgerFallback: false }),
+        getUnsyncedTrainings(user.id, { allowLedgerFallback: false }),
+        getUnsyncedDailyAssessments(user.id, { allowLedgerFallback: false }),
       ]);
       if (isIdbReadFailure(insp) || isIdbReadFailure(train) || isIdbReadFailure(assess)) {
         // Don't blank state on read failure — leave whatever the user
@@ -1084,6 +1085,7 @@ export const useAutoSync = () => {
         // If everything is clear, drop any lingering soft "stats stale" message.
         ...(total === 0 ? { syncError: null, syncErrorSeverity: null } : {}),
       }));
+      if (total === 0) clearIdbClosingQuarantinesWhenInactive();
       unsyncedCountRef.current = total;
       // Pretend the throttled path just ran so it doesn't immediately
       // re-fire and clobber our fresh write with a stale closure.
