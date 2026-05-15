@@ -1289,14 +1289,24 @@ export const SyncPulse = ({ className }: { className?: string }) => {
                   setStorageDiagRunning(true);
                   setStorageDiagReport(null);
                   try {
+                    const fresh = await refreshVisibleSyncStateFromStorage();
+                    const diagnosticRenderedRows = fresh
+                      ? buildRenderedPendingReports(
+                          fresh.unsyncedInspections,
+                          fresh.unsyncedTrainings,
+                          fresh.unsyncedAssessments,
+                        ).map(({ kind, id, label, sourceVariableName }) => ({ kind, id, label, sourceVariableName }))
+                      : renderedPendingReportDiagnostics;
                     const user = await getUserWithCache();
                     const report = await runStorageSourceDiagnostic({
-                      unsyncedCount,
-                      unsyncedInspections: unsyncedInspections.length,
-                      unsyncedTrainings: unsyncedTrainings.length,
-                      unsyncedAssessments: unsyncedAssessments.length,
+                      unsyncedCount: fresh?.unsyncedCount ?? unsyncedCount,
+                      unsyncedInspections: fresh?.unsyncedInspections.length ?? unsyncedInspections.length,
+                      unsyncedTrainings: fresh?.unsyncedTrainings.length ?? unsyncedTrainings.length,
+                      unsyncedAssessments: fresh?.unsyncedAssessments.length ?? unsyncedAssessments.length,
                       quarantinedCount,
                       currentUserId: user?.id ?? null,
+                      renderedPendingReports: diagnosticRenderedRows,
+                      renderedPendingReportsSource: RENDERED_PENDING_REPORTS_SOURCE,
                     });
                     setStorageDiagReport(JSON.stringify(report, null, 2));
                   } catch (e) {
