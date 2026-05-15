@@ -52,6 +52,7 @@ import {
   isDrainModeActive,
 } from '@/lib/drain-mode';
 import { isWakeLockSupported } from '@/lib/wake-lock';
+import { hardResetDatabase } from '@/lib/hard-reset-database';
 
 type Phase = 'idle' | 'syncing' | 'synced' | 'unsynced' | 'paused' | 'error';
 
