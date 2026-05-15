@@ -1785,79 +1785,72 @@ export default function InspectionForm() {
       };
 
       // Save ALL items to offline storage (including incomplete rows)
-      // This preserves work-in-progress data locally even if names are empty
-      setInspection(inspectionToSave);
+      // This preserves work-in-progress data locally even if names are empty.
+      // Slice 1.5: delegated to `persistInspectionToOffline`. The saver:
+      //   - re-applies reconcileClearIntent (idempotent — page already did so)
+      //   - re-stamps updated_at (a few ms newer than the page snapshot)
+      //   - writes localStorage snapshot FIRST (Layer 1) then IDB child rows (Layer 2)
+      //   - fires onSnapshotSaved BEFORE awaiting IDB so showHardSavedToast
+      //     still appears even if IDB hangs (preserves legacy timing)
+      // The mutex, deadlock timer, validation, and React state remain in this page.
       let localSaveSucceeded = false;
+      let offlineError: unknown;
+      let updatedInspection: DbRow = inspectionToSave;
       try {
-        // Guard: Only write child data if it was successfully loaded OR has items
-        // This prevents timeout-sourced empty arrays from overwriting real IndexedDB data
-        const inspectionChildHint =
-          systems.length + ziplines.length + equipment.length + standards.length +
-          (currentSummary && (currentSummary.critical_actions || currentSummary.repairs_performed || currentSummary.future_considerations || currentSummary.next_inspection_date) ? 1 : 0);
-        const childSaveOps: Promise<unknown>[] = [
-          saveInspectionOffline(inspectionToSave, { childCountHint: inspectionChildHint }),
-        ];
-        if (systems.length > 0 || childDataLoadedRef.current.systems) {
-          childSaveOps.push(saveRelatedDataOffline('systems', id!, systems.map((s, i) => ({ ...s, display_order: i })), { allowEmpty: true }));
-        } else {
-          console.warn('[InspectionForm Save] Skipping systems save — empty array not confirmed as loaded');
+        const persistResult = await persistInspectionToOffline(
+          {
+            id: id!,
+            inspection: inspectionToSave,
+            systems,
+            ziplines,
+            equipment,
+            standards,
+            summary: currentSummary,
+          },
+          {
+            currentUserId: currentUser?.id,
+            childDataLoaded: {
+              systems: childDataLoadedRef.current.systems,
+              ziplines: childDataLoadedRef.current.ziplines,
+              equipment: childDataLoadedRef.current.equipment,
+              standards: childDataLoadedRef.current.standards,
+              summary: childDataLoadedRef.current.summary,
+            },
+            silent,
+            onSnapshotSaved: () => {
+              if (!silent) {
+                showHardSavedToast(lastVersionNumber ? lastVersionNumber + 1 : undefined, undefined);
+              }
+            },
+            onVersionAppended: ({ versionNumber, fieldCount }) => {
+              setLastVersionNumber(versionNumber);
+              setLastFieldCount(fieldCount);
+            },
+          },
+        );
+        updatedInspection = persistResult.updatedInspection;
+        localSaveSucceeded = persistResult.localSaveSucceeded;
+        offlineError = persistResult.offlineError;
+        // Sync React state to the saver's freshly-stamped inspection so the
+        // remote push uses the same timestamp that landed in IDB.
+        setInspection(updatedInspection);
+        if (localSaveSucceeded) {
+          console.log('[InspectionForm Save] Offline storage completed');
         }
-        if (ziplines.length > 0 || childDataLoadedRef.current.ziplines) {
-          childSaveOps.push(saveRelatedDataOffline('ziplines', id!, ziplines.map((z, i) => ({ ...z, display_order: i })), { allowEmpty: true }));
-        } else {
-          console.warn('[InspectionForm Save] Skipping ziplines save — empty array not confirmed as loaded');
-        }
-        if (equipment.length > 0 || childDataLoadedRef.current.equipment) {
-          childSaveOps.push(saveRelatedDataOffline('equipment', id!, equipment.map((e, i) => ({ ...e, display_order: i })), { allowEmpty: true }));
-        } else {
-          console.warn('[InspectionForm Save] Skipping equipment save — empty array not confirmed as loaded');
-        }
-        if (standards.length > 0 || childDataLoadedRef.current.standards) {
-          childSaveOps.push(saveRelatedDataOffline('standards', id!, standards, { allowEmpty: true }));
-        } else {
-          console.warn('[InspectionForm Save] Skipping standards save — empty array not confirmed as loaded');
-        }
-        if ([currentSummary].length > 0 || childDataLoadedRef.current.summary) {
-          childSaveOps.push(saveRelatedDataOffline('summary', id!, [currentSummary], { allowEmpty: true }));
-        } else {
-          console.warn('[InspectionForm Save] Skipping summary save — empty array not confirmed as loaded');
-        }
-        // Layer 1: localStorage snapshot backup FIRST (survives IndexedDB eviction)
-        // Written BEFORE IndexedDB writes complete so backup always has latest React state
-        try {
-          saveReportSnapshot('inspection', id!, inspectionToSave, {
-            systems, ziplines, equipment, standards, summary: [currentSummary],
-          }, !!inspectionToSave.synced_at);
-        } catch {
-          // Never let snapshot failure block the save
-        }
-
-        // Show hard-saved toast immediately after localStorage snapshot (always reliable)
-        if (!silent) {
-          showHardSavedToast(lastVersionNumber ? lastVersionNumber + 1 : undefined, undefined);
-        }
-
-        await Promise.all(childSaveOps);
-        localSaveSucceeded = true;
-        console.log('[InspectionForm Save] Offline storage completed');
-
-        // Layer 2: Append-only version history (fire-and-forget, metadata only)
-        appendVersion('inspection', id!, inspectionToSave, {
-          systems, ziplines, equipment, standards, summary: [currentSummary],
-        }, silent ? 'auto_save' : 'manual_save').then((v) => {
-          if (v) {
-            setLastVersionNumber(v.versionNumber);
-            setLastFieldCount(v.fieldCount);
-          }
-        }).catch(() => {});
-      } catch (offlineError) {
+      } catch (e) {
+        // persistInspectionToOffline does not throw under normal conditions
+        // (snapshot/version are best-effort). Treat any throw as a fatal local
+        // save failure.
+        offlineError = e;
+      }
+      if (!localSaveSucceeded) {
         console.warn('[InspectionForm Save] Offline storage failed:', offlineError);
         // Gap 2.1: A real IdbSaveError must propagate so callers KEEP the dirty
         // flag set, SKIP advancing lastSaved, and SKIP appendVersion(). The
         // localStorage snapshot above is still the user's safety net.
         const { isIdbSaveError } = await import('@/lib/offline-storage');
         if (isIdbSaveError(offlineError)) {
-          setSaveError({ message: 'Local save failed — your changes are NOT stored. Tap to retry.', code: offlineError.code });
+          setSaveError({ message: 'Local save failed — your changes are NOT stored. Tap to retry.', code: (offlineError as { code: IdbSaveErrorCode }).code });
           throw offlineError;
         }
         if (!silent) {
