@@ -44,7 +44,7 @@ import {
   type SyncHaltState,
 } from '@/lib/sync-halt-tracker';
 import { supabase } from '@/integrations/supabase/client';
-import { getUserWithCache } from '@/lib/cached-auth';
+import { getUserWithCache, getAdminCacheKey, getOfflineUserId } from '@/lib/cached-auth';
 import {
   startDrainMode,
   stopDrainMode,
@@ -171,6 +171,34 @@ export const SyncPulse = ({ className }: { className?: string }) => {
   const [diagnosticReport, setDiagnosticReport] = useState<SyncDiagnosticReport | null>(null);
   const [diagnosticCopied, setDiagnosticCopied] = useState(false);
   const [hardResetting, setHardResetting] = useState(false);
+  // Admin gate — only admins/super-admins see destructive/diagnostic
+  // controls (Hard Reset, Drain, Retry, Drop, Diagnostic, Storage Source
+  // Diagnostic, Recover Storage, orphan reassign/delete, quarantine retry,
+  // failed-photo retry, stuck-photo retry). Inspectors see read-only
+  // status only. Defaults to false; flips true on successful RPC or
+  // cached admin marker. Non-redirecting (this component lives in the
+  // global header, unlike useRequireAdmin which guards admin pages).
+  const [isAdmin, setIsAdmin] = useState<boolean>(() => {
+    try {
+      const offlineId = getOfflineUserId();
+      if (!offlineId) return false;
+      return localStorage.getItem(getAdminCacheKey(offlineId)) === 'true';
+    } catch {
+      return false;
+    }
+  });
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const { data, error } = await supabase.rpc('is_admin_or_above');
+        if (!cancelled && !error) setIsAdmin(!!data);
+      } catch {
+        /* offline / transient — keep cached value */
+      }
+    })();
+    return () => { cancelled = true; };
+  }, []);
   // TEMPORARY storage-source diagnostic — surfaces where each "phantom"
   // pending report is actually stored (IDB / rw_backup_ ledger /
   // quarantine sessionStorage / validation-stuck / stale React state).
