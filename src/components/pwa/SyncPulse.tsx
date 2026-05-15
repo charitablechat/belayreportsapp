@@ -1430,12 +1430,14 @@ function PendingReportRow({
   accent,
   label,
   sublabel,
+  showDrop = true,
   onDrop,
 }: {
   kind: string;
   accent: AccentName;
   label: string;
   sublabel?: string;
+  showDrop?: boolean;
   onDrop: () => Promise<void>;
 }) {
   const [busy, setBusy] = useState(false);
@@ -1463,16 +1465,18 @@ function PendingReportRow({
         <span className="truncate">{label}</span>
         {sublabel && <span className="text-green-600 ml-1">{sublabel}</span>}
       </div>
-      <button
-        type="button"
-        disabled={busy}
-        onClick={handleDrop}
-        style={{ touchAction: 'manipulation' }}
-        className="shrink-0 min-h-[32px] px-2 text-[9px] uppercase tracking-wider text-red-400 hover:text-red-300 active:text-red-300 disabled:opacity-50 border border-red-900/60 hover:border-red-500/60 rounded-sm"
-        aria-label={`Drop local draft ${label}`}
-      >
-        {busy ? '…' : 'DROP'}
-      </button>
+      {showDrop && (
+        <button
+          type="button"
+          disabled={busy}
+          onClick={handleDrop}
+          style={{ touchAction: 'manipulation' }}
+          className="shrink-0 min-h-[32px] px-2 text-[9px] uppercase tracking-wider text-red-400 hover:text-red-300 active:text-red-300 disabled:opacity-50 border border-red-900/60 hover:border-red-500/60 rounded-sm"
+          aria-label={`Drop local draft ${label}`}
+        >
+          {busy ? '…' : 'DROP'}
+        </button>
+      )}
     </div>
   );
 }
