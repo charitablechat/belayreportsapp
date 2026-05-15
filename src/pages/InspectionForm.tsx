@@ -97,14 +97,12 @@ import { Shield as ShieldIcon, Receipt } from "lucide-react";
 import { useInvoicedStatus } from "@/hooks/useInvoicedStatus";
 import { useEquipmentTypeOptions } from "@/hooks/useEquipmentTypeOptions";
 
-const STANDARDS_TEMPLATE = [
-  { standard_name: "Local Written Operations Procedures", has_documentation: null },
-  { standard_name: "Local Written Emergency Action Plan", has_documentation: null },
-  { standard_name: "Minimum Annual Training", has_documentation: null },
-  { standard_name: "Written Pre-Use Inspection in Use", has_documentation: null },
-  { standard_name: "Inventory Tracking System in Use", has_documentation: null },
-  { standard_name: "Operational Review Every 5 Years", has_documentation: null },
-];
+// Slice 1 — STANDARDS_TEMPLATE + merge helpers extracted to inspectionLoader.
+import {
+  mergeStandards,
+  mergeStandardsPreserveLocal,
+} from "@/lib/form-loaders/inspectionLoader";
+import { InspectionHeaderSection } from "@/components/inspection/InspectionHeaderSection";
 
 // `saveRelatedDataOffline` accepts a small set of well-known child-table keys.
 // Mirrors the `RelatedDataType` union in `@/lib/offline-storage`.
@@ -127,32 +125,6 @@ function errorCode(error: unknown): IdbSaveErrorCode | undefined {
   }
   return undefined;
 }
-
-const mergeStandards = (loaded: DbRow[]) => {
-  return STANDARDS_TEMPLATE.map(template => {
-    const match = loaded.find((s) => s.standard_name === template.standard_name);
-    return match || { ...template, id: crypto.randomUUID() };
-  });
-};
-
-// Reload-time merge that prefers a locally-set has_documentation when the
-// loaded row is still null/undefined. Prevents an in-flight server fetch
-// (realtime/sync) from blanking a Yes/No checkbox the user just clicked.
-const mergeStandardsPreserveLocal = (loaded: DbRow[], local: DbRow[]) => {
-  return STANDARDS_TEMPLATE.map(template => {
-    const loadedMatch = loaded.find((s) => s.standard_name === template.standard_name);
-    const localMatch = local.find((s) => s.standard_name === template.standard_name);
-    if (loadedMatch && localMatch) {
-      const localHas = (localMatch as { has_documentation?: boolean | null }).has_documentation;
-      const loadedHas = (loadedMatch as { has_documentation?: boolean | null }).has_documentation;
-      if ((loadedHas === null || loadedHas === undefined) && (localHas === true || localHas === false)) {
-        return { ...loadedMatch, has_documentation: localHas };
-      }
-      return loadedMatch;
-    }
-    return loadedMatch || localMatch || { ...template, id: crypto.randomUUID() };
-  });
-};
 
 export default function InspectionForm() {
   const { id } = useParams();
@@ -2996,335 +2968,100 @@ export default function InspectionForm() {
         isSaving={isSavingBeforeLeave}
       />
       <div className="min-h-screen bg-background">
-      {/* Offline Mode Banner */}
-      {!isOnline && (
-        <div className="bg-orange-500/10 border-b border-orange-500/20">
-          <div className="container mx-auto px-4 py-3">
-            <div className="flex items-center gap-3">
-              <CloudOff className="w-5 h-5 text-orange-600 dark:text-orange-400 shrink-0" />
-              <div className="flex-1 min-w-0">
-                <p className="text-sm font-medium text-orange-900 dark:text-orange-100">
-                  You're working offline
-                </p>
-                <p className="text-xs text-orange-700 dark:text-orange-300 mt-0.5">
-                  Changes will be saved locally and synced when you're back online
-                </p>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Storage Unavailable Banner (Vector A: circuit breaker tripped) */}
-      {storageUnavailable && (
-        <div className="bg-destructive/10 border-b border-destructive/20">
-          <div className="container mx-auto px-4 py-3">
-            <div className="flex items-center gap-3">
-              <AlertTriangle className="w-5 h-5 text-destructive shrink-0" />
-              <div className="flex-1 min-w-0">
-                <p className="text-sm font-medium text-destructive">
-                  Local storage unavailable
-                </p>
-                <p className="text-xs text-destructive/80 mt-0.5">
-                  Your changes are at risk. Please stay connected to sync your work.
-                </p>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Offline Empty Data Banner (Vector E: child data unavailable offline) */}
-      {!isOnline && !loading && systems.length === 0 && ziplines.length === 0 && equipment.length === 0 &&
-        !childDataLoadedRef.current.systems && !childDataLoadedRef.current.ziplines && !childDataLoadedRef.current.equipment && (
-        <div className="bg-muted border-b border-border">
-          <div className="container mx-auto px-4 py-3">
-            <div className="flex items-center gap-3">
-              <WifiOff className="w-5 h-5 text-muted-foreground shrink-0" />
-              <p className="text-sm text-muted-foreground">
-                Report details not available offline. Connect to the internet to load full data.
-              </p>
-            </div>
-          </div>
-        </div>
-      )}
-      
-      <header className="border-b border-white/20 bg-white/10 dark:bg-black/20 backdrop-blur-[12px] shadow-md shadow-black/5 sticky top-0 z-20">
-        <div className="container mx-auto px-2 sm:px-4 py-2 sm:py-4">
-          {/* Top row - Back button, Logo, User Avatar */}
-          <div className="flex items-center justify-between mb-2 sm:mb-0">
-            <div className="flex items-center gap-2">
-              <Button variant="ghost" size="icon" onClick={() => setShowLeaveDialog(true)}>
-                <ArrowLeft className="w-4 h-4" />
-              </Button>
-              <img src={ropeWorksLogo} alt="Rope Works" className="h-8 sm:h-10 w-auto object-contain" />
-            </div>
-            
-            {/* UserProfileDropdown is now in the global AuthenticatedHeader */}
-          </div>
-          
-          {/* Bottom row - Status indicators and action buttons */}
-          <div className="flex flex-wrap items-center justify-between gap-2">
-            <div className="flex items-center gap-2 flex-wrap">
-              {!isOnline && (
-                <Badge variant="secondary" className="gap-2 text-xs">
-                  <WifiOff className="w-3 h-3" />
-                  <span className="hidden sm:inline">Offline Mode</span>
-                </Badge>
-              )}
-              {/* M9: Versioning health warning — surfaces silent appendVersion failures
-                  so the user knows recovery snapshots aren't being captured. */}
-              {versioningFailures >= 3 && (
-                <Badge
-                  variant="destructive"
-                  className="gap-1.5 text-xs cursor-pointer"
-                  onClick={() => {
-                    toast.warning("Recovery snapshots are failing", {
-                      description: `Your last ${versioningFailures} version snapshots could not be saved. Your current work is still saved, but earlier-state recovery may be unavailable. Try reloading the page.`,
-                      duration: 8000,
-                    });
-                    resetVersioningHealth();
-                  }}
-                  title="Tap for details"
-                >
-                  <span>Recovery snapshots failing ({versioningFailures})</span>
-                </Badge>
-              )}
-              {/* Pending sync indicator with retry option */}
-              {saveError === 'pending_sync' && isOnline && (
-                <div className="flex items-center gap-1.5">
-                  <Badge variant="secondary" className="gap-1.5 text-xs bg-muted/50">
-                    <CloudOff className="w-3 h-3" />
-                    <span className="hidden sm:inline">Pending sync</span>
-                  </Badge>
-                  <ForceSyncButton variant="icon" className="h-7 w-7" />
-                </div>
-              )}
-              {/* Real errors (not pending_sync) get the retry button */}
-              {saveError && saveError !== 'pending_sync' && isOnline && (
-                <>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={async () => {
-                      setSaveError(null);
-                      try {
-                        await saveProgress();
-                        toast.success("Save successful");
-                      } catch (err) {
-                        console.error('[InspectionForm] Manual save failed:', err);
-                        toast.error("Save failed", {
-                          description: "Please try again or check your connection.",
-                        });
-                      }
-                    }}
-                    disabled={saving || autoSaving || isSyncing}
-                    className="gap-1.5 text-xs h-7"
-                  >
-                    <RefreshCw className={cn("w-3 h-3", isSyncing && "animate-spin")} />
-                    <span className="hidden sm:inline">Retry Save</span>
-                  </Button>
-                  <ForceSyncButton variant="icon" className="h-7 w-7" />
-                </>
-              )}
-              <AutoSaveIndicator
-                lastSaved={lastManuallySaved}
-                isSaving={saving}
-                hasUnsavedChanges={hasUnsavedChanges}
-                error={saveError}
-                className="flex"
-              />
-              {/* DISABLED: Timer display hidden for now
-              <ActiveTimerDisplay
-                elapsedSeconds={elapsedSeconds}
-                isActive={timerActive}
-                isPaused={timerPaused}
-                isReadOnly={effectiveReadOnly}
-              />
-              */}
-            </div>
-            
-            <div className="flex items-center gap-2">
-              {!effectiveReadOnly && (
-              <Button 
-                variant="outline" 
-                size={isMobileView ? "default" : "sm"} 
-                onClick={saveProgress} 
-                disabled={saving || autoSaving}
-              >
-                <Save className={isMobileView ? "w-5 h-5 mr-1.5" : "w-4 h-4 mr-2"} />
-                {isMobileView ? (saving ? "..." : "Save") : (saving ? "Saving..." : isOnline ? "Save Progress" : "Save Locally")}
-              </Button>
-              )}
-              {id && (
-              <TooltipProvider>
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      className="h-8 w-8"
-                      onClick={async () => {
-                        if (inspection && id) {
-                          saveReportSnapshot('inspection', id, inspection, {
-                            systems, ziplines, equipment, standards, summary: [summary],
-                          }, !!inspection.synced_at);
-                        }
-                        const ok = await downloadReportBackup('inspection', id);
-                        if (ok) {
-                          toast.success('BACKUP SAVED', {
-                            description: 'Snapshot downloaded to device',
-                            duration: 2000,
-                            style: { background: 'hsl(0, 0%, 5%)', color: 'hsl(120, 100%, 56%)', border: '1px solid hsl(120, 100%, 50%, 0.3)', fontFamily: 'monospace', fontSize: '12px' },
-                          });
-                        } else {
-                          toast.warning('No snapshot available to download');
-                        }
-                      }}
-                    >
-                      <HardDrive className="w-4 h-4" />
-                    </Button>
-                  </TooltipTrigger>
-                  <TooltipContent>Force Local Backup</TooltipContent>
-                </Tooltip>
-              </TooltipProvider>
-              )}
-              {id && (
-              <TooltipProvider>
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      className="h-8 w-8"
-                      disabled={refreshing || saving || autoSaving}
-                      onClick={async () => {
-                        setRefreshing(true);
-                        try {
-                          await loadInspection();
-                          toast.success("Report refreshed", { description: "Latest data loaded successfully." });
-                        } catch {
-                          toast.error("Refresh failed");
-                        } finally {
-                          setRefreshing(false);
-                        }
-                      }}
-                    >
-                      <RefreshCw className={cn("w-4 h-4", refreshing && "animate-spin")} />
-                    </Button>
-                  </TooltipTrigger>
-                  <TooltipContent>Refresh Report Data</TooltipContent>
-                </Tooltip>
-              </TooltipProvider>
-              )}
-              {!effectiveReadOnly && inspection?.status !== 'completed' && (
-                <Button 
-                  size={isMobileView ? "default" : "sm"} 
-                  onClick={handleCompleteClick} 
-                  disabled={saving || autoSaving}
-                  className={isMobileView ? "min-w-[100px] h-10 text-sm font-medium" : ""}
-                >
-                  <CheckCircle className={isMobileView ? "w-5 h-5 mr-1.5" : "w-4 h-4"} />
-                  <span className={isMobileView ? "inline" : "hidden md:inline md:ml-2"}>Complete</span>
-                </Button>
-              )}
-              {inspection?.status === 'completed' && !effectiveReadOnly && (
-                <Button disabled variant="outline" size={isMobileView ? "default" : "sm"} className="opacity-70 cursor-default">
-                  <CheckCircle className={isMobileView ? "w-5 h-5 mr-1.5" : "w-4 h-4"} />
-                  <span className={isMobileView ? "inline" : "hidden md:inline md:ml-2"}>Completed</span>
-                </Button>
-              )}
-              {inspection?.status === 'completed' && (
-                <>
-                  {/* PDF Button - Hidden but code preserved for future use
-                  <TooltipProvider>
-                    <Tooltip>
-                      <TooltipTrigger asChild>
-                        <span>
-                          <Button 
-                            variant="outline" 
-                            size="sm" 
-                            onClick={handleGeneratePDF} 
-                            disabled={generatingPdf || !isOnline}
-                          >
-                            {generatingPdf ? (
-                              <>
-                                <Loader2 className="w-4 h-4 animate-spin" />
-                                <span className="hidden md:inline ml-2">Generating...</span>
-                              </>
-                            ) : (
-                              <>
-                                <FileText className="w-4 h-4" />
-                                <span className="hidden md:inline ml-2">Generate PDF</span>
-                              </>
-                            )}
-                          </Button>
-                        </span>
-                      </TooltipTrigger>
-                      {!isOnline && (
-                        <TooltipContent>Must be online to generate PDF</TooltipContent>
-                      )}
-                    </Tooltip>
-                  </TooltipProvider>
-                  */}
-                  {isMobileView && (
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      onClick={handleGenerateHTML}
-                      disabled={generatingHtml || !isOnline}
-                      className="h-9 w-9"
-                    >
-                      <RefreshCw className={cn("w-4 h-4", generatingHtml && "animate-spin")} />
-                    </Button>
-                  )}
-                  <TooltipProvider>
-                    <Tooltip>
-                      <TooltipTrigger asChild>
-                        <span>
-                          <Button 
-                            variant="outline" 
-                            size="sm" 
-                            onClick={handleGenerateHTML} 
-                            disabled={generatingHtml || !isOnline}
-                          >
-                            {generatingHtml ? (
-                              <>
-                                <Loader2 className="w-4 h-4 animate-spin" />
-                                <span className="hidden md:inline ml-2">Generating...</span>
-                              </>
-                            ) : (
-                              <>
-                                <FileText className="w-4 h-4" />
-                                <span className="hidden md:inline ml-2">Generate Report</span>
-                              </>
-                            )}
-                          </Button>
-                        </span>
-                      </TooltipTrigger>
-                      {!isOnline && (
-                        <TooltipContent>Must be online to generate report</TooltipContent>
-                      )}
-                    </Tooltip>
-                  </TooltipProvider>
-                  {isAdmin && inspection?.status === 'completed' && (
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={toggleInvoiced}
-                      disabled={invoiceToggling}
-                      className={cn("bg-emerald-500/10 backdrop-blur-md border-emerald-400/30 text-emerald-600 dark:text-emerald-400 shadow-[0_0_8px_rgba(16,185,129,0.15)] hover:bg-emerald-500/20 hover:text-emerald-700 dark:hover:text-emerald-300", isInvoiced && "bg-emerald-500/25 shadow-[0_0_16px_rgba(16,185,129,0.3)] animate-pulse-calm")}
-                    >
-                      <Receipt className="w-4 h-4" />
-                      <span className="hidden md:inline ml-2"><span className="hidden md:inline ml-2">{isInvoiced ? "Invoiced ✓" : "Invoice"}</span></span>
-                    </Button>
-                  )}
-                </>
-              )}
-            </div>
-          </div>
-        </div>
-      </header>
+      <InspectionHeaderSection
+        isOnline={isOnline}
+        storageUnavailable={storageUnavailable}
+        showOfflineEmptyBanner={
+          !isOnline &&
+          !loading &&
+          systems.length === 0 &&
+          ziplines.length === 0 &&
+          equipment.length === 0 &&
+          !childDataLoadedRef.current.systems &&
+          !childDataLoadedRef.current.ziplines &&
+          !childDataLoadedRef.current.equipment
+        }
+        onBack={() => setShowLeaveDialog(true)}
+        saveError={saveError}
+        isSyncing={isSyncing}
+        isSaving={saving}
+        isAutoSaving={autoSaving}
+        hasUnsavedChanges={hasUnsavedChanges}
+        lastManuallySaved={lastManuallySaved}
+        versioningFailures={versioningFailures}
+        onRetrySave={async () => {
+          setSaveError(null);
+          try {
+            await saveProgress();
+            toast.success("Save successful");
+          } catch (err) {
+            console.error('[InspectionForm] Manual save failed:', err);
+            toast.error("Save failed", {
+              description: "Please try again or check your connection.",
+            });
+          }
+        }}
+        onWarnVersioning={() => {
+          toast.warning("Recovery snapshots are failing", {
+            description: `Your last ${versioningFailures} version snapshots could not be saved. Your current work is still saved, but earlier-state recovery may be unavailable. Try reloading the page.`,
+            duration: 8000,
+          });
+          resetVersioningHealth();
+        }}
+        actions={{
+          effectiveReadOnly,
+          hasId: !!id,
+          status: inspection?.status,
+          isMobile: isMobileView,
+          isAdmin,
+          isOnline,
+          isSaving: saving,
+          isAutoSaving: autoSaving,
+          onSave: saveProgress,
+          saveLabel: isOnline ? "Save Progress" : "Save Locally",
+          onForceBackup: async () => {
+            if (inspection && id) {
+              saveReportSnapshot('inspection', id, inspection, {
+                systems, ziplines, equipment, standards, summary: [summary],
+              }, !!inspection.synced_at);
+            }
+            const ok = await downloadReportBackup('inspection', id);
+            if (ok) {
+              toast.success('BACKUP SAVED', {
+                description: 'Snapshot downloaded to device',
+                duration: 2000,
+                style: {
+                  background: 'hsl(0, 0%, 5%)',
+                  color: 'hsl(120, 100%, 56%)',
+                  border: '1px solid hsl(120, 100%, 50%, 0.3)',
+                  fontFamily: 'monospace',
+                  fontSize: '12px',
+                },
+              });
+            } else {
+              toast.warning('No snapshot available to download');
+            }
+          },
+          refreshing,
+          onRefresh: async () => {
+            setRefreshing(true);
+            try {
+              await loadInspection();
+              toast.success("Report refreshed", { description: "Latest data loaded successfully." });
+            } catch {
+              toast.error("Refresh failed");
+            } finally {
+              setRefreshing(false);
+            }
+          },
+          onComplete: handleCompleteClick,
+          isGeneratingHTML: generatingHtml,
+          onGenerateHTML: handleGenerateHTML,
+          isInvoiced,
+          invoiceToggling,
+          onToggleInvoiced: toggleInvoiced,
+        }}
+      />
 
       <SaveFailureBanner
         saveError={saveError}
