@@ -802,6 +802,7 @@ export const SyncPulse = ({ className }: { className?: string }) => {
                         accent={item.accent}
                         label={item.label}
                         sublabel={item.sublabel}
+                        showDrop={isAdmin}
                         onDrop={async () => {
                           await forceDeleteLocalRecord(item.table, String(item.id));
                           try { await forceSyncAndRefreshVisibleState(); } catch { /* breaker open is fine */ }
