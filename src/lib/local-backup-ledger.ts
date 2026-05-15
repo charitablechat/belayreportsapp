@@ -397,7 +397,10 @@ export function listUnsyncedSnapshots(
         if (!raw) continue;
 
         const snapshot: ReportSnapshot = JSON.parse(raw);
-        if (snapshot.synced) continue;
+        // Only an explicit synced:false snapshot is eligible for pending sync.
+        // Synced snapshots, malformed legacy entries, or entries missing the
+        // flag are recovery backups only and must never reappear in Pending Reports.
+        if (snapshot.synced !== false) continue;
 
         const reportId = key.slice(keyPrefix.length);
 
