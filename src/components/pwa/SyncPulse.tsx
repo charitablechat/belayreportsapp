@@ -122,6 +122,13 @@ export const SyncPulse = ({ className }: { className?: string }) => {
   const [diagnosticReport, setDiagnosticReport] = useState<SyncDiagnosticReport | null>(null);
   const [diagnosticCopied, setDiagnosticCopied] = useState(false);
   const [hardResetting, setHardResetting] = useState(false);
+  // TEMPORARY storage-source diagnostic — surfaces where each "phantom"
+  // pending report is actually stored (IDB / rw_backup_ ledger /
+  // quarantine sessionStorage / validation-stuck / stale React state).
+  // Read-only; no mutations.
+  const [storageDiagRunning, setStorageDiagRunning] = useState(false);
+  const [storageDiagReport, setStorageDiagReport] = useState<string | null>(null);
+  const [storageDiagCopied, setStorageDiagCopied] = useState(false);
   // Collapsible disclosure state for the SELF-CHECK and DIAGNOSTIC panels.
   // The ▸/▾ caret in the header doubles as a tap-target that toggles each
   // panel — on small screens the action button was getting clipped off
