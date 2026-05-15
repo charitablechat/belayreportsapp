@@ -99,7 +99,6 @@ import { useEquipmentTypeOptions } from "@/hooks/useEquipmentTypeOptions";
 
 // Slice 1 — STANDARDS_TEMPLATE + merge helpers extracted to inspectionLoader.
 import {
-  STANDARDS_TEMPLATE,
   mergeStandards,
   mergeStandardsPreserveLocal,
 } from "@/lib/form-loaders/inspectionLoader";
