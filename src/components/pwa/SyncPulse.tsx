@@ -1211,6 +1211,7 @@ export const SyncPulse = ({ className }: { className?: string }) => {
               </div>
             </div>
 
+            <p className="text-green-700 text-[10px] italic pt-1 border-t border-green-900/40">
               Auto-sync runs in background.
               {isIOSDevice && ' iOS: visibility change + 30s interval.'}
             </p>
