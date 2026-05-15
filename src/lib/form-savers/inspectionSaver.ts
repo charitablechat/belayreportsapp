@@ -154,6 +154,13 @@ export async function persistInspectionToOffline(
     childDataLoaded: ChildLoadedFlags;
     silent: boolean;
     onVersionAppended?: (info: { versionNumber: number; fieldCount: number }) => void;
+    /**
+     * Fires synchronously the moment the localStorage snapshot is written —
+     * BEFORE the IDB child writes resolve. Mirrors the legacy ordering where
+     * `showHardSavedToast` fires immediately after the snapshot so the toast
+     * appears even if IDB hangs.
+     */
+    onSnapshotSaved?: () => void;
   },
 ): Promise<PersistResult> {
   const { id, inspection, systems, ziplines, equipment, standards, summary } = payload;
