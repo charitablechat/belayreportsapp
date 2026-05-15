@@ -441,7 +441,8 @@ export const SyncPulse = ({ className }: { className?: string }) => {
   const photoBucketTotal =
     photoBuckets.ready + photoBuckets.retrying + photoBuckets.stuck + photoBuckets.blocked;
   const photoCountForIndicator = Math.max(unsyncedPhotoCount, photoBucketTotal);
-  const totalUnsynced = unsyncedCount + photoCountForIndicator;
+  const visibleReportPendingCount = renderedPendingReports.length;
+  const totalUnsynced = visibleReportPendingCount + photoCountForIndicator;
 
   // Detect sync completion → show green for 2s then fade
   useEffect(() => {
@@ -585,7 +586,7 @@ export const SyncPulse = ({ className }: { className?: string }) => {
                         // Drain may have synced everything — refresh
                         // counts from IDB so the list reflects reality
                         // instead of the pre-drain React snapshot.
-                        await refreshSyncStateFromStorage();
+                        await refreshVisibleSyncStateFromStorage();
                         return;
                       }
                       setDrainStarting(true);
@@ -667,7 +668,7 @@ export const SyncPulse = ({ className }: { className?: string }) => {
                     onClick={async () => {
                       try {
                         setRetrying(true);
-                        resetLayerBreakerOnUserActivity('SyncPulse retry'); await forceSync();
+                        resetLayerBreakerOnUserActivity('SyncPulse retry'); await forceSyncAndRefreshVisibleState();
                       } catch (e) {
                         console.warn('[SyncPulse] Force sync after halt failed:', e);
                       } finally {
