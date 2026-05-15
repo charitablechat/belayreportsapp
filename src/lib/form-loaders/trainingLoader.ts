@@ -77,28 +77,24 @@ export async function loadTrainingFromOffline(
  * Returns the parent error separately so the caller can branch on
  * "inconclusive lookup" without swallowing it.
  */
-export async function fetchTrainingFromServer(
-  id: string
-): Promise<ServerTrainingPackage> {
-  const { data: trainingData, error: trainingError } = await supabase
+/**
+ * Fetches just the parent training row from Supabase.
+ * Returns the error separately so the caller can detect "inconclusive
+ * lookup" without swallowing it.
+ */
+export async function fetchTrainingParentFromServer(id: string) {
+  const { data, error } = await supabase
     .from("trainings")
     .select("*")
     .eq("id", id)
     .maybeSingle();
+  return { training: (data as DbRow | null) ?? null, error };
+}
 
-  if (!trainingData) {
-    return {
-      training: null,
-      trainingError,
-      delivery_approaches: [],
-      operating_systems: [],
-      immediate_attention: [],
-      verifiable_items: [],
-      systems_in_place: [],
-      summary: null,
-    };
-  }
-
+/**
+ * Fetches all child rows for a training in parallel.
+ */
+export async function fetchTrainingChildrenFromServer(id: string) {
   const [
     { data: approachData },
     { data: systemData },
@@ -116,8 +112,6 @@ export async function fetchTrainingFromServer(
   ]);
 
   return {
-    training: trainingData as DbRow,
-    trainingError: null,
     delivery_approaches: (approachData as DbRow[]) || [],
     operating_systems: (systemData as DbRow[]) || [],
     immediate_attention: (attentionData as DbRow[]) || [],
@@ -125,4 +119,28 @@ export async function fetchTrainingFromServer(
     systems_in_place: (systemsPlaceData as DbRow[]) || [],
     summary: (summaryResult as DbRow | null) ?? null,
   };
+}
+
+/**
+ * Convenience: parent + children in one shot.
+ * Use only when caller wants both unconditionally.
+ */
+export async function fetchTrainingFromServer(
+  id: string
+): Promise<ServerTrainingPackage> {
+  const { training, error } = await fetchTrainingParentFromServer(id);
+  if (!training) {
+    return {
+      training: null,
+      trainingError: error,
+      delivery_approaches: [],
+      operating_systems: [],
+      immediate_attention: [],
+      verifiable_items: [],
+      systems_in_place: [],
+      summary: null,
+    };
+  }
+  const children = await fetchTrainingChildrenFromServer(id);
+  return { training, trainingError: null, ...children };
 }
