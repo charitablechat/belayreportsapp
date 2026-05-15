@@ -992,7 +992,7 @@ export const SyncPulse = ({ className }: { className?: string }) => {
             )}
 
             {/* S41: session-quarantined records the sync gave up on this session */}
-            {quarantinedCount > 0 && (
+            {isAdmin && quarantinedCount > 0 && (
               <div className="space-y-1.5 border-t border-green-900/40 pt-2">
                 <button
                   type="button"
@@ -1035,7 +1035,7 @@ export const SyncPulse = ({ className }: { className?: string }) => {
             )}
 
             {/* Failed (dead-letter) photos — retry-exhausted or orphaned */}
-            {deadLetterCount > 0 && (
+            {isAdmin && deadLetterCount > 0 && (
               <div className="space-y-1.5 border-t border-green-900/40 pt-2">
                 <button
                   type="button"
@@ -1082,7 +1082,7 @@ export const SyncPulse = ({ className }: { className?: string }) => {
             )}
 
             {/* Orphan records — temp-* rows owned by another user (shared device leftovers). */}
-            {diag.orphanRecords.length > 0 && (
+            {isAdmin && diag.orphanRecords.length > 0 && (
               <div className="space-y-1.5 border-t border-green-900/40 pt-2">
                 <button
                   type="button"
@@ -1211,6 +1211,7 @@ export const SyncPulse = ({ className }: { className?: string }) => {
              * table, quarantine count) and renders the JSON directly so the
              * user can copy/paste it back to support without a screenshot.
              */}
+            {isAdmin && (
             <div className="space-y-1.5 border-t border-green-900/40 pt-2">
               <button
                 type="button"
@@ -1288,6 +1289,7 @@ export const SyncPulse = ({ className }: { className?: string }) => {
                 validation-stuck bucket, or stale React state) so we can
                 triage the "phantom rows after Hard Reset" report
                 without guessing. Nothing is mutated. */}
+            {isAdmin && (
             <div className="space-y-1.5 border-t border-amber-900/40 pt-2">
               <div className="flex items-center justify-between gap-2">
                 <span className="text-amber-400 text-[10px] uppercase tracking-wider">
@@ -1369,6 +1371,7 @@ export const SyncPulse = ({ className }: { className?: string }) => {
             {/* Last-resort recovery: nukes the offline IndexedDB and all
                 service workers, then hard-reloads. Auth lives in
                 localStorage and is preserved, so the user stays signed in. */}
+            {isAdmin && (
             <div className="space-y-1.5 border-t border-red-900/40 pt-2">
               <div className="flex flex-col gap-1">
                 <span className="text-red-400 text-[10px] uppercase tracking-wider">
