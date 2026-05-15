@@ -50,6 +50,23 @@ function deleteOneDatabase(name: string): Promise<void> {
   });
 }
 
+function clearBackupLedgerKeys(): number {
+  let removed = 0;
+  try {
+    const keys: string[] = [];
+    for (let i = 0; i < localStorage.length; i++) {
+      const k = localStorage.key(i);
+      if (k && k.startsWith('rw_backup_')) keys.push(k);
+    }
+    for (const k of keys) {
+      try { localStorage.removeItem(k); removed++; } catch { /* ignore */ }
+    }
+  } catch (e) {
+    console.warn('[HardReset] Failed to clear rw_backup_ keys:', e);
+  }
+  return removed;
+}
+
 async function deleteAllOfflineDatabases(): Promise<void> {
   const names = new Set<string>(KNOWN_DB_NAMES);
   try {
@@ -76,7 +93,11 @@ export async function hardResetDatabase(): Promise<void> {
   await unregisterAllServiceWorkers();
   // 2) Delete every known offline IDB.
   await deleteAllOfflineDatabases();
-  // 3) Hard reload. Auth lives in localStorage and is intentionally untouched.
+  // 3) Clear the local backup ledger so deleted reports don't repopulate
+  //    on next boot. Auth keys live elsewhere and are intentionally untouched.
+  const removed = clearBackupLedgerKeys();
+  if (removed > 0) console.info(`[HardReset] Cleared ${removed} rw_backup_ ledger entries`);
+  // 4) Hard reload. Auth lives in localStorage and is intentionally untouched.
   try {
     // @ts-expect-error legacy forceReload arg
     window.location.reload(true);
