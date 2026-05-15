@@ -841,100 +841,36 @@ export default function TrainingForm() {
     }, 8000);
 
     try {
-      const baseUpdatedTraining = {
-        ...training,
-        updated_at: new Date().toISOString(),
-        // DISABLED: active_duration_seconds: getElapsedSeconds(),
-        // Track who modified the report if current user is not the owner
-        ...(currentUser?.id && currentUser.id !== training.inspector_id 
-          ? { last_modified_by: currentUser.id } 
-          : {}),
+      const payload = {
+        id: id!,
+        training,
+        deliveryApproaches,
+        operatingSystems,
+        immediateAttention,
+        verifiableItems,
+        systemsInPlace,
+        summary,
       };
 
-      // S9: Reconcile user-clear intent across all child collections + summary.
-      const summaryHasContent = !!(summary && (
-        summary.observations || summary.recommendations
-      ));
-      const totalChildCount =
-        deliveryApproaches.length + operatingSystems.length +
-        immediateAttention.length + verifiableItems.length +
-        systemsInPlace.length + (summaryHasContent ? 1 : 0);
-      const { reconcileClearIntent } = await import('@/lib/clear-intent');
-      const updatedTraining = reconcileClearIntent(
-        baseUpdatedTraining,
-        totalChildCount,
-        !!baseUpdatedTraining.synced_at,
-      );
+      // Phase 1 — IDB + snapshot + version history (always runs)
+      const persisted = await persistTrainingToOffline(payload, {
+        currentUserId: currentUser?.id,
+        childDataLoaded: childDataLoadedRef.current as never,
+        silent,
+        onVersionAppended: (info) => {
+          setLastVersionNumber(info.versionNumber);
+          setLastFieldCount(info.fieldCount);
+        },
+      });
+      const { updatedTraining, localSaveSucceeded, offlineError } = persisted;
 
-      // Save offline (fire-and-forget for UI responsiveness)
-      // Guard: Only write child data if it was successfully loaded OR has items
-      const childOps: Promise<unknown>[] = [saveTrainingOffline(updatedTraining, { childCountHint: totalChildCount })];
-      if (deliveryApproaches.length > 0 || childDataLoadedRef.current.delivery_approaches) {
-        childOps.push(saveTrainingDataOffline('delivery_approaches', id, deliveryApproaches, { allowEmpty: true }));
-      } else {
-        console.warn('[Training Save] Skipping delivery_approaches save — empty array not confirmed as loaded');
-      }
-      if (operatingSystems.length > 0 || childDataLoadedRef.current.operating_systems) {
-        childOps.push(saveTrainingDataOffline('operating_systems', id, operatingSystems, { allowEmpty: true }));
-      } else {
-        console.warn('[Training Save] Skipping operating_systems save — empty array not confirmed as loaded');
-      }
-      if (immediateAttention.length > 0 || childDataLoadedRef.current.immediate_attention) {
-        childOps.push(saveTrainingDataOffline('immediate_attention', id, immediateAttention, { allowEmpty: true }));
-      } else {
-        console.warn('[Training Save] Skipping immediate_attention save — empty array not confirmed as loaded');
-      }
-      if (verifiableItems.length > 0 || childDataLoadedRef.current.verifiable_items) {
-        childOps.push(saveTrainingDataOffline('verifiable_items', id, verifiableItems, { allowEmpty: true }));
-      } else {
-        console.warn('[Training Save] Skipping verifiable_items save — empty array not confirmed as loaded');
-      }
-      if (systemsInPlace.length > 0 || childDataLoadedRef.current.systems_in_place) {
-        childOps.push(saveTrainingDataOffline('systems_in_place', id, systemsInPlace, { allowEmpty: true }));
-      } else {
-        console.warn('[Training Save] Skipping systems_in_place save — empty array not confirmed as loaded');
-      }
-      if (summary && (childDataLoadedRef.current.summary || summary.observations || summary.recommendations)) {
-        childOps.push(saveTrainingDataOffline('summary', id, summary));
-      }
-      // Layer 1: localStorage snapshot backup FIRST (before IndexedDB writes)
-      try {
-        saveReportSnapshot('training', id, updatedTraining, {
-          delivery_approaches: deliveryApproaches,
-          operating_systems: operatingSystems,
-          immediate_attention: immediateAttention,
-          verifiable_items: verifiableItems,
-          systems_in_place: systemsInPlace,
-          summary: summary ? [summary] : [],
-        }, false);
-      } catch {}
-
-      // Show hard-saved toast immediately after localStorage snapshot (always reliable)
+      // Show hard-saved toast immediately after localStorage snapshot (which
+      // persistTrainingToOffline writes first; always reliable)
       if (!silent) showHardSavedToast(lastVersionNumber ? lastVersionNumber + 1 : undefined, undefined);
 
-      let localSaveSucceeded = false;
-      try {
-        await Promise.all(childOps);
-        localSaveSucceeded = true;
-        if (import.meta.env.DEV) console.log('[Training Save] Offline storage completed');
-
-        // Layer 2: Append-only version history (metadata only)
-        appendVersion('training', id, updatedTraining, {
-          delivery_approaches: deliveryApproaches,
-          operating_systems: operatingSystems,
-          immediate_attention: immediateAttention,
-          verifiable_items: verifiableItems,
-          systems_in_place: systemsInPlace,
-          summary: summary ? [summary] : [],
-        }, silent ? 'auto_save' : 'manual_save').then((v) => {
-          if (v) {
-            setLastVersionNumber(v.versionNumber);
-            setLastFieldCount(v.fieldCount);
-          }
-        }).catch(() => {});
-      } catch (offlineError) {
+      // Surface IDB save failures the same way the inline version did
+      if (offlineError) {
         console.warn('[Training Save] Offline storage failed:', offlineError);
-        // Gap 2.1: re-throw IdbSaveError so the outer save handler keeps the dirty flag set
         const { isIdbSaveError } = await import('@/lib/offline-storage');
         if (isIdbSaveError(offlineError)) {
           setSaveError({
@@ -953,185 +889,25 @@ export default function TrainingForm() {
         });
       }
 
-      // H10: Pre-edit snapshot: capture server state before admin overwrites it.
-      // Fires regardless of online state — capturePreEditSnapshot internally
-      // routes to a local queue when offline so the audit trail is never lost.
+      // H10: Pre-edit snapshot when an admin (non-owner) edits the report.
+      // Routes internally to a local queue when offline.
       if (localSaveSucceeded && currentUser?.id && training?.inspector_id && currentUser.id !== training.inspector_id) {
         capturePreEditSnapshot('training', id!, training.inspector_id, currentUser.id);
       }
 
-      // If online AND local save succeeded, try to sync to Supabase
+      // Phase 2 — push to Supabase (online + local save succeeded)
       if (isOnline && localSaveSucceeded) {
         try {
-          // Strip IDB-only fields (`child_count_hint`, `dirty`) — `saveTrainingOffline`
-          // MUTATES the training object in place to stamp these (S30 / C3), so by
-          // the time we reach the remote write `updatedTraining` carries them.
-          // Sending them to Supabase fails with PGRST204 ("Could not find the
-          // 'child_count_hint' column …") which silently no-ops the cloud write.
-          // Also drop `id` and `created_at`: the upsert fallback supplies its own
-          // `id` and we never want to overwrite the server's original creation
-          // timestamp with a (possibly skewed) local clock value. Mirrors the
-          // strip list in `atomic-sync-manager.ts:LOCAL_ONLY_REMOTE_UPSERT_FIELDS`
-          // and the equivalent helper in `InspectionForm.performSave` — keep all
-          // three lists in sync when adding new IDB-only flags.
-          const sanitizeTraining = (t: Record<string, unknown>) => {
-            const {
-              id: _id,
-              created_at: _created_at,
-              child_count_hint: _child_count_hint,
-              dirty: _dirty,
-              ...rest
-            } = t as Record<string, unknown>;
-            void _id; void _created_at; void _child_count_hint; void _dirty;
-            return rest;
-          };
-          const sanitizedTraining = sanitizeTraining(updatedTraining as Record<string, unknown>);
-
-          // Update main training record WITHOUT synced_at (deferred pattern)
-          const { data: updateResult, error: trainingError } = await supabase
-            .from('trainings')
-            .update(sanitizedTraining as never)
-            .eq('id', id)
-            .select('id');
-
-          if (trainingError) throw trainingError;
-          
-          // Verification: If 0 rows updated, record may not exist on server — use upsert
-          if (!updateResult || updateResult.length === 0) {
-            console.warn('[Training Save] Update returned 0 rows — falling back to upsert');
-            const { error: upsertError } = await supabase
-              .from('trainings')
-              .upsert({ id, ...sanitizedTraining } as never);
-            if (upsertError) throw upsertError;
-          }
-
-          // OPTIMIZED: Pre-generate UUIDs and run ALL operations in parallel
-          // Prepare all data with proper IDs upfront
-          const prepareItems = <T extends { id?: string }>(items: T[], foreignKey: string) => 
-            items.map(item => ({
-              ...item,
-              id: item.id?.startsWith('temp-') ? crypto.randomUUID() : (item.id || crypto.randomUUID()),
-              [foreignKey]: id
-            }));
-
-          const preparedApproaches = prepareItems(deliveryApproaches, 'training_id');
-          const preparedSystems = prepareItems(operatingSystems, 'training_id');
-          const preparedAttention = prepareItems(immediateAttention, 'training_id');
-          const preparedVerifiable = prepareItems(verifiableItems, 'training_id');
-          const preparedSystemsPlace = prepareItems(systemsInPlace, 'training_id');
-
-          // Execute all upserts in parallel (single batch operation)
-          const parallelOps: Promise<void>[] = [];
-
-          // RECONCILE: Delete server rows removed locally before upserting
-          // C4: capture pre-images for restore-on-failure.
-          let trainingReconciledDeletes: ReconciledTableDelete[] = [];
-          const user = await getUserWithCache();
-          if (user) {
-            const reconcileResult = await reconcileAllChildTables(
-              [
-                { childTable: 'training_delivery_approaches', parentIdColumn: 'training_id', localItems: deliveryApproaches },
-                { childTable: 'training_operating_systems', parentIdColumn: 'training_id', localItems: operatingSystems },
-                { childTable: 'training_immediate_attention', parentIdColumn: 'training_id', localItems: immediateAttention },
-                { childTable: 'training_verifiable_items', parentIdColumn: 'training_id', localItems: verifiableItems },
-                { childTable: 'training_systems_in_place', parentIdColumn: 'training_id', localItems: systemsInPlace },
-                { childTable: 'training_summary', parentIdColumn: 'training_id', localItems: summary ? [summary] : [] },
-              ],
-              id!,
-              'training',
-              user.id,
-            );
-            trainingReconciledDeletes = reconcileResult.deletedByTable;
-          }
-          
-          // Helper to convert PromiseLike to proper Promise
-          const dbOp = async (operation: PromiseLike<{ error: PostgrestError | null }>) => {
-            const { error } = await operation;
-            if (error) throw error;
-          };
-
-          if (preparedApproaches.length > 0) {
-            parallelOps.push(
-              dbOp(supabase.from('training_delivery_approaches').upsert(preparedApproaches as never, { onConflict: 'id' }))
-            );
-          }
-
-          if (preparedSystems.length > 0) {
-            parallelOps.push(
-              dbOp(supabase.from('training_operating_systems').upsert(preparedSystems as never, { onConflict: 'id' }))
-            );
-          }
-
-          if (preparedAttention.length > 0) {
-            parallelOps.push(
-              dbOp(supabase.from('training_immediate_attention').upsert(preparedAttention as never, { onConflict: 'id' }))
-            );
-          }
-
-          if (preparedVerifiable.length > 0) {
-            parallelOps.push(
-              dbOp(supabase.from('training_verifiable_items').upsert(preparedVerifiable as never, { onConflict: 'id' }))
-            );
-          }
-
-          if (preparedSystemsPlace.length > 0) {
-            parallelOps.push(
-              dbOp(supabase.from('training_systems_in_place').upsert(preparedSystemsPlace as never, { onConflict: 'id' }))
-            );
-          }
-
-          // Summary - use upsert for atomic operation
-          if (summary) {
-            const preparedSummary = {
-              ...summary,
-              id: summary.id || crypto.randomUUID(),
-              training_id: id
-            };
-            parallelOps.push(
-              dbOp(supabase.from('training_summary').upsert(preparedSummary as never, { onConflict: 'training_id' }))
-            );
-          }
-
-          // Execute all in parallel
-          try {
-            await Promise.all(parallelOps);
-          } catch (parErr) {
-            // C4: parallel upsert(s) failed — restore the rows reconcile already deleted.
-            if (trainingReconciledDeletes.length > 0) {
-              try {
-                await restoreReconciledDeletions(trainingReconciledDeletes, id!);
-              } catch (restoreErr) {
-                console.error('[C4] TrainingForm: restoreReconciledDeletions threw', restoreErr);
-              }
-            }
-            throw parErr;
-          }
-
-          // DEFERRED: Set synced_at ONLY after all child data committed successfully
-          const syncTimestamp = new Date().toISOString();
-          const { data: verifyData, error: finalSyncError } = await supabase
-            .from('trainings')
-            .update({ synced_at: syncTimestamp })
-            .eq('id', id)
-            .select('id, synced_at');
-          
-          if (finalSyncError || !verifyData?.length) {
-            console.error('[Training Save] Post-sync verification failed:', finalSyncError);
-            throw new Error("Sync verification failed: server did not confirm synced_at update");
-          }
-
-          // Only mark local as synced after server confirmation
-          await saveTrainingOffline({
-            ...updatedTraining,
-            synced_at: syncTimestamp
-          });
-          markSnapshotSynced('training', id);
+          const { syncTimestamp } = await pushTrainingToRemote(payload, { updatedTraining });
+          // Mark local as synced only after server confirmation
+          await saveTrainingOffline({ ...updatedTraining, synced_at: syncTimestamp });
+          markSnapshotSynced('training', id!);
           if (import.meta.env.DEV) console.log('[Training Save] Synced to database (verified)');
         } catch (error) {
           if (import.meta.env.DEV) console.log('[Training Save] Failed to sync, queuing operation:', error);
           try {
             await Promise.race([
-              queueTrainingOperation('update', id, updatedTraining),
+              queueTrainingOperation('update', id!, updatedTraining),
               new Promise((_, reject) => setTimeout(() => reject(new Error('Queue timeout')), 5000)),
             ]);
           } catch (e) {
@@ -1139,11 +915,11 @@ export default function TrainingForm() {
           }
         }
       } else {
-        // Queue for later sync
+        // Offline (or local save failed) — queue for later sync
         if (import.meta.env.DEV) console.log('[Training Save] Offline - queuing for sync');
         try {
           await Promise.race([
-            queueTrainingOperation('update', id, updatedTraining),
+            queueTrainingOperation('update', id!, updatedTraining),
             new Promise((_, reject) => setTimeout(() => reject(new Error('Queue timeout')), 5000)),
           ]);
         } catch (e) {
