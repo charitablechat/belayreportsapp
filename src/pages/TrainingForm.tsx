@@ -33,6 +33,8 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import TrainingHeader from "@/components/training/TrainingHeader";
+import { TrainingHeaderSection } from "@/components/training/TrainingHeaderSection";
+import { loadTrainingFromOffline, fetchTrainingFromServer } from "@/lib/form-loaders/trainingLoader";
 import { getMissingTrainingFields, formatMissingDescription, type MissingField } from "@/lib/required-fields";
 import { CollaboratorPresence } from "@/components/CollaboratorPresence";
 import DeliveryApproachSection from "@/components/training/DeliveryApproachSection";
