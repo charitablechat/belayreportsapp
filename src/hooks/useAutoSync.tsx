@@ -1014,7 +1014,74 @@ export const useAutoSync = () => {
     }
   }, []);
 
-  const updateUnsyncedCounts = useCallback((opts?: { force?: boolean }): Promise<void> => {
+  /**
+   * Force-refresh the unsynced state directly from IndexedDB, bypassing
+   * every throttle / freshness window / in-flight dedup that the normal
+   * `updateUnsyncedCounts` path enforces. Use after any reset/recovery
+   * action (Hard Reset, Drain Mode end, quarantine retry, force-sync
+   * completion) where stale React state would otherwise keep showing
+   * "5 PENDING" while IDB has 0 unsynced rows.
+   *
+   * Behavior contract:
+   *  - Reads getUnsyncedInspections/Trainings/DailyAssessments for the
+   *    current user.
+   *  - On IDB read failure: leaves existing state untouched (matches
+   *    the doUpdateUnsyncedCounts soft-error policy) — does NOT blank
+   *    the list, since "0" would be a lie when the read failed.
+   *  - On success: REPLACES (not merges) all four fields. If all three
+   *    arrays are empty, the visible pending list is cleared and the
+   *    Sync Terminal flips to ALL SYNCED.
+   *  - Also resets the throttling refs so the next normal
+   *    updateUnsyncedCounts tick doesn't immediately overwrite us.
+   */
+  const refreshSyncStateFromStorage = useCallback(async (): Promise<void> => {
+    try {
+      const user = await getUserWithCache();
+      if (!user) {
+        // Signed-out: there can't be any pending records to show.
+        setState(prev => ({
+          ...prev,
+          unsyncedCount: 0,
+          unsyncedInspections: [],
+          unsyncedTrainings: [],
+          unsyncedAssessments: [],
+        }));
+        unsyncedCountRef.current = 0;
+        lastCountsRunRef.current = Date.now();
+        return;
+      }
+      const [insp, train, assess] = await Promise.all([
+        getUnsyncedInspections(user.id),
+        getUnsyncedTrainings(user.id),
+        getUnsyncedDailyAssessments(user.id),
+      ]);
+      if (isIdbReadFailure(insp) || isIdbReadFailure(train) || isIdbReadFailure(assess)) {
+        // Don't blank state on read failure — leave whatever the user
+        // was looking at; the next successful tick will reconcile.
+        console.warn('[AutoSync] refreshSyncStateFromStorage: IDB read failed, leaving state untouched');
+        return;
+      }
+      const inspections = insp as DbRow[];
+      const trainings = train as DbRow[];
+      const assessments = assess as DbRow[];
+      const total = inspections.length + trainings.length + assessments.length;
+      setState(prev => ({
+        ...prev,
+        unsyncedCount: total,
+        unsyncedInspections: inspections,
+        unsyncedTrainings: trainings,
+        unsyncedAssessments: assessments,
+        // If everything is clear, drop any lingering soft "stats stale" message.
+        ...(total === 0 ? { syncError: null, syncErrorSeverity: null } : {}),
+      }));
+      unsyncedCountRef.current = total;
+      // Pretend the throttled path just ran so it doesn't immediately
+      // re-fire and clobber our fresh write with a stale closure.
+      lastCountsRunRef.current = Date.now();
+    } catch (err) {
+      console.error('[AutoSync] refreshSyncStateFromStorage failed:', err);
+    }
+  }, []);
     // 1. Share any in-flight read.
     if (inFlightCountsRef.current) return inFlightCountsRef.current;
 
