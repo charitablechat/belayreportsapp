@@ -1282,6 +1282,7 @@ export const SyncPulse = ({ className }: { className?: string }) => {
                 </div>
               )}
             </div>
+            )}
 
             {/* TEMPORARY: Storage-source diagnostic. Read-only. Surfaces
                 exactly where each remaining pending report is stored
@@ -1367,6 +1368,7 @@ export const SyncPulse = ({ className }: { className?: string }) => {
                 </pre>
               )}
             </div>
+            )}
 
             {/* Last-resort recovery: nukes the offline IndexedDB and all
                 service workers, then hard-reloads. Auth lives in
@@ -1405,6 +1407,7 @@ export const SyncPulse = ({ className }: { className?: string }) => {
                 </button>
               </div>
             </div>
+            )}
 
             <p className="text-green-700 text-[10px] italic pt-1 border-t border-green-900/40">
               Auto-sync runs in background.
