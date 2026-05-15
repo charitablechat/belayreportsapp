@@ -54,7 +54,7 @@ import { AttestationDialog } from "@/components/AttestationDialog";
 import { useUserProfile } from "@/hooks/useUserProfile";
 import type { AttestationPayload } from "@/lib/attestation";
 import { APP_VERSION_FULL } from "@/lib/attestation";
-import { reconcileAllChildTables, restoreReconciledDeletions, type ReconciledTableDelete } from "@/lib/sync-reconciliation";
+// reconcileAllChildTables / restoreReconciledDeletions: moved into pushInspectionToRemote (Slice 1.5)
 import { cn } from "@/lib/utils";
 import { useNetworkStatus } from "@/hooks/useNetworkStatus";
 import { useStorageHealthCheck } from "@/hooks/useStorageHealthCheck";
