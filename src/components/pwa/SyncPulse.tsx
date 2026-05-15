@@ -121,6 +121,7 @@ export const SyncPulse = ({ className }: { className?: string }) => {
   const [diagnosticRunning, setDiagnosticRunning] = useState(false);
   const [diagnosticReport, setDiagnosticReport] = useState<SyncDiagnosticReport | null>(null);
   const [diagnosticCopied, setDiagnosticCopied] = useState(false);
+  const [hardResetting, setHardResetting] = useState(false);
   // Collapsible disclosure state for the SELF-CHECK and DIAGNOSTIC panels.
   // The ▸/▾ caret in the header doubles as a tap-target that toggles each
   // panel — on small screens the action button was getting clipped off
