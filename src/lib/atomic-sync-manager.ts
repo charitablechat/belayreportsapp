@@ -2409,6 +2409,7 @@ export async function syncTrainingAtomic(trainingId: string, preValidatedUser?: 
       // Sanitize summary before sync
       const sanitizedSummary = {
         ...summary,
+        id: (summary.id && !summary.id.startsWith('temp-')) ? summary.id : crypto.randomUUID(),
         submission_date: summary.submission_date === "" ? null : summary.submission_date
       };
       
