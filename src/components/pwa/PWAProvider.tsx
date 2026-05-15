@@ -200,6 +200,7 @@ const PWAProviderContent = ({ children }: PWAProviderProps) => {
     syncError,
     syncErrorSeverity,
     updateUnsyncedCount: updateUnsyncedCounts,
+    refreshSyncStateFromStorage,
     forceSync,
     unsyncedPhotoCount,
     photosByInspection,
