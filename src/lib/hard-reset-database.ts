@@ -117,6 +117,10 @@ async function deleteAllOfflineDatabases(): Promise<void> {
  * forces a fresh navigation.
  */
 export async function hardResetDatabase(): Promise<void> {
+  // 0) Freeze auto-save / drain-mode / SW caches BEFORE we touch storage.
+  //    Without this, a fast auto-save tick can repopulate IDB between the
+  //    delete and the reload, leaving stale rows on the next boot.
+  await freezeApp();
   // 1) Drop SWs first so they can't intercept the reload or re-grab a handle
   //    on the database we're about to delete.
   await unregisterAllServiceWorkers();
