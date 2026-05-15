@@ -1888,287 +1888,83 @@ export default function InspectionForm() {
       if (isOnline) {
         const syncWithRetry = async (retries = 2): Promise<void> => {
           try {
-            // Sanitize inspection data - remove joined/computed fields and handle nulls.
-            // M10: Also strip `created_at` so neither update nor the upsert fallback
-            // can overwrite the server's original timestamp with a (possibly skewed)
-            // local clock value. The temp→real-UUID dedup key relies on
-            // (inspector_id, organization, created_at), so drift here can produce
-            // duplicate rows on the next sync.
-            //
-            // Strip IDB-only fields (`child_count_hint`, `dirty`) — the local-save
-            // helper `saveInspectionOffline` MUTATES the inspection object in
-            // place to stamp these (S30 / C3), so by the time we reach the
-            // remote write `inspectionToSave` carries them. Sending them to
-            // Supabase fails with PGRST204 ("Could not find the
-            // 'child_count_hint' column …"). Mirrors the strip list in
-            // `atomic-sync-manager.ts:LOCAL_ONLY_REMOTE_UPSERT_FIELDS` —
-            // keep both lists in sync when adding new IDB-only flags.
-            const sanitizeInspection = (insp: DbRow) => {
-              const {
-                id,
-                inspector,
-                created_at,
-                child_count_hint,
-                dirty,
-                inspection_id,
-                user_id,
-                ...rest
-              } = insp;
-              return {
-                ...rest,
-                previous_inspection_date: rest.previous_inspection_date === "" ? null : rest.previous_inspection_date,
-              };
-            };
-
-            // Update main inspection record WITHOUT synced_at (deferred pattern)
-            const sanitized = sanitizeInspection(inspectionToSave);
-            const { data: updateResult, error: inspectionError } = await supabase
-              .from("inspections")
-              .update(sanitized as never)
-              .eq("id", id)
-              .select("id");
-            
-            if (inspectionError) {
-              console.error('[InspectionForm Sync] Failed to update inspection:', inspectionError);
-              throw inspectionError;
-            }
-            
-            // Verification: If 0 rows updated, record may not exist on server — use upsert
-            if (!updateResult || updateResult.length === 0) {
-              console.warn('[InspectionForm Sync] Update returned 0 rows — falling back to upsert');
-              const { error: upsertError } = await supabase
-                .from("inspections")
-                .upsert({ id, ...sanitized } as never);
-              if (upsertError) {
-                console.error('[InspectionForm Sync] Upsert fallback failed:', upsertError);
-                throw upsertError;
-              }
-            }
-            
-            // OPTIMIZED: Parallelize all independent database operations
-            // Pre-generate UUIDs for new items to avoid .select() roundtrips
-            // Stamp display_order from array index before saving
-            const systemsWithOrder = systems.map((s, i) => ({ ...s, display_order: i }));
-            const ziplinesWithOrder = ziplines.map((z, i) => ({ ...z, display_order: i }));
-            const equipmentWithOrder = equipment.map((e, i) => ({ ...e, display_order: i }));
-
-            const existingSystems = systemsWithOrder.filter(s => s.id && !s.id.startsWith('temp-'));
-            const newSystems = systemsWithOrder.filter(s => !s.id || s.id.startsWith('temp-')).map(s => ({
-              ...s,
-              id: crypto.randomUUID(), // Pre-generate UUID
-              inspection_id: id
-            }));
-            
-            const existingZiplines = ziplinesWithOrder.filter(z => z.id && !z.id.startsWith('temp-'));
-            const newZiplines = ziplinesWithOrder.filter(z => !z.id || z.id.startsWith('temp-')).map(z => ({
-              ...z,
-              id: crypto.randomUUID(),
-              inspection_id: id
-            }));
-            
-            const existingEquipment = equipmentWithOrder.filter(e => e.id && !e.id.startsWith('temp-'));
-            const newEquipment = equipmentWithOrder.filter(e => !e.id || e.id.startsWith('temp-')).map(e => ({
-              ...e,
-              id: crypto.randomUUID(),
-              inspection_id: id
-            }));
-            
-            // Prepare standards with proper IDs for upsert
-            const standardsWithIds = standards.map(s => ({
-              ...s,
-              id: s.id || crypto.randomUUID(),
-              inspection_id: id
-            }));
-            
-            // Prepare summary
-            const sanitizeSummary = (sum: DbRow) => ({
-              ...sum,
-              next_inspection_date: sum.next_inspection_date === "" ? null : sum.next_inspection_date
-            });
-
-            // Execute ALL operations in parallel for maximum speed
-            const parallelOperations: Promise<void>[] = [];
-
-            // RECONCILE: Delete server rows removed locally before upserting
-            // C4: capture pre-images so we can restore them if the parallel upserts fail.
-            let inspReconciledDeletes: ReconciledTableDelete[] = [];
-            const user = await getUserWithCache();
-            if (user) {
-              const reconcileResult = await reconcileAllChildTables(
-                [
-                  { childTable: 'inspection_systems', parentIdColumn: 'inspection_id', localItems: systems },
-                  { childTable: 'inspection_ziplines', parentIdColumn: 'inspection_id', localItems: ziplines },
-                  { childTable: 'inspection_equipment', parentIdColumn: 'inspection_id', localItems: equipment },
-                  { childTable: 'inspection_standards', parentIdColumn: 'inspection_id', localItems: standards },
-                  { childTable: 'inspection_summary', parentIdColumn: 'inspection_id', localItems: summary ? [summary] : [] },
-                ],
-                id!,
-                'inspection',
-                user.id,
+            // Slice 1.5: remote engine extracted to `pushInspectionToRemote`.
+            // Preserves byte-for-byte the legacy contract:
+            //   - sanitize (strip joined / IDB-only / created_at fields)
+            //   - update parent (with upsert fallback on 0-row return)
+            //   - reconcileAllChildTables (C4 pre-image capture)
+            //   - parallel upserts/inserts for systems/ziplines/equipment/standards/summary
+            //   - on parallel failure → restoreReconciledDeletions (C4 rollback)
+            //   - DEFERRED synced_at update + verify on the parent
+            // Returns { syncTimestamp, hadFilteredItems, tempIdMappings }.
+            // The page owns: retry loop, temp-id queueMicrotask setState, post-sync
+            // IDB stamp, markSnapshotSynced.
+            const { syncTimestamp, hadFilteredItems, tempIdMappings } =
+              await pushInspectionToRemote(
+                {
+                  id: id!,
+                  inspection: updatedInspection,
+                  systems,
+                  ziplines,
+                  equipment,
+                  standards,
+                  summary: currentSummary,
+                },
+                { updatedInspection },
               );
-              inspReconciledDeletes = reconcileResult.deletedByTable;
-            }
-            
-            // Helper to convert PromiseLike to proper Promise
-            const dbOp = async (operation: PromiseLike<{ error: PostgrestError | null }>) => {
-              const { error } = await operation;
-              if (error) throw error;
-            };
-            
-            // Systems operations
-            if (existingSystems.length > 0) {
-              parallelOperations.push(
-                dbOp(supabase.from("inspection_systems").upsert(existingSystems.map(s => ({ ...s, inspection_id: id })) as never, { onConflict: 'id' }))
-              );
-            }
-            if (newSystems.length > 0) {
-              // Build temp ID → new item map for position-preserving replacement
-              const systemTempToNewMap = new Map<string, typeof newSystems[0]>();
-              systems.filter(s => !s.id || s.id.startsWith('temp-')).forEach((original, i) => {
-                if (newSystems[i]) {
-                  systemTempToNewMap.set(original.id || '', newSystems[i]);
-                }
-              });
-              
-              parallelOperations.push(
-                dbOp(supabase.from("inspection_systems").insert(newSystems as never))
-              );
-              
-              // Replace temp items in-place, preserving position (no reordering).
-              // Adopt only the server-assigned id/inspection_id; keep all other fields
-              // from live React state to avoid clobbering in-flight user edits.
+
+            // Apply temp-id → real-UUID mappings via queueMicrotask. Replace temp
+            // items in-place, preserving position (no reordering). CRITICAL: only
+            // adopt the server-assigned id/inspection_id — preserve all other fields
+            // from the live React state. Replacing the whole row from the pre-save
+            // snapshot would clobber any edits the user made between when the
+            // snapshot was taken and when this microtask runs (e.g. picking an
+            // equipment type from the combobox immediately after adding the row).
+            if (tempIdMappings.systems.size > 0) {
               queueMicrotask(() => {
                 isInternalUpdateRef.current = true;
                 setSystems(prev => prev.map(s => {
-                  if (s.id && s.id.startsWith('temp-') && systemTempToNewMap.has(s.id)) {
-                    const replacement = systemTempToNewMap.get(s.id)!;
+                  if (s.id && s.id.startsWith('temp-') && tempIdMappings.systems.has(s.id)) {
+                    const replacement = tempIdMappings.systems.get(s.id)!;
                     return { ...s, id: replacement.id, inspection_id: replacement.inspection_id };
                   }
                   return s;
                 }));
               });
             }
-            
-            // Ziplines operations
-            if (existingZiplines.length > 0) {
-              parallelOperations.push(
-                dbOp(supabase.from("inspection_ziplines").upsert(existingZiplines.map(z => ({ ...z, inspection_id: id })) as never, { onConflict: 'id' }))
-              );
-            }
-            if (newZiplines.length > 0) {
-              // Build temp ID → new item map for position-preserving replacement
-              const ziplineTempToNewMap = new Map<string, typeof newZiplines[0]>();
-              ziplines.filter(z => !z.id || z.id.startsWith('temp-')).forEach((original, i) => {
-                if (newZiplines[i]) {
-                  ziplineTempToNewMap.set(original.id || '', newZiplines[i]);
-                }
-              });
-              
-              parallelOperations.push(
-                dbOp(supabase.from("inspection_ziplines").insert(newZiplines as never))
-              );
-              
-              // Replace temp items in-place, preserving position (no reordering).
-              // Adopt only the server-assigned id/inspection_id; keep all other fields
-              // from live React state to avoid clobbering in-flight user edits.
+            if (tempIdMappings.ziplines.size > 0) {
               queueMicrotask(() => {
                 isInternalUpdateRef.current = true;
                 setZiplines(prev => prev.map(z => {
-                  if (z.id && z.id.startsWith('temp-') && ziplineTempToNewMap.has(z.id)) {
-                    const replacement = ziplineTempToNewMap.get(z.id)!;
+                  if (z.id && z.id.startsWith('temp-') && tempIdMappings.ziplines.has(z.id)) {
+                    const replacement = tempIdMappings.ziplines.get(z.id)!;
                     return { ...z, id: replacement.id, inspection_id: replacement.inspection_id };
                   }
                   return z;
                 }));
               });
             }
-            
-            // Equipment operations
-            if (existingEquipment.length > 0) {
-              parallelOperations.push(
-                dbOp(supabase.from("inspection_equipment").upsert(existingEquipment.map(e => ({ ...e, inspection_id: id })) as never, { onConflict: 'id' }))
-              );
-            }
-            if (newEquipment.length > 0) {
-              // Build temp ID → new item map for position-preserving replacement
-              const equipmentTempToNewMap = new Map<string, typeof newEquipment[0]>();
-              equipment.filter(e => !e.id || e.id.startsWith('temp-')).forEach((original, i) => {
-                if (newEquipment[i]) {
-                  equipmentTempToNewMap.set(original.id || '', newEquipment[i]);
-                }
-              });
-              
-              parallelOperations.push(
-                dbOp(supabase.from("inspection_equipment").insert(newEquipment as never))
-              );
-              
-              // Replace temp items in-place, preserving position (no reordering).
-              // CRITICAL: only adopt the server-assigned id/inspection_id — preserve all
-              // other fields from the live React state. Replacing the whole row from the
-              // pre-save snapshot would clobber any edits the user made between when the
-              // snapshot was taken and when this microtask runs (e.g. picking an equipment
-              // type from the combobox immediately after adding the row).
+            if (tempIdMappings.equipment.size > 0) {
               queueMicrotask(() => {
                 isInternalUpdateRef.current = true;
                 setEquipment(prev => prev.map(e => {
-                  if (e.id && e.id.startsWith('temp-') && equipmentTempToNewMap.has(e.id)) {
-                    const replacement = equipmentTempToNewMap.get(e.id)!;
+                  if (e.id && e.id.startsWith('temp-') && tempIdMappings.equipment.has(e.id)) {
+                    const replacement = tempIdMappings.equipment.get(e.id)!;
                     return { ...e, id: replacement.id, inspection_id: replacement.inspection_id };
                   }
                   return e;
                 }));
               });
             }
-            
-            // Standards - use upsert instead of delete+insert for atomicity
-            parallelOperations.push(
-              dbOp(supabase.from("inspection_standards").upsert(standardsWithIds as never, { onConflict: 'id', ignoreDuplicates: false }))
-            );
-            
-            // Summary
-            parallelOperations.push(
-              dbOp(supabase.from("inspection_summary").upsert(sanitizeSummary({ ...currentSummary, inspection_id: id }) as never, { onConflict: 'inspection_id' }))
-            );
 
-            // Execute all in parallel
-            try {
-              await Promise.all(parallelOperations);
-            } catch (parErr) {
-              // C4: parallel upsert(s) failed — restore the rows reconcile already deleted.
-              if (inspReconciledDeletes.length > 0) {
-                try {
-                  await restoreReconciledDeletions(inspReconciledDeletes, id!);
-                } catch (restoreErr) {
-                  console.error('[C4] InspectionForm: restoreReconciledDeletions threw', restoreErr);
-                }
-              }
-              throw parErr;
-            }
-
-            // DEFERRED: Set synced_at ONLY after all child data committed successfully
-            const hadFilteredItems = validSystems.length !== systems.length
-              || validZiplines.length !== ziplines.length
-              || validEquipment.length !== equipment.length;
-
-            const syncTimestamp = new Date().toISOString();
-            
-            // Final step: set synced_at on server and verify it was written
-            const { data: verifyData, error: finalSyncError } = await supabase
-              .from("inspections")
-              .update({ synced_at: syncTimestamp })
-              .eq("id", id)
-              .select("id, synced_at");
-            
-            if (finalSyncError || !verifyData?.length) {
-              console.error('[InspectionForm Sync] Post-sync verification failed:', finalSyncError);
-              throw new Error("Sync verification failed: server did not confirm synced_at update");
-            }
-
-            // Only mark local as synced after server confirmation
+            // Only mark local as synced after server confirmation. When items
+            // were filtered out (empty name), keep updated_at > synced_at so
+            // useAutoSync re-flags the record on the next cycle (allows the
+            // user to fill in the name and have it sync). Identical to legacy.
             await saveInspectionOffline({
-              ...inspectionToSave,
+              ...updatedInspection,
               synced_at: syncTimestamp,
-              updated_at: hadFilteredItems ? inspectionToSave.updated_at : syncTimestamp,
+              updated_at: hadFilteredItems ? updatedInspection.updated_at : syncTimestamp,
             });
 
             markSnapshotSynced('inspection', id!);
@@ -2188,7 +1984,7 @@ export default function InspectionForm() {
               code === 'ECONNREFUSED' ||
               errName === 'TypeError' || // Often thrown on network failures
               !navigator.onLine;
-            
+
             if (retries > 0 && isNetworkError) {
               const delay = Math.pow(2, 3 - retries) * 1000; // Exponential backoff: 2s, 4s
               console.log(`[InspectionForm Sync] Network error, retrying in ${delay}ms... (${retries} attempts left)`);
