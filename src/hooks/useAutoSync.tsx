@@ -1743,6 +1743,7 @@ export const useAutoSync = () => {
     ...state,
     triggerDebouncedSync,
     updateUnsyncedCounts,
+    refreshSyncStateFromStorage,
     performSync,
   };
 };
