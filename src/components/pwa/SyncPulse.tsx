@@ -44,7 +44,7 @@ import {
   type SyncHaltState,
 } from '@/lib/sync-halt-tracker';
 import { supabase } from '@/integrations/supabase/client';
-import { getUserWithCache } from '@/lib/cached-auth';
+import { getUserWithCache, getAdminCacheKey, getOfflineUserId } from '@/lib/cached-auth';
 import {
   startDrainMode,
   stopDrainMode,
@@ -171,6 +171,34 @@ export const SyncPulse = ({ className }: { className?: string }) => {
   const [diagnosticReport, setDiagnosticReport] = useState<SyncDiagnosticReport | null>(null);
   const [diagnosticCopied, setDiagnosticCopied] = useState(false);
   const [hardResetting, setHardResetting] = useState(false);
+  // Admin gate — only admins/super-admins see destructive/diagnostic
+  // controls (Hard Reset, Drain, Retry, Drop, Diagnostic, Storage Source
+  // Diagnostic, Recover Storage, orphan reassign/delete, quarantine retry,
+  // failed-photo retry, stuck-photo retry). Inspectors see read-only
+  // status only. Defaults to false; flips true on successful RPC or
+  // cached admin marker. Non-redirecting (this component lives in the
+  // global header, unlike useRequireAdmin which guards admin pages).
+  const [isAdmin, setIsAdmin] = useState<boolean>(() => {
+    try {
+      const offlineId = getOfflineUserId();
+      if (!offlineId) return false;
+      return localStorage.getItem(getAdminCacheKey(offlineId)) === 'true';
+    } catch {
+      return false;
+    }
+  });
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const { data, error } = await supabase.rpc('is_admin_or_above');
+        if (!cancelled && !error) setIsAdmin(!!data);
+      } catch {
+        /* offline / transient — keep cached value */
+      }
+    })();
+    return () => { cancelled = true; };
+  }, []);
   // TEMPORARY storage-source diagnostic — surfaces where each "phantom"
   // pending report is actually stored (IDB / rw_backup_ ledger /
   // quarantine sessionStorage / validation-stuck / stale React state).
@@ -560,7 +588,7 @@ export const SyncPulse = ({ className }: { className?: string }) => {
                 screen wake-lock keeps the iPad/iPhone tab alive past
                 auto-lock. Auto-stops when the queue hits 0 or after the
                 10-min safety cap in drain-mode.ts. */}
-            {totalUnsynced > 0 && isOnline && (
+            {totalUnsynced > 0 && isOnline && isAdmin && (
               <div className={cn(
                 'rounded border p-2.5 space-y-1.5',
                 drainActive
@@ -663,23 +691,25 @@ export const SyncPulse = ({ className }: { className?: string }) => {
                   <span className="text-yellow-400 text-[10px] uppercase tracking-wider">
                     ▸ Sync engine paused
                   </span>
-                  <button
-                    type="button"
-                    disabled={retrying}
-                    onClick={async () => {
-                      try {
-                        setRetrying(true);
-                        resetLayerBreakerOnUserActivity('SyncPulse retry'); await forceSyncAndRefreshVisibleState();
-                      } catch (e) {
-                        console.warn('[SyncPulse] Force sync after halt failed:', e);
-                      } finally {
-                        setRetrying(false);
-                      }
-                    }}
-                    className="text-[10px] uppercase tracking-wider px-2 py-0.5 rounded border border-yellow-700/60 text-yellow-300 hover:bg-yellow-900/30 disabled:opacity-50"
-                  >
-                    {retrying ? 'RETRYING…' : 'RETRY NOW'}
-                  </button>
+                  {isAdmin && (
+                    <button
+                      type="button"
+                      disabled={retrying}
+                      onClick={async () => {
+                        try {
+                          setRetrying(true);
+                          resetLayerBreakerOnUserActivity('SyncPulse retry'); await forceSyncAndRefreshVisibleState();
+                        } catch (e) {
+                          console.warn('[SyncPulse] Force sync after halt failed:', e);
+                        } finally {
+                          setRetrying(false);
+                        }
+                      }}
+                      className="text-[10px] uppercase tracking-wider px-2 py-0.5 rounded border border-yellow-700/60 text-yellow-300 hover:bg-yellow-900/30 disabled:opacity-50"
+                    >
+                      {retrying ? 'RETRYING…' : 'RETRY NOW'}
+                    </button>
+                  )}
                 </div>
                 <p className="text-yellow-200/90 text-[10px] leading-relaxed">
                   {haltState.detail}
@@ -696,7 +726,7 @@ export const SyncPulse = ({ className }: { className?: string }) => {
                     re-enters the same wedge. RECOVER STORAGE forcibly
                     closes the cached handle, asks the SW to release its
                     handle, resets all breakers, and re-opens. */}
-                {(haltState.code === 'circuit_breaker_open' || multiTabBlock) && (
+                {isAdmin && (haltState.code === 'circuit_breaker_open' || multiTabBlock) && (
                   <div className="mt-2 pt-2 border-t border-yellow-900/40 space-y-1.5">
                     <button
                       type="button"
@@ -772,6 +802,7 @@ export const SyncPulse = ({ className }: { className?: string }) => {
                         accent={item.accent}
                         label={item.label}
                         sublabel={item.sublabel}
+                        showDrop={isAdmin}
                         onDrop={async () => {
                           await forceDeleteLocalRecord(item.table, String(item.id));
                           try { await forceSyncAndRefreshVisibleState(); } catch { /* breaker open is fine */ }
@@ -825,31 +856,33 @@ export const SyncPulse = ({ className }: { className?: string }) => {
                       <div className="flex items-center justify-between pl-3 text-red-300/90">
                         <span className="flex items-center gap-1.5">
                           <span className="text-red-400">▸ STUCK</span>
-                          <button
-                            type="button"
-                            disabled={retrying}
-                            onClick={async (e) => {
-                              e.stopPropagation();
-                              try {
-                                setRetrying(true);
-                                const ids = photoBuckets.stuckIds;
-                                if (ids.length > 0) {
-                                  await resetPhotoRetryCounts(ids);
+                          {isAdmin && (
+                            <button
+                              type="button"
+                              disabled={retrying}
+                              onClick={async (e) => {
+                                e.stopPropagation();
+                                try {
+                                  setRetrying(true);
+                                  const ids = photoBuckets.stuckIds;
+                                  if (ids.length > 0) {
+                                    await resetPhotoRetryCounts(ids);
+                                  }
+                                  await updatePhotoCount();
+                                  const fresh = await getPhotoRetryBuckets();
+                                  setPhotoBuckets(fresh);
+                                  resetLayerBreakerOnUserActivity('SyncPulse retry'); await forceSync();
+                                } catch (err) {
+                                  console.warn('[SyncPulse] Stuck-photo retry failed:', err);
+                                } finally {
+                                  setRetrying(false);
                                 }
-                                await updatePhotoCount();
-                                const fresh = await getPhotoRetryBuckets();
-                                setPhotoBuckets(fresh);
-                                resetLayerBreakerOnUserActivity('SyncPulse retry'); await forceSync();
-                              } catch (err) {
-                                console.warn('[SyncPulse] Stuck-photo retry failed:', err);
-                              } finally {
-                                setRetrying(false);
-                              }
-                            }}
-                            className="text-[9px] uppercase tracking-wider px-1.5 py-0.5 rounded border border-red-700/60 text-red-300 hover:bg-red-900/30 disabled:opacity-50"
-                          >
-                            {retrying ? 'RETRYING…' : 'RETRY NOW'}
-                          </button>
+                              }}
+                              className="text-[9px] uppercase tracking-wider px-1.5 py-0.5 rounded border border-red-700/60 text-red-300 hover:bg-red-900/30 disabled:opacity-50"
+                            >
+                              {retrying ? 'RETRYING…' : 'RETRY NOW'}
+                            </button>
+                          )}
                         </span>
                         <span>{photoBuckets.stuck}</span>
                       </div>
@@ -959,7 +992,7 @@ export const SyncPulse = ({ className }: { className?: string }) => {
             )}
 
             {/* S41: session-quarantined records the sync gave up on this session */}
-            {quarantinedCount > 0 && (
+            {isAdmin && quarantinedCount > 0 && (
               <div className="space-y-1.5 border-t border-green-900/40 pt-2">
                 <button
                   type="button"
@@ -1002,7 +1035,7 @@ export const SyncPulse = ({ className }: { className?: string }) => {
             )}
 
             {/* Failed (dead-letter) photos — retry-exhausted or orphaned */}
-            {deadLetterCount > 0 && (
+            {isAdmin && deadLetterCount > 0 && (
               <div className="space-y-1.5 border-t border-green-900/40 pt-2">
                 <button
                   type="button"
@@ -1049,7 +1082,7 @@ export const SyncPulse = ({ className }: { className?: string }) => {
             )}
 
             {/* Orphan records — temp-* rows owned by another user (shared device leftovers). */}
-            {diag.orphanRecords.length > 0 && (
+            {isAdmin && diag.orphanRecords.length > 0 && (
               <div className="space-y-1.5 border-t border-green-900/40 pt-2">
                 <button
                   type="button"
@@ -1178,6 +1211,7 @@ export const SyncPulse = ({ className }: { className?: string }) => {
              * table, quarantine count) and renders the JSON directly so the
              * user can copy/paste it back to support without a screenshot.
              */}
+            {isAdmin && (
             <div className="space-y-1.5 border-t border-green-900/40 pt-2">
               <button
                 type="button"
@@ -1248,6 +1282,7 @@ export const SyncPulse = ({ className }: { className?: string }) => {
                 </div>
               )}
             </div>
+            )}
 
             {/* TEMPORARY: Storage-source diagnostic. Read-only. Surfaces
                 exactly where each remaining pending report is stored
@@ -1255,6 +1290,7 @@ export const SyncPulse = ({ className }: { className?: string }) => {
                 validation-stuck bucket, or stale React state) so we can
                 triage the "phantom rows after Hard Reset" report
                 without guessing. Nothing is mutated. */}
+            {isAdmin && (
             <div className="space-y-1.5 border-t border-amber-900/40 pt-2">
               <div className="flex items-center justify-between gap-2">
                 <span className="text-amber-400 text-[10px] uppercase tracking-wider">
@@ -1332,10 +1368,12 @@ export const SyncPulse = ({ className }: { className?: string }) => {
                 </pre>
               )}
             </div>
+            )}
 
             {/* Last-resort recovery: nukes the offline IndexedDB and all
                 service workers, then hard-reloads. Auth lives in
                 localStorage and is preserved, so the user stays signed in. */}
+            {isAdmin && (
             <div className="space-y-1.5 border-t border-red-900/40 pt-2">
               <div className="flex flex-col gap-1">
                 <span className="text-red-400 text-[10px] uppercase tracking-wider">
@@ -1369,6 +1407,7 @@ export const SyncPulse = ({ className }: { className?: string }) => {
                 </button>
               </div>
             </div>
+            )}
 
             <p className="text-green-700 text-[10px] italic pt-1 border-t border-green-900/40">
               Auto-sync runs in background.
@@ -1399,12 +1438,14 @@ function PendingReportRow({
   accent,
   label,
   sublabel,
+  showDrop = true,
   onDrop,
 }: {
   kind: string;
   accent: AccentName;
   label: string;
   sublabel?: string;
+  showDrop?: boolean;
   onDrop: () => Promise<void>;
 }) {
   const [busy, setBusy] = useState(false);
@@ -1432,16 +1473,18 @@ function PendingReportRow({
         <span className="truncate">{label}</span>
         {sublabel && <span className="text-green-600 ml-1">{sublabel}</span>}
       </div>
-      <button
-        type="button"
-        disabled={busy}
-        onClick={handleDrop}
-        style={{ touchAction: 'manipulation' }}
-        className="shrink-0 min-h-[32px] px-2 text-[9px] uppercase tracking-wider text-red-400 hover:text-red-300 active:text-red-300 disabled:opacity-50 border border-red-900/60 hover:border-red-500/60 rounded-sm"
-        aria-label={`Drop local draft ${label}`}
-      >
-        {busy ? '…' : 'DROP'}
-      </button>
+      {showDrop && (
+        <button
+          type="button"
+          disabled={busy}
+          onClick={handleDrop}
+          style={{ touchAction: 'manipulation' }}
+          className="shrink-0 min-h-[32px] px-2 text-[9px] uppercase tracking-wider text-red-400 hover:text-red-300 active:text-red-300 disabled:opacity-50 border border-red-900/60 hover:border-red-500/60 rounded-sm"
+          aria-label={`Drop local draft ${label}`}
+        >
+          {busy ? '…' : 'DROP'}
+        </button>
+      )}
     </div>
   );
 }
