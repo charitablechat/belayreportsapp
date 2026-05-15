@@ -464,23 +464,16 @@ export default function TrainingForm() {
           }
         }
 
-        // Try loading from offline storage first
-        const offlineTraining = await getOfflineTraining(id);
-        const [
+        // Try loading from offline storage first (delegated to pure loader)
+        const {
+          training: offlineTraining,
           delivery_approaches,
           operating_systems,
           immediate_attention,
           verifiable_items,
           systems_in_place,
-          summaryData
-        ] = await Promise.all([
-          getTrainingDataOffline('delivery_approaches', id),
-          getTrainingDataOffline('operating_systems', id),
-          getTrainingDataOffline('immediate_attention', id),
-          getTrainingDataOffline('verifiable_items', id),
-          getTrainingDataOffline('systems_in_place', id),
-          getTrainingDataOffline('summary', id).then(d => d[0])
-        ]);
+          summary: summaryData,
+        } = await loadTrainingFromOffline(id);
 
         if (offlineTraining) {
           isInternalUpdateRef.current = true;
