@@ -588,7 +588,7 @@ export const SyncPulse = ({ className }: { className?: string }) => {
                 screen wake-lock keeps the iPad/iPhone tab alive past
                 auto-lock. Auto-stops when the queue hits 0 or after the
                 10-min safety cap in drain-mode.ts. */}
-            {totalUnsynced > 0 && isOnline && (
+            {totalUnsynced > 0 && isOnline && isAdmin && (
               <div className={cn(
                 'rounded border p-2.5 space-y-1.5',
                 drainActive
