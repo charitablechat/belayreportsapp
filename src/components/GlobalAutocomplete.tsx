@@ -654,7 +654,19 @@ export function GlobalAutocomplete({
                                 value === option.value ? "opacity-100" : "opacity-0"
                               )}
                             />
-                            <span className="whitespace-nowrap text-sm font-medium">{option.value}</span>
+                            {/*
+                              `title` exposes the full, untruncated value
+                              for any tooltip/AT consumer. Truncation, if
+                              ever introduced, must remain CSS-only and
+                              MUST NOT alter the string passed to
+                              handleSelect (see resolveCanonicalValue).
+                            */}
+                            <span
+                              className="whitespace-nowrap text-sm font-medium"
+                              title={option.value}
+                            >
+                              {option.value}
+                            </span>
                           </div>
                           <button
                             onClick={(e) => handleDelete(option, e)}
