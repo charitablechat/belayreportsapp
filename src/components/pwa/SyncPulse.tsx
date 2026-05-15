@@ -726,7 +726,7 @@ export const SyncPulse = ({ className }: { className?: string }) => {
                     re-enters the same wedge. RECOVER STORAGE forcibly
                     closes the cached handle, asks the SW to release its
                     handle, resets all breakers, and re-opens. */}
-                {(haltState.code === 'circuit_breaker_open' || multiTabBlock) && (
+                {isAdmin && (haltState.code === 'circuit_breaker_open' || multiTabBlock) && (
                   <div className="mt-2 pt-2 border-t border-yellow-900/40 space-y-1.5">
                     <button
                       type="button"
