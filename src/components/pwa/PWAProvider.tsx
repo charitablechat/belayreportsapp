@@ -54,6 +54,7 @@ class PWAErrorBoundary extends Component<
         syncError: this.state.error?.message || 'PWA initialization failed',
         syncErrorSeverity: 'fatal',
         updateUnsyncedCount: async () => {},
+        refreshSyncStateFromStorage: async () => {},
         forceSync: async () => {},
         unsyncedPhotoCount: 0,
         photosByInspection: {},
