@@ -211,6 +211,8 @@ export async function persistInspectionToOffline(
   } catch {
     /* snapshot is best-effort */
   }
+  // Fire snapshot-saved callback BEFORE IDB child writes (matches legacy ordering)
+  try { onSnapshotSaved?.(); } catch { /* never let toast throw */ }
 
   // Build IDB write batch — only include child arrays that were confirmed
   // loaded (or have items now), so an empty-on-load doesn't clobber server
