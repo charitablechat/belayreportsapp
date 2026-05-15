@@ -27,7 +27,7 @@ const fallbackContext: PWAContextType = {
   syncError: null,
   syncErrorSeverity: null,
   updateUnsyncedCount: async () => {},
-  refreshSyncStateFromStorage: async () => {},
+  refreshSyncStateFromStorage: async () => null,
   forceSync: async () => {},
   unsyncedPhotoCount: 0,
   photosByInspection: {},
