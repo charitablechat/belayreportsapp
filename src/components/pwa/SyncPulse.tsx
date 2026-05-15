@@ -1174,7 +1174,43 @@ export const SyncPulse = ({ className }: { className?: string }) => {
               )}
             </div>
 
-            <p className="text-green-700 text-[10px] italic pt-1 border-t border-green-900/40">
+            {/* Last-resort recovery: nukes the offline IndexedDB and all
+                service workers, then hard-reloads. Auth lives in
+                localStorage and is preserved, so the user stays signed in. */}
+            <div className="space-y-1.5 border-t border-red-900/40 pt-2">
+              <div className="flex flex-col gap-1">
+                <span className="text-red-400 text-[10px] uppercase tracking-wider">
+                  ▸ Danger zone
+                </span>
+                <p className="text-red-300/70 text-[10px] leading-relaxed">
+                  Wipes the local offline database and reloads the app. Your
+                  login is preserved, but any unsynced drafts on this device
+                  will be lost. Use only if sync is completely stuck.
+                </p>
+                <button
+                  type="button"
+                  disabled={hardResetting}
+                  onClick={async () => {
+                    const ok = window.confirm(
+                      'HARD RESET DATABASE\n\nThis will erase the offline database on this device and reload the app. Any unsynced drafts will be permanently lost. Your login will be preserved.\n\nContinue?',
+                    );
+                    if (!ok) return;
+                    setHardResetting(true);
+                    try {
+                      await hardResetDatabase();
+                    } catch (e) {
+                      console.error('[SyncPulse] Hard reset failed:', e);
+                      setHardResetting(false);
+                      window.alert('Hard reset failed. Try closing all other tabs of this app, then try again.');
+                    }
+                  }}
+                  className="w-full text-[10px] uppercase tracking-wider px-2 py-1.5 rounded border border-red-600/70 text-red-300 hover:bg-red-900/30 disabled:opacity-50 min-h-[36px]"
+                >
+                  {hardResetting ? 'RESETTING…' : 'HARD RESET DATABASE'}
+                </button>
+              </div>
+            </div>
+
               Auto-sync runs in background.
               {isIOSDevice && ' iOS: visibility change + 30s interval.'}
             </p>
