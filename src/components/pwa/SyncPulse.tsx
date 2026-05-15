@@ -214,6 +214,13 @@ export const SyncPulse = ({ className }: { className?: string }) => {
     }
     return fresh;
   }, [refreshSyncStateFromStorage]);
+  const forceSyncAndRefreshVisibleState = useCallback(async () => {
+    try {
+      await forceSync();
+    } finally {
+      await refreshVisibleSyncStateFromStorage();
+    }
+  }, [forceSync, refreshVisibleSyncStateFromStorage]);
   useEffect(() => {
     setRenderedPendingReports(buildRenderedPendingReports(
       unsyncedInspections,
