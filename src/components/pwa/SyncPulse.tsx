@@ -856,31 +856,33 @@ export const SyncPulse = ({ className }: { className?: string }) => {
                       <div className="flex items-center justify-between pl-3 text-red-300/90">
                         <span className="flex items-center gap-1.5">
                           <span className="text-red-400">▸ STUCK</span>
-                          <button
-                            type="button"
-                            disabled={retrying}
-                            onClick={async (e) => {
-                              e.stopPropagation();
-                              try {
-                                setRetrying(true);
-                                const ids = photoBuckets.stuckIds;
-                                if (ids.length > 0) {
-                                  await resetPhotoRetryCounts(ids);
+                          {isAdmin && (
+                            <button
+                              type="button"
+                              disabled={retrying}
+                              onClick={async (e) => {
+                                e.stopPropagation();
+                                try {
+                                  setRetrying(true);
+                                  const ids = photoBuckets.stuckIds;
+                                  if (ids.length > 0) {
+                                    await resetPhotoRetryCounts(ids);
+                                  }
+                                  await updatePhotoCount();
+                                  const fresh = await getPhotoRetryBuckets();
+                                  setPhotoBuckets(fresh);
+                                  resetLayerBreakerOnUserActivity('SyncPulse retry'); await forceSync();
+                                } catch (err) {
+                                  console.warn('[SyncPulse] Stuck-photo retry failed:', err);
+                                } finally {
+                                  setRetrying(false);
                                 }
-                                await updatePhotoCount();
-                                const fresh = await getPhotoRetryBuckets();
-                                setPhotoBuckets(fresh);
-                                resetLayerBreakerOnUserActivity('SyncPulse retry'); await forceSync();
-                              } catch (err) {
-                                console.warn('[SyncPulse] Stuck-photo retry failed:', err);
-                              } finally {
-                                setRetrying(false);
-                              }
-                            }}
-                            className="text-[9px] uppercase tracking-wider px-1.5 py-0.5 rounded border border-red-700/60 text-red-300 hover:bg-red-900/30 disabled:opacity-50"
-                          >
-                            {retrying ? 'RETRYING…' : 'RETRY NOW'}
-                          </button>
+                              }}
+                              className="text-[9px] uppercase tracking-wider px-1.5 py-0.5 rounded border border-red-700/60 text-red-300 hover:bg-red-900/30 disabled:opacity-50"
+                            >
+                              {retrying ? 'RETRYING…' : 'RETRY NOW'}
+                            </button>
+                          )}
                         </span>
                         <span>{photoBuckets.stuck}</span>
                       </div>
