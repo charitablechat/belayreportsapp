@@ -691,23 +691,25 @@ export const SyncPulse = ({ className }: { className?: string }) => {
                   <span className="text-yellow-400 text-[10px] uppercase tracking-wider">
                     ▸ Sync engine paused
                   </span>
-                  <button
-                    type="button"
-                    disabled={retrying}
-                    onClick={async () => {
-                      try {
-                        setRetrying(true);
-                        resetLayerBreakerOnUserActivity('SyncPulse retry'); await forceSyncAndRefreshVisibleState();
-                      } catch (e) {
-                        console.warn('[SyncPulse] Force sync after halt failed:', e);
-                      } finally {
-                        setRetrying(false);
-                      }
-                    }}
-                    className="text-[10px] uppercase tracking-wider px-2 py-0.5 rounded border border-yellow-700/60 text-yellow-300 hover:bg-yellow-900/30 disabled:opacity-50"
-                  >
-                    {retrying ? 'RETRYING…' : 'RETRY NOW'}
-                  </button>
+                  {isAdmin && (
+                    <button
+                      type="button"
+                      disabled={retrying}
+                      onClick={async () => {
+                        try {
+                          setRetrying(true);
+                          resetLayerBreakerOnUserActivity('SyncPulse retry'); await forceSyncAndRefreshVisibleState();
+                        } catch (e) {
+                          console.warn('[SyncPulse] Force sync after halt failed:', e);
+                        } finally {
+                          setRetrying(false);
+                        }
+                      }}
+                      className="text-[10px] uppercase tracking-wider px-2 py-0.5 rounded border border-yellow-700/60 text-yellow-300 hover:bg-yellow-900/30 disabled:opacity-50"
+                    >
+                      {retrying ? 'RETRYING…' : 'RETRY NOW'}
+                    </button>
+                  )}
                 </div>
                 <p className="text-yellow-200/90 text-[10px] leading-relaxed">
                   {haltState.detail}
