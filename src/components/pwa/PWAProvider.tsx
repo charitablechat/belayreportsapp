@@ -54,6 +54,7 @@ class PWAErrorBoundary extends Component<
         syncError: this.state.error?.message || 'PWA initialization failed',
         syncErrorSeverity: 'fatal',
         updateUnsyncedCount: async () => {},
+        refreshSyncStateFromStorage: async () => {},
         forceSync: async () => {},
         unsyncedPhotoCount: 0,
         photosByInspection: {},
@@ -107,6 +108,9 @@ export interface PWAContextType {
    *  'soft' = stats/photo-counts read hiccup, render amber advisory only. */
   syncErrorSeverity: 'fatal' | 'soft' | null;
   updateUnsyncedCount: () => Promise<void>;
+  /** Bypass throttles and re-read unsynced state directly from IndexedDB.
+   *  Use after Hard Reset, Drain end, quarantine retry, etc. */
+  refreshSyncStateFromStorage: () => Promise<void>;
   forceSync: () => Promise<void>;
   
   // Photo sync state
@@ -137,6 +141,7 @@ const PWAProviderContent = ({ children }: PWAProviderProps) => {
     syncError: autoSyncError,
     syncErrorSeverity: autoSyncErrorSeverity,
     updateUnsyncedCounts,
+    refreshSyncStateFromStorage,
     performSync
   } = useAutoSync();
   
@@ -154,6 +159,9 @@ const PWAProviderContent = ({ children }: PWAProviderProps) => {
 
   const forceSync = async () => {
     await performSync(false);
+    // After a sync attempt, immediately refresh from IDB so the
+    // displayed counts/list match storage instead of stale React state.
+    await refreshSyncStateFromStorage();
   };
 
   // Combine sync errors from both sources (auto-sync IDB failures + photo IDB failures).
@@ -192,6 +200,7 @@ const PWAProviderContent = ({ children }: PWAProviderProps) => {
     syncError,
     syncErrorSeverity,
     updateUnsyncedCount: updateUnsyncedCounts,
+    refreshSyncStateFromStorage,
     forceSync,
     unsyncedPhotoCount,
     photosByInspection,
