@@ -1709,261 +1709,100 @@ export default function TrainingForm() {
       />
       <div className="min-h-screen bg-background">
       {/* Offline Mode Banner */}
-      {!isOnline && (
-        <div className="bg-orange-500/10 border-b border-orange-500/20">
-          <div className="container mx-auto px-4 py-3">
-            <div className="flex items-center gap-3">
-              <CloudOff className="w-5 h-5 text-orange-600 dark:text-orange-400 shrink-0" />
-              <div className="flex-1 min-w-0">
-                <p className="text-sm font-medium text-orange-900 dark:text-orange-100">
-                  You're working offline
-                </p>
-                <p className="text-xs text-orange-700 dark:text-orange-300 mt-0.5">
-                  Changes will be saved locally and synced when you're back online
-                </p>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Storage Unavailable Banner (Vector A) */}
-      {storageUnavailable && (
-        <div className="bg-destructive/10 border-b border-destructive/20">
-          <div className="container mx-auto px-4 py-3">
-            <div className="flex items-center gap-3">
-              <AlertTriangle className="w-5 h-5 text-destructive shrink-0" />
-              <div className="flex-1 min-w-0">
-                <p className="text-sm font-medium text-destructive">
-                  Local storage unavailable
-                </p>
-                <p className="text-xs text-destructive/80 mt-0.5">
-                  Your changes are at risk. Please stay connected to sync your work.
-                </p>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Offline Empty Data Banner (Vector E) */}
-      {!isOnline && !isLoading && deliveryApproaches.length === 0 && operatingSystems.length === 0 &&
-        immediateAttention.length === 0 && !childDataLoadedRef.current.delivery_approaches && 
-        !childDataLoadedRef.current.operating_systems && !childDataLoadedRef.current.immediate_attention && (
-        <div className="bg-muted border-b border-border">
-          <div className="container mx-auto px-4 py-3">
-            <div className="flex items-center gap-3">
-              <WifiOff className="w-5 h-5 text-muted-foreground shrink-0" />
-              <p className="text-sm text-muted-foreground">
-                Report details not available offline. Connect to the internet to load full data.
-              </p>
-            </div>
-          </div>
-        </div>
-      )}
-      
-      <header className="border-b border-white/20 bg-white/10 dark:bg-black/20 backdrop-blur-[12px] shadow-md shadow-black/5 sticky top-0 z-20">
-        <div className="container mx-auto px-2 sm:px-4 py-2 sm:py-4">
-          {/* Top row - Back button, Logo, User Avatar */}
-          <div className="flex items-center justify-between mb-2 sm:mb-0">
-            <div className="flex items-center gap-2">
-              <Button variant="ghost" size="icon" onClick={() => setShowLeaveDialog(true)}>
-                <ArrowLeft className="w-4 h-4" />
-              </Button>
-              <img src={ropeWorksLogo} alt="Rope Works" className="h-8 sm:h-10 w-auto object-contain" />
-            </div>
-            
-            {/* UserProfileDropdown is now in the global AuthenticatedHeader */}
-          </div>
-          
-          {/* Bottom row - Status indicators and action buttons */}
-          <div className="flex flex-wrap items-center justify-between gap-2">
-            <div className="flex items-center gap-2 flex-wrap">
-              {!isOnline && (
-                <Badge variant="secondary" className="gap-2 text-xs">
-                  <WifiOff className="w-3 h-3" />
-                  <span className="hidden sm:inline">Offline Mode</span>
-                </Badge>
-              )}
-              <AutoSaveIndicator
-                lastSaved={lastManuallySaved}
-                isSaving={isSaving}
-                hasUnsavedChanges={hasUnsavedChanges}
-                error={saveError}
-                className="flex"
-              />
-              {/* DISABLED: Timer display hidden for now
-              <ActiveTimerDisplay
-                elapsedSeconds={elapsedSeconds}
-                isActive={timerActive}
-                isPaused={timerPaused}
-                isReadOnly={effectiveReadOnly}
-              />
-              */}
-            </div>
-            
-            <div className="flex items-center gap-2">
-              {!effectiveReadOnly && (
-              <>
-              <Button 
-                variant="outline" 
-                size={isMobile ? "default" : "sm"} 
-                onClick={async () => { await saveTraining(); setLastManuallySaved(new Date()); }} 
-                disabled={isSaving}
-              >
-                <Save className={isMobile ? "w-5 h-5 mr-1.5" : "w-4 h-4 mr-2"} />
-                {isMobile ? (isSaving ? "..." : "Save") : (isSaving ? "Saving..." : "Save Progress")}
-              </Button>
-              {id && (
-              <Button
-                variant="ghost"
-                size="icon"
-                className="h-8 w-8"
-                title="Force Local Backup"
-                onClick={async () => {
-                  if (training && id) {
-                    saveReportSnapshot('training', id, training, {
-                      delivery_approaches: deliveryApproaches,
-                      operating_systems: operatingSystems,
-                      immediate_attention: immediateAttention,
-                      verifiable_items: verifiableItems,
-                      systems_in_place: systemsInPlace,
-                      summary: summary ? [summary] : [],
-                    }, !!training.synced_at);
-                  }
-                  const ok = await downloadReportBackup('training', id);
-                  if (ok) {
-                    toast.success('BACKUP SAVED', {
-                      description: 'Snapshot downloaded to device',
-                      duration: 2000,
-                      style: { background: 'hsl(0, 0%, 5%)', color: 'hsl(120, 100%, 56%)', border: '1px solid hsl(120, 100%, 50%, 0.3)', fontFamily: 'monospace', fontSize: '12px' },
-                    });
-                  } else {
-                    toast.warning('No snapshot available to download');
-                  }
-                }}
-              >
-                <HardDrive className="w-4 h-4" />
-              </Button>
-              )}
-              {id && (
-              <Button
-                variant="ghost"
-                size="icon"
-                className="h-8 w-8"
-                title="Refresh Report Data"
-                disabled={refreshing || isSaving}
-                onClick={async () => {
-                  setRefreshing(true);
-                  try {
-                    await loadTraining();
-                    toast.success("Report refreshed", { description: "Latest data loaded successfully." });
-                  } catch {
-                    toast.error("Refresh failed");
-                  } finally {
-                    setRefreshing(false);
-                  }
-                }}
-              >
-                <RefreshCw className={cn("w-4 h-4", refreshing && "animate-spin")} />
-              </Button>
-              )}
-              {training?.status !== 'completed' && (
-              <Button 
-                size={isMobile ? "default" : "sm"} 
-                onClick={() => {
-                  const missing = getMissingTrainingFields(training);
-                  if (missing.length) {
-                    setMissingRequiredFields(missing);
-                    toast.error('Cannot complete report', {
-                      id: `completion-blocked-${id}`,
-                      description: formatMissingDescription(missing),
-                      duration: Infinity,
-                      className: 'border border-destructive-foreground/20',
-                      style: {
-                        background: 'hsl(var(--destructive))',
-                        color: 'hsl(var(--destructive-foreground))',
-                      },
-                    });
-                    document.getElementById(`field-${missing[0].key}`)
-                      ?.scrollIntoView({ behavior: 'smooth', block: 'center' });
-                    return;
-                  }
-                  toast.dismiss(`completion-blocked-${id}`);
-                  setMissingRequiredFields([]);
-                  if (training?.attestation_signed_at) {
-                    setShowCompleteDialog(true);
-                  } else {
-                    setShowAttestationDialog(true);
-                  }
-                }}
-                disabled={isSaving}
-                className={isMobile ? "min-w-[100px] h-10 text-sm font-medium" : ""}
-              >
-                {isSaving ? (
-                  <Loader2 className="w-4 h-4 animate-spin" />
-                ) : (
-                  <>
-                    <CheckCircle className={isMobile ? "w-5 h-5 mr-1.5" : "w-4 h-4 mr-2"} />
-                    <span>Complete</span>
-                  </>
-                )}
-              </Button>
-              )}
-              {training?.status === 'completed' && (
-                <Button disabled variant="outline" size={isMobile ? "default" : "sm"} className="opacity-70 cursor-default">
-                  <CheckCircle className={isMobile ? "w-5 h-5 mr-1.5" : "w-4 h-4 mr-2"} />
-                  <span>Completed</span>
-                </Button>
-              )}
-              </>
-              )}
-              {training?.status === 'completed' && (
-                <>
-                {isMobile && (
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    onClick={handleGenerateHTML}
-                    disabled={isGeneratingHTML || !isOnline}
-                    className="h-9 w-9"
-                  >
-                    <RefreshCw className={cn("w-4 h-4", isGeneratingHTML && "animate-spin")} />
-                  </Button>
-                )}
-                <Button
-                  variant="outline"
-                  size={isMobile ? "default" : "sm"}
-                  onClick={handleGenerateHTML}
-                  disabled={isGeneratingHTML || !isOnline}
-                >
-                  {isGeneratingHTML ? (
-                    <Loader2 className="w-4 h-4 animate-spin" />
-                  ) : (
-                    <>
-                      <FileText className={isMobile ? "w-5 h-5 mr-1.5" : "w-4 h-4 mr-2"} />
-                      {isMobile ? "" : "Generate Report"}
-                    </>
-                  )}
-                </Button>
-                {isAdmin && training?.status === 'completed' && (
-                  <Button
-                    variant="outline"
-                    size={isMobile ? "default" : "sm"}
-                    onClick={toggleInvoiced}
-                    disabled={invoiceToggling}
-                    className={cn("bg-emerald-500/10 backdrop-blur-md border-emerald-400/30 text-emerald-600 dark:text-emerald-400 shadow-[0_0_8px_rgba(16,185,129,0.15)] hover:bg-emerald-500/20 hover:text-emerald-700 dark:hover:text-emerald-300", isInvoiced && "bg-emerald-500/25 shadow-[0_0_16px_rgba(16,185,129,0.3)] animate-pulse-calm")}
-                  >
-                    <Receipt className={isMobile ? "w-5 h-5 mr-1.5" : "w-4 h-4 mr-2"} />
-                    {isMobile ? "" : (isInvoiced ? "Invoiced ✓" : "Invoice")}
-                  </Button>
-                )}
-                </>
-              )}
-            </div>
-          </div>
-        </div>
-      </header>
+      <TrainingHeaderSection
+        isOnline={isOnline}
+        storageUnavailable={storageUnavailable}
+        isLoading={isLoading}
+        showOfflineEmptyBanner={
+          !isOnline && !isLoading &&
+          deliveryApproaches.length === 0 &&
+          operatingSystems.length === 0 &&
+          immediateAttention.length === 0 &&
+          !childDataLoadedRef.current.delivery_approaches &&
+          !childDataLoadedRef.current.operating_systems &&
+          !childDataLoadedRef.current.immediate_attention
+        }
+        onBack={() => setShowLeaveDialog(true)}
+        lastManuallySaved={lastManuallySaved}
+        isSaving={isSaving}
+        hasUnsavedChanges={hasUnsavedChanges}
+        saveError={saveError}
+        actions={{
+          effectiveReadOnly,
+          hasId: !!id,
+          status: training?.status,
+          isMobile,
+          isAdmin,
+          isSaving,
+          onSave: async () => { await saveTraining(); setLastManuallySaved(new Date()); },
+          onForceBackup: async () => {
+            if (training && id) {
+              saveReportSnapshot('training', id, training, {
+                delivery_approaches: deliveryApproaches,
+                operating_systems: operatingSystems,
+                immediate_attention: immediateAttention,
+                verifiable_items: verifiableItems,
+                systems_in_place: systemsInPlace,
+                summary: summary ? [summary] : [],
+              }, !!training.synced_at);
+            }
+            const ok = await downloadReportBackup('training', id);
+            if (ok) {
+              toast.success('BACKUP SAVED', {
+                description: 'Snapshot downloaded to device',
+                duration: 2000,
+                style: { background: 'hsl(0, 0%, 5%)', color: 'hsl(120, 100%, 56%)', border: '1px solid hsl(120, 100%, 50%, 0.3)', fontFamily: 'monospace', fontSize: '12px' },
+              });
+            } else {
+              toast.warning('No snapshot available to download');
+            }
+          },
+          refreshing,
+          onRefresh: async () => {
+            setRefreshing(true);
+            try {
+              await loadTraining();
+              toast.success("Report refreshed", { description: "Latest data loaded successfully." });
+            } catch {
+              toast.error("Refresh failed");
+            } finally {
+              setRefreshing(false);
+            }
+          },
+          onComplete: () => {
+            const missing = getMissingTrainingFields(training);
+            if (missing.length) {
+              setMissingRequiredFields(missing);
+              toast.error('Cannot complete report', {
+                id: `completion-blocked-${id}`,
+                description: formatMissingDescription(missing),
+                duration: Infinity,
+                className: 'border border-destructive-foreground/20',
+                style: {
+                  background: 'hsl(var(--destructive))',
+                  color: 'hsl(var(--destructive-foreground))',
+                },
+              });
+              document.getElementById(`field-${missing[0].key}`)
+                ?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+              return;
+            }
+            toast.dismiss(`completion-blocked-${id}`);
+            setMissingRequiredFields([]);
+            if (training?.attestation_signed_at) {
+              setShowCompleteDialog(true);
+            } else {
+              setShowAttestationDialog(true);
+            }
+          },
+          isGeneratingHTML,
+          isOnline,
+          onGenerateHTML: handleGenerateHTML,
+          isInvoiced,
+          invoiceToggling,
+          onToggleInvoiced: toggleInvoiced,
+        }}
+      />
 
       <SaveFailureBanner
         saveError={saveError}
