@@ -195,8 +195,12 @@ describe('syncPhotos — temp-parent skip does NOT bump retryCount', () => {
       capturedByUserId: 'user-luke',
     });
 
-    // getUnuploadedPhotos should exclude the orphan.
-    const result = await offlineStorage.getUnuploadedPhotos();
+    // getUnuploadedPhotos should exclude the orphan when called with a
+    // userId — the temp-orphan + UUID-orphan parent-walk is gated behind
+    // `userId` (S43) so unscoped/diagnostic callers still see all rows.
+    // Production callers (useUnsyncedPhotos, sync-manager) always pass
+    // the resolved user id, so this matches real behaviour.
+    const result = await offlineStorage.getUnuploadedPhotos('user-luke');
     const list = offlineStorage.isIdbReadFailure(result) ? [] : result;
     expect(list.map(p => p.id)).not.toContain('photo-orphan');
 
