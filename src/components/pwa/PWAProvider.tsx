@@ -159,6 +159,9 @@ const PWAProviderContent = ({ children }: PWAProviderProps) => {
 
   const forceSync = async () => {
     await performSync(false);
+    // After a sync attempt, immediately refresh from IDB so the
+    // displayed counts/list match storage instead of stale React state.
+    await refreshSyncStateFromStorage();
   };
 
   // Combine sync errors from both sources (auto-sync IDB failures + photo IDB failures).
