@@ -149,6 +149,10 @@ export interface AutoSyncState {
   syncErrorSeverity: 'fatal' | 'soft' | null;
 }
 
+export type SyncStateSnapshot = Pick<AutoSyncState,
+  'unsyncedCount' | 'unsyncedInspections' | 'unsyncedTrainings' | 'unsyncedAssessments'
+>;
+
 /**
  * Unified hook for fully automatic background synchronization
  */
@@ -1034,21 +1038,24 @@ export const useAutoSync = () => {
    *  - Also resets the throttling refs so the next normal
    *    updateUnsyncedCounts tick doesn't immediately overwrite us.
    */
-  const refreshSyncStateFromStorage = useCallback(async (): Promise<void> => {
+  const refreshSyncStateFromStorage = useCallback(async (): Promise<SyncStateSnapshot | null> => {
     try {
       const user = await getUserWithCache();
       if (!user) {
         // Signed-out: there can't be any pending records to show.
-        setState(prev => ({
-          ...prev,
+        const emptySnapshot: SyncStateSnapshot = {
           unsyncedCount: 0,
           unsyncedInspections: [],
           unsyncedTrainings: [],
           unsyncedAssessments: [],
+        };
+        setState(prev => ({
+          ...prev,
+          ...emptySnapshot,
         }));
         unsyncedCountRef.current = 0;
         lastCountsRunRef.current = Date.now();
-        return;
+        return emptySnapshot;
       }
       const [insp, train, assess] = await Promise.all([
         getUnsyncedInspections(user.id),
@@ -1059,18 +1066,21 @@ export const useAutoSync = () => {
         // Don't blank state on read failure — leave whatever the user
         // was looking at; the next successful tick will reconcile.
         console.warn('[AutoSync] refreshSyncStateFromStorage: IDB read failed, leaving state untouched');
-        return;
+        return null;
       }
       const inspections = insp as DbRow[];
       const trainings = train as DbRow[];
       const assessments = assess as DbRow[];
       const total = inspections.length + trainings.length + assessments.length;
-      setState(prev => ({
-        ...prev,
+      const snapshot: SyncStateSnapshot = {
         unsyncedCount: total,
         unsyncedInspections: inspections,
         unsyncedTrainings: trainings,
         unsyncedAssessments: assessments,
+      };
+      setState(prev => ({
+        ...prev,
+        ...snapshot,
         // If everything is clear, drop any lingering soft "stats stale" message.
         ...(total === 0 ? { syncError: null, syncErrorSeverity: null } : {}),
       }));
@@ -1078,8 +1088,10 @@ export const useAutoSync = () => {
       // Pretend the throttled path just ran so it doesn't immediately
       // re-fire and clobber our fresh write with a stale closure.
       lastCountsRunRef.current = Date.now();
+      return snapshot;
     } catch (err) {
       console.error('[AutoSync] refreshSyncStateFromStorage failed:', err);
+      return null;
     }
   }, []);
 

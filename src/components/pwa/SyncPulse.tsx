@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { usePWA } from '@/hooks/usePWA';
 import { isIOS } from '@/lib/mobile-detection';
@@ -56,6 +56,53 @@ import { hardResetDatabase } from '@/lib/hard-reset-database';
 import { runStorageSourceDiagnostic } from '@/lib/storage-source-diagnostic';
 
 type Phase = 'idle' | 'syncing' | 'synced' | 'unsynced' | 'paused' | 'error';
+
+type RenderedPendingReport = {
+  kind: 'INS' | 'TRN' | 'ASM';
+  id: unknown;
+  label: string;
+  sublabel?: string;
+  accent: AccentName;
+  table: 'inspections' | 'trainings' | 'daily_assessments';
+  sourceVariableName: 'unsyncedInspections' | 'unsyncedTrainings' | 'unsyncedAssessments';
+};
+
+const RENDERED_PENDING_REPORTS_SOURCE =
+  'renderedPendingReports state, replaced from refreshSyncStateFromStorage(); derived by buildRenderedPendingReports(unsyncedInspections, unsyncedTrainings, unsyncedAssessments)';
+
+function buildRenderedPendingReports(
+  inspections: any[],
+  trainings: any[],
+  assessments: any[],
+): RenderedPendingReport[] {
+  return [
+    ...inspections.map((item) => ({
+      kind: 'INS' as const,
+      id: item.id,
+      label: item.organization || 'Untitled',
+      sublabel: item.location ? `@ ${item.location}` : undefined,
+      accent: 'blue' as const,
+      table: 'inspections' as const,
+      sourceVariableName: 'unsyncedInspections' as const,
+    })),
+    ...trainings.map((item) => ({
+      kind: 'TRN' as const,
+      id: item.id,
+      label: item.organization || 'Untitled',
+      accent: 'purple' as const,
+      table: 'trainings' as const,
+      sourceVariableName: 'unsyncedTrainings' as const,
+    })),
+    ...assessments.map((item) => ({
+      kind: 'ASM' as const,
+      id: item.id,
+      label: item.organization || item.site || 'Untitled',
+      accent: 'amber' as const,
+      table: 'daily_assessments' as const,
+      sourceVariableName: 'unsyncedAssessments' as const,
+    })),
+  ];
+}
 
 /**
  * Sprint 1D: short human-readable delta for the RETRYING bucket header.
@@ -153,14 +200,51 @@ export const SyncPulse = ({ className }: { className?: string }) => {
   const [drainActive, setDrainActive] = useState<boolean>(() => isDrainModeActive());
   const [drainStarting, setDrainStarting] = useState(false);
   const [drainWakeLockHeld, setDrainWakeLockHeld] = useState(true);
+  const [renderedPendingReports, setRenderedPendingReports] = useState<RenderedPendingReport[]>(() =>
+    buildRenderedPendingReports(unsyncedInspections, unsyncedTrainings, unsyncedAssessments),
+  );
+  const refreshVisibleSyncStateFromStorage = useCallback(async () => {
+    const fresh = await refreshSyncStateFromStorage();
+    if (fresh) {
+      setRenderedPendingReports(buildRenderedPendingReports(
+        fresh.unsyncedInspections,
+        fresh.unsyncedTrainings,
+        fresh.unsyncedAssessments,
+      ));
+    }
+    return fresh;
+  }, [refreshSyncStateFromStorage]);
+  const forceSyncAndRefreshVisibleState = useCallback(async () => {
+    try {
+      await forceSync();
+    } finally {
+      await refreshVisibleSyncStateFromStorage();
+    }
+  }, [forceSync, refreshVisibleSyncStateFromStorage]);
+  useEffect(() => {
+    setRenderedPendingReports(buildRenderedPendingReports(
+      unsyncedInspections,
+      unsyncedTrainings,
+      unsyncedAssessments,
+    ));
+  }, [unsyncedInspections, unsyncedTrainings, unsyncedAssessments]);
+  const renderedPendingReportDiagnostics = useMemo(
+    () => renderedPendingReports.map(({ kind, id, label, sourceVariableName }) => ({
+      kind,
+      id,
+      label,
+      sourceVariableName,
+    })),
+    [renderedPendingReports],
+  );
   useEffect(() => subscribeDrainMode(setDrainActive), []);
   // Auto-stop drain mode the moment the queue hits zero. The 10-min safety
   // cap in drain-mode.ts is a backstop; this is the happy path.
   useEffect(() => {
     if (drainActive && unsyncedCount === 0 && unsyncedPhotoCount === 0) {
-      void stopDrainMode('complete');
+      void stopDrainMode('complete').then(() => refreshVisibleSyncStateFromStorage());
     }
-  }, [drainActive, unsyncedCount, unsyncedPhotoCount]);
+  }, [drainActive, refreshVisibleSyncStateFromStorage, unsyncedCount, unsyncedPhotoCount]);
   // Sprint 1D: per-photo retry-state breakdown (READY/RETRYING/STUCK)
   // — see src/lib/photo-retry-buckets.ts. Refreshed on every
   // `sync-photos-updated` event and on a 1Hz tick while the sheet is
@@ -357,7 +441,8 @@ export const SyncPulse = ({ className }: { className?: string }) => {
   const photoBucketTotal =
     photoBuckets.ready + photoBuckets.retrying + photoBuckets.stuck + photoBuckets.blocked;
   const photoCountForIndicator = Math.max(unsyncedPhotoCount, photoBucketTotal);
-  const totalUnsynced = unsyncedCount + photoCountForIndicator;
+  const visibleReportPendingCount = renderedPendingReports.length;
+  const totalUnsynced = visibleReportPendingCount + photoCountForIndicator;
 
   // Detect sync completion → show green for 2s then fade
   useEffect(() => {
@@ -501,7 +586,7 @@ export const SyncPulse = ({ className }: { className?: string }) => {
                         // Drain may have synced everything — refresh
                         // counts from IDB so the list reflects reality
                         // instead of the pre-drain React snapshot.
-                        await refreshSyncStateFromStorage();
+                        await refreshVisibleSyncStateFromStorage();
                         return;
                       }
                       setDrainStarting(true);
@@ -583,7 +668,7 @@ export const SyncPulse = ({ className }: { className?: string }) => {
                     onClick={async () => {
                       try {
                         setRetrying(true);
-                        resetLayerBreakerOnUserActivity('SyncPulse retry'); await forceSync();
+                        resetLayerBreakerOnUserActivity('SyncPulse retry'); await forceSyncAndRefreshVisibleState();
                       } catch (e) {
                         console.warn('[SyncPulse] Force sync after halt failed:', e);
                       } finally {
@@ -665,7 +750,7 @@ export const SyncPulse = ({ className }: { className?: string }) => {
             )}
 
             {/* Pending reports */}
-            {unsyncedCount > 0 && (
+            {visibleReportPendingCount > 0 && (
               <div className="space-y-1.5 border-t border-green-900/40 pt-2">
                 <button
                   type="button"
@@ -674,45 +759,21 @@ export const SyncPulse = ({ className }: { className?: string }) => {
                   style={{ touchAction: 'manipulation' }}
                   className="w-full min-h-[44px] flex items-center justify-between text-left text-green-400 text-[10px] uppercase tracking-wider hover:text-green-300 active:text-green-300 py-2 -my-1"
                 >
-                  <span>{pendingReportsExpanded ? '▾' : '▸'} Pending reports ({unsyncedCount})</span>
+                  <span>{pendingReportsExpanded ? '▾' : '▸'} Pending reports ({visibleReportPendingCount})</span>
                   <span className="text-green-700 text-[9px]">{pendingReportsExpanded ? 'TAP TO HIDE' : 'TAP TO OPEN'}</span>
                 </button>
                 {pendingReportsExpanded && (
                   <div className="space-y-1 max-h-48 overflow-y-auto">
-                    {unsyncedInspections.map((item) => (
+                    {renderedPendingReports.map((item) => (
                       <PendingReportRow
-                        key={item.id}
-                        kind="INS"
-                        accent="blue"
-                        label={item.organization || 'Untitled'}
-                        sublabel={item.location ? `@ ${item.location}` : undefined}
+                        key={`${item.sourceVariableName}:${String(item.id)}`}
+                        kind={item.kind}
+                        accent={item.accent}
+                        label={item.label}
+                        sublabel={item.sublabel}
                         onDrop={async () => {
-                          await forceDeleteLocalRecord('inspections', item.id);
-                          try { await forceSync(); } catch { /* breaker open is fine */ }
-                        }}
-                      />
-                    ))}
-                    {unsyncedTrainings.map((item) => (
-                      <PendingReportRow
-                        key={item.id}
-                        kind="TRN"
-                        accent="purple"
-                        label={item.organization || 'Untitled'}
-                        onDrop={async () => {
-                          await forceDeleteLocalRecord('trainings', item.id);
-                          try { await forceSync(); } catch { /* breaker open is fine */ }
-                        }}
-                      />
-                    ))}
-                    {unsyncedAssessments.map((item) => (
-                      <PendingReportRow
-                        key={item.id}
-                        kind="ASM"
-                        accent="amber"
-                        label={item.organization || item.site || 'Untitled'}
-                        onDrop={async () => {
-                          await forceDeleteLocalRecord('daily_assessments', item.id);
-                          try { await forceSync(); } catch { /* breaker open is fine */ }
+                          await forceDeleteLocalRecord(item.table, String(item.id));
+                          try { await forceSyncAndRefreshVisibleState(); } catch { /* breaker open is fine */ }
                         }}
                       />
                     ))}
@@ -1228,14 +1289,24 @@ export const SyncPulse = ({ className }: { className?: string }) => {
                   setStorageDiagRunning(true);
                   setStorageDiagReport(null);
                   try {
+                    const fresh = await refreshVisibleSyncStateFromStorage();
+                    const diagnosticRenderedRows = fresh
+                      ? buildRenderedPendingReports(
+                          fresh.unsyncedInspections,
+                          fresh.unsyncedTrainings,
+                          fresh.unsyncedAssessments,
+                        ).map(({ kind, id, label, sourceVariableName }) => ({ kind, id, label, sourceVariableName }))
+                      : renderedPendingReportDiagnostics;
                     const user = await getUserWithCache();
                     const report = await runStorageSourceDiagnostic({
-                      unsyncedCount,
-                      unsyncedInspections: unsyncedInspections.length,
-                      unsyncedTrainings: unsyncedTrainings.length,
-                      unsyncedAssessments: unsyncedAssessments.length,
+                      unsyncedCount: fresh?.unsyncedCount ?? unsyncedCount,
+                      unsyncedInspections: fresh?.unsyncedInspections.length ?? unsyncedInspections.length,
+                      unsyncedTrainings: fresh?.unsyncedTrainings.length ?? unsyncedTrainings.length,
+                      unsyncedAssessments: fresh?.unsyncedAssessments.length ?? unsyncedAssessments.length,
                       quarantinedCount,
                       currentUserId: user?.id ?? null,
+                      renderedPendingReports: diagnosticRenderedRows,
+                      renderedPendingReportsSource: RENDERED_PENDING_REPORTS_SOURCE,
                     });
                     setStorageDiagReport(JSON.stringify(report, null, 2));
                   } catch (e) {
