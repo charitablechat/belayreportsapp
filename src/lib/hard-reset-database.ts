@@ -14,7 +14,10 @@
  * Preserves:
  *  - localStorage (so the Supabase auth session survives — the user stays
  *    signed in after the reload).
- *  - sessionStorage.
+ *
+ * Clears:
+ *  - sessionStorage (so quarantined-item counters and other per-session
+ *    state reset to zero on reload).
  */
 
 // Known IDB databases this app uses. The primary offline DB is
@@ -97,7 +100,14 @@ export async function hardResetDatabase(): Promise<void> {
   //    on next boot. Auth keys live elsewhere and are intentionally untouched.
   const removed = clearBackupLedgerKeys();
   if (removed > 0) console.info(`[HardReset] Cleared ${removed} rw_backup_ ledger entries`);
-  // 4) Hard reload. Auth lives in localStorage and is intentionally untouched.
+  // 4) Clear sessionStorage so quarantine counters and other per-session
+  //    state don't repopulate the terminal after reload.
+  try {
+    sessionStorage.clear();
+  } catch (e) {
+    console.warn('[HardReset] Failed to clear sessionStorage:', e);
+  }
+  // 5) Hard reload. Auth lives in localStorage and is intentionally untouched.
   try {
     // @ts-expect-error legacy forceReload arg
     window.location.reload(true);
