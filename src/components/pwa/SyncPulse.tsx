@@ -90,6 +90,7 @@ export const SyncPulse = ({ className }: { className?: string }) => {
     unsyncedPhotoCount,
     deadLetterCount,
     forceSync,
+    refreshSyncStateFromStorage,
     updatePhotoCount,
   } = usePWA();
   const { regressionSkipCount } = useUnsyncedPhotos();
