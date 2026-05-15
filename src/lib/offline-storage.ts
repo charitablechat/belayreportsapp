@@ -1762,14 +1762,17 @@ function makeIdbReadFailure(context: string, error: unknown): IdbReadFailure {
  * `idbError` log line.
  */
 type LedgerReportType = 'inspection' | 'training' | 'daily_assessment';
+type WedgeLedgerFallbackOptions = { allowLedgerFallback?: boolean };
 async function withWedgeLedgerFallback<T extends { id?: string }>(
   reader: () => Promise<T[] | IdbReadFailure>,
   reportType: LedgerReportType,
   userId: string | undefined,
   context: string,
+  options: WedgeLedgerFallbackOptions = {},
 ): Promise<T[] | IdbReadFailure> {
   const result = await reader();
   if (!isIdbReadFailure(result)) return result;
+  if (options.allowLedgerFallback === false) return result;
 
   try {
     const { listUnsyncedDbRowsFromLedger } = await import('./local-backup-ledger');
