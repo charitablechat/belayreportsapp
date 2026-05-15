@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { usePWA } from '@/hooks/usePWA';
 import { isIOS } from '@/lib/mobile-detection';
@@ -56,6 +56,53 @@ import { hardResetDatabase } from '@/lib/hard-reset-database';
 import { runStorageSourceDiagnostic } from '@/lib/storage-source-diagnostic';
 
 type Phase = 'idle' | 'syncing' | 'synced' | 'unsynced' | 'paused' | 'error';
+
+type RenderedPendingReport = {
+  kind: 'INS' | 'TRN' | 'ASM';
+  id: unknown;
+  label: string;
+  sublabel?: string;
+  accent: AccentName;
+  table: 'inspections' | 'trainings' | 'daily_assessments';
+  sourceVariableName: 'unsyncedInspections' | 'unsyncedTrainings' | 'unsyncedAssessments';
+};
+
+const RENDERED_PENDING_REPORTS_SOURCE =
+  'renderedPendingReports state, replaced from refreshSyncStateFromStorage(); derived by buildRenderedPendingReports(unsyncedInspections, unsyncedTrainings, unsyncedAssessments)';
+
+function buildRenderedPendingReports(
+  inspections: any[],
+  trainings: any[],
+  assessments: any[],
+): RenderedPendingReport[] {
+  return [
+    ...inspections.map((item) => ({
+      kind: 'INS' as const,
+      id: item.id,
+      label: item.organization || 'Untitled',
+      sublabel: item.location ? `@ ${item.location}` : undefined,
+      accent: 'blue' as const,
+      table: 'inspections' as const,
+      sourceVariableName: 'unsyncedInspections' as const,
+    })),
+    ...trainings.map((item) => ({
+      kind: 'TRN' as const,
+      id: item.id,
+      label: item.organization || 'Untitled',
+      accent: 'purple' as const,
+      table: 'trainings' as const,
+      sourceVariableName: 'unsyncedTrainings' as const,
+    })),
+    ...assessments.map((item) => ({
+      kind: 'ASM' as const,
+      id: item.id,
+      label: item.organization || item.site || 'Untitled',
+      accent: 'amber' as const,
+      table: 'daily_assessments' as const,
+      sourceVariableName: 'unsyncedAssessments' as const,
+    })),
+  ];
+}
 
 /**
  * Sprint 1D: short human-readable delta for the RETRYING bucket header.
