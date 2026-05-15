@@ -1082,6 +1082,8 @@ export const useAutoSync = () => {
       console.error('[AutoSync] refreshSyncStateFromStorage failed:', err);
     }
   }, []);
+
+  const updateUnsyncedCounts = useCallback((opts?: { force?: boolean }): Promise<void> => {
     // 1. Share any in-flight read.
     if (inFlightCountsRef.current) return inFlightCountsRef.current;
 
