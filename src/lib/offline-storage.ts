@@ -3268,7 +3268,7 @@ function shouldLogDrift(id: string, driftMs: number): boolean {
   return true;
 }
 
-export async function getUnsyncedInspections(userId?: string) {
+export async function getUnsyncedInspections(userId?: string, options?: WedgeLedgerFallbackOptions) {
   // Mode 11A: route through `withWedgeLedgerFallback` so that when the
   // IDB layer breaker is open (= confirmed structural wedge), the drain
   // pipeline reads from `LocalBackupLedger` (synchronous localStorage)
@@ -3350,6 +3350,7 @@ export async function getUnsyncedInspections(userId?: string) {
     'inspection',
     userId,
     'getUnsyncedInspections',
+    options,
   );
 }
 
@@ -4916,7 +4917,7 @@ export async function deleteOfflineDailyAssessment(id: string) {
   );
 }
 
-export async function getUnsyncedDailyAssessments(userId?: string) {
+export async function getUnsyncedDailyAssessments(userId?: string, options?: WedgeLedgerFallbackOptions) {
   // Mode 11A: see `getUnsyncedInspections` above.
   return withWedgeLedgerFallback(
     () => withIndexedDBReadBoundary(
@@ -4968,6 +4969,7 @@ export async function getUnsyncedDailyAssessments(userId?: string) {
     'daily_assessment',
     userId,
     'getUnsyncedDailyAssessments',
+    options,
   );
 }
 
@@ -5347,7 +5349,7 @@ export async function deleteOfflineTraining(id: string) {
   );
 }
 
-export async function getUnsyncedTrainings(userId?: string) {
+export async function getUnsyncedTrainings(userId?: string, options?: WedgeLedgerFallbackOptions) {
   // Mode 11A: see `getUnsyncedInspections` above.
   return withWedgeLedgerFallback(
     () => withIndexedDBReadBoundary(
@@ -5399,6 +5401,7 @@ export async function getUnsyncedTrainings(userId?: string) {
     'training',
     userId,
     'getUnsyncedTrainings',
+    options,
   );
 }
 
