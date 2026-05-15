@@ -529,11 +529,7 @@ export default function TrainingForm() {
         }
 
         if (isOnline && !id.startsWith('temp-')) {
-          const { data: trainingData, error: trainingError } = await supabase
-            .from('trainings')
-            .select('*')
-            .eq('id', id)
-            .maybeSingle();
+          const { training: trainingData, error: trainingError } = await fetchTrainingParentFromServer(id);
 
           if (!trainingData && !offlineTraining) {
             const serverInconclusive = !!trainingError || !navigator.onLine;
