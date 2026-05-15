@@ -52,6 +52,7 @@ import {
   isDrainModeActive,
 } from '@/lib/drain-mode';
 import { isWakeLockSupported } from '@/lib/wake-lock';
+import { hardResetDatabase } from '@/lib/hard-reset-database';
 
 type Phase = 'idle' | 'syncing' | 'synced' | 'unsynced' | 'paused' | 'error';
 
@@ -120,6 +121,7 @@ export const SyncPulse = ({ className }: { className?: string }) => {
   const [diagnosticRunning, setDiagnosticRunning] = useState(false);
   const [diagnosticReport, setDiagnosticReport] = useState<SyncDiagnosticReport | null>(null);
   const [diagnosticCopied, setDiagnosticCopied] = useState(false);
+  const [hardResetting, setHardResetting] = useState(false);
   // Collapsible disclosure state for the SELF-CHECK and DIAGNOSTIC panels.
   // The ▸/▾ caret in the header doubles as a tap-target that toggles each
   // panel — on small screens the action button was getting clipped off
@@ -1170,6 +1172,43 @@ export const SyncPulse = ({ className }: { className?: string }) => {
                   )}
                 </div>
               )}
+            </div>
+
+            {/* Last-resort recovery: nukes the offline IndexedDB and all
+                service workers, then hard-reloads. Auth lives in
+                localStorage and is preserved, so the user stays signed in. */}
+            <div className="space-y-1.5 border-t border-red-900/40 pt-2">
+              <div className="flex flex-col gap-1">
+                <span className="text-red-400 text-[10px] uppercase tracking-wider">
+                  ▸ Danger zone
+                </span>
+                <p className="text-red-300/70 text-[10px] leading-relaxed">
+                  Wipes the local offline database and reloads the app. Your
+                  login is preserved, but any unsynced drafts on this device
+                  will be lost. Use only if sync is completely stuck.
+                </p>
+                <button
+                  type="button"
+                  disabled={hardResetting}
+                  onClick={async () => {
+                    const ok = window.confirm(
+                      'HARD RESET DATABASE\n\nThis will erase the offline database on this device and reload the app. Any unsynced drafts will be permanently lost. Your login will be preserved.\n\nContinue?',
+                    );
+                    if (!ok) return;
+                    setHardResetting(true);
+                    try {
+                      await hardResetDatabase();
+                    } catch (e) {
+                      console.error('[SyncPulse] Hard reset failed:', e);
+                      setHardResetting(false);
+                      window.alert('Hard reset failed. Try closing all other tabs of this app, then try again.');
+                    }
+                  }}
+                  className="w-full text-[10px] uppercase tracking-wider px-2 py-1.5 rounded border border-red-600/70 text-red-300 hover:bg-red-900/30 disabled:opacity-50 min-h-[36px]"
+                >
+                  {hardResetting ? 'RESETTING…' : 'HARD RESET DATABASE'}
+                </button>
+              </div>
             </div>
 
             <p className="text-green-700 text-[10px] italic pt-1 border-t border-green-900/40">
