@@ -360,14 +360,36 @@ export function GlobalAutocomplete({
   const isNewEntry = inputValue.trim() && 
     !mergedOptions.some(opt => opt.value.toLowerCase() === inputValue.toLowerCase().trim());
 
+  /**
+   * Persistence guard (data-integrity invariant):
+   * Re-resolve the selected string against the canonical option list so the
+   * value committed to state and history is ALWAYS the full, raw string from
+   * the underlying data source — never a UI-truncated display string, a
+   * cmdk-normalized value, or anything an upstream caller may have mangled.
+   *
+   * Matching is case-insensitive against the trimmed full value. If we don't
+   * find a canonical match (i.e. user is creating a brand-new entry) we fall
+   * back to the trimmed input as-is.
+   */
+  const resolveCanonicalValue = (raw: string): string => {
+    const trimmed = (raw ?? "").trim();
+    if (!trimmed) return "";
+    const lower = trimmed.toLowerCase();
+    const match = mergedOptions.find(
+      (o) => o.value.trim().toLowerCase() === lower,
+    );
+    return match ? match.value : trimmed;
+  };
+
   const handleSelect = (selectedValue: string) => {
-    onChange(selectedValue);
-    saveToHistory(selectedValue);
+    const canonical = resolveCanonicalValue(selectedValue);
+    onChange(canonical);
+    saveToHistory(canonical);
     // Keep the popover open — closure is user-initiated only (click
     // outside, Escape, Tab away, or the X button). Closing here caused
     // a flicker: PopoverContent unmount → Radix FocusScope restores
     // focus to the trigger Input → onFocus reopens the popover.
-    setInputValue(selectedValue);
+    setInputValue(canonical);
     setIsEditing(false);
     // Defer onBlur (which usually triggers an immediate save) so React commits
     // the onChange above before the parent reads state in performSave.
@@ -632,7 +654,19 @@ export function GlobalAutocomplete({
                                 value === option.value ? "opacity-100" : "opacity-0"
                               )}
                             />
-                            <span className="whitespace-nowrap text-sm font-medium">{option.value}</span>
+                            {/*
+                              `title` exposes the full, untruncated value
+                              for any tooltip/AT consumer. Truncation, if
+                              ever introduced, must remain CSS-only and
+                              MUST NOT alter the string passed to
+                              handleSelect (see resolveCanonicalValue).
+                            */}
+                            <span
+                              className="whitespace-nowrap text-sm font-medium"
+                              title={option.value}
+                            >
+                              {option.value}
+                            </span>
                           </div>
                           <button
                             onClick={(e) => handleDelete(option, e)}
