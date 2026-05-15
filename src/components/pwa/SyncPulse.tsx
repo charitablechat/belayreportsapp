@@ -498,6 +498,10 @@ export const SyncPulse = ({ className }: { className?: string }) => {
                     onClick={async () => {
                       if (drainActive) {
                         await stopDrainMode('user');
+                        // Drain may have synced everything — refresh
+                        // counts from IDB so the list reflects reality
+                        // instead of the pre-drain React snapshot.
+                        await refreshSyncStateFromStorage();
                         return;
                       }
                       setDrainStarting(true);
