@@ -53,6 +53,7 @@ import {
 } from '@/lib/drain-mode';
 import { isWakeLockSupported } from '@/lib/wake-lock';
 import { hardResetDatabase } from '@/lib/hard-reset-database';
+import { runStorageSourceDiagnostic } from '@/lib/storage-source-diagnostic';
 
 type Phase = 'idle' | 'syncing' | 'synced' | 'unsynced' | 'paused' | 'error';
 
