@@ -30,6 +30,13 @@ export interface StorageSourceDiagnostic {
     unsyncedAssessments: number;
     quarantinedCount: number;
   };
+  renderedPendingReports: Array<{
+    kind: string;
+    id: unknown;
+    label: string;
+    sourceVariableName: string;
+  }>;
+  renderedPendingReportsSource: string;
   indexedDB: Record<string, unknown>;
   backupLedger: Array<{
     key: string;
@@ -146,6 +153,8 @@ export interface StorageSourceDiagnosticInput {
   unsyncedAssessments: number;
   quarantinedCount: number;
   currentUserId: string | null | undefined;
+  renderedPendingReports: StorageSourceDiagnostic['renderedPendingReports'];
+  renderedPendingReportsSource: string;
 }
 
 export async function runStorageSourceDiagnostic(
@@ -179,6 +188,8 @@ export async function runStorageSourceDiagnostic(
       unsyncedAssessments: input.unsyncedAssessments,
       quarantinedCount: input.quarantinedCount,
     },
+    renderedPendingReports: input.renderedPendingReports,
+    renderedPendingReportsSource: input.renderedPendingReportsSource,
     indexedDB,
     backupLedger: collectBackupLedger(),
     quarantineRaw,
