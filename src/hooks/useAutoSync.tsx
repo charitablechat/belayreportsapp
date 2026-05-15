@@ -226,6 +226,14 @@ export const useAutoSync = () => {
     // S34: Track per-cycle photo state changes so we only dispatch
     // `sync-photos-updated` when something actually moved.
     let photoChangeCount = 0;
+    // Hard-reset freeze: when the user triggers HARD RESET DATABASE, the
+    // utility sets `window.__RW_RESETTING = true` and we must immediately
+    // skip every sync cycle so the about-to-be-wiped IDB isn't repopulated
+    // before the reload lands.
+    if (typeof window !== 'undefined' && (window as any).__RW_RESETTING) {
+      syncLog.log('[AutoSync] Hard reset in progress - skipping sync');
+      return;
+    }
     // Block all writes in Lovable preview to protect production data
     if ((await import('@/lib/environment')).isLovablePreview()) return;
     // Skip if offline. Sprint 2 F: use `isLikelyOnline()` so a transient
