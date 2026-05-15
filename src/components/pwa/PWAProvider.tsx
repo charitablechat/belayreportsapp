@@ -107,6 +107,9 @@ export interface PWAContextType {
    *  'soft' = stats/photo-counts read hiccup, render amber advisory only. */
   syncErrorSeverity: 'fatal' | 'soft' | null;
   updateUnsyncedCount: () => Promise<void>;
+  /** Bypass throttles and re-read unsynced state directly from IndexedDB.
+   *  Use after Hard Reset, Drain end, quarantine retry, etc. */
+  refreshSyncStateFromStorage: () => Promise<void>;
   forceSync: () => Promise<void>;
   
   // Photo sync state
