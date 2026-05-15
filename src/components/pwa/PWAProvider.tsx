@@ -3,6 +3,7 @@ import { usePWAInstall } from '@/hooks/usePWAInstall';
 import { usePWAUpdate } from '@/hooks/usePWAUpdate';
 import { useNetworkStatus } from '@/hooks/useNetworkStatus';
 import { useAutoSync } from '@/hooks/useAutoSync';
+import type { SyncStateSnapshot } from '@/hooks/useAutoSync';
 import { useUnsyncedPhotos } from '@/hooks/useUnsyncedPhotos';
 
 // Error Boundary for PWA Provider
@@ -54,7 +55,7 @@ class PWAErrorBoundary extends Component<
         syncError: this.state.error?.message || 'PWA initialization failed',
         syncErrorSeverity: 'fatal',
         updateUnsyncedCount: async () => {},
-        refreshSyncStateFromStorage: async () => {},
+        refreshSyncStateFromStorage: async () => null,
         forceSync: async () => {},
         unsyncedPhotoCount: 0,
         photosByInspection: {},
@@ -110,7 +111,7 @@ export interface PWAContextType {
   updateUnsyncedCount: () => Promise<void>;
   /** Bypass throttles and re-read unsynced state directly from IndexedDB.
    *  Use after Hard Reset, Drain end, quarantine retry, etc. */
-  refreshSyncStateFromStorage: () => Promise<void>;
+  refreshSyncStateFromStorage: () => Promise<SyncStateSnapshot | null>;
   forceSync: () => Promise<void>;
   
   // Photo sync state
