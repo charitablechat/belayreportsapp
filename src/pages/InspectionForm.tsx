@@ -97,14 +97,13 @@ import { Shield as ShieldIcon, Receipt } from "lucide-react";
 import { useInvoicedStatus } from "@/hooks/useInvoicedStatus";
 import { useEquipmentTypeOptions } from "@/hooks/useEquipmentTypeOptions";
 
-const STANDARDS_TEMPLATE = [
-  { standard_name: "Local Written Operations Procedures", has_documentation: null },
-  { standard_name: "Local Written Emergency Action Plan", has_documentation: null },
-  { standard_name: "Minimum Annual Training", has_documentation: null },
-  { standard_name: "Written Pre-Use Inspection in Use", has_documentation: null },
-  { standard_name: "Inventory Tracking System in Use", has_documentation: null },
-  { standard_name: "Operational Review Every 5 Years", has_documentation: null },
-];
+// Slice 1 — STANDARDS_TEMPLATE + merge helpers extracted to inspectionLoader.
+import {
+  STANDARDS_TEMPLATE,
+  mergeStandards,
+  mergeStandardsPreserveLocal,
+} from "@/lib/form-loaders/inspectionLoader";
+import { InspectionHeaderSection } from "@/components/inspection/InspectionHeaderSection";
 
 // `saveRelatedDataOffline` accepts a small set of well-known child-table keys.
 // Mirrors the `RelatedDataType` union in `@/lib/offline-storage`.
@@ -127,32 +126,6 @@ function errorCode(error: unknown): IdbSaveErrorCode | undefined {
   }
   return undefined;
 }
-
-const mergeStandards = (loaded: DbRow[]) => {
-  return STANDARDS_TEMPLATE.map(template => {
-    const match = loaded.find((s) => s.standard_name === template.standard_name);
-    return match || { ...template, id: crypto.randomUUID() };
-  });
-};
-
-// Reload-time merge that prefers a locally-set has_documentation when the
-// loaded row is still null/undefined. Prevents an in-flight server fetch
-// (realtime/sync) from blanking a Yes/No checkbox the user just clicked.
-const mergeStandardsPreserveLocal = (loaded: DbRow[], local: DbRow[]) => {
-  return STANDARDS_TEMPLATE.map(template => {
-    const loadedMatch = loaded.find((s) => s.standard_name === template.standard_name);
-    const localMatch = local.find((s) => s.standard_name === template.standard_name);
-    if (loadedMatch && localMatch) {
-      const localHas = (localMatch as { has_documentation?: boolean | null }).has_documentation;
-      const loadedHas = (loadedMatch as { has_documentation?: boolean | null }).has_documentation;
-      if ((loadedHas === null || loadedHas === undefined) && (localHas === true || localHas === false)) {
-        return { ...loadedMatch, has_documentation: localHas };
-      }
-      return loadedMatch;
-    }
-    return loadedMatch || localMatch || { ...template, id: crypto.randomUUID() };
-  });
-};
 
 export default function InspectionForm() {
   const { id } = useParams();
