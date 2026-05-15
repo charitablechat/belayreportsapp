@@ -471,7 +471,11 @@ export async function pushInspectionToRemote(
       supabase
         .from("inspection_summary")
         .upsert(
-          sanitizeSummaryForRemote({ ...summary, inspection_id: id } as DbRow) as never,
+          sanitizeSummaryForRemote({
+            ...summary,
+            id: summary.id && !(summary.id as string).startsWith("temp-") ? summary.id : crypto.randomUUID(),
+            inspection_id: id,
+          } as DbRow) as never,
           { onConflict: "inspection_id" },
         ),
     ),
