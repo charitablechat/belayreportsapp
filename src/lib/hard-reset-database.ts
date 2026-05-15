@@ -93,7 +93,11 @@ export async function hardResetDatabase(): Promise<void> {
   await unregisterAllServiceWorkers();
   // 2) Delete every known offline IDB.
   await deleteAllOfflineDatabases();
-  // 3) Hard reload. Auth lives in localStorage and is intentionally untouched.
+  // 3) Clear the local backup ledger so deleted reports don't repopulate
+  //    on next boot. Auth keys live elsewhere and are intentionally untouched.
+  const removed = clearBackupLedgerKeys();
+  if (removed > 0) console.info(`[HardReset] Cleared ${removed} rw_backup_ ledger entries`);
+  // 4) Hard reload. Auth lives in localStorage and is intentionally untouched.
   try {
     // @ts-expect-error legacy forceReload arg
     window.location.reload(true);
