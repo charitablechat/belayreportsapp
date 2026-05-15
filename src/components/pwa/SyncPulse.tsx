@@ -200,14 +200,44 @@ export const SyncPulse = ({ className }: { className?: string }) => {
   const [drainActive, setDrainActive] = useState<boolean>(() => isDrainModeActive());
   const [drainStarting, setDrainStarting] = useState(false);
   const [drainWakeLockHeld, setDrainWakeLockHeld] = useState(true);
+  const [renderedPendingReports, setRenderedPendingReports] = useState<RenderedPendingReport[]>(() =>
+    buildRenderedPendingReports(unsyncedInspections, unsyncedTrainings, unsyncedAssessments),
+  );
+  const refreshVisibleSyncStateFromStorage = useCallback(async () => {
+    const fresh = await refreshSyncStateFromStorage();
+    if (fresh) {
+      setRenderedPendingReports(buildRenderedPendingReports(
+        fresh.unsyncedInspections,
+        fresh.unsyncedTrainings,
+        fresh.unsyncedAssessments,
+      ));
+    }
+    return fresh;
+  }, [refreshSyncStateFromStorage]);
+  useEffect(() => {
+    setRenderedPendingReports(buildRenderedPendingReports(
+      unsyncedInspections,
+      unsyncedTrainings,
+      unsyncedAssessments,
+    ));
+  }, [unsyncedInspections, unsyncedTrainings, unsyncedAssessments]);
+  const renderedPendingReportDiagnostics = useMemo(
+    () => renderedPendingReports.map(({ kind, id, label, sourceVariableName }) => ({
+      kind,
+      id,
+      label,
+      sourceVariableName,
+    })),
+    [renderedPendingReports],
+  );
   useEffect(() => subscribeDrainMode(setDrainActive), []);
   // Auto-stop drain mode the moment the queue hits zero. The 10-min safety
   // cap in drain-mode.ts is a backstop; this is the happy path.
   useEffect(() => {
     if (drainActive && unsyncedCount === 0 && unsyncedPhotoCount === 0) {
-      void stopDrainMode('complete');
+      void stopDrainMode('complete').then(() => refreshVisibleSyncStateFromStorage());
     }
-  }, [drainActive, unsyncedCount, unsyncedPhotoCount]);
+  }, [drainActive, refreshVisibleSyncStateFromStorage, unsyncedCount, unsyncedPhotoCount]);
   // Sprint 1D: per-photo retry-state breakdown (READY/RETRYING/STUCK)
   // — see src/lib/photo-retry-buckets.ts. Refreshed on every
   // `sync-photos-updated` event and on a 1Hz tick while the sheet is
