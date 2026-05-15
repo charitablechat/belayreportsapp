@@ -102,6 +102,11 @@ import {
   mergeStandards,
   mergeStandardsPreserveLocal,
 } from "@/lib/form-loaders/inspectionLoader";
+// Slice 1.5 — performSave engine extracted to inspectionSaver.
+import {
+  persistInspectionToOffline,
+  pushInspectionToRemote,
+} from "@/lib/form-savers/inspectionSaver";
 import { InspectionHeaderSection } from "@/components/inspection/InspectionHeaderSection";
 
 // `saveRelatedDataOffline` accepts a small set of well-known child-table keys.
