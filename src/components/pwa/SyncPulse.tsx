@@ -750,7 +750,7 @@ export const SyncPulse = ({ className }: { className?: string }) => {
             )}
 
             {/* Pending reports */}
-            {unsyncedCount > 0 && (
+            {visibleReportPendingCount > 0 && (
               <div className="space-y-1.5 border-t border-green-900/40 pt-2">
                 <button
                   type="button"
@@ -759,45 +759,21 @@ export const SyncPulse = ({ className }: { className?: string }) => {
                   style={{ touchAction: 'manipulation' }}
                   className="w-full min-h-[44px] flex items-center justify-between text-left text-green-400 text-[10px] uppercase tracking-wider hover:text-green-300 active:text-green-300 py-2 -my-1"
                 >
-                  <span>{pendingReportsExpanded ? '▾' : '▸'} Pending reports ({unsyncedCount})</span>
+                  <span>{pendingReportsExpanded ? '▾' : '▸'} Pending reports ({visibleReportPendingCount})</span>
                   <span className="text-green-700 text-[9px]">{pendingReportsExpanded ? 'TAP TO HIDE' : 'TAP TO OPEN'}</span>
                 </button>
                 {pendingReportsExpanded && (
                   <div className="space-y-1 max-h-48 overflow-y-auto">
-                    {unsyncedInspections.map((item) => (
+                    {renderedPendingReports.map((item) => (
                       <PendingReportRow
-                        key={item.id}
-                        kind="INS"
-                        accent="blue"
-                        label={item.organization || 'Untitled'}
-                        sublabel={item.location ? `@ ${item.location}` : undefined}
+                        key={`${item.sourceVariableName}:${String(item.id)}`}
+                        kind={item.kind}
+                        accent={item.accent}
+                        label={item.label}
+                        sublabel={item.sublabel}
                         onDrop={async () => {
-                          await forceDeleteLocalRecord('inspections', item.id);
-                          try { await forceSync(); } catch { /* breaker open is fine */ }
-                        }}
-                      />
-                    ))}
-                    {unsyncedTrainings.map((item) => (
-                      <PendingReportRow
-                        key={item.id}
-                        kind="TRN"
-                        accent="purple"
-                        label={item.organization || 'Untitled'}
-                        onDrop={async () => {
-                          await forceDeleteLocalRecord('trainings', item.id);
-                          try { await forceSync(); } catch { /* breaker open is fine */ }
-                        }}
-                      />
-                    ))}
-                    {unsyncedAssessments.map((item) => (
-                      <PendingReportRow
-                        key={item.id}
-                        kind="ASM"
-                        accent="amber"
-                        label={item.organization || item.site || 'Untitled'}
-                        onDrop={async () => {
-                          await forceDeleteLocalRecord('daily_assessments', item.id);
-                          try { await forceSync(); } catch { /* breaker open is fine */ }
+                          await forceDeleteLocalRecord(item.table, String(item.id));
+                          try { await forceSyncAndRefreshVisibleState(); } catch { /* breaker open is fine */ }
                         }}
                       />
                     ))}
