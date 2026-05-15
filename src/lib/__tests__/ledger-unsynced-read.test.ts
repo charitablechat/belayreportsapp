@@ -80,6 +80,27 @@ describe('Mode 11A — listUnsyncedSnapshots filter contract', () => {
     expect(result.map(r => r.reportId).sort()).toEqual(['a']);
   });
 
+  it('does not treat missing synced flags as pending reports', async () => {
+    const { listUnsyncedSnapshots } = await import('../local-backup-ledger');
+    localStorage.setItem('rw_backup_training_missing_flag', JSON.stringify({
+      v: 1,
+      ts: Date.now(),
+      device: 'test-device',
+      parent: { id: 'missing_flag', inspector_id: 'user-1' },
+      children: {},
+    }));
+    writeSnapshot('rw_backup_training_synced', {
+      synced: true,
+      parent: { id: 'synced', inspector_id: 'user-1' },
+    });
+    writeSnapshot('rw_backup_training_unsynced', {
+      synced: false,
+      parent: { id: 'unsynced', inspector_id: 'user-1' },
+    });
+
+    expect(listUnsyncedSnapshots('training', 'user-1').map(r => r.reportId)).toEqual(['unsynced']);
+  });
+
   it('exact reportType filter — no inspection→training bleed', async () => {
     const { listUnsyncedSnapshots } = await import('../local-backup-ledger');
     writeSnapshot('rw_backup_inspection_a', {

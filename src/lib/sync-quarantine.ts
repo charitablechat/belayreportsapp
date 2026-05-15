@@ -340,3 +340,30 @@ export function clearAllQuarantines(): void {
     /* non-critical */
   }
 }
+
+/**
+ * Clear stale IDB-closing quarantine entries once the visible quarantine count
+ * is already zero. These entries are transport/storage artifacts, not bad
+ * report records, and should not linger in diagnostics after recovery.
+ */
+export function clearIdbClosingQuarantinesWhenInactive(): void {
+  try {
+    const map = readMap();
+    const now = Date.now();
+    const activeCount = Object.values(map).filter(
+      (entry) => entry.quarantinedUntil !== null && now < entry.quarantinedUntil,
+    ).length;
+    if (activeCount !== 0) return;
+
+    let changed = false;
+    for (const [recordId, entry] of Object.entries(map)) {
+      if (/idb_closing/i.test(entry.lastError ?? '')) {
+        delete map[recordId];
+        changed = true;
+      }
+    }
+    if (changed) writeMap(map);
+  } catch {
+    /* non-critical diagnostic cleanup */
+  }
+}

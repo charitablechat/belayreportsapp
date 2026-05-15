@@ -31,7 +31,7 @@ import {
   getValidationStuckRecords,
   type ValidationBuckets,
 } from '@/lib/validation-buckets';
-import { getQuarantineSnapshot, clearAllQuarantines } from '@/lib/sync-quarantine';
+import { getQuarantineSnapshot, clearAllQuarantines, clearIdbClosingQuarantinesWhenInactive } from '@/lib/sync-quarantine';
 import {
   collectSyncDiagnostics,
   reassignOrphanToCurrentUser,
@@ -397,6 +397,7 @@ export const SyncPulse = ({ className }: { className?: string }) => {
     const active = Object.values(snap).filter(
       (e) => e.quarantinedUntil !== null && now < (e.quarantinedUntil as number),
     ).length;
+    if (active === 0) clearIdbClosingQuarantinesWhenInactive();
     setQuarantinedCount(active);
   }, [open, isSyncing, lastSyncTime]);
 
