@@ -154,10 +154,17 @@ export async function persistInspectionToOffline(
     childDataLoaded: ChildLoadedFlags;
     silent: boolean;
     onVersionAppended?: (info: { versionNumber: number; fieldCount: number }) => void;
+    /**
+     * Fires synchronously the moment the localStorage snapshot is written —
+     * BEFORE the IDB child writes resolve. Mirrors the legacy ordering where
+     * `showHardSavedToast` fires immediately after the snapshot so the toast
+     * appears even if IDB hangs.
+     */
+    onSnapshotSaved?: () => void;
   },
 ): Promise<PersistResult> {
   const { id, inspection, systems, ziplines, equipment, standards, summary } = payload;
-  const { currentUserId, childDataLoaded, silent, onVersionAppended } = opts;
+  const { currentUserId, childDataLoaded, silent, onVersionAppended, onSnapshotSaved } = opts;
 
   // Stamp updated_at + last_modified_by (when current user isn't the owner)
   const baseInspectionToSave: DbRow = {
@@ -204,6 +211,8 @@ export async function persistInspectionToOffline(
   } catch {
     /* snapshot is best-effort */
   }
+  // Fire snapshot-saved callback BEFORE IDB child writes (matches legacy ordering)
+  try { onSnapshotSaved?.(); } catch { /* never let toast throw */ }
 
   // Build IDB write batch — only include child arrays that were confirmed
   // loaded (or have items now), so an empty-on-load doesn't clobber server
