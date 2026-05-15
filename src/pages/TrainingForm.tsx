@@ -574,21 +574,14 @@ export default function TrainingForm() {
               console.warn('[TrainingForm] Non-critical: failed to cache training', e)
             );
 
-            const [
-              { data: approachData },
-              { data: systemData },
-              { data: attentionData },
-              { data: verifiableData },
-              { data: systemsPlaceData },
-              { data: summaryResult }
-            ] = await Promise.all([
-              supabase.from('training_delivery_approaches').select('*').eq('training_id', id).order('created_at'),
-              supabase.from('training_operating_systems').select('*').eq('training_id', id).order('created_at'),
-              supabase.from('training_immediate_attention').select('*').eq('training_id', id).order('created_at'),
-              supabase.from('training_verifiable_items').select('*').eq('training_id', id).order('created_at'),
-              supabase.from('training_systems_in_place').select('*').eq('training_id', id).order('created_at'),
-              supabase.from('training_summary').select('*').eq('training_id', id).maybeSingle()
-            ]);
+            const {
+              delivery_approaches: approachData,
+              operating_systems: systemData,
+              immediate_attention: attentionData,
+              verifiable_items: verifiableData,
+              systems_in_place: systemsPlaceData,
+              summary: summaryResult,
+            } = await fetchTrainingChildrenFromServer(id);
 
             isInternalUpdateRef.current = true;
             childDataLoadedRef.current.delivery_approaches = true;
