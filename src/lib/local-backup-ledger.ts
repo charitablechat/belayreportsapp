@@ -15,6 +15,7 @@ import { safeSetItem } from './safe-local-storage';
 import { withRestoreLock } from './restore-lock';
 import { verifyRestoreIntegrity } from './restore-integrity';
 import { toUploadedFlag } from './offline-storage';
+import { isTombstoned, tableForReportType } from './local-record-tombstones';
 
 const BACKUP_PREFIX = 'rw_backup_';
 const SCHEMA_VERSION = 1;
@@ -403,6 +404,10 @@ export function listUnsyncedSnapshots(
         if (snapshot.synced !== false) continue;
 
         const reportId = key.slice(keyPrefix.length);
+
+        // Honour Sync Terminal DROP tombstones — same id-based veto as the
+        // IDB readers in offline-storage.ts.
+        if (isTombstoned(tableForReportType(reportType), reportId)) continue;
 
         if (userId != null) {
           const ownerId = (snapshot.parent?.inspector_id as string | undefined) ?? null;

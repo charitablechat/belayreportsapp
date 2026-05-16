@@ -29,6 +29,7 @@ import { addSyncNotification as addSyncNotificationStatic } from './notification
 // only imports `sync-logger` — no circular-dependency risk. Module is ~5 KB.
 import { isQuarantined as isSessionQuarantined, jitteredPhotoBackoffMs } from './sync-quarantine';
 import { syncLog } from './sync-logger';
+import { addTombstone, clearTombstone, isTombstoned } from './local-record-tombstones';
 
 /** Opaque DB row — fields vary across tables and are read/written structurally.
  *  Uses an `any` index signature so callers can structurally read/write
@@ -3132,6 +3133,10 @@ export async function saveInspectionOffline(
       // "has unshipped edits" signal; only cleared by safePostSyncSave after
       // a successful round-trip with no concurrent edit.
       inspection.dirty = true;
+      // If the user previously DROP'd this id from the Sync Terminal but is
+      // now saving fresh work under the same id, lift the tombstone so the
+      // new edit shows up in pending again.
+      if (inspection.id) clearTombstone('inspections', String(inspection.id));
       await db.put('inspections', inspection as never);
       if (import.meta.env.DEV) {
         console.log('[Offline Storage] Saved inspection:', inspection.id);
@@ -3316,7 +3321,9 @@ export async function getUnsyncedInspections(userId?: string, options?: WedgeLed
         if (record.inspector_id === userId) return true;
         if (record.id?.startsWith('temp-')) return true; // orphan recovery
         return false;
-      }).filter(record => !isSessionQuarantined(record.id)); // S41 (Fix E): drop session-quarantined ids from user-facing count
+      })
+        .filter(record => !isSessionQuarantined(record.id)) // S41 (Fix E): drop session-quarantined ids from user-facing count
+        .filter(record => !isTombstoned('inspections', record.id)); // Sync Terminal DROP veto
 
       const unsynced = candidates.filter(record => {
         // C3: dirty flag is the authoritative "has unshipped edits" signal.
@@ -4860,6 +4867,7 @@ export async function saveDailyAssessmentOffline(
       }
       // C3: stamp the dirty flag at every user-facing save.
       assessment.dirty = true;
+      if (assessment.id) clearTombstone('daily_assessments', String(assessment.id));
       await db.put('daily_assessments', assessment as never);
       if (import.meta.env.DEV) {
         console.log('[Offline Storage] Saved daily assessment:', assessment.id);
@@ -4951,7 +4959,9 @@ export async function getUnsyncedDailyAssessments(userId?: string, options?: Wed
         if (record.inspector_id === userId) return true;
         if (record.id?.startsWith('temp-')) return true;
         return false;
-      }).filter(record => !isSessionQuarantined(record.id)); // S41 (Fix E): see getUnsyncedInspections
+      })
+        .filter(record => !isSessionQuarantined(record.id)) // S41 (Fix E): see getUnsyncedInspections
+        .filter(record => !isTombstoned('daily_assessments', record.id)); // Sync Terminal DROP veto
 
       const unsynced = candidates.filter(record => {
         // C3: dirty flag = authoritative "has unshipped edits"; drift = secondary.
@@ -5228,6 +5238,7 @@ export async function saveTrainingOffline(
       }
       // C3: stamp the dirty flag at every user-facing save.
       training.dirty = true;
+      if (training.id) clearTombstone('trainings', String(training.id));
       await db.put('trainings', training as never);
       if (import.meta.env.DEV) {
         console.log('[Offline Storage] Saved training:', training.id);
@@ -5383,7 +5394,9 @@ export async function getUnsyncedTrainings(userId?: string, options?: WedgeLedge
         if (record.inspector_id === userId) return true;
         if (record.id?.startsWith('temp-')) return true;
         return false;
-      }).filter(record => !isSessionQuarantined(record.id)); // S41 (Fix E): see getUnsyncedInspections
+      })
+        .filter(record => !isSessionQuarantined(record.id)) // S41 (Fix E): see getUnsyncedInspections
+        .filter(record => !isTombstoned('trainings', record.id)); // Sync Terminal DROP veto
 
       const unsynced = candidates.filter(record => {
         // C3: dirty flag = authoritative "has unshipped edits"; drift = secondary.
@@ -6636,14 +6649,30 @@ async function deleteByDirectOpen(
 }
 
 function purgeLocalStorageBackup(table: ForceDeletableTable, id: string): boolean {
+  let any = false;
   try {
+    // Primary key under the canonical prefix.
     const key = BACKUP_KEY_PREFIX[table] + id;
-    const had = localStorage.getItem(key) !== null;
-    if (had) localStorage.removeItem(key);
-    return had;
+    if (localStorage.getItem(key) !== null) {
+      localStorage.removeItem(key);
+      any = true;
+    }
+    // Defensive sweep: catch any backup key whose suffix matches this id
+    // (handles unexpected aliases / prefix drift across releases).
+    const idSuffix = '_' + id;
+    const toRemove: string[] = [];
+    for (let i = 0; i < localStorage.length; i++) {
+      const k = localStorage.key(i);
+      if (k && k.startsWith('rw_backup_') && k.endsWith(idSuffix)) toRemove.push(k);
+    }
+    for (const k of toRemove) {
+      localStorage.removeItem(k);
+      any = true;
+    }
   } catch {
-    return false;
+    /* noop */
   }
+  return any;
 }
 
 export async function forceDeleteLocalRecord(
@@ -6655,6 +6684,11 @@ export async function forceDeleteLocalRecord(
     deletedFromLocalStorage: false,
     bypassedBreaker: false,
   };
+
+  // Tombstone FIRST and synchronously — this is the durable veto that
+  // suppresses the row from getUnsynced* / ledger fallback even if the
+  // IDB/localStorage purges below fail or a delayed write resurrects it.
+  addTombstone(table, id);
 
   // Always scrub localStorage backup — it's cheap and synchronous.
   result.deletedFromLocalStorage = purgeLocalStorageBackup(table, id);
