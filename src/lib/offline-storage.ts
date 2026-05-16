@@ -6668,8 +6668,10 @@ const BACKUP_KEY_PREFIX = {
 export type ForceDeletableTable = keyof typeof STORE_FOR_TABLE;
 
 export interface ForceDeleteResult {
+  tombstoneWritten: boolean;
   deletedFromIdb: boolean;
   deletedFromLocalStorage: boolean;
+  backupAliasesRemoved: number;
   bypassedBreaker: boolean;
   error?: string;
 }
@@ -6706,31 +6708,39 @@ async function deleteByDirectOpen(
   }
 }
 
-function purgeLocalStorageBackup(table: ForceDeletableTable, id: string): boolean {
-  let any = false;
+function purgeLocalStorageBackup(table: ForceDeletableTable, id: string): { removed: number; keys: string[] } {
+  let removed = 0;
+  const keys: string[] = [];
   try {
-    // Primary key under the canonical prefix.
-    const key = BACKUP_KEY_PREFIX[table] + id;
-    if (localStorage.getItem(key) !== null) {
-      localStorage.removeItem(key);
-      any = true;
-    }
-    // Defensive sweep: catch any backup key whose suffix matches this id
-    // (handles unexpected aliases / prefix drift across releases).
+    const canonicalKey = BACKUP_KEY_PREFIX[table] + id;
     const idSuffix = '_' + id;
     const toRemove: string[] = [];
     for (let i = 0; i < localStorage.length; i++) {
       const k = localStorage.key(i);
-      if (k && k.startsWith('rw_backup_') && k.endsWith(idSuffix)) toRemove.push(k);
+      if (!k || !k.startsWith('rw_backup_')) continue;
+      if (k === canonicalKey || k.endsWith(idSuffix)) {
+        toRemove.push(k);
+        continue;
+      }
+      try {
+        const raw = localStorage.getItem(k);
+        if (!raw) continue;
+        const parsed = JSON.parse(raw) as { id?: unknown; reportId?: unknown; parent?: { id?: unknown } };
+        const parsedId = parsed.parent?.id ?? parsed.reportId ?? parsed.id;
+        if (parsedId === id) toRemove.push(k);
+      } catch {
+        // Malformed backup: only remove when the key itself exactly carries the id.
+      }
     }
     for (const k of toRemove) {
       localStorage.removeItem(k);
-      any = true;
+      removed += 1;
+      keys.push(k);
     }
   } catch {
     /* noop */
   }
-  return any;
+  return { removed, keys };
 }
 
 export async function forceDeleteLocalRecord(
@@ -6738,8 +6748,10 @@ export async function forceDeleteLocalRecord(
   id: string,
 ): Promise<ForceDeleteResult> {
   const result: ForceDeleteResult = {
+    tombstoneWritten: false,
     deletedFromIdb: false,
     deletedFromLocalStorage: false,
+    backupAliasesRemoved: 0,
     bypassedBreaker: false,
   };
 
@@ -6747,9 +6759,12 @@ export async function forceDeleteLocalRecord(
   // suppresses the row from getUnsynced* / ledger fallback even if the
   // IDB/localStorage purges below fail or a delayed write resurrects it.
   addTombstone(table, id);
+  result.tombstoneWritten = true;
 
   // Always scrub localStorage backup — it's cheap and synchronous.
-  result.deletedFromLocalStorage = purgeLocalStorageBackup(table, id);
+  const purge = purgeLocalStorageBackup(table, id);
+  result.backupAliasesRemoved = purge.removed;
+  result.deletedFromLocalStorage = purge.removed > 0;
 
   // 1) Try the normal helper with a tight timeout. When healthy this also
   //    clears child caches the normal helper knows about.
@@ -6776,7 +6791,17 @@ export async function forceDeleteLocalRecord(
     if (!ok) result.error = 'idb_unreachable';
   }
 
-  console.warn('[forceDeleteLocalRecord] result', { table, id: id.substring(0, 8), ...result });
+  console.warn('[DROP Tombstone] forceDeleteLocalRecord result', {
+    table,
+    id: shortRecordId(id),
+    tombstoneWritten: result.tombstoneWritten,
+    deletedFromIdb: result.deletedFromIdb,
+    deletedFromLocalStorage: result.deletedFromLocalStorage,
+    backupAliasesRemoved: result.backupAliasesRemoved,
+    backupAliasKeys: purge.keys.map((k) => k.replace(id, `${id.substring(0, 8)}…`)),
+    bypassedBreaker: result.bypassedBreaker,
+    error: result.error,
+  });
   return result;
 }
 
