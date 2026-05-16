@@ -407,7 +407,10 @@ export async function assertRealSessionForSync(ctx: string): Promise<boolean> {
 
 // ─── C1 helper ──────────────────────────────────────────────────────────────
 type LiveGetter<T> = (id: string) => Promise<T | null | undefined>;
-type LiveSaver<T>  = (record: T, opts?: unknown) => Promise<unknown>;
+type LiveSaver<T>  = (
+  record: T,
+  opts?: { markDirty?: boolean; explicitUserSave?: boolean; dispatchSyncEvent?: boolean },
+) => Promise<unknown>;
 
 const TABLE_FOR_SAFE_POST_SYNC: Record<string, TombstonedTable> = {
   getOfflineInspection: 'inspections',
