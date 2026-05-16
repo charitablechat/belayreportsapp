@@ -2532,7 +2532,7 @@ export async function getDB() {
     // Version 8: Add report_versions store for append-only versioning
     // DB_NAME and DB_VERSION shared with public/db-config.js for SW consistency
     const DB_NAME = 'rope-works-inspections';
-    const DB_VERSION = 19;
+    const DB_VERSION = 20;
 
     // Phase 5 — Schema Migration Safety. Now imported statically at the top
     // of this module (see comment there). Previously this was `await
