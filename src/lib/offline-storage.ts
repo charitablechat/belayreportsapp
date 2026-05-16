@@ -2734,6 +2734,8 @@ export async function getDB() {
           }
 
           // === NEW in v8: report_versions append-only store ===
+          // v20: also self-repair missing indexes on existing stores so older
+          // partially-created DBs don't permanently break recovery snapshots.
           if (!db.objectStoreNames.contains('report_versions')) {
             const versionStore = db.createObjectStore('report_versions', { keyPath: 'id' });
             versionStore.createIndex('by-report', 'reportId');
@@ -2741,6 +2743,21 @@ export async function getDB() {
             versionStore.createIndex('by-report-version', ['reportId', 'versionNumber']);
             if (import.meta.env.DEV) {
               console.log('[Offline Storage] Created report_versions store (v8 upgrade)');
+            }
+          } else {
+            try {
+              const vs = transaction.objectStore('report_versions');
+              if (!vs.indexNames.contains('by-report')) {
+                vs.createIndex('by-report', 'reportId');
+              }
+              if (!vs.indexNames.contains('by-timestamp')) {
+                vs.createIndex('by-timestamp', 'timestamp');
+              }
+              if (!vs.indexNames.contains('by-report-version')) {
+                vs.createIndex('by-report-version', ['reportId', 'versionNumber']);
+              }
+            } catch (err) {
+              console.warn('[Offline Storage] report_versions index repair failed:', err);
             }
           }
 
