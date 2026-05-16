@@ -330,7 +330,7 @@ export async function appendVersion(
     let maxVersion = 0;
     await new Promise<void>((resolve, reject) => {
       try {
-        const range = IDBKeyRange.bound([reportId, -Infinity], [reportId, Infinity]);
+        const range = IDBKeyRange.bound([reportId, 0], [reportId, Number.MAX_SAFE_INTEGER]);
         const req = idx.openCursor(range, 'prev');
         req.onsuccess = () => {
           const cur = req.result;
