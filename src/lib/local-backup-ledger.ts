@@ -404,6 +404,12 @@ export function listUnsyncedSnapshots(
 
         const reportId = key.slice(keyPrefix.length);
 
+        // Honour Sync Terminal DROP tombstones — same id-based veto as the
+        // IDB readers. Static import would create a cycle (ledger ← tombstones
+        // is fine, but keep symmetry with offline-storage's lazy ledger import).
+        const { isTombstoned, tableForReportType } = await import('./local-record-tombstones');
+        if (isTombstoned(tableForReportType(reportType), reportId)) continue;
+
         if (userId != null) {
           const ownerId = (snapshot.parent?.inspector_id as string | undefined) ?? null;
           const isOrphan = reportId.startsWith('temp-');
