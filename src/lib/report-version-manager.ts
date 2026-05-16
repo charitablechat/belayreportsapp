@@ -93,6 +93,114 @@ export function subscribeVersioningHealth(fn: HealthListener): () => void {
 export function resetVersioningHealth(): void {
   versioningHealth.consecutiveFailures = 0;
   versioningHealth.lastError = null;
+  versioningHealth.lastDiagnostic = null;
+  emitHealth();
+}
+
+// ─── Structured-clone-safe sanitizer ────────────────────────────────
+// IndexedDB uses the structured clone algorithm. The following throw on clone:
+//   • functions, symbols, bigints
+//   • DOM Nodes, Window, Event, Promise instances
+//   • Proxies wrapping non-cloneable targets
+//   • objects with circular references (handled by IDB but blow up
+//     downstream consumers, so we drop the back-edge)
+// Class instances with prototypes other than Object/Array survive cloning
+// but lose their prototype; we coerce them to plain objects defensively.
+const HTML_FIELD_MAX_BYTES = 50_000;
+
+function isStructuredCloneable(v: unknown): boolean {
+  try {
+    // structuredClone is available in all browsers we support (Safari 15.4+).
+    if (typeof structuredClone === 'function') {
+      structuredClone(v);
+      return true;
+    }
+  } catch {
+    return false;
+  }
+  return true;
+}
+
+function toCloneSafe<T = unknown>(input: T, seen: WeakSet<object> = new WeakSet()): T {
+  if (input === null || input === undefined) return input;
+  const t = typeof input;
+  if (t === 'string' || t === 'number' || t === 'boolean') return input;
+  if (t === 'function' || t === 'symbol' || t === 'bigint') return undefined as unknown as T;
+  if (t !== 'object') return undefined as unknown as T;
+
+  const o = input as unknown as object;
+  // Dates and primitives-in-wrappers: serialize.
+  if (o instanceof Date) return (o as Date).toISOString() as unknown as T;
+  // DOM/Browser objects: drop.
+  if (typeof Node !== 'undefined' && o instanceof Node) return undefined as unknown as T;
+  if (typeof Blob !== 'undefined' && o instanceof Blob) return undefined as unknown as T;
+  if (typeof File !== 'undefined' && o instanceof File) return undefined as unknown as T;
+  if (typeof Event !== 'undefined' && o instanceof Event) return undefined as unknown as T;
+  if (typeof Promise !== 'undefined' && o instanceof Promise) return undefined as unknown as T;
+
+  if (seen.has(o)) return undefined as unknown as T; // circular back-edge
+  seen.add(o);
+
+  if (Array.isArray(o)) {
+    return o.map((item) => toCloneSafe(item, seen)) as unknown as T;
+  }
+
+  const out: Record<string, unknown> = {};
+  for (const key of Object.keys(o as Record<string, unknown>)) {
+    // Drop oversized HTML-ish fields to keep version rows small.
+    const val = (o as Record<string, unknown>)[key];
+    if (
+      typeof val === 'string' &&
+      val.length > HTML_FIELD_MAX_BYTES &&
+      (key.endsWith('_html') || key === 'html' || key.includes('report_html'))
+    ) {
+      out[key] = `[stripped: ${val.length} bytes]`;
+      continue;
+    }
+    const sv = toCloneSafe(val, seen);
+    if (sv !== undefined) out[key] = sv;
+  }
+  return out as unknown as T;
+}
+
+function getMissingIndexes(db: IDBDatabase): string[] {
+  if (!db.objectStoreNames.contains('report_versions')) return ['<store-missing>'];
+  try {
+    const tx = db.transaction('report_versions', 'readonly');
+    const store = tx.objectStore('report_versions');
+    const required = ['by-report', 'by-timestamp', 'by-report-version'];
+    const missing = required.filter((n) => !store.indexNames.contains(n));
+    try { tx.abort(); } catch { /* ignore */ }
+    return missing;
+  } catch {
+    return ['<introspection-failed>'];
+  }
+}
+
+function recordVersioningFailure(
+  err: unknown,
+  diag: VersioningHealthDiagnostic,
+): void {
+  const e = err as Error | undefined;
+  const message = e?.message ?? String(err);
+  const name = e?.name ?? 'Error';
+  versioningHealth.consecutiveFailures += 1;
+  versioningHealth.lastFailureAt = Date.now();
+  versioningHealth.lastError = `${name}: ${message}`;
+  versioningHealth.lastDiagnostic = { ...diag, errorName: name };
+  // Log structured context (no private report content).
+  console.warn('[Version Manager] appendVersion failed', {
+    step: diag.step,
+    reportType: diag.reportType,
+    reportIdSuffix: diag.reportIdSuffix,
+    trigger: diag.trigger,
+    storeExists: diag.storeExists,
+    missingIndexes: diag.missingIndexes,
+    childCounts: diag.childCounts,
+    serializationFailed: diag.serializationFailed,
+    errorName: name,
+    errorMessage: message,
+  });
   emitHealth();
 }
 
