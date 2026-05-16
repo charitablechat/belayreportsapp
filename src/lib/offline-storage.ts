@@ -55,6 +55,7 @@ export type DbRow = { [key: string]: any } & {
 export const IDB_DB_NAME = 'rope-works-inspections';
 export const IDB_DB_VERSION = 20;
 
+type ReportSaveOptions = {
   childCountHint?: number;
   /** True only for normal form/new-report saves created by an explicit user edit. */
   explicitUserSave?: boolean;
