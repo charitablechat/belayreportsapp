@@ -19,7 +19,7 @@ interface SummarySectionProps {
   onNextDateUserEdit?: (cleared: boolean) => void;
 }
 
-export default function SummarySection({ summary, onUpdate, onImmediateSave, onRegenerate, onNextDateUserEdit }: SummarySectionProps) {
+function SummarySection({ summary, onUpdate, onImmediateSave, onRegenerate, onNextDateUserEdit }: SummarySectionProps) {
   const updateField = (field: string, value: any) => {
     onUpdate({ ...summary, [field]: value });
   };
