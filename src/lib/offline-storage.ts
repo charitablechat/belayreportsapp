@@ -3163,7 +3163,7 @@ export async function getDB() {
  */
 export async function saveInspectionOffline(
   inspection: Record<string, unknown> & { id?: string; child_count_hint?: number; dirty?: boolean },
-  opts?: { childCountHint?: number }
+  opts?: ReportSaveOptions
 ): Promise<SaveResult> {
   const result = await withIndexedDBSaveBoundary(
     async () => {
@@ -3175,11 +3175,12 @@ export async function saveInspectionOffline(
       // C3: stamp the dirty flag at every user-facing save. Authoritative
       // "has unshipped edits" signal; only cleared by safePostSyncSave after
       // a successful round-trip with no concurrent edit.
-      inspection.dirty = true;
+      if (opts?.markDirty === false) inspection.dirty = false;
+      else inspection.dirty = true;
       // If the user previously DROP'd this id from the Sync Terminal but is
-      // now saving fresh work under the same id, lift the tombstone so the
-      // new edit shows up in pending again.
-      if (inspection.id) clearTombstone('inspections', String(inspection.id));
+      // now explicitly saving fresh work under the same id, lift the tombstone.
+      // Passive server/refetch/cache hydration must never clear DROP.
+      if (opts?.explicitUserSave && inspection.id) clearTombstone('inspections', String(inspection.id));
       await db.put('inspections', inspection as never);
       if (import.meta.env.DEV) {
         console.log('[Offline Storage] Saved inspection:', inspection.id);
@@ -3192,7 +3193,7 @@ export async function saveInspectionOffline(
   // idleSyncInterval (slow) to activeSyncInterval (fast) the moment a
   // record becomes dirty. Without this the form save just stamps `dirty`
   // in IDB and the next attempt to push it sits behind a 60s+ timer.
-  dispatchSyncRecordsUpdated();
+  if (opts?.dispatchSyncEvent !== false) dispatchSyncRecordsUpdated();
   return result;
 }
 
@@ -4900,7 +4901,7 @@ export async function clearRelatedDataOffline(
  */
 export async function saveDailyAssessmentOffline(
   assessment: Record<string, unknown> & { id?: string; child_count_hint?: number; dirty?: boolean },
-  opts?: { childCountHint?: number }
+  opts?: ReportSaveOptions
 ): Promise<SaveResult> {
   const result = await withIndexedDBSaveBoundary(
     async () => {
@@ -4909,8 +4910,9 @@ export async function saveDailyAssessmentOffline(
         assessment.child_count_hint = opts.childCountHint;
       }
       // C3: stamp the dirty flag at every user-facing save.
-      assessment.dirty = true;
-      if (assessment.id) clearTombstone('daily_assessments', String(assessment.id));
+      if (opts?.markDirty === false) assessment.dirty = false;
+      else assessment.dirty = true;
+      if (opts?.explicitUserSave && assessment.id) clearTombstone('daily_assessments', String(assessment.id));
       await db.put('daily_assessments', assessment as never);
       if (import.meta.env.DEV) {
         console.log('[Offline Storage] Saved daily assessment:', assessment.id);
@@ -4920,7 +4922,7 @@ export async function saveDailyAssessmentOffline(
     assessment,
   );
   // Audit M3: see saveInspectionOffline.
-  dispatchSyncRecordsUpdated();
+  if (opts?.dispatchSyncEvent !== false) dispatchSyncRecordsUpdated();
   return result;
 }
 
@@ -5271,7 +5273,7 @@ export async function clearAssessmentDataOffline(
  */
 export async function saveTrainingOffline(
   training: Record<string, unknown> & { id?: string; child_count_hint?: number; dirty?: boolean },
-  opts?: { childCountHint?: number }
+  opts?: ReportSaveOptions
 ): Promise<SaveResult> {
   const result = await withIndexedDBSaveBoundary(
     async () => {
@@ -5280,8 +5282,9 @@ export async function saveTrainingOffline(
         training.child_count_hint = opts.childCountHint;
       }
       // C3: stamp the dirty flag at every user-facing save.
-      training.dirty = true;
-      if (training.id) clearTombstone('trainings', String(training.id));
+      if (opts?.markDirty === false) training.dirty = false;
+      else training.dirty = true;
+      if (opts?.explicitUserSave && training.id) clearTombstone('trainings', String(training.id));
       await db.put('trainings', training as never);
       if (import.meta.env.DEV) {
         console.log('[Offline Storage] Saved training:', training.id);
@@ -5291,7 +5294,7 @@ export async function saveTrainingOffline(
     training,
   );
   // Audit M3: see saveInspectionOffline.
-  dispatchSyncRecordsUpdated();
+  if (opts?.dispatchSyncEvent !== false) dispatchSyncRecordsUpdated();
   return result;
 }
 
