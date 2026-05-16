@@ -415,7 +415,6 @@ export async function appendVersion(
     return null;
   }
 }
-}
 
 /**
  * Get all versions for a report, sorted by version number descending
