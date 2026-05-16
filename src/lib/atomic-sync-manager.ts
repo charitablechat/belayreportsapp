@@ -124,6 +124,7 @@ async function resolveOrgIdForAudit(inspection: {
   }
 }
 import { getUserWithCache, ensureValidSession, type CachedUser } from "@/lib/cached-auth";
+import { isTombstoned, type TombstonedTable } from "@/lib/local-record-tombstones";
 import { isUnsafeToTransmit, looksLikeJwt } from "@/lib/synthetic-session-guard";
 import { 
   getUnsyncedInspections,
@@ -408,6 +409,12 @@ export async function assertRealSessionForSync(ctx: string): Promise<boolean> {
 type LiveGetter<T> = (id: string) => Promise<T | null | undefined>;
 type LiveSaver<T>  = (record: T) => Promise<unknown>;
 
+const TABLE_FOR_SAFE_POST_SYNC: Record<string, TombstonedTable> = {
+  getOfflineInspection: 'inspections',
+  getOfflineTraining: 'trainings',
+  getOfflineDailyAssessment: 'daily_assessments',
+};
+
 /**
  * C1: Post-sync save that won't clobber an auto-save that landed in IDB
  * during the server round-trip.
@@ -432,6 +439,15 @@ export async function safePostSyncSave<T extends { id?: string; updated_at?: str
   save: LiveSaver<T>,
   options: { reconcileBlocked?: boolean } = {},
 ): Promise<void> {
+  const tombstoneTable = TABLE_FOR_SAFE_POST_SYNC[getLive.name];
+  if (tombstoneTable && isTombstoned(tombstoneTable, recordId)) {
+    console.warn('[DROP Tombstone] safePostSyncSave skipped dropped ID', {
+      table: tombstoneTable,
+      id: recordId.substring(0, 8) + '…',
+      saver: save.name,
+    });
+    return;
+  }
   const { reconcileBlocked = false } = options;
   let live: T | null | undefined = null;
   try { live = await getLive(recordId); } catch { live = null; }
