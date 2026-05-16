@@ -4954,7 +4954,9 @@ export async function getUnsyncedDailyAssessments(userId?: string, options?: Wed
         if (record.inspector_id === userId) return true;
         if (record.id?.startsWith('temp-')) return true;
         return false;
-      }).filter(record => !isSessionQuarantined(record.id)); // S41 (Fix E): see getUnsyncedInspections
+      })
+        .filter(record => !isSessionQuarantined(record.id)) // S41 (Fix E): see getUnsyncedInspections
+        .filter(record => !isTombstoned('daily_assessments', record.id)); // Sync Terminal DROP veto
 
       const unsynced = candidates.filter(record => {
         // C3: dirty flag = authoritative "has unshipped edits"; drift = secondary.
