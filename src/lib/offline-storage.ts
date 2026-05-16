@@ -6649,14 +6649,30 @@ async function deleteByDirectOpen(
 }
 
 function purgeLocalStorageBackup(table: ForceDeletableTable, id: string): boolean {
+  let any = false;
   try {
+    // Primary key under the canonical prefix.
     const key = BACKUP_KEY_PREFIX[table] + id;
-    const had = localStorage.getItem(key) !== null;
-    if (had) localStorage.removeItem(key);
-    return had;
+    if (localStorage.getItem(key) !== null) {
+      localStorage.removeItem(key);
+      any = true;
+    }
+    // Defensive sweep: catch any backup key whose suffix matches this id
+    // (handles unexpected aliases / prefix drift across releases).
+    const idSuffix = '_' + id;
+    const toRemove: string[] = [];
+    for (let i = 0; i < localStorage.length; i++) {
+      const k = localStorage.key(i);
+      if (k && k.startsWith('rw_backup_') && k.endsWith(idSuffix)) toRemove.push(k);
+    }
+    for (const k of toRemove) {
+      localStorage.removeItem(k);
+      any = true;
+    }
   } catch {
-    return false;
+    /* noop */
   }
+  return any;
 }
 
 export async function forceDeleteLocalRecord(
@@ -6668,6 +6684,11 @@ export async function forceDeleteLocalRecord(
     deletedFromLocalStorage: false,
     bypassedBreaker: false,
   };
+
+  // Tombstone FIRST and synchronously — this is the durable veto that
+  // suppresses the row from getUnsynced* / ledger fallback even if the
+  // IDB/localStorage purges below fail or a delayed write resurrects it.
+  addTombstone(table, id);
 
   // Always scrub localStorage backup — it's cheap and synchronous.
   result.deletedFromLocalStorage = purgeLocalStorageBackup(table, id);
