@@ -239,6 +239,7 @@ export function DatabaseAutocomplete({
 
   const [isEditing, setIsEditing] = useState(false);
   const triggerInputRef = useRef<HTMLInputElement>(null);
+  const anchorRef = useRef<HTMLDivElement>(null);
 
   const handleOpenChange = (isOpen: boolean) => {
     if (!isOpen) {
