@@ -39,6 +39,7 @@ import {
   DRAIN_SYNC_INTERVAL_MS,
 } from '@/lib/drain-mode';
 import { clearIdbClosingQuarantinesWhenInactive } from '@/lib/sync-quarantine';
+import { isTombstoned } from '@/lib/local-record-tombstones';
 
 /**
  * Result returned by each per-table atomic-sync helper
@@ -994,9 +995,9 @@ export const useAutoSync = () => {
         return;
       }
 
-      const inspections = insp as DbRow[];
-      const trainings = train as DbRow[];
-      const assessments = assess as DbRow[];
+      const inspections = (insp as DbRow[]).filter(r => !isTombstoned('inspections', r.id));
+      const trainings = (train as DbRow[]).filter(r => !isTombstoned('trainings', r.id));
+      const assessments = (assess as DbRow[]).filter(r => !isTombstoned('daily_assessments', r.id));
       const total = inspections.length + trainings.length + assessments.length;
 
       setState(prev => ({
@@ -1009,19 +1010,21 @@ export const useAutoSync = () => {
         syncErrorSeverity: null,
       }));
 
-      if (total > 0) {
-        syncLog.log('[AutoSync] Unsynced count:', total);
-        // Step 1 diagnostics: break down the badge so we can see whether records
-        // are stuck on temp- IDs (the most common cause of photo-sync stalls).
-        const tempCount = (rows: DbRow[]) =>
-          rows.filter(r => typeof (r as { id?: string }).id === 'string' && (r as { id: string }).id.startsWith('temp-')).length;
-        const inspTemp = tempCount(inspections);
-        const trainTemp = tempCount(trainings);
-        const assessTemp = tempCount(assessments);
-        console.warn(
-          `[AutoSync] Pending breakdown: inspections=${inspections.length} (temp=${inspTemp}) trainings=${trainings.length} (temp=${trainTemp}) daily=${assessments.length} (temp=${assessTemp})`
-        );
-      }
+      const tempCount = (rows: DbRow[]) =>
+        rows.filter(r => typeof (r as { id?: string }).id === 'string' && (r as { id: string }).id.startsWith('temp-')).length;
+      const inspTemp = tempCount(inspections);
+      const trainTemp = tempCount(trainings);
+      const assessTemp = tempCount(assessments);
+      console.warn('[AutoSync] Pending breakdown', {
+        forcedFromDrop: false,
+        total,
+        inspections: inspections.length,
+        inspectionTemp: inspTemp,
+        trainings: trainings.length,
+        trainingTemp: trainTemp,
+        dailyAssessments: assessments.length,
+        dailyTemp: assessTemp,
+      });
     } catch (error) {
       console.error('[AutoSync] Error updating unsynced counts:', error);
     }

@@ -1043,7 +1043,10 @@ export default function Dashboard() {
             const localUpd = localRecord?.updated_at ? new Date(localRecord.updated_at).getTime() : 0;
             const serverUpd = inspection.updated_at ? new Date(inspection.updated_at).getTime() : 0;
             const preservedUpdatedAt = localUpd > serverUpd ? localRecord.updated_at : inspection.updated_at;
-            return saveInspectionOffline({ ...inspection, updated_at: preservedUpdatedAt, synced_at: preservedSyncedAt });
+            return saveInspectionOffline(
+              { ...inspection, updated_at: preservedUpdatedAt, synced_at: preservedSyncedAt },
+              { markDirty: false, explicitUserSave: false, dispatchSyncEvent: false },
+            );
           }))
             .then(async () => {
               // ORPHAN CLEANUP — deferred to avoid blocking render
@@ -1251,7 +1254,10 @@ export default function Dashboard() {
             const localUpdT = localRecord?.updated_at ? new Date(localRecord.updated_at).getTime() : 0;
             const serverUpdT = training.updated_at ? new Date(training.updated_at).getTime() : 0;
             const preservedUpdatedAtT = localUpdT > serverUpdT ? localRecord.updated_at : training.updated_at;
-            return saveTrainingOffline({ ...training, updated_at: preservedUpdatedAtT, synced_at: preservedSyncedAtT });
+            return saveTrainingOffline(
+              { ...training, updated_at: preservedUpdatedAtT, synced_at: preservedSyncedAtT },
+              { markDirty: false, explicitUserSave: false, dispatchSyncEvent: false },
+            );
           }))
             .then(async () => {
               // ORPHAN CLEANUP with threshold guard + rate limiting (Vector 4)
@@ -1435,7 +1441,10 @@ export default function Dashboard() {
             const localUpdA = localRecord?.updated_at ? new Date(localRecord.updated_at).getTime() : 0;
             const serverUpdA = assessment.updated_at ? new Date(assessment.updated_at).getTime() : 0;
             const preservedUpdatedAtA = localUpdA > serverUpdA ? localRecord.updated_at : assessment.updated_at;
-            return saveDailyAssessmentOffline({ ...assessment, updated_at: preservedUpdatedAtA, synced_at: preservedSyncedAtA });
+            return saveDailyAssessmentOffline(
+              { ...assessment, updated_at: preservedUpdatedAtA, synced_at: preservedSyncedAtA },
+              { markDirty: false, explicitUserSave: false, dispatchSyncEvent: false },
+            );
           }))
             .then(async () => {
               // ORPHAN CLEANUP with threshold guard + rate limiting (Vector 4)

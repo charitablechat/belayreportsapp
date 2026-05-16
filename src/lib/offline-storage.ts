@@ -29,7 +29,7 @@ import { addSyncNotification as addSyncNotificationStatic } from './notification
 // only imports `sync-logger` — no circular-dependency risk. Module is ~5 KB.
 import { isQuarantined as isSessionQuarantined, jitteredPhotoBackoffMs } from './sync-quarantine';
 import { syncLog } from './sync-logger';
-import { addTombstone, clearTombstone, isTombstoned } from './local-record-tombstones';
+import { addTombstone, clearTombstone, isTombstoned, type TombstonedTable } from './local-record-tombstones';
 
 /** Opaque DB row — fields vary across tables and are read/written structurally.
  *  Uses an `any` index signature so callers can structurally read/write
@@ -48,6 +48,49 @@ export type DbRow = { [key: string]: any } & {
   user_id?: string;
   status?: string;
 };
+
+type ReportSaveOptions = {
+  childCountHint?: number;
+  /** True only for normal form/new-report saves created by an explicit user edit. */
+  explicitUserSave?: boolean;
+  /** Passive cache/refetch/post-sync saves must not mark clean server rows dirty. */
+  markDirty?: boolean;
+  /** Passive cache/refetch/post-sync saves should not wake the sync scheduler. */
+  dispatchSyncEvent?: boolean;
+};
+
+const TOMBSTONED_TABLE_FOR_REPORT_TYPE: Record<'inspection' | 'training' | 'daily_assessment', TombstonedTable> = {
+  inspection: 'inspections',
+  training: 'trainings',
+  daily_assessment: 'daily_assessments',
+};
+
+function shortRecordId(id: unknown): string {
+  return typeof id === 'string' && id.length > 0 ? `${id.substring(0, 8)}…` : 'missing';
+}
+
+function filterTombstonedRows<T extends { id?: string }>(
+  table: TombstonedTable,
+  rows: T[],
+  source: string,
+): T[] {
+  const filteredIds: string[] = [];
+  const kept = rows.filter((row) => {
+    const dropped = isTombstoned(table, row.id);
+    if (dropped) filteredIds.push(shortRecordId(row.id));
+    return !dropped;
+  });
+  const payload = {
+    table,
+    source,
+    before: rows.length,
+    after: kept.length,
+    filtered: filteredIds,
+  };
+  if (filteredIds.length > 0) console.warn('[DROP Tombstone] pending reader filtered dropped IDs', payload);
+  else syncLog.log('[DROP Tombstone] pending reader tombstone check', payload);
+  return kept;
+}
 
 interface InspectionDB extends DBSchema {
   inspections: {
@@ -1569,6 +1612,15 @@ function emergencyLocalStorageFallback(operationName: string, data: unknown): bo
   else if (opLower.includes('assessment') || opLower.includes('daily')) reportType = 'daily_assessment';
 
   if (!reportType) return false;
+  const tombstoneTable = TOMBSTONED_TABLE_FOR_REPORT_TYPE[reportType];
+  if (isTombstoned(tombstoneTable, id)) {
+    console.warn('[DROP Tombstone] suppressing emergency fallback write for dropped ID', {
+      reportType,
+      id: shortRecordId(id),
+      operationName,
+    });
+    return true;
+  }
 
   // Build snapshot up-front so `json.length` is available in the failure path
   const key = `rw_backup_${reportType}_${id}`;
@@ -3120,8 +3172,9 @@ export async function getDB() {
  */
 export async function saveInspectionOffline(
   inspection: Record<string, unknown> & { id?: string; child_count_hint?: number; dirty?: boolean },
-  opts?: { childCountHint?: number }
+  opts?: ReportSaveOptions
 ): Promise<SaveResult> {
+  if (opts?.explicitUserSave !== false && inspection.id) clearTombstone('inspections', String(inspection.id));
   const result = await withIndexedDBSaveBoundary(
     async () => {
       const db = await getDB();
@@ -3132,11 +3185,12 @@ export async function saveInspectionOffline(
       // C3: stamp the dirty flag at every user-facing save. Authoritative
       // "has unshipped edits" signal; only cleared by safePostSyncSave after
       // a successful round-trip with no concurrent edit.
-      inspection.dirty = true;
+      if (opts?.markDirty === false) inspection.dirty = false;
+      else inspection.dirty = true;
       // If the user previously DROP'd this id from the Sync Terminal but is
-      // now saving fresh work under the same id, lift the tombstone so the
-      // new edit shows up in pending again.
-      if (inspection.id) clearTombstone('inspections', String(inspection.id));
+      // now explicitly saving fresh work under the same id, lift the tombstone.
+      // Passive server/refetch/cache hydration must never clear DROP.
+      if (opts?.explicitUserSave !== false && inspection.id) clearTombstone('inspections', String(inspection.id));
       await db.put('inspections', inspection as never);
       if (import.meta.env.DEV) {
         console.log('[Offline Storage] Saved inspection:', inspection.id);
@@ -3149,7 +3203,7 @@ export async function saveInspectionOffline(
   // idleSyncInterval (slow) to activeSyncInterval (fast) the moment a
   // record becomes dirty. Without this the form save just stamps `dirty`
   // in IDB and the next attempt to push it sits behind a 60s+ timer.
-  dispatchSyncRecordsUpdated();
+  if (opts?.dispatchSyncEvent !== false) dispatchSyncRecordsUpdated();
   return result;
 }
 
@@ -3316,14 +3370,14 @@ export async function getUnsyncedInspections(userId?: string, options?: WedgeLed
       // pure noise that drove the "295 IDB timeouts/cycle" hot loop. Keep
       // temp-ID orphans regardless of owner so cross-user recovery still works.
       // Audit H1: `isSessionQuarantined` is now a static import (file head).
-      const candidates = all.filter(isNotQuarantined).filter(record => {
+      const ownedCandidates = all.filter(isNotQuarantined).filter(record => {
         if (!userId) return true;
         if (record.inspector_id === userId) return true;
         if (record.id?.startsWith('temp-')) return true; // orphan recovery
         return false;
       })
-        .filter(record => !isSessionQuarantined(record.id)) // S41 (Fix E): drop session-quarantined ids from user-facing count
-        .filter(record => !isTombstoned('inspections', record.id)); // Sync Terminal DROP veto
+        .filter(record => !isSessionQuarantined(record.id)); // S41 (Fix E): drop session-quarantined ids from user-facing count
+      const candidates = filterTombstonedRows('inspections', ownedCandidates, 'getUnsyncedInspections/idb'); // Sync Terminal DROP veto
 
       const unsynced = candidates.filter(record => {
         // C3: dirty flag is the authoritative "has unshipped edits" signal.
@@ -4857,8 +4911,9 @@ export async function clearRelatedDataOffline(
  */
 export async function saveDailyAssessmentOffline(
   assessment: Record<string, unknown> & { id?: string; child_count_hint?: number; dirty?: boolean },
-  opts?: { childCountHint?: number }
+  opts?: ReportSaveOptions
 ): Promise<SaveResult> {
+  if (opts?.explicitUserSave !== false && assessment.id) clearTombstone('daily_assessments', String(assessment.id));
   const result = await withIndexedDBSaveBoundary(
     async () => {
       const db = await getDB();
@@ -4866,8 +4921,9 @@ export async function saveDailyAssessmentOffline(
         assessment.child_count_hint = opts.childCountHint;
       }
       // C3: stamp the dirty flag at every user-facing save.
-      assessment.dirty = true;
-      if (assessment.id) clearTombstone('daily_assessments', String(assessment.id));
+      if (opts?.markDirty === false) assessment.dirty = false;
+      else assessment.dirty = true;
+      if (opts?.explicitUserSave !== false && assessment.id) clearTombstone('daily_assessments', String(assessment.id));
       await db.put('daily_assessments', assessment as never);
       if (import.meta.env.DEV) {
         console.log('[Offline Storage] Saved daily assessment:', assessment.id);
@@ -4877,7 +4933,7 @@ export async function saveDailyAssessmentOffline(
     assessment,
   );
   // Audit M3: see saveInspectionOffline.
-  dispatchSyncRecordsUpdated();
+  if (opts?.dispatchSyncEvent !== false) dispatchSyncRecordsUpdated();
   return result;
 }
 
@@ -4954,14 +5010,14 @@ export async function getUnsyncedDailyAssessments(userId?: string, options?: Wed
       void maybeReportUnsyncedScanOverflow(db, 'daily_assessments', all.length, 'getUnsyncedDailyAssessments');
       // S40 (Fix A): Ownership filter before drift check (see getUnsyncedInspections).
       // Audit H1: `isSessionQuarantined` is now a static import (file head).
-      const candidates = all.filter(isNotQuarantined).filter(record => {
+      const ownedCandidates = all.filter(isNotQuarantined).filter(record => {
         if (!userId) return true;
         if (record.inspector_id === userId) return true;
         if (record.id?.startsWith('temp-')) return true;
         return false;
       })
-        .filter(record => !isSessionQuarantined(record.id)) // S41 (Fix E): see getUnsyncedInspections
-        .filter(record => !isTombstoned('daily_assessments', record.id)); // Sync Terminal DROP veto
+        .filter(record => !isSessionQuarantined(record.id)); // S41 (Fix E): see getUnsyncedInspections
+      const candidates = filterTombstonedRows('daily_assessments', ownedCandidates, 'getUnsyncedDailyAssessments/idb'); // Sync Terminal DROP veto
 
       const unsynced = candidates.filter(record => {
         // C3: dirty flag = authoritative "has unshipped edits"; drift = secondary.
@@ -5228,8 +5284,9 @@ export async function clearAssessmentDataOffline(
  */
 export async function saveTrainingOffline(
   training: Record<string, unknown> & { id?: string; child_count_hint?: number; dirty?: boolean },
-  opts?: { childCountHint?: number }
+  opts?: ReportSaveOptions
 ): Promise<SaveResult> {
+  if (opts?.explicitUserSave !== false && training.id) clearTombstone('trainings', String(training.id));
   const result = await withIndexedDBSaveBoundary(
     async () => {
       const db = await getDB();
@@ -5237,8 +5294,9 @@ export async function saveTrainingOffline(
         training.child_count_hint = opts.childCountHint;
       }
       // C3: stamp the dirty flag at every user-facing save.
-      training.dirty = true;
-      if (training.id) clearTombstone('trainings', String(training.id));
+      if (opts?.markDirty === false) training.dirty = false;
+      else training.dirty = true;
+      if (opts?.explicitUserSave !== false && training.id) clearTombstone('trainings', String(training.id));
       await db.put('trainings', training as never);
       if (import.meta.env.DEV) {
         console.log('[Offline Storage] Saved training:', training.id);
@@ -5248,7 +5306,7 @@ export async function saveTrainingOffline(
     training,
   );
   // Audit M3: see saveInspectionOffline.
-  dispatchSyncRecordsUpdated();
+  if (opts?.dispatchSyncEvent !== false) dispatchSyncRecordsUpdated();
   return result;
 }
 
@@ -5285,6 +5343,13 @@ export async function ingestRemoteRecordOffline(
   table: 'inspections' | 'trainings' | 'daily_assessments',
   record: Record<string, unknown> & { id?: string; updated_at?: string | null },
 ): Promise<SaveResult> {
+  if (isTombstoned(table, record.id)) {
+    console.warn('[DROP Tombstone] suppressing passive remote ingest for dropped ID', {
+      table,
+      id: shortRecordId(record.id),
+    });
+    return { savedToBackup: false };
+  }
   const enriched = {
     ...record,
     synced_at: record.updated_at || new Date().toISOString(),
@@ -5389,14 +5454,14 @@ export async function getUnsyncedTrainings(userId?: string, options?: WedgeLedge
       void maybeReportUnsyncedScanOverflow(db, 'trainings', all.length, 'getUnsyncedTrainings');
       // S40 (Fix A): Ownership filter before drift check (see getUnsyncedInspections).
       // Audit H1: `isSessionQuarantined` is now a static import (file head).
-      const candidates = all.filter(isNotQuarantined).filter(record => {
+      const ownedCandidates = all.filter(isNotQuarantined).filter(record => {
         if (!userId) return true;
         if (record.inspector_id === userId) return true;
         if (record.id?.startsWith('temp-')) return true;
         return false;
       })
-        .filter(record => !isSessionQuarantined(record.id)) // S41 (Fix E): see getUnsyncedInspections
-        .filter(record => !isTombstoned('trainings', record.id)); // Sync Terminal DROP veto
+        .filter(record => !isSessionQuarantined(record.id)); // S41 (Fix E): see getUnsyncedInspections
+      const candidates = filterTombstonedRows('trainings', ownedCandidates, 'getUnsyncedTrainings/idb'); // Sync Terminal DROP veto
 
       const unsynced = candidates.filter(record => {
         // C3: dirty flag = authoritative "has unshipped edits"; drift = secondary.
@@ -6610,8 +6675,10 @@ const BACKUP_KEY_PREFIX = {
 export type ForceDeletableTable = keyof typeof STORE_FOR_TABLE;
 
 export interface ForceDeleteResult {
+  tombstoneWritten: boolean;
   deletedFromIdb: boolean;
   deletedFromLocalStorage: boolean;
+  backupAliasesRemoved: number;
   bypassedBreaker: boolean;
   error?: string;
 }
@@ -6648,31 +6715,39 @@ async function deleteByDirectOpen(
   }
 }
 
-function purgeLocalStorageBackup(table: ForceDeletableTable, id: string): boolean {
-  let any = false;
+function purgeLocalStorageBackup(table: ForceDeletableTable, id: string): { removed: number; keys: string[] } {
+  let removed = 0;
+  const keys: string[] = [];
   try {
-    // Primary key under the canonical prefix.
-    const key = BACKUP_KEY_PREFIX[table] + id;
-    if (localStorage.getItem(key) !== null) {
-      localStorage.removeItem(key);
-      any = true;
-    }
-    // Defensive sweep: catch any backup key whose suffix matches this id
-    // (handles unexpected aliases / prefix drift across releases).
+    const canonicalKey = BACKUP_KEY_PREFIX[table] + id;
     const idSuffix = '_' + id;
     const toRemove: string[] = [];
     for (let i = 0; i < localStorage.length; i++) {
       const k = localStorage.key(i);
-      if (k && k.startsWith('rw_backup_') && k.endsWith(idSuffix)) toRemove.push(k);
+      if (!k || !k.startsWith('rw_backup_')) continue;
+      if (k === canonicalKey || k.endsWith(idSuffix)) {
+        toRemove.push(k);
+        continue;
+      }
+      try {
+        const raw = localStorage.getItem(k);
+        if (!raw) continue;
+        const parsed = JSON.parse(raw) as { id?: unknown; reportId?: unknown; parent?: { id?: unknown } };
+        const parsedId = parsed.parent?.id ?? parsed.reportId ?? parsed.id;
+        if (parsedId === id) toRemove.push(k);
+      } catch {
+        // Malformed backup: only remove when the key itself exactly carries the id.
+      }
     }
     for (const k of toRemove) {
       localStorage.removeItem(k);
-      any = true;
+      removed += 1;
+      keys.push(k);
     }
   } catch {
     /* noop */
   }
-  return any;
+  return { removed, keys };
 }
 
 export async function forceDeleteLocalRecord(
@@ -6680,8 +6755,10 @@ export async function forceDeleteLocalRecord(
   id: string,
 ): Promise<ForceDeleteResult> {
   const result: ForceDeleteResult = {
+    tombstoneWritten: false,
     deletedFromIdb: false,
     deletedFromLocalStorage: false,
+    backupAliasesRemoved: 0,
     bypassedBreaker: false,
   };
 
@@ -6689,9 +6766,12 @@ export async function forceDeleteLocalRecord(
   // suppresses the row from getUnsynced* / ledger fallback even if the
   // IDB/localStorage purges below fail or a delayed write resurrects it.
   addTombstone(table, id);
+  result.tombstoneWritten = true;
 
   // Always scrub localStorage backup — it's cheap and synchronous.
-  result.deletedFromLocalStorage = purgeLocalStorageBackup(table, id);
+  const purge = purgeLocalStorageBackup(table, id);
+  result.backupAliasesRemoved = purge.removed;
+  result.deletedFromLocalStorage = purge.removed > 0;
 
   // 1) Try the normal helper with a tight timeout. When healthy this also
   //    clears child caches the normal helper knows about.
@@ -6718,7 +6798,17 @@ export async function forceDeleteLocalRecord(
     if (!ok) result.error = 'idb_unreachable';
   }
 
-  console.warn('[forceDeleteLocalRecord] result', { table, id: id.substring(0, 8), ...result });
+  console.warn('[DROP Tombstone] forceDeleteLocalRecord result', {
+    table,
+    id: shortRecordId(id),
+    tombstoneWritten: result.tombstoneWritten,
+    deletedFromIdb: result.deletedFromIdb,
+    deletedFromLocalStorage: result.deletedFromLocalStorage,
+    backupAliasesRemoved: result.backupAliasesRemoved,
+    backupAliasKeys: purge.keys.map((k) => k.replace(id, `${id.substring(0, 8)}…`)),
+    bypassedBreaker: result.bypassedBreaker,
+    error: result.error,
+  });
   return result;
 }
 

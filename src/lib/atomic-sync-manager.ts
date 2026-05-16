@@ -124,6 +124,7 @@ async function resolveOrgIdForAudit(inspection: {
   }
 }
 import { getUserWithCache, ensureValidSession, type CachedUser } from "@/lib/cached-auth";
+import { isTombstoned, type TombstonedTable } from "@/lib/local-record-tombstones";
 import { isUnsafeToTransmit, looksLikeJwt } from "@/lib/synthetic-session-guard";
 import { 
   getUnsyncedInspections,
@@ -406,7 +407,16 @@ export async function assertRealSessionForSync(ctx: string): Promise<boolean> {
 
 // ─── C1 helper ──────────────────────────────────────────────────────────────
 type LiveGetter<T> = (id: string) => Promise<T | null | undefined>;
-type LiveSaver<T>  = (record: T) => Promise<unknown>;
+type LiveSaver<T>  = (
+  record: T,
+  opts?: { markDirty?: boolean; explicitUserSave?: boolean; dispatchSyncEvent?: boolean },
+) => Promise<unknown>;
+
+const TABLE_FOR_SAFE_POST_SYNC: Record<string, TombstonedTable> = {
+  getOfflineInspection: 'inspections',
+  getOfflineTraining: 'trainings',
+  getOfflineDailyAssessment: 'daily_assessments',
+};
 
 /**
  * C1: Post-sync save that won't clobber an auto-save that landed in IDB
@@ -432,6 +442,15 @@ export async function safePostSyncSave<T extends { id?: string; updated_at?: str
   save: LiveSaver<T>,
   options: { reconcileBlocked?: boolean } = {},
 ): Promise<void> {
+  const tombstoneTable = TABLE_FOR_SAFE_POST_SYNC[getLive.name];
+  if (tombstoneTable && isTombstoned(tombstoneTable, recordId)) {
+    console.warn('[DROP Tombstone] safePostSyncSave skipped dropped ID', {
+      table: tombstoneTable,
+      id: recordId.substring(0, 8) + '…',
+      saver: save.name,
+    });
+    return;
+  }
   const { reconcileBlocked = false } = options;
   let live: T | null | undefined = null;
   try { live = await getLive(recordId); } catch { live = null; }
@@ -463,7 +482,7 @@ export async function safePostSyncSave<T extends { id?: string; updated_at?: str
     await save({
       ...base,
       ...mergedFields,
-    } as T);
+    } as T, { markDirty: false, explicitUserSave: false, dispatchSyncEvent: false });
     syncLog.log('[N-A] Reconcile blocked — merged fields only, synced_at preserved for retry', {
       id: recordId.substring(0, 8),
     });
@@ -474,7 +493,7 @@ export async function safePostSyncSave<T extends { id?: string; updated_at?: str
     // C3: preserve `live.dirty` — a concurrent edit ran saveX Offline which
     // stamped dirty=true; we MUST NOT clear it or the next-cycle unsynced
     // filter will skip the new edit. Spread `live` last so its dirty flag wins.
-    await save({ ...live, synced_at: serverTimestamp } as T);
+    await save({ ...live, synced_at: serverTimestamp } as T, { markDirty: false, explicitUserSave: false, dispatchSyncEvent: false });
     syncLog.log('[C1] Concurrent edit detected — preserved live record, stamped synced_at only', {
       id: recordId.substring(0, 8),
       t0: new Date(t0UpdatedAtMs).toISOString(),
@@ -505,7 +524,7 @@ export async function safePostSyncSave<T extends { id?: string; updated_at?: str
     synced_at: serverTimestamp,
     updated_at: mergedUpdatedAt,
     dirty: false,
-  } as T);
+  } as T, { markDirty: false, explicitUserSave: false, dispatchSyncEvent: false });
 
   if (mergedUpdatedAt !== serverTimestamp) {
     syncLog.log('[C3] T0.updated_at > serverTimestamp — preserved local timestamp', {

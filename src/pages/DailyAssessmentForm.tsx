@@ -741,7 +741,10 @@ export default function DailyAssessmentForm() {
           childDataLoadedRef.current.structure_checks = true;
           childDataLoadedRef.current.environment_checks = true;
           
-          saveDailyAssessmentOffline({ ...assessmentData, synced_at: assessmentData.synced_at || new Date().toISOString() }).catch(e =>
+          saveDailyAssessmentOffline(
+            { ...assessmentData, synced_at: assessmentData.synced_at || new Date().toISOString() },
+            { markDirty: false, explicitUserSave: false, dispatchSyncEvent: false },
+          ).catch(e =>
             console.warn('[DailyAssessmentForm] Non-critical: failed to cache assessment', e)
           );
 
