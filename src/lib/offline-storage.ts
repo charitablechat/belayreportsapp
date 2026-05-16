@@ -29,7 +29,7 @@ import { addSyncNotification as addSyncNotificationStatic } from './notification
 // only imports `sync-logger` — no circular-dependency risk. Module is ~5 KB.
 import { isQuarantined as isSessionQuarantined, jitteredPhotoBackoffMs } from './sync-quarantine';
 import { syncLog } from './sync-logger';
-import { addTombstone, clearTombstone, isTombstoned } from './local-record-tombstones';
+import { addTombstone, clearTombstone, isTombstoned, type TombstonedTable } from './local-record-tombstones';
 
 /** Opaque DB row — fields vary across tables and are read/written structurally.
  *  Uses an `any` index signature so callers can structurally read/write
@@ -48,6 +48,49 @@ export type DbRow = { [key: string]: any } & {
   user_id?: string;
   status?: string;
 };
+
+type ReportSaveOptions = {
+  childCountHint?: number;
+  /** True only for normal form/new-report saves created by an explicit user edit. */
+  explicitUserSave?: boolean;
+  /** Passive cache/refetch/post-sync saves must not mark clean server rows dirty. */
+  markDirty?: boolean;
+  /** Passive cache/refetch/post-sync saves should not wake the sync scheduler. */
+  dispatchSyncEvent?: boolean;
+};
+
+const TOMBSTONED_TABLE_FOR_REPORT_TYPE: Record<'inspection' | 'training' | 'daily_assessment', TombstonedTable> = {
+  inspection: 'inspections',
+  training: 'trainings',
+  daily_assessment: 'daily_assessments',
+};
+
+function shortRecordId(id: unknown): string {
+  return typeof id === 'string' && id.length > 0 ? `${id.substring(0, 8)}…` : 'missing';
+}
+
+function filterTombstonedRows<T extends { id?: string }>(
+  table: TombstonedTable,
+  rows: T[],
+  source: string,
+): T[] {
+  const filteredIds: string[] = [];
+  const kept = rows.filter((row) => {
+    const dropped = isTombstoned(table, row.id);
+    if (dropped) filteredIds.push(shortRecordId(row.id));
+    return !dropped;
+  });
+  const payload = {
+    table,
+    source,
+    before: rows.length,
+    after: kept.length,
+    filtered: filteredIds,
+  };
+  if (filteredIds.length > 0) console.warn('[DROP Tombstone] pending reader filtered dropped IDs', payload);
+  else syncLog.log('[DROP Tombstone] pending reader tombstone check', payload);
+  return kept;
+}
 
 interface InspectionDB extends DBSchema {
   inspections: {
