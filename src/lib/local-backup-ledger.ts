@@ -15,6 +15,7 @@ import { safeSetItem } from './safe-local-storage';
 import { withRestoreLock } from './restore-lock';
 import { verifyRestoreIntegrity } from './restore-integrity';
 import { toUploadedFlag } from './offline-storage';
+import { isTombstoned, tableForReportType } from './local-record-tombstones';
 
 const BACKUP_PREFIX = 'rw_backup_';
 const SCHEMA_VERSION = 1;
