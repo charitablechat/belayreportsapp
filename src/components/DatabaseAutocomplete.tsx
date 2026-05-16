@@ -378,6 +378,9 @@ export function DatabaseAutocomplete({
           className="w-[--radix-popover-trigger-width] p-0"
           align="start"
           onOpenAutoFocus={(e) => e.preventDefault()}
+          onPointerDownOutside={keepOpenIfAnchor(anchorRef)}
+          onInteractOutside={keepOpenIfAnchor(anchorRef)}
+          onFocusOutside={keepOpenIfAnchor(anchorRef)}
         >
           <Command shouldFilter={false}>
             <CommandInput
