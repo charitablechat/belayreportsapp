@@ -40,11 +40,24 @@ const MAX_VERSIONS_PER_REPORT = 100;
 // ─── M9: Versioning health tracker ───────────────────────────────────
 // Surfaces silent appendVersion failures so UI can warn the user before
 // they actually need recovery and find the version list empty.
+export interface VersioningHealthDiagnostic {
+  reportType?: ReportType;
+  reportIdSuffix?: string;
+  trigger?: VersionTrigger;
+  storeExists?: boolean;
+  missingIndexes?: string[];
+  childCounts?: Record<string, number>;
+  errorName?: string;
+  serializationFailed?: boolean;
+  step?: string;
+}
+
 export interface VersioningHealth {
   consecutiveFailures: number;
   lastFailureAt: number | null;
   lastError: string | null;
   lastSuccessAt: number | null;
+  lastDiagnostic?: VersioningHealthDiagnostic | null;
 }
 
 const versioningHealth: VersioningHealth = {
@@ -52,6 +65,7 @@ const versioningHealth: VersioningHealth = {
   lastFailureAt: null,
   lastError: null,
   lastSuccessAt: null,
+  lastDiagnostic: null,
 };
 
 type HealthListener = (h: VersioningHealth) => void;
