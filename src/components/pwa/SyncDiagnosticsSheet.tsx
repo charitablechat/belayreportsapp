@@ -158,6 +158,16 @@ export const SyncDiagnosticsSheet = () => {
     } catch {
       /* ignore */
     }
+    try {
+      setBreakerStatus(getCircuitBreakerStatus());
+    } catch {
+      setBreakerStatus(null);
+    }
+    try {
+      setEmergencyBackups(countEmergencyBackups());
+    } catch {
+      /* ignore */
+    }
     setDiag({
       swRegistered,
       swController,
@@ -175,6 +185,8 @@ export const SyncDiagnosticsSheet = () => {
     const interval = setInterval(() => {
       try {
         setEmergencyFailures(getEmergencyFallbackFailures());
+        setBreakerStatus(getCircuitBreakerStatus());
+        setEmergencyBackups(countEmergencyBackups());
       } catch {
         /* ignore */
       }
