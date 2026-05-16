@@ -5388,7 +5388,9 @@ export async function getUnsyncedTrainings(userId?: string, options?: WedgeLedge
         if (record.inspector_id === userId) return true;
         if (record.id?.startsWith('temp-')) return true;
         return false;
-      }).filter(record => !isSessionQuarantined(record.id)); // S41 (Fix E): see getUnsyncedInspections
+      })
+        .filter(record => !isSessionQuarantined(record.id)) // S41 (Fix E): see getUnsyncedInspections
+        .filter(record => !isTombstoned('trainings', record.id)); // Sync Terminal DROP veto
 
       const unsynced = candidates.filter(record => {
         // C3: dirty flag = authoritative "has unshipped edits"; drift = secondary.
