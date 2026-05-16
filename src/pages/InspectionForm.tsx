@@ -191,6 +191,16 @@ export default function InspectionForm() {
   const [htmlViewerOpen, setHtmlViewerOpen] = useState(false);
   const [reportHtml, setReportHtml] = useState<string>('');
   const [inspection, setInspection] = useState<DbRow | null>(null);
+  // Latest-value ref for `inspection`. Save handlers (performSave, manual
+  // save, blur-save, save-before-leave) read from this so a header field
+  // update committed synchronously in `handleHeaderUpdate` is visible to
+  // the very next save tick, even before React has flushed the render.
+  // Without this, fast "select Onsite Contact -> Manual Save / navigate
+  // away" flows shipped a stale payload that dropped the just-picked
+  // value. Synced on every render below + explicitly inside
+  // `handleHeaderUpdate` before `setInspection`.
+  const inspectionRef = useRef<DbRow | null>(null);
+  inspectionRef.current = inspection;
   const { isInvoiced, toggling: invoiceToggling, toggleInvoiced } = useInvoicedStatus({
     reportId: id,
     reportType: 'inspection',
