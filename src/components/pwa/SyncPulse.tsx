@@ -805,6 +805,9 @@ export const SyncPulse = ({ className }: { className?: string }) => {
                         showDrop={isAdmin}
                         onDrop={async () => {
                           await forceDeleteLocalRecord(item.table, String(item.id));
+                          setRenderedPendingReports(prev =>
+                            prev.filter(row => !(row.table === item.table && String(row.id) === String(item.id)))
+                          );
                           try { await forceSyncAndRefreshVisibleState(); } catch { /* breaker open is fine */ }
                         }}
                       />
