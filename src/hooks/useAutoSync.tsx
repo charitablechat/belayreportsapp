@@ -346,6 +346,7 @@ export const useAutoSync = () => {
       console.warn('[AutoSync] Emergency-backup rehydration failed (non-fatal):', e);
     }
 
+    // S21: Await the in-flight sync directly instead of polling syncInProgressRef.
     // - Silent (background) callers: piggy-back on the in-flight run and return.
     // - User-initiated callers (silent=false): wait for it to finish, then run a
     //   fresh sync against post-sync state so the explicit tap is honored.
