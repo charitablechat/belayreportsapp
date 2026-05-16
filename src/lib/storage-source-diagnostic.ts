@@ -68,10 +68,25 @@ function safeParseJSON(v: string | null): unknown {
   try { return JSON.parse(v); } catch { return v; }
 }
 
+const PER_READ_TIMEOUT_MS = 4000;
+
+function withTimeout<T>(p: Promise<T>, ms: number, label: string): Promise<T> {
+  return Promise.race([
+    p,
+    new Promise<T>((_, reject) =>
+      setTimeout(() => reject(new Error(`${label} timed out after ${ms}ms`)), ms),
+    ),
+  ]);
+}
+
 async function readUnsyncedFromStore(storeName: string): Promise<unknown> {
   try {
-    const db = await getDB();
-    const all = (await db.getAll(storeName as never)) as Array<Record<string, unknown>>;
+    const db = await withTimeout(getDB(), PER_READ_TIMEOUT_MS, `getDB(${storeName})`);
+    const all = (await withTimeout(
+      db.getAll(storeName as never) as Promise<Array<Record<string, unknown>>>,
+      PER_READ_TIMEOUT_MS,
+      `getAll(${storeName})`,
+    )) as Array<Record<string, unknown>>;
     const unsynced = all.filter((r) => r?.synced_at == null);
     return {
       totalRows: all.length,
