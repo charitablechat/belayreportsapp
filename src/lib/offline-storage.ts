@@ -1612,6 +1612,15 @@ function emergencyLocalStorageFallback(operationName: string, data: unknown): bo
   else if (opLower.includes('assessment') || opLower.includes('daily')) reportType = 'daily_assessment';
 
   if (!reportType) return false;
+  const tombstoneTable = TOMBSTONED_TABLE_FOR_REPORT_TYPE[reportType];
+  if (isTombstoned(tombstoneTable, id)) {
+    console.warn('[DROP Tombstone] suppressing emergency fallback write for dropped ID', {
+      reportType,
+      id: shortRecordId(id),
+      operationName,
+    });
+    return true;
+  }
 
   // Build snapshot up-front so `json.length` is available in the failure path
   const key = `rw_backup_${reportType}_${id}`;
