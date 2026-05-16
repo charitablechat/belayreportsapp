@@ -276,10 +276,10 @@ export async function appendVersion(
   };
 
   let step = 'open-db';
-  let db: IDBDatabase | undefined;
+  let db: any;
   try {
     const { getDB } = await import('./offline-storage');
-    db = (await getDB()) as unknown as IDBDatabase;
+    db = await getDB();
 
     step = 'check-store';
     const storeExists = db.objectStoreNames.contains('report_versions');
