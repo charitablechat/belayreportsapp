@@ -194,3 +194,5 @@ function SummarySection({ summary, onUpdate, onImmediateSave, onRegenerate, onNe
     </Card>
   );
 }
+
+export default memo(SummarySection);
