@@ -3190,7 +3190,7 @@ export async function saveInspectionOffline(
       // If the user previously DROP'd this id from the Sync Terminal but is
       // now explicitly saving fresh work under the same id, lift the tombstone.
       // Passive server/refetch/cache hydration must never clear DROP.
-      if (opts?.explicitUserSave && inspection.id) clearTombstone('inspections', String(inspection.id));
+      if (opts?.explicitUserSave !== false && inspection.id) clearTombstone('inspections', String(inspection.id));
       await db.put('inspections', inspection as never);
       if (import.meta.env.DEV) {
         console.log('[Offline Storage] Saved inspection:', inspection.id);
@@ -4923,7 +4923,7 @@ export async function saveDailyAssessmentOffline(
       // C3: stamp the dirty flag at every user-facing save.
       if (opts?.markDirty === false) assessment.dirty = false;
       else assessment.dirty = true;
-      if (opts?.explicitUserSave && assessment.id) clearTombstone('daily_assessments', String(assessment.id));
+      if (opts?.explicitUserSave !== false && assessment.id) clearTombstone('daily_assessments', String(assessment.id));
       await db.put('daily_assessments', assessment as never);
       if (import.meta.env.DEV) {
         console.log('[Offline Storage] Saved daily assessment:', assessment.id);
@@ -5296,7 +5296,7 @@ export async function saveTrainingOffline(
       // C3: stamp the dirty flag at every user-facing save.
       if (opts?.markDirty === false) training.dirty = false;
       else training.dirty = true;
-      if (opts?.explicitUserSave && training.id) clearTombstone('trainings', String(training.id));
+      if (opts?.explicitUserSave !== false && training.id) clearTombstone('trainings', String(training.id));
       await db.put('trainings', training as never);
       if (import.meta.env.DEV) {
         console.log('[Offline Storage] Saved training:', training.id);
