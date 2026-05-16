@@ -1708,13 +1708,18 @@ export default function InspectionForm() {
       const user = await getUserWithCache().catch(() => null);
       
       // Preserve original inspector_id - only update timestamp
+      // Build payload from the latest-known inspection (ref), not the
+      // possibly-stale closure `inspection`. This is what makes a
+      // just-selected onsite_contact survive a save fired in the same
+      // tick as the header update.
+      const sourceInspection = inspectionRef.current ?? inspection;
       const baseInspectionToSave = {
-        ...inspection,
+        ...sourceInspection,
         updated_at: new Date().toISOString(),
         // DISABLED: active_duration_seconds: getElapsedSeconds(),
         // Track who modified the report if current user is not the owner
-        ...(currentUser?.id && currentUser.id !== inspection.inspector_id 
-          ? { last_modified_by: currentUser.id } 
+        ...(currentUser?.id && currentUser.id !== sourceInspection.inspector_id
+          ? { last_modified_by: currentUser.id }
           : {}),
       };
 
