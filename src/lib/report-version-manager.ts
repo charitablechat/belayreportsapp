@@ -323,28 +323,34 @@ export async function appendVersion(
     }
 
     // Fast lookup of max versionNumber via by-report-version index cursor.
+    // Avoids the O(n) full-history getAll on every save.
     step = 'lookup-max-version';
-    const readTx = (db as unknown as IDBDatabase).transaction('report_versions', 'readonly');
+    const anyDb = db as unknown as {
+      transaction: (s: string, m: IDBTransactionMode) => {
+        objectStore: (n: string) => any;
+        done: Promise<void>;
+      };
+    };
+    const readTx = anyDb.transaction('report_versions', 'readonly');
     const readStore = readTx.objectStore('report_versions');
-    const idx = readStore.index('by-report-version');
+    const readIdx = readStore.index('by-report-version');
+    const range = IDBKeyRange.bound([reportId, 0], [reportId, Number.MAX_SAFE_INTEGER]);
     let maxVersion = 0;
-    await new Promise<void>((resolve, reject) => {
-      try {
-        const range = IDBKeyRange.bound([reportId, 0], [reportId, Number.MAX_SAFE_INTEGER]);
-        const req = idx.openCursor(range, 'prev');
-        req.onsuccess = () => {
-          const cur = req.result;
-          if (cur && cur.value && typeof (cur.value as ReportVersion).versionNumber === 'number') {
-            maxVersion = (cur.value as ReportVersion).versionNumber;
-          }
-          resolve();
-        };
-        req.onerror = () => reject(req.error ?? new Error('cursor-error'));
-      } catch (e) {
-        reject(e);
+    try {
+      const cursor = await readIdx.openCursor(range, 'prev');
+      if (cursor && cursor.value && typeof cursor.value.versionNumber === 'number') {
+        maxVersion = cursor.value.versionNumber;
       }
-    });
-    try { (readTx as unknown as { commit?: () => void }).commit?.(); } catch { /* ignore */ }
+    } catch (cursorErr) {
+      // Fall back to getAll if cursor path fails (e.g., very old IDB impl).
+      try {
+        const all = (await readStore.index('by-report').getAll(reportId)) as ReportVersion[];
+        maxVersion = all.reduce((m, v) => Math.max(m, v.versionNumber || 0), 0);
+      } catch (allErr) {
+        throw cursorErr instanceof Error ? cursorErr : allErr;
+      }
+    }
+    await readTx.done;
 
     const nextVersion = maxVersion + 1;
 
@@ -375,18 +381,10 @@ export async function appendVersion(
     }
 
     step = 'write';
-    const writeTx = (db as unknown as IDBDatabase).transaction('report_versions', 'readwrite');
+    const writeTx = anyDb.transaction('report_versions', 'readwrite');
     const writeStore = writeTx.objectStore('report_versions');
-    await new Promise<void>((resolve, reject) => {
-      const req = writeStore.put(version as unknown as object);
-      req.onsuccess = () => resolve();
-      req.onerror = () => reject(req.error ?? new Error('put-error'));
-    });
-    await new Promise<void>((resolve, reject) => {
-      writeTx.oncomplete = () => resolve();
-      writeTx.onerror = () => reject(writeTx.error ?? new Error('tx-error'));
-      writeTx.onabort = () => reject(writeTx.error ?? new Error('tx-aborted'));
-    });
+    await writeStore.put(version);
+    await writeTx.done;
 
     if (import.meta.env.DEV) {
       console.log(
