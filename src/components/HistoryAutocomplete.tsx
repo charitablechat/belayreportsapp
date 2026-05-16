@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from "react";
 import { Check, X } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { keepOpenIfAnchor } from "@/lib/popover-anchor-guard";
 import { Input } from "@/components/ui/input";
 import {
   Command,
