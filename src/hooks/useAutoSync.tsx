@@ -415,23 +415,27 @@ export const useAutoSync = () => {
           // timeout boundary AND returns `IdbReadFailure` on circuit-breaker
           // open / IDB error — so a failed read can never look like an
           // empty queue and zero the badge.
+          // Strict: never accept ledger fallback for React state population.
+          // The rendered Pending Reports list must be derived from IndexedDB
+          // truth, not from stale rw_backup_* snapshots that may carry
+          // already-synced rows.
           const [inspRes, trainRes, assessRes] = await Promise.all([
             withIDBTimeout(
               'refreshUnsyncedInspections',
               'heavy',
-              () => getUnsyncedInspections(freshUser.id),
+              () => getUnsyncedInspections(freshUser.id, { allowLedgerFallback: false }),
               [] as DbRow[]
             ),
             withIDBTimeout(
               'refreshUnsyncedTrainings',
               'heavy',
-              () => getUnsyncedTrainings(freshUser.id),
+              () => getUnsyncedTrainings(freshUser.id, { allowLedgerFallback: false }),
               [] as DbRow[]
             ),
             withIDBTimeout(
               'refreshUnsyncedDailyAssessments',
               'heavy',
-              () => getUnsyncedDailyAssessments(freshUser.id),
+              () => getUnsyncedDailyAssessments(freshUser.id, { allowLedgerFallback: false }),
               [] as DbRow[]
             ),
           ]);
