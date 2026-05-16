@@ -18,6 +18,7 @@ import {
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { supabase } from "@/integrations/supabase/client";
 import { focusNextCell } from "@/lib/table-focus-utils";
+import { keepOpenIfAnchor } from "@/lib/popover-anchor-guard";
 import {
   getAutocompleteHistory,
   putAutocompleteEntry,
