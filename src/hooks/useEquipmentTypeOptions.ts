@@ -7,7 +7,7 @@ import {
   bulkPutEquipmentTypeOptions,
 } from "@/lib/offline-storage";
 import { useNetworkStatus } from "@/hooks/useNetworkStatus";
-import { useCallback } from "react";
+import { useCallback, useRef } from "react";
 
 interface EquipmentTypeOption {
   id: string;
