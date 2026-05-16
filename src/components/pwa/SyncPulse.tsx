@@ -1325,8 +1325,22 @@ export const SyncPulse = ({ className }: { className?: string }) => {
                 onClick={async () => {
                   setStorageDiagRunning(true);
                   setStorageDiagReport(null);
+                  const OVERALL_TIMEOUT_MS = 10_000;
+                  const withOverallTimeout = <T,>(p: Promise<T>, label: string): Promise<T> =>
+                    Promise.race([
+                      p,
+                      new Promise<T>((_, reject) =>
+                        setTimeout(
+                          () => reject(new Error(`${label} exceeded ${OVERALL_TIMEOUT_MS}ms`)),
+                          OVERALL_TIMEOUT_MS,
+                        ),
+                      ),
+                    ]);
                   try {
-                    const fresh = await refreshVisibleSyncStateFromStorage();
+                    const fresh = await withOverallTimeout(
+                      refreshVisibleSyncStateFromStorage().catch(() => null),
+                      'refreshVisibleSyncStateFromStorage',
+                    ).catch(() => null);
                     const diagnosticRenderedRows = fresh
                       ? buildRenderedPendingReports(
                           fresh.unsyncedInspections,
@@ -1334,22 +1348,31 @@ export const SyncPulse = ({ className }: { className?: string }) => {
                           fresh.unsyncedAssessments,
                         ).map(({ kind, id, label, sourceVariableName }) => ({ kind, id, label, sourceVariableName }))
                       : renderedPendingReportDiagnostics;
-                    const user = await getUserWithCache();
-                    const report = await runStorageSourceDiagnostic({
-                      unsyncedCount: fresh?.unsyncedCount ?? unsyncedCount,
-                      unsyncedInspections: fresh?.unsyncedInspections.length ?? unsyncedInspections.length,
-                      unsyncedTrainings: fresh?.unsyncedTrainings.length ?? unsyncedTrainings.length,
-                      unsyncedAssessments: fresh?.unsyncedAssessments.length ?? unsyncedAssessments.length,
-                      quarantinedCount,
-                      currentUserId: user?.id ?? null,
-                      renderedPendingReports: diagnosticRenderedRows,
-                      renderedPendingReportsSource: RENDERED_PENDING_REPORTS_SOURCE,
-                    });
+                    const user = await withOverallTimeout(
+                      getUserWithCache().catch(() => null),
+                      'getUserWithCache',
+                    ).catch(() => null);
+                    const report = await withOverallTimeout(
+                      runStorageSourceDiagnostic({
+                        unsyncedCount: fresh?.unsyncedCount ?? unsyncedCount,
+                        unsyncedInspections: fresh?.unsyncedInspections.length ?? unsyncedInspections.length,
+                        unsyncedTrainings: fresh?.unsyncedTrainings.length ?? unsyncedTrainings.length,
+                        unsyncedAssessments: fresh?.unsyncedAssessments.length ?? unsyncedAssessments.length,
+                        quarantinedCount,
+                        currentUserId: user?.id ?? null,
+                        renderedPendingReports: diagnosticRenderedRows,
+                        renderedPendingReportsSource: RENDERED_PENDING_REPORTS_SOURCE,
+                      }),
+                      'runStorageSourceDiagnostic',
+                    );
                     setStorageDiagReport(JSON.stringify(report, null, 2));
                   } catch (e) {
                     setStorageDiagReport(
                       JSON.stringify(
-                        { error: e instanceof Error ? e.message : String(e) },
+                        {
+                          error: e instanceof Error ? e.message : String(e),
+                          note: 'Diagnostic aborted by safety timeout or storage read failure. Some sources may be unavailable.',
+                        },
                         null,
                         2,
                       ),
