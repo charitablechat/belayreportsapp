@@ -5238,6 +5238,7 @@ export async function saveTrainingOffline(
       }
       // C3: stamp the dirty flag at every user-facing save.
       training.dirty = true;
+      if (training.id) clearTombstone('trainings', String(training.id));
       await db.put('trainings', training as never);
       if (import.meta.env.DEV) {
         console.log('[Offline Storage] Saved training:', training.id);
