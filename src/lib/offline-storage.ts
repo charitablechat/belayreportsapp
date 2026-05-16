@@ -3133,6 +3133,10 @@ export async function saveInspectionOffline(
       // "has unshipped edits" signal; only cleared by safePostSyncSave after
       // a successful round-trip with no concurrent edit.
       inspection.dirty = true;
+      // If the user previously DROP'd this id from the Sync Terminal but is
+      // now saving fresh work under the same id, lift the tombstone so the
+      // new edit shows up in pending again.
+      if (inspection.id) clearTombstone('inspections', String(inspection.id));
       await db.put('inspections', inspection as never);
       if (import.meta.env.DEV) {
         console.log('[Offline Storage] Saved inspection:', inspection.id);
