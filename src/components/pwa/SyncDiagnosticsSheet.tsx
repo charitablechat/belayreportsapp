@@ -109,6 +109,13 @@ export const SyncDiagnosticsSheet = () => {
   const [emergencyFailures, setEmergencyFailures] = useState<EmergencyFallbackFailure[]>([]);
   const [copyingDiag, setCopyingDiag] = useState(false);
   const [skipCounters, setSkipCounters] = useState<SyncSkipCountersSnapshot>(() => getSyncSkipCounters());
+  const [breakerStatus, setBreakerStatus] = useState<ReturnType<typeof getCircuitBreakerStatus> | null>(null);
+  const [emergencyBackups, setEmergencyBackups] = useState<Record<string, number>>({
+    inspection: 0,
+    training: 0,
+    daily_assessment: 0,
+  });
+  const [rehydrating, setRehydrating] = useState(false);
   const [diag, setDiag] = useState<DiagnosticsState>({
     swRegistered: false,
     swController: false,
