@@ -392,6 +392,9 @@ export default function HistoryAutocomplete({
         className="w-[calc(100vw-2rem)] sm:w-[300px] max-w-[300px] p-0"
         align="start"
         onOpenAutoFocus={(e) => e.preventDefault()}
+        onPointerDownOutside={keepOpenIfAnchor(anchorRef)}
+        onInteractOutside={keepOpenIfAnchor(anchorRef)}
+        onFocusOutside={keepOpenIfAnchor(anchorRef)}
       >
         <Command shouldFilter={true}>
           <CommandInput
