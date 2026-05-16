@@ -547,7 +547,7 @@ export function GlobalAutocomplete({
   return (
     <Popover open={open} onOpenChange={handleOpenChange}>
       <PopoverAnchor asChild>
-        <div className="relative w-full">
+        <div ref={anchorRef} className="relative w-full">
           <Input
             ref={triggerInputRef}
             role="combobox"
