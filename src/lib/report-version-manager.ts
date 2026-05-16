@@ -263,31 +263,89 @@ export async function appendVersion(
   childrenData: Record<string, any[]>,
   trigger: VersionTrigger
 ): Promise<ReportVersion | null> {
+  const reportIdSuffix = reportId ? reportId.slice(-8) : '<no-id>';
+  const childCounts: Record<string, number> = {};
+  for (const [k, v] of Object.entries(childrenData ?? {})) {
+    childCounts[k] = Array.isArray(v) ? v.length : 0;
+  }
+  const baseDiag: VersioningHealthDiagnostic = {
+    reportType,
+    reportIdSuffix,
+    trigger,
+    childCounts,
+  };
+
+  let step = 'open-db';
+  let db: IDBDatabase | undefined;
   try {
     const { getDB } = await import('./offline-storage');
-    const db = await getDB();
-    
-    if (!db.objectStoreNames.contains('report_versions')) {
-      if (import.meta.env.DEV) {
-        console.log('[Version Manager] report_versions store not available (pre-v8)');
-      }
+    db = (await getDB()) as unknown as IDBDatabase;
+
+    step = 'check-store';
+    const storeExists = db.objectStoreNames.contains('report_versions');
+    if (!storeExists) {
+      recordVersioningFailure(
+        new Error('report_versions object store missing'),
+        { ...baseDiag, step, storeExists: false, missingIndexes: ['<store-missing>'] },
+      );
       return null;
     }
 
-    // Strip large HTML fields from snapshots to save storage space
-    const strippedParentData = { ...parentData };
-    delete strippedParentData.latest_report_html;
+    step = 'check-indexes';
+    const missingIndexes = getMissingIndexes(db);
+    if (missingIndexes.length > 0) {
+      recordVersioningFailure(
+        new Error(`report_versions missing indexes: ${missingIndexes.join(',')}`),
+        { ...baseDiag, step, storeExists: true, missingIndexes },
+      );
+      return null;
+    }
 
-    // Atomic numbering: assign versionNumber and write inside a single readwrite
-    // transaction. IDB serializes readwrite txs across tabs on the same store,
-    // so two tabs cannot both observe the same max and produce duplicate "vN".
-    const writeTx = db.transaction('report_versions', 'readwrite');
-    const writeStore = writeTx.objectStore('report_versions');
-    const existingVersions = await writeStore.index('by-report').getAll(reportId);
-    const maxVersion = (existingVersions as unknown as ReportVersion[]).reduce(
-      (max, v) => Math.max(max, v.versionNumber || 0),
-      0
-    );
+    // Strip large HTML fields, then deeply sanitize for structured-clone safety.
+    step = 'sanitize-payload';
+    const strippedParentData = { ...parentData };
+    delete (strippedParentData as Record<string, unknown>).latest_report_html;
+
+    let safeParent: Record<string, unknown>;
+    let safeChildren: Record<string, unknown[]>;
+    try {
+      safeParent = toCloneSafe(strippedParentData) as Record<string, unknown>;
+      safeChildren = toCloneSafe(childrenData) as Record<string, unknown[]>;
+    } catch (sanErr) {
+      recordVersioningFailure(sanErr, {
+        ...baseDiag,
+        step,
+        storeExists: true,
+        missingIndexes: [],
+        serializationFailed: true,
+      });
+      return null;
+    }
+
+    // Fast lookup of max versionNumber via by-report-version index cursor.
+    step = 'lookup-max-version';
+    const readTx = (db as unknown as IDBDatabase).transaction('report_versions', 'readonly');
+    const readStore = readTx.objectStore('report_versions');
+    const idx = readStore.index('by-report-version');
+    let maxVersion = 0;
+    await new Promise<void>((resolve, reject) => {
+      try {
+        const range = IDBKeyRange.bound([reportId, -Infinity], [reportId, Infinity]);
+        const req = idx.openCursor(range, 'prev');
+        req.onsuccess = () => {
+          const cur = req.result;
+          if (cur && cur.value && typeof (cur.value as ReportVersion).versionNumber === 'number') {
+            maxVersion = (cur.value as ReportVersion).versionNumber;
+          }
+          resolve();
+        };
+        req.onerror = () => reject(req.error ?? new Error('cursor-error'));
+      } catch (e) {
+        reject(e);
+      }
+    });
+    try { (readTx as unknown as { commit?: () => void }).commit?.(); } catch { /* ignore */ }
+
     const nextVersion = maxVersion + 1;
 
     const version: ReportVersion = {
@@ -297,44 +355,66 @@ export async function appendVersion(
       versionNumber: nextVersion,
       timestamp: Date.now(),
       device: isMobile() ? 'mobile' : 'desktop',
-      parentData: strippedParentData,
-      childrenData,
+      parentData: safeParent,
+      childrenData: safeChildren as Record<string, any[]>,
       trigger,
       fieldCount: calculateFieldCount(parentData, childrenData),
     };
 
-    await writeStore.put(version);
-    await writeTx.done;
+    // Final clone-safety probe — surfaces a precise error before IDB does.
+    step = 'clone-probe';
+    if (!isStructuredCloneable(version)) {
+      recordVersioningFailure(new Error('payload failed structuredClone probe'), {
+        ...baseDiag,
+        step,
+        storeExists: true,
+        missingIndexes: [],
+        serializationFailed: true,
+      });
+      return null;
+    }
+
+    step = 'write';
+    const writeTx = (db as unknown as IDBDatabase).transaction('report_versions', 'readwrite');
+    const writeStore = writeTx.objectStore('report_versions');
+    await new Promise<void>((resolve, reject) => {
+      const req = writeStore.put(version as unknown as object);
+      req.onsuccess = () => resolve();
+      req.onerror = () => reject(req.error ?? new Error('put-error'));
+    });
+    await new Promise<void>((resolve, reject) => {
+      writeTx.oncomplete = () => resolve();
+      writeTx.onerror = () => reject(writeTx.error ?? new Error('tx-error'));
+      writeTx.onabort = () => reject(writeTx.error ?? new Error('tx-aborted'));
+    });
 
     if (import.meta.env.DEV) {
       console.log(
-        `[Version Manager] v${version.versionNumber} saved | ${reportType} | ${reportId.substring(0, 8)}… | trigger=${trigger} | fields=${version.fieldCount}`
+        `[Version Manager] v${version.versionNumber} saved | ${reportType} | ${reportIdSuffix} | trigger=${trigger} | fields=${version.fieldCount}`
       );
     }
 
-    // Async prune — never blocks
     pruneVersions(reportId).catch(() => {});
 
-    // M9: Record success — clear any prior failure streak.
-    if (versioningHealth.consecutiveFailures > 0 || versioningHealth.lastSuccessAt === null) {
-      versioningHealth.consecutiveFailures = 0;
-      versioningHealth.lastError = null;
-      versioningHealth.lastSuccessAt = Date.now();
-      emitHealth();
-    } else {
-      versioningHealth.lastSuccessAt = Date.now();
-    }
+    // Success — reset failure streak and clear diagnostic.
+    versioningHealth.consecutiveFailures = 0;
+    versioningHealth.lastError = null;
+    versioningHealth.lastDiagnostic = null;
+    versioningHealth.lastSuccessAt = Date.now();
+    emitHealth();
 
     return version;
   } catch (error) {
-    console.warn('[Version Manager] Failed to append version:', error);
-    // M9: Track consecutive failures so the UI can warn the user.
-    versioningHealth.consecutiveFailures += 1;
-    versioningHealth.lastFailureAt = Date.now();
-    versioningHealth.lastError = error instanceof Error ? error.message : String(error);
-    emitHealth();
+    const missingIndexes = db ? getMissingIndexes(db) : ['<db-unavailable>'];
+    recordVersioningFailure(error, {
+      ...baseDiag,
+      step,
+      storeExists: db ? db.objectStoreNames.contains('report_versions') : false,
+      missingIndexes,
+    });
     return null;
   }
+}
 }
 
 /**
