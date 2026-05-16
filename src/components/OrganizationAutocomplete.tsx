@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Check, Pencil, Trash2, Plus, X, Loader2 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { keepOpenIfAnchor } from "@/lib/popover-anchor-guard";
 import {
   AlertDialog,
   AlertDialogAction,
