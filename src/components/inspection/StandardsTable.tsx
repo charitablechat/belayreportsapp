@@ -20,7 +20,7 @@ const STANDARDS_LIST = [
   { name: "Operational Review Every 5 Years", reference: "(CHPT 2 ANSI/ACCT B.2.7)" },
 ];
 
-export default function StandardsTable({ standards, onUpdate, onImmediateSave }: StandardsTableProps) {
+function StandardsTable({ standards, onUpdate, onImmediateSave }: StandardsTableProps) {
   const saveScheduledRef = useRef(false);
   const scheduleSave = () => {
     if (saveScheduledRef.current) return;
