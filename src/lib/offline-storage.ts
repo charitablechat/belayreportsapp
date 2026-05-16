@@ -3317,7 +3317,9 @@ export async function getUnsyncedInspections(userId?: string, options?: WedgeLed
         if (record.inspector_id === userId) return true;
         if (record.id?.startsWith('temp-')) return true; // orphan recovery
         return false;
-      }).filter(record => !isSessionQuarantined(record.id)); // S41 (Fix E): drop session-quarantined ids from user-facing count
+      })
+        .filter(record => !isSessionQuarantined(record.id)) // S41 (Fix E): drop session-quarantined ids from user-facing count
+        .filter(record => !isTombstoned('inspections', record.id)); // Sync Terminal DROP veto
 
       const unsynced = candidates.filter(record => {
         // C3: dirty flag is the authoritative "has unshipped edits" signal.
