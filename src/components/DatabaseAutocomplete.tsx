@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from "react";
 import { Check, Pencil, Trash2, X, Plus, Loader2 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { keepOpenIfAnchor } from "@/lib/popover-anchor-guard";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
