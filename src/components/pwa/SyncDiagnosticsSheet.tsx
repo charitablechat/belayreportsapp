@@ -21,7 +21,14 @@ import {
   type PhotoUploadFailureEntry,
   getEmergencyFallbackFailures,
   type EmergencyFallbackFailure,
+  getCircuitBreakerStatus,
+  IDB_DB_NAME,
+  IDB_DB_VERSION,
 } from '@/lib/offline-storage';
+import {
+  countEmergencyBackups,
+  rehydrateEmergencyBackupsToIdb,
+} from '@/lib/emergency-backup-rehydrator';
 import { retryDeadLetterSoftDelete } from '@/lib/queued-soft-delete-processor';
 import {
   resetRegressionSkipCount,
