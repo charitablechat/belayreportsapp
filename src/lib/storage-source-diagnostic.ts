@@ -176,13 +176,27 @@ export async function runStorageSourceDiagnostic(
   input: StorageSourceDiagnosticInput,
 ): Promise<StorageSourceDiagnostic> {
   const indexedDB: Record<string, unknown> = {};
-  for (const store of PARENT_STORES) {
-    indexedDB[store] = await readUnsyncedFromStore(store);
-  }
+  await Promise.all(
+    PARENT_STORES.map(async (store) => {
+      try {
+        indexedDB[store] = await withTimeout(
+          readUnsyncedFromStore(store) as Promise<unknown>,
+          PER_READ_TIMEOUT_MS,
+          `readUnsyncedFromStore(${store})`,
+        );
+      } catch (e) {
+        indexedDB[store] = { timedOut: true, error: e instanceof Error ? e.message : String(e) };
+      }
+    }),
+  );
 
   let validationStuck: StorageSourceDiagnostic['validationStuck'];
   try {
-    validationStuck = await getValidationStuckRecords(input.currentUserId);
+    validationStuck = await withTimeout(
+      getValidationStuckRecords(input.currentUserId),
+      PER_READ_TIMEOUT_MS,
+      'getValidationStuckRecords',
+    );
   } catch (e) {
     validationStuck = { error: e instanceof Error ? e.message : String(e) };
   }
