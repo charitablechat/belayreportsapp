@@ -16,7 +16,9 @@ export function viteDbVersionCheck(): Plugin {
       const dbConfigVersion = Number(dbConfig.match(/version:\s*(\d+)/)?.[1]);
 
       const src = fs.readFileSync('src/lib/offline-storage.ts', 'utf8');
-      const srcVersion = Number(src.match(/const DB_VERSION = (\d+)/)?.[1]);
+      const srcVersion = Number(
+        src.match(/const\s+(?:IDB_DB_VERSION|DB_VERSION)\s*=\s*(\d+)/)?.[1],
+      );
 
       if (!Number.isFinite(dbConfigVersion) || !Number.isFinite(srcVersion)) {
         throw new Error(
