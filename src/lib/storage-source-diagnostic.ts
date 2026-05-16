@@ -68,10 +68,25 @@ function safeParseJSON(v: string | null): unknown {
   try { return JSON.parse(v); } catch { return v; }
 }
 
+const PER_READ_TIMEOUT_MS = 4000;
+
+function withTimeout<T>(p: Promise<T>, ms: number, label: string): Promise<T> {
+  return Promise.race([
+    p,
+    new Promise<T>((_, reject) =>
+      setTimeout(() => reject(new Error(`${label} timed out after ${ms}ms`)), ms),
+    ),
+  ]);
+}
+
 async function readUnsyncedFromStore(storeName: string): Promise<unknown> {
   try {
-    const db = await getDB();
-    const all = (await db.getAll(storeName as never)) as Array<Record<string, unknown>>;
+    const db = await withTimeout(getDB(), PER_READ_TIMEOUT_MS, `getDB(${storeName})`);
+    const all = (await withTimeout(
+      db.getAll(storeName as never) as Promise<Array<Record<string, unknown>>>,
+      PER_READ_TIMEOUT_MS,
+      `getAll(${storeName})`,
+    )) as Array<Record<string, unknown>>;
     const unsynced = all.filter((r) => r?.synced_at == null);
     return {
       totalRows: all.length,
@@ -161,13 +176,27 @@ export async function runStorageSourceDiagnostic(
   input: StorageSourceDiagnosticInput,
 ): Promise<StorageSourceDiagnostic> {
   const indexedDB: Record<string, unknown> = {};
-  for (const store of PARENT_STORES) {
-    indexedDB[store] = await readUnsyncedFromStore(store);
-  }
+  await Promise.all(
+    PARENT_STORES.map(async (store) => {
+      try {
+        indexedDB[store] = await withTimeout(
+          readUnsyncedFromStore(store) as Promise<unknown>,
+          PER_READ_TIMEOUT_MS,
+          `readUnsyncedFromStore(${store})`,
+        );
+      } catch (e) {
+        indexedDB[store] = { timedOut: true, error: e instanceof Error ? e.message : String(e) };
+      }
+    }),
+  );
 
   let validationStuck: StorageSourceDiagnostic['validationStuck'];
   try {
-    validationStuck = await getValidationStuckRecords(input.currentUserId);
+    validationStuck = await withTimeout(
+      getValidationStuckRecords(input.currentUserId),
+      PER_READ_TIMEOUT_MS,
+      'getValidationStuckRecords',
+    );
   } catch (e) {
     validationStuck = { error: e instanceof Error ? e.message : String(e) };
   }
