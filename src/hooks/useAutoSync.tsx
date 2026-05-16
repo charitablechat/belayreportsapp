@@ -415,23 +415,27 @@ export const useAutoSync = () => {
           // timeout boundary AND returns `IdbReadFailure` on circuit-breaker
           // open / IDB error — so a failed read can never look like an
           // empty queue and zero the badge.
+          // Strict: never accept ledger fallback for React state population.
+          // The rendered Pending Reports list must be derived from IndexedDB
+          // truth, not from stale rw_backup_* snapshots that may carry
+          // already-synced rows.
           const [inspRes, trainRes, assessRes] = await Promise.all([
             withIDBTimeout(
               'refreshUnsyncedInspections',
               'heavy',
-              () => getUnsyncedInspections(freshUser.id),
+              () => getUnsyncedInspections(freshUser.id, { allowLedgerFallback: false }),
               [] as DbRow[]
             ),
             withIDBTimeout(
               'refreshUnsyncedTrainings',
               'heavy',
-              () => getUnsyncedTrainings(freshUser.id),
+              () => getUnsyncedTrainings(freshUser.id, { allowLedgerFallback: false }),
               [] as DbRow[]
             ),
             withIDBTimeout(
               'refreshUnsyncedDailyAssessments',
               'heavy',
-              () => getUnsyncedDailyAssessments(freshUser.id),
+              () => getUnsyncedDailyAssessments(freshUser.id, { allowLedgerFallback: false }),
               [] as DbRow[]
             ),
           ]);
@@ -959,10 +963,14 @@ export const useAutoSync = () => {
 
       // Audit M2: `isIdbReadFailure` is already a static import at the top of
       // this file — the dynamic re-import here was dead code and removed.
+      // Strict: ledger fallback is suppressed here too. If IDB read fails we
+      // surface a soft "stats stale" warning rather than synthesizing the
+      // pending list from rw_backup_* snapshots (which can include synced
+      // rows after a successful sync).
       const [insp, train, assess] = await Promise.all([
-        getUnsyncedInspections(user.id),
-        getUnsyncedTrainings(user.id),
-        getUnsyncedDailyAssessments(user.id),
+        getUnsyncedInspections(user.id, { allowLedgerFallback: false }),
+        getUnsyncedTrainings(user.id, { allowLedgerFallback: false }),
+        getUnsyncedDailyAssessments(user.id, { allowLedgerFallback: false }),
       ]);
 
       const anyFailed = isIdbReadFailure(insp) || isIdbReadFailure(train) || isIdbReadFailure(assess);
