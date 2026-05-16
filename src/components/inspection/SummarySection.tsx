@@ -1,3 +1,4 @@
+import { memo } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
 import { VoiceRichTextEditor } from "@/components/ui/voice-rich-text-editor";
@@ -18,7 +19,7 @@ interface SummarySectionProps {
   onNextDateUserEdit?: (cleared: boolean) => void;
 }
 
-export default function SummarySection({ summary, onUpdate, onImmediateSave, onRegenerate, onNextDateUserEdit }: SummarySectionProps) {
+function SummarySection({ summary, onUpdate, onImmediateSave, onRegenerate, onNextDateUserEdit }: SummarySectionProps) {
   const updateField = (field: string, value: any) => {
     onUpdate({ ...summary, [field]: value });
   };
@@ -193,3 +194,5 @@ export default function SummarySection({ summary, onUpdate, onImmediateSave, onR
     </Card>
   );
 }
+
+export default memo(SummarySection);

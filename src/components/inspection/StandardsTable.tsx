@@ -1,4 +1,4 @@
-import { useRef } from "react";
+import { memo, useRef } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
@@ -20,7 +20,7 @@ const STANDARDS_LIST = [
   { name: "Operational Review Every 5 Years", reference: "(CHPT 2 ANSI/ACCT B.2.7)" },
 ];
 
-export default function StandardsTable({ standards, onUpdate, onImmediateSave }: StandardsTableProps) {
+function StandardsTable({ standards, onUpdate, onImmediateSave }: StandardsTableProps) {
   const saveScheduledRef = useRef(false);
   const scheduleSave = () => {
     if (saveScheduledRef.current) return;
@@ -179,3 +179,5 @@ export default function StandardsTable({ standards, onUpdate, onImmediateSave }:
     </Card>
   );
 }
+
+export default memo(StandardsTable);

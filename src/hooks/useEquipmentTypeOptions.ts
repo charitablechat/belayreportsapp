@@ -7,7 +7,7 @@ import {
   bulkPutEquipmentTypeOptions,
 } from "@/lib/offline-storage";
 import { useNetworkStatus } from "@/hooks/useNetworkStatus";
-import { useCallback } from "react";
+import { useCallback, useRef } from "react";
 
 interface EquipmentTypeOption {
   id: string;
@@ -139,10 +139,16 @@ export function useEquipmentTypeOptions(category: string, existingValues: string
     },
   });
 
-  const addOption = useCallback(
-    (label: string) => addOptionMutation.mutate(label),
-    [addOptionMutation]
-  );
+  // Phase 2 perf: stable identity. `addOptionMutation` has a new
+  // reference every render, so `useCallback([addOptionMutation])` was
+  // effectively unstable and broke React.memo on EquipmentTable (8
+  // instances re-rendering on every InspectionForm tick). Route calls
+  // through a ref that always points at the latest mutate function.
+  const mutateRef = useRef(addOptionMutation.mutate);
+  mutateRef.current = addOptionMutation.mutate;
+  const addOption = useCallback((label: string) => {
+    mutateRef.current(label);
+  }, []);
 
   return { options, isLoading, addOption };
 }
