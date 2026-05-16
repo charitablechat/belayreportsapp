@@ -43,6 +43,10 @@ export interface ReportSnapshot {
   photoMetadata?: PhotoMetadataEntry[];
 }
 
+function shortId(id: string | undefined | null): string {
+  return id ? `${id.substring(0, 8)}…` : 'missing';
+}
+
 function makeKey(type: ReportType, id: string): string {
   return `${BACKUP_PREFIX}${type}_${id}`;
 }
@@ -388,6 +392,9 @@ export function listUnsyncedSnapshots(
   try {
     const out: Array<{ reportId: string; snapshot: ReportSnapshot }> = [];
     const keyPrefix = `${BACKUP_PREFIX}${reportType}_`;
+    const tombstonedTable = tableForReportType(reportType);
+    let beforeTombstoneFilter = 0;
+    const filteredIds: string[] = [];
 
     for (let i = 0; i < localStorage.length; i++) {
       const key = localStorage.key(i);
@@ -404,10 +411,14 @@ export function listUnsyncedSnapshots(
         if (snapshot.synced !== false) continue;
 
         const reportId = key.slice(keyPrefix.length);
+        beforeTombstoneFilter += 1;
 
         // Honour Sync Terminal DROP tombstones — same id-based veto as the
         // IDB readers in offline-storage.ts.
-        if (isTombstoned(tableForReportType(reportType), reportId)) continue;
+        if (isTombstoned(tombstonedTable, reportId)) {
+          filteredIds.push(shortId(reportId));
+          continue;
+        }
 
         if (userId != null) {
           const ownerId = (snapshot.parent?.inspector_id as string | undefined) ?? null;
@@ -421,6 +432,14 @@ export function listUnsyncedSnapshots(
       }
     }
 
+    const payload = {
+      reportType,
+      before: beforeTombstoneFilter,
+      after: out.length,
+      filtered: filteredIds,
+    };
+    if (filteredIds.length > 0) console.warn('[DROP Tombstone] ledger fallback filtered dropped IDs', payload);
+    else console.debug('[DROP Tombstone] ledger fallback tombstone check', payload);
     return out;
   } catch (error) {
     console.error('[Backup Ledger] Failed to list unsynced snapshots:', error);
