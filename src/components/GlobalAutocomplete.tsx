@@ -604,6 +604,9 @@ export function GlobalAutocomplete({
           // the search term silently overwrites the field value.
           e.preventDefault();
         }}
+        onPointerDownOutside={keepOpenIfAnchor(anchorRef)}
+        onInteractOutside={keepOpenIfAnchor(anchorRef)}
+        onFocusOutside={keepOpenIfAnchor(anchorRef)}
       >
         <Command shouldFilter={false}>
           <CommandInput
