@@ -320,7 +320,7 @@ export function DatabaseAutocomplete({
     <>
       <Popover open={open} onOpenChange={handleOpenChange}>
         <PopoverTrigger asChild>
-          <div className="relative w-full">
+          <div ref={anchorRef} className="relative w-full">
             <Input
               ref={triggerInputRef}
               role="combobox"
