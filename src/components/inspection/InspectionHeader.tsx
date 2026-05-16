@@ -270,6 +270,7 @@ export default function InspectionHeader({ inspection, userProfile, modifiedByPr
                   onChange={(value) => {
                     onUpdate("onsite_contact", value);
                   }}
+                  onBlur={onImmediateSave}
                   fieldType="onsite_contact"
                   placeholder="Select or enter contact..."
                   disabled={isReadOnly}

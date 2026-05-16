@@ -191,6 +191,16 @@ export default function InspectionForm() {
   const [htmlViewerOpen, setHtmlViewerOpen] = useState(false);
   const [reportHtml, setReportHtml] = useState<string>('');
   const [inspection, setInspection] = useState<DbRow | null>(null);
+  // Latest-value ref for `inspection`. Save handlers (performSave, manual
+  // save, blur-save, save-before-leave) read from this so a header field
+  // update committed synchronously in `handleHeaderUpdate` is visible to
+  // the very next save tick, even before React has flushed the render.
+  // Without this, fast "select Onsite Contact -> Manual Save / navigate
+  // away" flows shipped a stale payload that dropped the just-picked
+  // value. Synced on every render below + explicitly inside
+  // `handleHeaderUpdate` before `setInspection`.
+  const inspectionRef = useRef<DbRow | null>(null);
+  inspectionRef.current = inspection;
   const { isInvoiced, toggling: invoiceToggling, toggleInvoiced } = useInvoicedStatus({
     reportId: id,
     reportType: 'inspection',
@@ -1052,7 +1062,7 @@ export default function InspectionForm() {
       // cross-device merger (atomic-sync-manager S16/H4 → mergeRecordFields)
       // falls back to row-level last-writer-wins for every field.
       const updatedInspection = applyTrackedFieldWrite(
-        inspection,
+        inspectionRef.current ?? inspection,
         'inspection',
         field,
         value,
@@ -1067,8 +1077,13 @@ export default function InspectionForm() {
       // Sync-mirror the unsaved flag onto the ref BEFORE setInspection so the
       // form-scoped Realtime UPDATE handler (`useFormRecordRealtime.onUpdate`)
       // sees the in-flight edit even if a remote update lands inside the
-      // 500 ms debounce window.
+      // 500 ms debounce window. Also mirror the new inspection onto
+      // `inspectionRef` synchronously so any save that fires before React
+      // commits the next render (manual save, blur-save, save-before-leave)
+      // sees the just-written field — fixes the onsite_contact persistence
+      // race where a fast select+save shipped a stale payload.
       hasUnsavedRef.current = true;
+      inspectionRef.current = updatedInspection;
       setInspection(updatedInspection);
       setHasUnsavedChanges(true);
 
@@ -1639,8 +1654,9 @@ export default function InspectionForm() {
     // and the sync engine cannot disagree about which header fields are
     // required. Manual saves surface a toast; auto-saves skip silently so
     // the user isn't spammed every debounce interval while editing.
+    const latestInspection = inspectionRef.current ?? inspection;
     const requiredHeaderCheck = checkRequiredHeaderFields(
-      inspection as unknown as Record<string, unknown>,
+      latestInspection as unknown as Record<string, unknown>,
       'inspection',
     );
     if (!requiredHeaderCheck.ok) {
@@ -1692,13 +1708,18 @@ export default function InspectionForm() {
       const user = await getUserWithCache().catch(() => null);
       
       // Preserve original inspector_id - only update timestamp
+      // Build payload from the latest-known inspection (ref), not the
+      // possibly-stale closure `inspection`. This is what makes a
+      // just-selected onsite_contact survive a save fired in the same
+      // tick as the header update.
+      const sourceInspection = inspectionRef.current ?? inspection;
       const baseInspectionToSave = {
-        ...inspection,
+        ...sourceInspection,
         updated_at: new Date().toISOString(),
         // DISABLED: active_duration_seconds: getElapsedSeconds(),
         // Track who modified the report if current user is not the owner
-        ...(currentUser?.id && currentUser.id !== inspection.inspector_id 
-          ? { last_modified_by: currentUser.id } 
+        ...(currentUser?.id && currentUser.id !== sourceInspection.inspector_id
+          ? { last_modified_by: currentUser.id }
           : {}),
       };
 
