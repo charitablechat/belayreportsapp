@@ -1654,8 +1654,9 @@ export default function InspectionForm() {
     // and the sync engine cannot disagree about which header fields are
     // required. Manual saves surface a toast; auto-saves skip silently so
     // the user isn't spammed every debounce interval while editing.
+    const latestInspection = inspectionRef.current ?? inspection;
     const requiredHeaderCheck = checkRequiredHeaderFields(
-      inspection as unknown as Record<string, unknown>,
+      latestInspection as unknown as Record<string, unknown>,
       'inspection',
     );
     if (!requiredHeaderCheck.ok) {
