@@ -1062,7 +1062,7 @@ export default function InspectionForm() {
       // cross-device merger (atomic-sync-manager S16/H4 → mergeRecordFields)
       // falls back to row-level last-writer-wins for every field.
       const updatedInspection = applyTrackedFieldWrite(
-        inspection,
+        inspectionRef.current ?? inspection,
         'inspection',
         field,
         value,
@@ -1077,8 +1077,13 @@ export default function InspectionForm() {
       // Sync-mirror the unsaved flag onto the ref BEFORE setInspection so the
       // form-scoped Realtime UPDATE handler (`useFormRecordRealtime.onUpdate`)
       // sees the in-flight edit even if a remote update lands inside the
-      // 500 ms debounce window.
+      // 500 ms debounce window. Also mirror the new inspection onto
+      // `inspectionRef` synchronously so any save that fires before React
+      // commits the next render (manual save, blur-save, save-before-leave)
+      // sees the just-written field — fixes the onsite_contact persistence
+      // race where a fast select+save shipped a stale payload.
       hasUnsavedRef.current = true;
+      inspectionRef.current = updatedInspection;
       setInspection(updatedInspection);
       setHasUnsavedChanges(true);
 
