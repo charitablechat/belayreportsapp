@@ -49,6 +49,12 @@ export type DbRow = { [key: string]: any } & {
   status?: string;
 };
 
+// Canonical IDB identity — exported so diagnostics & utilities don't drift
+// from the actual openDB() call below. Kept in sync with public/db-config.js
+// (the Service Worker reads from there).
+export const IDB_DB_NAME = 'rope-works-inspections';
+export const IDB_DB_VERSION = 20;
+
 type ReportSaveOptions = {
   childCountHint?: number;
   /** True only for normal form/new-report saves created by an explicit user edit. */
@@ -2584,8 +2590,8 @@ export async function getDB() {
     // If IndexedDB hangs, we'll reject and the app can proceed with network-only mode
     // Version 8: Add report_versions store for append-only versioning
     // DB_NAME and DB_VERSION shared with public/db-config.js for SW consistency
-    const DB_NAME = 'rope-works-inspections';
-    const DB_VERSION = 20;
+    const DB_NAME = IDB_DB_NAME;
+    const DB_VERSION = IDB_DB_VERSION;
 
     // Phase 5 — Schema Migration Safety. Now imported statically at the top
     // of this module (see comment there). Previously this was `await

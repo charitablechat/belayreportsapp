@@ -21,7 +21,14 @@ import {
   type PhotoUploadFailureEntry,
   getEmergencyFallbackFailures,
   type EmergencyFallbackFailure,
+  getCircuitBreakerStatus,
+  IDB_DB_NAME,
+  IDB_DB_VERSION,
 } from '@/lib/offline-storage';
+import {
+  countEmergencyBackups,
+  rehydrateEmergencyBackupsToIdb,
+} from '@/lib/emergency-backup-rehydrator';
 import { retryDeadLetterSoftDelete } from '@/lib/queued-soft-delete-processor';
 import {
   resetRegressionSkipCount,
@@ -102,6 +109,13 @@ export const SyncDiagnosticsSheet = () => {
   const [emergencyFailures, setEmergencyFailures] = useState<EmergencyFallbackFailure[]>([]);
   const [copyingDiag, setCopyingDiag] = useState(false);
   const [skipCounters, setSkipCounters] = useState<SyncSkipCountersSnapshot>(() => getSyncSkipCounters());
+  const [breakerStatus, setBreakerStatus] = useState<ReturnType<typeof getCircuitBreakerStatus> | null>(null);
+  const [emergencyBackups, setEmergencyBackups] = useState<Record<string, number>>({
+    inspection: 0,
+    training: 0,
+    daily_assessment: 0,
+  });
+  const [rehydrating, setRehydrating] = useState(false);
   const [diag, setDiag] = useState<DiagnosticsState>({
     swRegistered: false,
     swController: false,
@@ -144,6 +158,16 @@ export const SyncDiagnosticsSheet = () => {
     } catch {
       /* ignore */
     }
+    try {
+      setBreakerStatus(getCircuitBreakerStatus());
+    } catch {
+      setBreakerStatus(null);
+    }
+    try {
+      setEmergencyBackups(countEmergencyBackups());
+    } catch {
+      /* ignore */
+    }
     setDiag({
       swRegistered,
       swController,
@@ -161,6 +185,8 @@ export const SyncDiagnosticsSheet = () => {
     const interval = setInterval(() => {
       try {
         setEmergencyFailures(getEmergencyFallbackFailures());
+        setBreakerStatus(getCircuitBreakerStatus());
+        setEmergencyBackups(countEmergencyBackups());
       } catch {
         /* ignore */
       }
@@ -329,6 +355,91 @@ export const SyncDiagnosticsSheet = () => {
               label="Storage used"
               value={`${diag.storageUsageMB.toFixed(1)} MB / ${diag.storageQuotaMB.toFixed(0)} MB (${diag.storagePercent.toFixed(0)}%)`}
             />
+          </Section>
+
+          <Section title="Storage Layer">
+            <Row label="IndexedDB" value={`${IDB_DB_NAME} v${IDB_DB_VERSION}`} />
+            <Row
+              label="Circuit breaker"
+              value={
+                breakerStatus
+                  ? breakerStatus.open
+                    ? `OPEN (failures: ${breakerStatus.failureCount}, backoff lvl ${breakerStatus.backoffLevel}${
+                        breakerStatus.resetIn != null
+                          ? `, resets in ${Math.ceil(breakerStatus.resetIn / 1000)}s`
+                          : ''
+                      })`
+                    : 'closed'
+                  : '—'
+              }
+            />
+            <Row
+              label="LocalStorage fallback"
+              value={breakerStatus?.fallbackActive ? 'ACTIVE' : 'idle'}
+            />
+            {breakerStatus && Object.keys(breakerStatus.byStore).length > 0 && (
+              <div className="pt-1 text-xs text-muted-foreground">
+                <div className="mb-1">Per-store breakers:</div>
+                <ul className="space-y-0.5">
+                  {Object.entries(breakerStatus.byStore).map(([store, s]) => (
+                    <li key={store} className="flex justify-between gap-2">
+                      <span>{store}</span>
+                      <span>
+                        {s.open ? 'open' : 'closed'} · fails {s.failureCount} · backoff lvl {s.backoffLevel}
+                        {s.resetIn != null && s.resetIn > 0 ? ` · ${Math.ceil(s.resetIn / 1000)}s` : ''}
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+            <Row
+              label="Emergency localStorage rows"
+              value={`inspections ${emergencyBackups.inspection ?? 0} · trainings ${emergencyBackups.training ?? 0} · daily ${emergencyBackups.daily_assessment ?? 0}`}
+            />
+            {((emergencyBackups.inspection ?? 0) + (emergencyBackups.training ?? 0) + (emergencyBackups.daily_assessment ?? 0)) > 0 && (
+              <div className="pt-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="h-7 text-xs"
+                  disabled={rehydrating || (breakerStatus?.open ?? false)}
+                  onClick={async () => {
+                    setRehydrating(true);
+                    try {
+                      const u = await getUserWithCache().catch(() => null);
+                      const results = await rehydrateEmergencyBackupsToIdb(u?.id ?? null);
+                      const total = results.reduce((a, r) => a + r.rehydrated, 0);
+                      const skipped = results.reduce((a, r) => a + r.skipped, 0);
+                      const blocked = results.reduce((a, r) => a + r.breakerOpen, 0);
+                      const failed = results.reduce((a, r) => a + r.failed, 0);
+                      if (total > 0) {
+                        toast.success(`Rehydrated ${total} record${total === 1 ? '' : 's'} to IndexedDB`, {
+                          description: `Skipped ${skipped} (already present)${blocked ? `, blocked ${blocked} (breaker still open)` : ''}${failed ? `, failed ${failed}` : ''}.`,
+                        });
+                      } else if (blocked > 0) {
+                        toast.message('Rehydration blocked', {
+                          description: `${blocked} record${blocked === 1 ? '' : 's'} waiting for circuit breaker to close.`,
+                        });
+                      } else {
+                        toast.message('Nothing to rehydrate', {
+                          description: skipped > 0 ? `All ${skipped} record${skipped === 1 ? '' : 's'} already in IndexedDB.` : 'No emergency snapshots found.',
+                        });
+                      }
+                      await refresh();
+                    } catch (e) {
+                      toast.error('Rehydration failed', {
+                        description: e instanceof Error ? e.message : String(e),
+                      });
+                    } finally {
+                      setRehydrating(false);
+                    }
+                  }}
+                >
+                  {rehydrating ? 'Rehydrating…' : 'Rehydrate now'}
+                </Button>
+              </div>
+            )}
           </Section>
 
           <Section title="Data Safety">

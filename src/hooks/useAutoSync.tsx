@@ -332,7 +332,20 @@ export const useAutoSync = () => {
         return;
       }
     }
-    
+
+    // Phase A rehydration: if the IDB circuit breaker was open earlier in the
+    // session, in-flight saves landed in `localStorage` under `rw_backup_*`
+    // (synced=false). Now that the breaker is closed, copy those snapshots
+    // back into IndexedDB under their original ids so the normal sync reader
+    // and form loader see them again. Idempotent — skips ids that already
+    // exist in IDB, skips per-store while that store's breaker is still open.
+    try {
+      const { rehydrateEmergencyBackupsToIdb } = await import('@/lib/emergency-backup-rehydrator');
+      await rehydrateEmergencyBackupsToIdb(validatedUser.id);
+    } catch (e) {
+      console.warn('[AutoSync] Emergency-backup rehydration failed (non-fatal):', e);
+    }
+
     // S21: Await the in-flight sync directly instead of polling syncInProgressRef.
     // - Silent (background) callers: piggy-back on the in-flight run and return.
     // - User-initiated callers (silent=false): wait for it to finish, then run a
