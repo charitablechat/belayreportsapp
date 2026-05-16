@@ -963,10 +963,14 @@ export const useAutoSync = () => {
 
       // Audit M2: `isIdbReadFailure` is already a static import at the top of
       // this file — the dynamic re-import here was dead code and removed.
+      // Strict: ledger fallback is suppressed here too. If IDB read fails we
+      // surface a soft "stats stale" warning rather than synthesizing the
+      // pending list from rw_backup_* snapshots (which can include synced
+      // rows after a successful sync).
       const [insp, train, assess] = await Promise.all([
-        getUnsyncedInspections(user.id),
-        getUnsyncedTrainings(user.id),
-        getUnsyncedDailyAssessments(user.id),
+        getUnsyncedInspections(user.id, { allowLedgerFallback: false }),
+        getUnsyncedTrainings(user.id, { allowLedgerFallback: false }),
+        getUnsyncedDailyAssessments(user.id, { allowLedgerFallback: false }),
       ]);
 
       const anyFailed = isIdbReadFailure(insp) || isIdbReadFailure(train) || isIdbReadFailure(assess);
