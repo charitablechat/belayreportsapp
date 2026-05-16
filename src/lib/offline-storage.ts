@@ -4867,6 +4867,7 @@ export async function saveDailyAssessmentOffline(
       }
       // C3: stamp the dirty flag at every user-facing save.
       assessment.dirty = true;
+      if (assessment.id) clearTombstone('daily_assessments', String(assessment.id));
       await db.put('daily_assessments', assessment as never);
       if (import.meta.env.DEV) {
         console.log('[Offline Storage] Saved daily assessment:', assessment.id);
