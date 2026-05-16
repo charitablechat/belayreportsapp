@@ -571,7 +571,10 @@ export default function TrainingForm() {
               );
             });
             setInspectorId(trainingData.inspector_id);
-            saveTrainingOffline({ ...trainingData, synced_at: trainingData.synced_at || new Date().toISOString() }).catch(e =>
+            saveTrainingOffline(
+              { ...trainingData, synced_at: trainingData.synced_at || new Date().toISOString() },
+              { markDirty: false, explicitUserSave: false, dispatchSyncEvent: false },
+            ).catch(e =>
               console.warn('[TrainingForm] Non-critical: failed to cache training', e)
             );
 

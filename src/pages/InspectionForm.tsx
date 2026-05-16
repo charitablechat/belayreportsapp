@@ -1456,7 +1456,10 @@ export default function InspectionForm() {
             });
             setInspectorId(data.inspector_id);
             // Non-blocking cache update - don't await to prevent loading freeze
-            saveInspectionOffline({ ...data, synced_at: data.synced_at || new Date().toISOString() }).catch(e => 
+            saveInspectionOffline(
+              { ...data, synced_at: data.synced_at || new Date().toISOString() },
+              { markDirty: false, explicitUserSave: false, dispatchSyncEvent: false },
+            ).catch(e => 
               console.warn('[InspectionForm] Non-critical: failed to cache inspection', e)
             );
             
