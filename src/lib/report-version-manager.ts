@@ -163,7 +163,7 @@ function toCloneSafe<T = unknown>(input: T, seen: WeakSet<object> = new WeakSet(
   return out as unknown as T;
 }
 
-function getMissingIndexes(db: IDBDatabase): string[] {
+function getMissingIndexes(db: any): string[] {
   if (!db.objectStoreNames.contains('report_versions')) return ['<store-missing>'];
   try {
     const tx = db.transaction('report_versions', 'readonly');
