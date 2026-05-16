@@ -5343,6 +5343,13 @@ export async function ingestRemoteRecordOffline(
   table: 'inspections' | 'trainings' | 'daily_assessments',
   record: Record<string, unknown> & { id?: string; updated_at?: string | null },
 ): Promise<SaveResult> {
+  if (isTombstoned(table, record.id)) {
+    console.warn('[DROP Tombstone] suppressing passive remote ingest for dropped ID', {
+      table,
+      id: shortRecordId(record.id),
+    });
+    return { savedToBackup: false };
+  }
   const enriched = {
     ...record,
     synced_at: record.updated_at || new Date().toISOString(),
