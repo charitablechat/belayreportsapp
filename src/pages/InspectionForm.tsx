@@ -289,6 +289,18 @@ export default function InspectionForm() {
     userTouchedNextDateRef.current = !cleared;
   }, []);
 
+  /**
+   * Phase 2 perf: stable callback identity so memoized child tables
+   * (EquipmentTable, OperatingSystemsTable, ZiplinesTable) don't
+   * re-render on every InspectionForm render just because a fresh
+   * inline arrow function was passed as `onGalleryRefresh` /
+   * `onPhotoAdded`. setState updaters from useState are already
+   * stable; wrapping bumps photoRefreshKey identically.
+   */
+  const handleGalleryRefresh = useCallback(() => {
+    setPhotoRefreshKey((prev) => prev + 1);
+  }, []);
+
   // Completion lock derived values (after report state is declared)
   const isCompletionLocked = inspection?.status === 'completed' && !completionLockOverridden;
   // Active-usage timer: only tracks time when user is actively editing
