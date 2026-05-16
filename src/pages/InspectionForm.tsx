@@ -2984,8 +2984,8 @@ export default function InspectionForm() {
 
           <div>
               <TabsContent value="details" className="space-y-6">
-                <OperatingSystemsTable systems={systems} onUpdate={setSystems} onImmediateSave={stableTriggerImmediateSave} inspectionId={id} onGalleryRefresh={() => setPhotoRefreshKey(prev => prev + 1)} />
-                <ZiplinesTable ziplines={ziplines} onUpdate={setZiplines} onImmediateSave={stableTriggerImmediateSave} inspectionId={id} onGalleryRefresh={() => setPhotoRefreshKey(prev => prev + 1)} />
+                <OperatingSystemsTable systems={systems} onUpdate={setSystems} onImmediateSave={stableTriggerImmediateSave} inspectionId={id} onGalleryRefresh={handleGalleryRefresh} />
+                <ZiplinesTable ziplines={ziplines} onUpdate={setZiplines} onImmediateSave={stableTriggerImmediateSave} inspectionId={id} onGalleryRefresh={handleGalleryRefresh} />
                 
                 <div className="mt-8 border-t pt-6">
                   <h3 className="text-lg font-semibold mb-4">Photos - Systems & Ziplines</h3>
@@ -2993,7 +2993,7 @@ export default function InspectionForm() {
                     <PhotoCapture
                       inspectionId={id!}
                       section="systems"
-                      onPhotoAdded={() => setPhotoRefreshKey(prev => prev + 1)}
+                      onPhotoAdded={handleGalleryRefresh}
                     />
                   )}
                   <div className="mt-4">
@@ -3020,7 +3020,7 @@ export default function InspectionForm() {
                       categoryOptions={harnessesOpts.options}
                       onAddCategoryOption={harnessesOpts.addOption}
                       inspectionId={id}
-                      onGalleryRefresh={() => setPhotoRefreshKey(prev => prev + 1)}
+                      onGalleryRefresh={handleGalleryRefresh}
                     />
                     <EquipmentTable
                       category="helmets"
@@ -3031,7 +3031,7 @@ export default function InspectionForm() {
                       categoryOptions={helmetsOpts.options}
                       onAddCategoryOption={helmetsOpts.addOption}
                       inspectionId={id}
-                      onGalleryRefresh={() => setPhotoRefreshKey(prev => prev + 1)}
+                      onGalleryRefresh={handleGalleryRefresh}
                     />
                     <EquipmentTable
                       category="lanyards"
@@ -3042,7 +3042,7 @@ export default function InspectionForm() {
                       categoryOptions={lanyardsOpts.options}
                       onAddCategoryOption={lanyardsOpts.addOption}
                       inspectionId={id}
-                      onGalleryRefresh={() => setPhotoRefreshKey(prev => prev + 1)}
+                      onGalleryRefresh={handleGalleryRefresh}
                     />
                     <EquipmentTable
                       category="connectors"
@@ -3053,7 +3053,7 @@ export default function InspectionForm() {
                       categoryOptions={connectorsOpts.options}
                       onAddCategoryOption={connectorsOpts.addOption}
                       inspectionId={id}
-                      onGalleryRefresh={() => setPhotoRefreshKey(prev => prev + 1)}
+                      onGalleryRefresh={handleGalleryRefresh}
                     />
                     <EquipmentTable
                       category="rope"
@@ -3064,7 +3064,7 @@ export default function InspectionForm() {
                       categoryOptions={ropeOpts.options}
                       onAddCategoryOption={ropeOpts.addOption}
                       inspectionId={id}
-                      onGalleryRefresh={() => setPhotoRefreshKey(prev => prev + 1)}
+                      onGalleryRefresh={handleGalleryRefresh}
                     />
                     <EquipmentTable
                       category="belay"
@@ -3075,7 +3075,7 @@ export default function InspectionForm() {
                       categoryOptions={belayOpts.options}
                       onAddCategoryOption={belayOpts.addOption}
                       inspectionId={id}
-                      onGalleryRefresh={() => setPhotoRefreshKey(prev => prev + 1)}
+                      onGalleryRefresh={handleGalleryRefresh}
                     />
                     <EquipmentTable
                       category="trolleys"
@@ -3086,7 +3086,7 @@ export default function InspectionForm() {
                       categoryOptions={trolleysOpts.options}
                       onAddCategoryOption={trolleysOpts.addOption}
                       inspectionId={id}
-                      onGalleryRefresh={() => setPhotoRefreshKey(prev => prev + 1)}
+                      onGalleryRefresh={handleGalleryRefresh}
                     />
                     <EquipmentTable
                       category="other"
@@ -3097,7 +3097,7 @@ export default function InspectionForm() {
                       categoryOptions={otherOpts.options}
                       onAddCategoryOption={otherOpts.addOption}
                       inspectionId={id}
-                      onGalleryRefresh={() => setPhotoRefreshKey(prev => prev + 1)}
+                      onGalleryRefresh={handleGalleryRefresh}
                     />
                     
                     <div className="mt-8 border-t pt-6">
@@ -3106,7 +3106,7 @@ export default function InspectionForm() {
                         <PhotoCapture
                           inspectionId={id!}
                           section="equipment"
-                          onPhotoAdded={() => setPhotoRefreshKey(prev => prev + 1)}
+                          onPhotoAdded={handleGalleryRefresh}
                         />
                       )}
                       <div className="mt-4">
@@ -3131,7 +3131,7 @@ export default function InspectionForm() {
                     <PhotoCapture
                       inspectionId={id!}
                       section="standards"
-                      onPhotoAdded={() => setPhotoRefreshKey(prev => prev + 1)}
+                      onPhotoAdded={handleGalleryRefresh}
                     />
                   )}
                   <div className="mt-4">
@@ -3160,7 +3160,7 @@ export default function InspectionForm() {
                     <PhotoCapture
                       inspectionId={id!}
                       section="summary"
-                      onPhotoAdded={() => setPhotoRefreshKey(prev => prev + 1)}
+                      onPhotoAdded={handleGalleryRefresh}
                     />
                   )}
                   <div className="mt-4">
