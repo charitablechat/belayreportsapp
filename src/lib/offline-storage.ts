@@ -3174,6 +3174,7 @@ export async function saveInspectionOffline(
   inspection: Record<string, unknown> & { id?: string; child_count_hint?: number; dirty?: boolean },
   opts?: ReportSaveOptions
 ): Promise<SaveResult> {
+  if (opts?.explicitUserSave && inspection.id) clearTombstone('inspections', String(inspection.id));
   const result = await withIndexedDBSaveBoundary(
     async () => {
       const db = await getDB();
@@ -4912,6 +4913,7 @@ export async function saveDailyAssessmentOffline(
   assessment: Record<string, unknown> & { id?: string; child_count_hint?: number; dirty?: boolean },
   opts?: ReportSaveOptions
 ): Promise<SaveResult> {
+  if (opts?.explicitUserSave && assessment.id) clearTombstone('daily_assessments', String(assessment.id));
   const result = await withIndexedDBSaveBoundary(
     async () => {
       const db = await getDB();
@@ -5284,6 +5286,7 @@ export async function saveTrainingOffline(
   training: Record<string, unknown> & { id?: string; child_count_hint?: number; dirty?: boolean },
   opts?: ReportSaveOptions
 ): Promise<SaveResult> {
+  if (opts?.explicitUserSave && training.id) clearTombstone('trainings', String(training.id));
   const result = await withIndexedDBSaveBoundary(
     async () => {
       const db = await getDB();
