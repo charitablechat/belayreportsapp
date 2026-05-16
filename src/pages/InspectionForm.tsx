@@ -984,10 +984,14 @@ export default function InspectionForm() {
     };
   }, [failProvisionsSignature, loading, inspection?.id, isOwner]);
 
-  // Original manual regenerate handler wrapper (for button click)
-  const handleManualRegenerateSummary = () => {
-    handleRegenerateSummary(true);
-  };
+  // Original manual regenerate handler wrapper (for button click).
+  // Phase 2 perf: stable identity via ref so memoized SummarySection
+  // doesn't re-render every parent tick.
+  const handleRegenerateSummaryRef = useRef(handleRegenerateSummary);
+  handleRegenerateSummaryRef.current = handleRegenerateSummary;
+  const handleManualRegenerateSummary = useCallback(() => {
+    handleRegenerateSummaryRef.current?.(true);
+  }, []);
 
   const formatValidationError = (error: { path: string; message: string }) => {
     const pathParts = error.path.split('.');
