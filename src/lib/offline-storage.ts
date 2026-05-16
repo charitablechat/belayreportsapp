@@ -3370,14 +3370,14 @@ export async function getUnsyncedInspections(userId?: string, options?: WedgeLed
       // pure noise that drove the "295 IDB timeouts/cycle" hot loop. Keep
       // temp-ID orphans regardless of owner so cross-user recovery still works.
       // Audit H1: `isSessionQuarantined` is now a static import (file head).
-      const candidates = all.filter(isNotQuarantined).filter(record => {
+      const ownedCandidates = all.filter(isNotQuarantined).filter(record => {
         if (!userId) return true;
         if (record.inspector_id === userId) return true;
         if (record.id?.startsWith('temp-')) return true; // orphan recovery
         return false;
       })
-        .filter(record => !isSessionQuarantined(record.id)) // S41 (Fix E): drop session-quarantined ids from user-facing count
-        .filter(record => !isTombstoned('inspections', record.id)); // Sync Terminal DROP veto
+        .filter(record => !isSessionQuarantined(record.id)); // S41 (Fix E): drop session-quarantined ids from user-facing count
+      const candidates = filterTombstonedRows('inspections', ownedCandidates, 'getUnsyncedInspections/idb'); // Sync Terminal DROP veto
 
       const unsynced = candidates.filter(record => {
         // C3: dirty flag is the authoritative "has unshipped edits" signal.
@@ -5010,14 +5010,14 @@ export async function getUnsyncedDailyAssessments(userId?: string, options?: Wed
       void maybeReportUnsyncedScanOverflow(db, 'daily_assessments', all.length, 'getUnsyncedDailyAssessments');
       // S40 (Fix A): Ownership filter before drift check (see getUnsyncedInspections).
       // Audit H1: `isSessionQuarantined` is now a static import (file head).
-      const candidates = all.filter(isNotQuarantined).filter(record => {
+      const ownedCandidates = all.filter(isNotQuarantined).filter(record => {
         if (!userId) return true;
         if (record.inspector_id === userId) return true;
         if (record.id?.startsWith('temp-')) return true;
         return false;
       })
-        .filter(record => !isSessionQuarantined(record.id)) // S41 (Fix E): see getUnsyncedInspections
-        .filter(record => !isTombstoned('daily_assessments', record.id)); // Sync Terminal DROP veto
+        .filter(record => !isSessionQuarantined(record.id)); // S41 (Fix E): see getUnsyncedInspections
+      const candidates = filterTombstonedRows('daily_assessments', ownedCandidates, 'getUnsyncedDailyAssessments/idb'); // Sync Terminal DROP veto
 
       const unsynced = candidates.filter(record => {
         // C3: dirty flag = authoritative "has unshipped edits"; drift = secondary.
@@ -5447,14 +5447,14 @@ export async function getUnsyncedTrainings(userId?: string, options?: WedgeLedge
       void maybeReportUnsyncedScanOverflow(db, 'trainings', all.length, 'getUnsyncedTrainings');
       // S40 (Fix A): Ownership filter before drift check (see getUnsyncedInspections).
       // Audit H1: `isSessionQuarantined` is now a static import (file head).
-      const candidates = all.filter(isNotQuarantined).filter(record => {
+      const ownedCandidates = all.filter(isNotQuarantined).filter(record => {
         if (!userId) return true;
         if (record.inspector_id === userId) return true;
         if (record.id?.startsWith('temp-')) return true;
         return false;
       })
-        .filter(record => !isSessionQuarantined(record.id)) // S41 (Fix E): see getUnsyncedInspections
-        .filter(record => !isTombstoned('trainings', record.id)); // Sync Terminal DROP veto
+        .filter(record => !isSessionQuarantined(record.id)); // S41 (Fix E): see getUnsyncedInspections
+      const candidates = filterTombstonedRows('trainings', ownedCandidates, 'getUnsyncedTrainings/idb'); // Sync Terminal DROP veto
 
       const unsynced = candidates.filter(record => {
         // C3: dirty flag = authoritative "has unshipped edits"; drift = secondary.
