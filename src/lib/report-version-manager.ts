@@ -40,11 +40,24 @@ const MAX_VERSIONS_PER_REPORT = 100;
 // ─── M9: Versioning health tracker ───────────────────────────────────
 // Surfaces silent appendVersion failures so UI can warn the user before
 // they actually need recovery and find the version list empty.
+export interface VersioningHealthDiagnostic {
+  reportType?: ReportType;
+  reportIdSuffix?: string;
+  trigger?: VersionTrigger;
+  storeExists?: boolean;
+  missingIndexes?: string[];
+  childCounts?: Record<string, number>;
+  errorName?: string;
+  serializationFailed?: boolean;
+  step?: string;
+}
+
 export interface VersioningHealth {
   consecutiveFailures: number;
   lastFailureAt: number | null;
   lastError: string | null;
   lastSuccessAt: number | null;
+  lastDiagnostic?: VersioningHealthDiagnostic | null;
 }
 
 const versioningHealth: VersioningHealth = {
@@ -52,6 +65,7 @@ const versioningHealth: VersioningHealth = {
   lastFailureAt: null,
   lastError: null,
   lastSuccessAt: null,
+  lastDiagnostic: null,
 };
 
 type HealthListener = (h: VersioningHealth) => void;
@@ -79,6 +93,114 @@ export function subscribeVersioningHealth(fn: HealthListener): () => void {
 export function resetVersioningHealth(): void {
   versioningHealth.consecutiveFailures = 0;
   versioningHealth.lastError = null;
+  versioningHealth.lastDiagnostic = null;
+  emitHealth();
+}
+
+// ─── Structured-clone-safe sanitizer ────────────────────────────────
+// IndexedDB uses the structured clone algorithm. The following throw on clone:
+//   • functions, symbols, bigints
+//   • DOM Nodes, Window, Event, Promise instances
+//   • Proxies wrapping non-cloneable targets
+//   • objects with circular references (handled by IDB but blow up
+//     downstream consumers, so we drop the back-edge)
+// Class instances with prototypes other than Object/Array survive cloning
+// but lose their prototype; we coerce them to plain objects defensively.
+const HTML_FIELD_MAX_BYTES = 50_000;
+
+function isStructuredCloneable(v: unknown): boolean {
+  try {
+    // structuredClone is available in all browsers we support (Safari 15.4+).
+    if (typeof structuredClone === 'function') {
+      structuredClone(v);
+      return true;
+    }
+  } catch {
+    return false;
+  }
+  return true;
+}
+
+function toCloneSafe<T = unknown>(input: T, seen: WeakSet<object> = new WeakSet()): T {
+  if (input === null || input === undefined) return input;
+  const t = typeof input;
+  if (t === 'string' || t === 'number' || t === 'boolean') return input;
+  if (t === 'function' || t === 'symbol' || t === 'bigint') return undefined as unknown as T;
+  if (t !== 'object') return undefined as unknown as T;
+
+  const o = input as unknown as object;
+  // Dates and primitives-in-wrappers: serialize.
+  if (o instanceof Date) return (o as Date).toISOString() as unknown as T;
+  // DOM/Browser objects: drop.
+  if (typeof Node !== 'undefined' && o instanceof Node) return undefined as unknown as T;
+  if (typeof Blob !== 'undefined' && o instanceof Blob) return undefined as unknown as T;
+  if (typeof File !== 'undefined' && o instanceof File) return undefined as unknown as T;
+  if (typeof Event !== 'undefined' && o instanceof Event) return undefined as unknown as T;
+  if (typeof Promise !== 'undefined' && o instanceof Promise) return undefined as unknown as T;
+
+  if (seen.has(o)) return undefined as unknown as T; // circular back-edge
+  seen.add(o);
+
+  if (Array.isArray(o)) {
+    return o.map((item) => toCloneSafe(item, seen)) as unknown as T;
+  }
+
+  const out: Record<string, unknown> = {};
+  for (const key of Object.keys(o as Record<string, unknown>)) {
+    // Drop oversized HTML-ish fields to keep version rows small.
+    const val = (o as Record<string, unknown>)[key];
+    if (
+      typeof val === 'string' &&
+      val.length > HTML_FIELD_MAX_BYTES &&
+      (key.endsWith('_html') || key === 'html' || key.includes('report_html'))
+    ) {
+      out[key] = `[stripped: ${val.length} bytes]`;
+      continue;
+    }
+    const sv = toCloneSafe(val, seen);
+    if (sv !== undefined) out[key] = sv;
+  }
+  return out as unknown as T;
+}
+
+function getMissingIndexes(db: any): string[] {
+  if (!db.objectStoreNames.contains('report_versions')) return ['<store-missing>'];
+  try {
+    const tx = db.transaction('report_versions', 'readonly');
+    const store = tx.objectStore('report_versions');
+    const required = ['by-report', 'by-timestamp', 'by-report-version'];
+    const missing = required.filter((n) => !store.indexNames.contains(n));
+    try { tx.abort(); } catch { /* ignore */ }
+    return missing;
+  } catch {
+    return ['<introspection-failed>'];
+  }
+}
+
+function recordVersioningFailure(
+  err: unknown,
+  diag: VersioningHealthDiagnostic,
+): void {
+  const e = err as Error | undefined;
+  const message = e?.message ?? String(err);
+  const name = e?.name ?? 'Error';
+  versioningHealth.consecutiveFailures += 1;
+  versioningHealth.lastFailureAt = Date.now();
+  versioningHealth.lastError = `${name}: ${message}`;
+  versioningHealth.lastDiagnostic = { ...diag, errorName: name };
+  // Log structured context (no private report content).
+  console.warn('[Version Manager] appendVersion failed', {
+    step: diag.step,
+    reportType: diag.reportType,
+    reportIdSuffix: diag.reportIdSuffix,
+    trigger: diag.trigger,
+    storeExists: diag.storeExists,
+    missingIndexes: diag.missingIndexes,
+    childCounts: diag.childCounts,
+    serializationFailed: diag.serializationFailed,
+    errorName: name,
+    errorMessage: message,
+  });
   emitHealth();
 }
 
@@ -141,31 +263,95 @@ export async function appendVersion(
   childrenData: Record<string, any[]>,
   trigger: VersionTrigger
 ): Promise<ReportVersion | null> {
+  const reportIdSuffix = reportId ? reportId.slice(-8) : '<no-id>';
+  const childCounts: Record<string, number> = {};
+  for (const [k, v] of Object.entries(childrenData ?? {})) {
+    childCounts[k] = Array.isArray(v) ? v.length : 0;
+  }
+  const baseDiag: VersioningHealthDiagnostic = {
+    reportType,
+    reportIdSuffix,
+    trigger,
+    childCounts,
+  };
+
+  let step = 'open-db';
+  let db: any;
   try {
     const { getDB } = await import('./offline-storage');
-    const db = await getDB();
-    
-    if (!db.objectStoreNames.contains('report_versions')) {
-      if (import.meta.env.DEV) {
-        console.log('[Version Manager] report_versions store not available (pre-v8)');
-      }
+    db = await getDB();
+
+    step = 'check-store';
+    const storeExists = db.objectStoreNames.contains('report_versions');
+    if (!storeExists) {
+      recordVersioningFailure(
+        new Error('report_versions object store missing'),
+        { ...baseDiag, step, storeExists: false, missingIndexes: ['<store-missing>'] },
+      );
       return null;
     }
 
-    // Strip large HTML fields from snapshots to save storage space
-    const strippedParentData = { ...parentData };
-    delete strippedParentData.latest_report_html;
+    step = 'check-indexes';
+    const missingIndexes = getMissingIndexes(db);
+    if (missingIndexes.length > 0) {
+      recordVersioningFailure(
+        new Error(`report_versions missing indexes: ${missingIndexes.join(',')}`),
+        { ...baseDiag, step, storeExists: true, missingIndexes },
+      );
+      return null;
+    }
 
-    // Atomic numbering: assign versionNumber and write inside a single readwrite
-    // transaction. IDB serializes readwrite txs across tabs on the same store,
-    // so two tabs cannot both observe the same max and produce duplicate "vN".
-    const writeTx = db.transaction('report_versions', 'readwrite');
-    const writeStore = writeTx.objectStore('report_versions');
-    const existingVersions = await writeStore.index('by-report').getAll(reportId);
-    const maxVersion = (existingVersions as unknown as ReportVersion[]).reduce(
-      (max, v) => Math.max(max, v.versionNumber || 0),
-      0
-    );
+    // Strip large HTML fields, then deeply sanitize for structured-clone safety.
+    step = 'sanitize-payload';
+    const strippedParentData = { ...parentData };
+    delete (strippedParentData as Record<string, unknown>).latest_report_html;
+
+    let safeParent: Record<string, unknown>;
+    let safeChildren: Record<string, unknown[]>;
+    try {
+      safeParent = toCloneSafe(strippedParentData) as Record<string, unknown>;
+      safeChildren = toCloneSafe(childrenData) as Record<string, unknown[]>;
+    } catch (sanErr) {
+      recordVersioningFailure(sanErr, {
+        ...baseDiag,
+        step,
+        storeExists: true,
+        missingIndexes: [],
+        serializationFailed: true,
+      });
+      return null;
+    }
+
+    // Fast lookup of max versionNumber via by-report-version index cursor.
+    // Avoids the O(n) full-history getAll on every save.
+    step = 'lookup-max-version';
+    const anyDb = db as unknown as {
+      transaction: (s: string, m: IDBTransactionMode) => {
+        objectStore: (n: string) => any;
+        done: Promise<void>;
+      };
+    };
+    const readTx = anyDb.transaction('report_versions', 'readonly');
+    const readStore = readTx.objectStore('report_versions');
+    const readIdx = readStore.index('by-report-version');
+    const range = IDBKeyRange.bound([reportId, 0], [reportId, Number.MAX_SAFE_INTEGER]);
+    let maxVersion = 0;
+    try {
+      const cursor = await readIdx.openCursor(range, 'prev');
+      if (cursor && cursor.value && typeof cursor.value.versionNumber === 'number') {
+        maxVersion = cursor.value.versionNumber;
+      }
+    } catch (cursorErr) {
+      // Fall back to getAll if cursor path fails (e.g., very old IDB impl).
+      try {
+        const all = (await readStore.index('by-report').getAll(reportId)) as ReportVersion[];
+        maxVersion = all.reduce((m, v) => Math.max(m, v.versionNumber || 0), 0);
+      } catch (allErr) {
+        throw cursorErr instanceof Error ? cursorErr : allErr;
+      }
+    }
+    await readTx.done;
+
     const nextVersion = maxVersion + 1;
 
     const version: ReportVersion = {
@@ -175,42 +361,55 @@ export async function appendVersion(
       versionNumber: nextVersion,
       timestamp: Date.now(),
       device: isMobile() ? 'mobile' : 'desktop',
-      parentData: strippedParentData,
-      childrenData,
+      parentData: safeParent,
+      childrenData: safeChildren as Record<string, any[]>,
       trigger,
       fieldCount: calculateFieldCount(parentData, childrenData),
     };
 
+    // Final clone-safety probe — surfaces a precise error before IDB does.
+    step = 'clone-probe';
+    if (!isStructuredCloneable(version)) {
+      recordVersioningFailure(new Error('payload failed structuredClone probe'), {
+        ...baseDiag,
+        step,
+        storeExists: true,
+        missingIndexes: [],
+        serializationFailed: true,
+      });
+      return null;
+    }
+
+    step = 'write';
+    const writeTx = anyDb.transaction('report_versions', 'readwrite');
+    const writeStore = writeTx.objectStore('report_versions');
     await writeStore.put(version);
     await writeTx.done;
 
     if (import.meta.env.DEV) {
       console.log(
-        `[Version Manager] v${version.versionNumber} saved | ${reportType} | ${reportId.substring(0, 8)}… | trigger=${trigger} | fields=${version.fieldCount}`
+        `[Version Manager] v${version.versionNumber} saved | ${reportType} | ${reportIdSuffix} | trigger=${trigger} | fields=${version.fieldCount}`
       );
     }
 
-    // Async prune — never blocks
     pruneVersions(reportId).catch(() => {});
 
-    // M9: Record success — clear any prior failure streak.
-    if (versioningHealth.consecutiveFailures > 0 || versioningHealth.lastSuccessAt === null) {
-      versioningHealth.consecutiveFailures = 0;
-      versioningHealth.lastError = null;
-      versioningHealth.lastSuccessAt = Date.now();
-      emitHealth();
-    } else {
-      versioningHealth.lastSuccessAt = Date.now();
-    }
+    // Success — reset failure streak and clear diagnostic.
+    versioningHealth.consecutiveFailures = 0;
+    versioningHealth.lastError = null;
+    versioningHealth.lastDiagnostic = null;
+    versioningHealth.lastSuccessAt = Date.now();
+    emitHealth();
 
     return version;
   } catch (error) {
-    console.warn('[Version Manager] Failed to append version:', error);
-    // M9: Track consecutive failures so the UI can warn the user.
-    versioningHealth.consecutiveFailures += 1;
-    versioningHealth.lastFailureAt = Date.now();
-    versioningHealth.lastError = error instanceof Error ? error.message : String(error);
-    emitHealth();
+    const missingIndexes = db ? getMissingIndexes(db) : ['<db-unavailable>'];
+    recordVersioningFailure(error, {
+      ...baseDiag,
+      step,
+      storeExists: db ? db.objectStoreNames.contains('report_versions') : false,
+      missingIndexes,
+    });
     return null;
   }
 }
