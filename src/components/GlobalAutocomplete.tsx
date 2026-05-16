@@ -18,6 +18,7 @@ import {
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { supabase } from "@/integrations/supabase/client";
 import { focusNextCell } from "@/lib/table-focus-utils";
+import { keepOpenIfAnchor } from "@/lib/popover-anchor-guard";
 import {
   getAutocompleteHistory,
   putAutocompleteEntry,
@@ -142,6 +143,7 @@ export function GlobalAutocomplete({
   const hasFetchedFromDb = useRef(false);
   const lastSavedValue = useRef<string | null>(null);
   const triggerInputRef = useRef<HTMLInputElement>(null);
+  const anchorRef = useRef<HTMLDivElement>(null);
 
   // Load from IndexedDB on mount, then optionally sync with server
   useEffect(() => {
@@ -545,7 +547,7 @@ export function GlobalAutocomplete({
   return (
     <Popover open={open} onOpenChange={handleOpenChange}>
       <PopoverAnchor asChild>
-        <div className="relative w-full">
+        <div ref={anchorRef} className="relative w-full">
           <Input
             ref={triggerInputRef}
             role="combobox"
@@ -602,6 +604,9 @@ export function GlobalAutocomplete({
           // the search term silently overwrites the field value.
           e.preventDefault();
         }}
+        onPointerDownOutside={keepOpenIfAnchor(anchorRef)}
+        onInteractOutside={keepOpenIfAnchor(anchorRef)}
+        onFocusOutside={keepOpenIfAnchor(anchorRef)}
       >
         <Command shouldFilter={false}>
           <CommandInput

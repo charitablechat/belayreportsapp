@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from "react";
 import { Check, X } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { keepOpenIfAnchor } from "@/lib/popover-anchor-guard";
 import { Input } from "@/components/ui/input";
 import {
   Command,
@@ -48,6 +49,7 @@ export default function HistoryAutocomplete({
   const hasFetchedFromDb = useRef(false);
   const lastSavedValue = useRef<string | null>(null);
   const triggerInputRef = useRef<HTMLInputElement>(null);
+  const anchorRef = useRef<HTMLDivElement>(null);
 
   // Load history from localStorage on mount
   useEffect(() => {
@@ -346,7 +348,7 @@ export default function HistoryAutocomplete({
   return (
     <Popover open={open} onOpenChange={handleOpenChange}>
       <PopoverTrigger asChild>
-        <div className="relative w-full">
+        <div ref={anchorRef} className="relative w-full">
           <Input
             ref={triggerInputRef}
             role="combobox"
@@ -390,6 +392,9 @@ export default function HistoryAutocomplete({
         className="w-[calc(100vw-2rem)] sm:w-[300px] max-w-[300px] p-0"
         align="start"
         onOpenAutoFocus={(e) => e.preventDefault()}
+        onPointerDownOutside={keepOpenIfAnchor(anchorRef)}
+        onInteractOutside={keepOpenIfAnchor(anchorRef)}
+        onFocusOutside={keepOpenIfAnchor(anchorRef)}
       >
         <Command shouldFilter={true}>
           <CommandInput

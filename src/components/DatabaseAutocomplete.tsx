@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from "react";
 import { Check, Pencil, Trash2, X, Plus, Loader2 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { keepOpenIfAnchor } from "@/lib/popover-anchor-guard";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
@@ -238,6 +239,7 @@ export function DatabaseAutocomplete({
 
   const [isEditing, setIsEditing] = useState(false);
   const triggerInputRef = useRef<HTMLInputElement>(null);
+  const anchorRef = useRef<HTMLDivElement>(null);
 
   const handleOpenChange = (isOpen: boolean) => {
     if (!isOpen) {
@@ -318,7 +320,7 @@ export function DatabaseAutocomplete({
     <>
       <Popover open={open} onOpenChange={handleOpenChange}>
         <PopoverTrigger asChild>
-          <div className="relative w-full">
+          <div ref={anchorRef} className="relative w-full">
             <Input
               ref={triggerInputRef}
               role="combobox"
@@ -376,6 +378,9 @@ export function DatabaseAutocomplete({
           className="w-[--radix-popover-trigger-width] p-0"
           align="start"
           onOpenAutoFocus={(e) => e.preventDefault()}
+          onPointerDownOutside={keepOpenIfAnchor(anchorRef)}
+          onInteractOutside={keepOpenIfAnchor(anchorRef)}
+          onFocusOutside={keepOpenIfAnchor(anchorRef)}
         >
           <Command shouldFilter={false}>
             <CommandInput

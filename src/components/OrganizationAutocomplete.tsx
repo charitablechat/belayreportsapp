@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Check, Pencil, Trash2, Plus, X, Loader2 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { keepOpenIfAnchor } from "@/lib/popover-anchor-guard";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -242,7 +243,7 @@ export const OrganizationAutocomplete = ({
 
   const [isEditing, setIsEditing] = useState(false);
   const triggerInputRef = useRef<HTMLInputElement>(null);
-
+  const anchorRef = useRef<HTMLDivElement>(null);
   const handleOpenChange = (isOpen: boolean) => {
     if (!isOpen) {
       if (isEditing && search.trim()) {
@@ -321,7 +322,7 @@ export const OrganizationAutocomplete = ({
     <>
       <Popover open={open} onOpenChange={handleOpenChange}>
         <PopoverAnchor asChild>
-          <div className="relative w-full">
+          <div ref={anchorRef} className="relative w-full">
             <Input
               ref={triggerInputRef}
               role="combobox"
@@ -378,6 +379,9 @@ export const OrganizationAutocomplete = ({
           className="w-[--radix-popover-trigger-width] p-0"
           align="start"
           onOpenAutoFocus={(e) => e.preventDefault()}
+          onPointerDownOutside={keepOpenIfAnchor(anchorRef)}
+          onInteractOutside={keepOpenIfAnchor(anchorRef)}
+          onFocusOutside={keepOpenIfAnchor(anchorRef)}
         >
           <Command shouldFilter={false}>
             <CommandInput 
