@@ -49,7 +49,12 @@ export type DbRow = { [key: string]: any } & {
   status?: string;
 };
 
-type ReportSaveOptions = {
+// Canonical IDB identity — exported so diagnostics & utilities don't drift
+// from the actual openDB() call below. Kept in sync with public/db-config.js
+// (the Service Worker reads from there).
+export const IDB_DB_NAME = 'rope-works-inspections';
+export const IDB_DB_VERSION = 20;
+
   childCountHint?: number;
   /** True only for normal form/new-report saves created by an explicit user edit. */
   explicitUserSave?: boolean;
