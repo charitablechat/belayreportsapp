@@ -179,3 +179,5 @@ function StandardsTable({ standards, onUpdate, onImmediateSave }: StandardsTable
     </Card>
   );
 }
+
+export default memo(StandardsTable);
