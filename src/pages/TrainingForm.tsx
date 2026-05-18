@@ -7,7 +7,8 @@ import {
   AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { isLocalDataNewer } from "@/lib/local-data-guards";
-import { applyTrackedFieldWrite, mergeRecordFields, TRACKED_FIELDS } from "@/lib/field-merge";
+import { applyTrackedFieldWrite, mergeRecordFields, mergeChildArray, TRACKED_FIELDS, TRAINING_SUMMARY_FIELDS } from "@/lib/field-merge";
+import { isFieldActivelyEdited, recordActiveEditSkip } from "@/lib/active-edit-guard";
 import { checkRequiredHeaderFields, formatMissingFieldLabels } from "@/lib/header-required-fields";
 import { useParams, useNavigate } from "react-router-dom";
 import { goBack } from "@/lib/navigation";
@@ -688,13 +689,18 @@ export default function TrainingForm() {
       const remoteMs = new Date(remoteUpdated).getTime();
       const localMs = localUpdated ? new Date(localUpdated).getTime() : 0;
       if (remoteMs - localMs <= 5000) return;
-      if (hasUnsavedRef.current) {
-        if (import.meta.env.DEV) console.log('[TrainingForm] Skipping remote refresh — unsaved local changes');
+      // Active-edit guard: also skip if a debounced save is pending — the
+      // unsaved-ref alone misses the gap between the keystroke that bumps
+      // the ref and the eventual flush.
+      const guard = isFieldActivelyEdited({
+        hasUnsavedRef,
+        debounceTimerRef: autoSaveTimer,
+        focusContainerSelector: '[data-form-section="training-summary"]',
+      });
+      if (guard.active) {
+        recordActiveEditSkip({ form: 'training', table: 'trainings', rowId: id ?? null, reason: guard.reason!, source: 'realtime' });
         return;
       }
-      // Defence-in-depth: suppress refreshes for ~15 s after our own
-      // atomic-sync writes (S6 self-write registry). See InspectionForm
-      // for full rationale.
       if (id && isRecentSelfWrite(id)) {
         if (import.meta.env.DEV) console.log('[TrainingForm] Skipping remote refresh — recent self-write');
         return;
@@ -703,7 +709,15 @@ export default function TrainingForm() {
       loadTraining();
     },
     onResumeOrDegraded: () => {
-      if (hasUnsavedRef.current) return;
+      const guard = isFieldActivelyEdited({
+        hasUnsavedRef,
+        debounceTimerRef: autoSaveTimer,
+        focusContainerSelector: '[data-form-section="training-summary"]',
+      });
+      if (guard.active) {
+        recordActiveEditSkip({ form: 'training', table: 'trainings', rowId: id ?? null, reason: guard.reason!, source: 'visibility' });
+        return;
+      }
       if (id && isRecentSelfWrite(id)) return;
       loadTraining();
     },
