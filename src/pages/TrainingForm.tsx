@@ -473,12 +473,13 @@ export default function TrainingForm() {
       try {
         // Race-fix: flush any pending debounced save into IDB before reading,
         // so the offline read includes the user's most recent edits.
-        if (autoSaveTimer.current || hasUnsavedRef.current) {
+        if (saveDebounceTimerRef.current || hasUnsavedRef.current) {
           try {
-            if (autoSaveTimer.current) {
-              clearTimeout(autoSaveTimer.current);
-              autoSaveTimer.current = null;
+            if (saveDebounceTimerRef.current) {
+              clearTimeout(saveDebounceTimerRef.current);
+              saveDebounceTimerRef.current = null;
             }
+            logTrainingSummaryAutosave('pre-load-flush-start', { pendingFields: Object.keys(pendingSummaryFieldsRef.current), hasUnsaved: hasUnsavedRef.current });
             await saveTrainingRef.current?.();
           } catch (e) {
             console.warn('[TrainingForm] Pre-load flush failed (continuing):', e);
@@ -620,7 +621,7 @@ export default function TrainingForm() {
             // for the singleton summary row we keep local entirely on focus).
             const childGuard = isFieldActivelyEdited({
               hasUnsavedRef,
-              debounceTimerRef: autoSaveTimer,
+              debounceTimerRef: saveDebounceTimerRef,
               focusContainerSelector: '[data-form-section="training-summary"]',
             });
 
