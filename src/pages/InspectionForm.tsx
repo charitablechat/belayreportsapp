@@ -14,6 +14,7 @@ import { useNavigate, useParams } from "react-router-dom";
 import { goBack } from "@/lib/navigation";
 import { isLocalDataNewer } from "@/lib/local-data-guards";
 import { applyTrackedFieldWrite, mergeRecordFields, TRACKED_FIELDS } from "@/lib/field-merge";
+import { isFieldActivelyEdited, recordActiveEditSkip } from "@/lib/active-edit-guard";
 import { checkRequiredHeaderFields, formatMissingFieldLabels } from "@/lib/header-required-fields";
 import { hasTextContent } from "@/lib/html-content-cleaner";
 import { supabase } from "@/integrations/supabase/client";
@@ -654,16 +655,14 @@ export default function InspectionForm() {
       const remoteMs = new Date(remoteUpdated).getTime();
       const localMs = localUpdated ? new Date(localUpdated).getTime() : 0;
       if (remoteMs - localMs <= 5000) return; // already in sync (within tolerance)
-      if (hasUnsavedRef.current) {
-        if (import.meta.env.DEV) console.log('[InspectionForm] Skipping remote refresh — unsaved local changes');
+      const guard = isFieldActivelyEdited({
+        hasUnsavedRef,
+        debounceTimerRef: saveDebounceTimerRef,
+      });
+      if (guard.active) {
+        recordActiveEditSkip({ form: 'inspection', table: 'inspections', rowId: id ?? null, reason: guard.reason!, source: 'realtime' });
         return;
       }
-      // Defence-in-depth: even with no `hasUnsavedRef`, suppress refreshes
-      // for ~15 s after our own atomic-sync writes this record (S6 self-write
-      // registry). The form's debounced save can flush IDB + Supabase a few
-      // seconds before the user's React state stabilises; without this guard
-      // the round-trip Realtime UPDATE from our own write can still bounce a
-      // stale server payload back into `setInspection`.
       if (id && isRecentSelfWrite(id)) {
         if (import.meta.env.DEV) console.log('[InspectionForm] Skipping remote refresh — recent self-write');
         return;
@@ -672,8 +671,14 @@ export default function InspectionForm() {
       loadInspection();
     },
     onResumeOrDegraded: () => {
-      // Same hasUnsaved + self-write guards — never clobber in-flight edits.
-      if (hasUnsavedRef.current) return;
+      const guard = isFieldActivelyEdited({
+        hasUnsavedRef,
+        debounceTimerRef: saveDebounceTimerRef,
+      });
+      if (guard.active) {
+        recordActiveEditSkip({ form: 'inspection', table: 'inspections', rowId: id ?? null, reason: guard.reason!, source: 'visibility' });
+        return;
+      }
       if (id && isRecentSelfWrite(id)) return;
       loadInspection();
     },
