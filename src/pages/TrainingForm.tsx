@@ -750,7 +750,7 @@ export default function TrainingForm() {
       // the ref and the eventual flush.
       const guard = isFieldActivelyEdited({
         hasUnsavedRef,
-        debounceTimerRef: autoSaveTimer,
+        debounceTimerRef: saveDebounceTimerRef,
         focusContainerSelector: '[data-form-section="training-summary"]',
       });
       if (guard.active) {
@@ -767,7 +767,7 @@ export default function TrainingForm() {
     onResumeOrDegraded: () => {
       const guard = isFieldActivelyEdited({
         hasUnsavedRef,
-        debounceTimerRef: autoSaveTimer,
+        debounceTimerRef: saveDebounceTimerRef,
         focusContainerSelector: '[data-form-section="training-summary"]',
       });
       if (guard.active) {
