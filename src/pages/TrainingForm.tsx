@@ -915,9 +915,10 @@ export default function TrainingForm() {
 
     try {
       const latestSummary = summaryRef.current ?? summary;
+      const latestTraining = trainingRef.current ?? training;
       const payload = {
         id: id!,
-        training,
+        training: latestTraining,
         deliveryApproaches,
         operatingSystems,
         immediateAttention,
@@ -1028,7 +1029,7 @@ export default function TrainingForm() {
         saveInProgressRef.current = false;
       }
     }
-  }, [training, id, deliveryApproaches, operatingSystems, immediateAttention, verifiableItems, systemsInPlace, summary, isOnline]);
+      }, [training, id, deliveryApproaches, operatingSystems, immediateAttention, verifiableItems, systemsInPlace, summary, isOnline]);
 
   // Keep saveTrainingRef pointing to the latest saveTraining on every render
   saveTrainingRef.current = saveTraining;
