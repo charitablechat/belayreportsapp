@@ -1443,7 +1443,28 @@ export default function TrainingForm() {
   };
 
   const updateSummaryField = (field: string, value: unknown) => {
-    setSummary({ ...summary, [field]: value });
+    // Mirror unsaved flag synchronously so refetch/realtime handlers see the
+    // in-flight edit during the auto-save debounce window.
+    hasUnsavedRef.current = true;
+    if (!hasUnsavedChanges) setHasUnsavedChanges(true);
+    setSummary(prev => {
+      if (!prev) return prev;
+      const nowIso = new Date().toISOString();
+      const isTracked = (TRAINING_SUMMARY_FIELDS as readonly string[]).includes(field);
+      return {
+        ...prev,
+        [field]: value,
+        updated_at: nowIso,
+        ...(isTracked
+          ? {
+              field_timestamps: {
+                ...((prev as { field_timestamps?: Record<string, string> | null }).field_timestamps ?? {}),
+                [field]: nowIso,
+              },
+            }
+          : {}),
+      } as DbRow;
+    });
   };
 
   if (isLoading) {
