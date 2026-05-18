@@ -1502,7 +1502,10 @@ export default function TrainingForm() {
       if (!prev) return prev;
       const nowIso = new Date().toISOString();
       const isTracked = (TRAINING_SUMMARY_FIELDS as readonly string[]).includes(field);
-      return {
+      if (isTracked) {
+        pendingSummaryFieldsRef.current[field] = nowIso;
+      }
+      const next = {
         ...prev,
         [field]: value,
         updated_at: nowIso,
@@ -1515,6 +1518,10 @@ export default function TrainingForm() {
             }
           : {}),
       } as DbRow;
+      summaryRef.current = next;
+      summaryLocalSnapshotRef.current = next;
+      logTrainingSummaryAutosave('summary-field-changed', { field, pendingFields: Object.keys(pendingSummaryFieldsRef.current), updatedAt: nowIso });
+      return next;
     });
   };
 
