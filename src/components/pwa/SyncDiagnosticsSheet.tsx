@@ -29,6 +29,12 @@ import {
   countEmergencyBackups,
   rehydrateEmergencyBackupsToIdb,
 } from '@/lib/emergency-backup-rehydrator';
+import {
+  getActiveEditSkipEvents,
+  subscribeActiveEditSkips,
+  clearActiveEditSkipEvents,
+  type ActiveEditSkipEvent,
+} from '@/lib/active-edit-guard';
 import { retryDeadLetterSoftDelete } from '@/lib/queued-soft-delete-processor';
 import {
   resetRegressionSkipCount,
@@ -445,6 +451,9 @@ export const SyncDiagnosticsSheet = () => {
           <Section title="Data Safety">
             <Row label="Child-row deletions blocked (24 h)" value={String(diag.tripwireBlocks24h)} />
           </Section>
+
+          <ActiveEditGuardPanel />
+
 
           {deadLetterPhotos.length > 0 && (
             <div>
