@@ -514,9 +514,17 @@ export default function TrainingForm() {
           setImmediateAttention(immediate_attention || []);
           setVerifiableItems(verifiable_items || []);
           setSystemsInPlace(systems_in_place || []);
-          setSummary(summaryData || { 
-            id: crypto.randomUUID(),
-            training_id: id 
+          setSummary(prev => {
+            const incoming = summaryData || { id: crypto.randomUUID(), training_id: id };
+            const local = summaryRef.current ?? prev;
+            const dirtyFields = pendingSummaryFieldsRef.current;
+            const dirtyNames = Object.keys(dirtyFields);
+            if (!local || dirtyNames.length === 0) return incoming;
+            const unresolved = dirtyNames.filter(field => summaryFieldTimestampMs(incoming, field) < new Date(dirtyFields[field]).getTime());
+            if (unresolved.length === 0) return incoming;
+            recordActiveEditSkip({ form: 'training', table: 'summary', rowId: incoming.id ?? null, field: unresolved.join(','), reason: 'dirty', source: 'load' });
+            logTrainingSummaryAutosave('offline-summary-local-won', { source: 'load', fields: unresolved, pendingFields: dirtyNames, incomingUpdatedAt: incoming.updated_at ?? null });
+            return mergeRecordFields(local as DbRow & { field_timestamps?: Record<string, string> | null }, incoming as DbRow & { field_timestamps?: Record<string, string> | null }, [...TRAINING_SUMMARY_FIELDS]);
           });
         } else if (!id.startsWith('temp-')) {
           const backup = getReportSnapshot('training', id);
