@@ -41,6 +41,22 @@ export const TRACKED_FIELDS: Record<'inspection' | 'training' | 'daily_assessmen
   ],
 };
 
+/**
+ * Per-field tracked list for the Training Summary singleton child row.
+ * Used by TrainingForm's reconcile branch to merge the summary row
+ * field-by-field instead of wholesale-replacing it (which clobbers
+ * in-progress observations/recommendations text during auto-save).
+ *
+ * Kept separate from `TRACKED_FIELDS.training` because those live on the
+ * parent `trainings` row; these live on the child `training_summary` row.
+ */
+export const TRAINING_SUMMARY_FIELDS = [
+  'observations',
+  'recommendations',
+  'person_submitting',
+  'submission_date',
+] as const;
+
 /** Fields that must never be overwritten once a signature exists on either side. */
 const ATTESTATION_FIELDS = [
   'attestation_signed_at',
