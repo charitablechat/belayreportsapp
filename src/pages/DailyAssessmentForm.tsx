@@ -3,6 +3,7 @@ import { formatReportFilename, formatReportTitle } from "@/lib/report-naming";
 import { useReportTabHistory } from "@/hooks/useReportTabHistory";
 import { isLocalDataNewer } from "@/lib/local-data-guards";
 import { applyTrackedFieldWrite, mergeRecordFields, TRACKED_FIELDS } from "@/lib/field-merge";
+import { isFieldActivelyEdited, recordActiveEditSkip } from "@/lib/active-edit-guard";
 import { checkRequiredHeaderFields, formatMissingFieldLabels } from "@/lib/header-required-fields";
 import { getMissingAssessmentFields, formatMissingDescription, type MissingField } from "@/lib/required-fields";
 import { useParams, useNavigate } from "react-router-dom";
@@ -478,13 +479,14 @@ export default function DailyAssessmentForm() {
       const remoteMs = new Date(remoteUpdated).getTime();
       const localMs = localUpdated ? new Date(localUpdated).getTime() : 0;
       if (remoteMs - localMs <= 5000) return;
-      if (hasUnsavedRef.current) {
-        if (import.meta.env.DEV) console.log('[DailyAssessmentForm] Skipping remote refresh — unsaved local changes');
+      const guard = isFieldActivelyEdited({
+        hasUnsavedRef,
+        debounceTimerRef: autoSaveTimerRef,
+      });
+      if (guard.active) {
+        recordActiveEditSkip({ form: 'daily_assessment', table: 'daily_assessments', rowId: id ?? null, reason: guard.reason!, source: 'realtime' });
         return;
       }
-      // Defence-in-depth: suppress refreshes for ~15 s after our own
-      // atomic-sync writes (S6 self-write registry). See InspectionForm
-      // for full rationale.
       if (id && isRecentSelfWrite(id)) {
         if (import.meta.env.DEV) console.log('[DailyAssessmentForm] Skipping remote refresh — recent self-write');
         return;
@@ -493,7 +495,14 @@ export default function DailyAssessmentForm() {
       loadAssessment();
     },
     onResumeOrDegraded: () => {
-      if (hasUnsavedRef.current) return;
+      const guard = isFieldActivelyEdited({
+        hasUnsavedRef,
+        debounceTimerRef: autoSaveTimerRef,
+      });
+      if (guard.active) {
+        recordActiveEditSkip({ form: 'daily_assessment', table: 'daily_assessments', rowId: id ?? null, reason: guard.reason!, source: 'visibility' });
+        return;
+      }
       if (id && isRecentSelfWrite(id)) return;
       loadAssessment();
     },
