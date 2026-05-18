@@ -161,6 +161,7 @@ export default function TrainingForm() {
     message: ''
   });
   const [training, setTraining] = useState<DbRow | null>(null);
+  const trainingRef = useRef<DbRow | null>(null);
   const { isInvoiced, toggling: invoiceToggling, toggleInvoiced } = useInvoicedStatus({
     reportId: id,
     reportType: 'training',
@@ -254,8 +255,9 @@ export default function TrainingForm() {
   const tabOrder = ["info", "delivery", "systems", "attention", "verifiable", "summary", "photos"];
 
   useEffect(() => {
+    trainingRef.current = training;
     summaryRef.current = summary;
-  }, [summary]);
+  }, [training, summary]);
   
   // Hardware back button → navigate tabs on mobile
   const { handleTabChange } = useReportTabHistory(
