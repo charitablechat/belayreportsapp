@@ -227,6 +227,9 @@ export default function TrainingForm() {
   const isInternalUpdateRef = useRef(false);
   const summaryAutoPopulatedRef = useRef(false);
   const hasUnsavedRef = useRef(false);
+  const summaryRef = useRef<DbRow | null>(null);
+  const pendingSummaryFieldsRef = useRef<Record<string, string>>({});
+  const summaryLocalSnapshotRef = useRef<DbRow | null>(null);
 
   // Track which child data types loaded successfully (not from timeout fallback)
   const childDataLoadedRef = useRef<Record<string, boolean>>({
@@ -248,6 +251,10 @@ export default function TrainingForm() {
   // Tab navigation state
   const [currentTab, setCurrentTab] = useState("info");
   const tabOrder = ["info", "delivery", "systems", "attention", "verifiable", "summary", "photos"];
+
+  useEffect(() => {
+    summaryRef.current = summary;
+  }, [summary]);
   
   // Hardware back button → navigate tabs on mobile
   const { handleTabChange } = useReportTabHistory(
