@@ -19,7 +19,7 @@ import React from "react";
 
 const TrainingSummarySection = React.memo(function TrainingSummarySection({ summary, onUpdate, onImmediateSave }: TrainingSummarySectionProps) {
   return (
-    <Card>
+    <Card data-form-section="training-summary">
       <CardHeader>
         <CardTitle>Training Summary</CardTitle>
       </CardHeader>
@@ -59,6 +59,7 @@ const TrainingSummarySection = React.memo(function TrainingSummarySection({ summ
             id="person_submitting"
             value={summary?.person_submitting || ''}
             onChange={(value) => onUpdate('person_submitting', value)}
+            onBlur={onImmediateSave}
             placeholder="Enter name"
           />
         </div>
