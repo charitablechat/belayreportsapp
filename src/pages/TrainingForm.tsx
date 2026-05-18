@@ -605,15 +605,17 @@ export default function TrainingForm() {
               focusContainerSelector: '[data-form-section="training-summary"]',
             });
 
-            const applyChild = <T extends { id: string; display_order?: number | null }>(
+            const applyChild = (
               table: string,
-              localRows: T[],
-              serverRows: T[] | null | undefined,
-              setter: (rows: T[]) => void,
-              persist: (rows: T[]) => Promise<void>,
+              localRows: DbRow[],
+              serverRows: DbRow[] | null | undefined,
+              setter: (rows: DbRow[]) => void,
+              persist: (rows: DbRow[]) => Promise<void>,
             ) => {
               if (serverRows && serverRows.length > 0) {
-                const merged = mergeChildArray(localRows, serverRows, { table });
+                const local = localRows.filter(r => typeof r.id === 'string') as (DbRow & { id: string; display_order?: number | null })[];
+                const server = serverRows.filter(r => typeof r.id === 'string') as (DbRow & { id: string; display_order?: number | null })[];
+                const merged = mergeChildArray(local, server, { table }) as unknown as DbRow[];
                 setter(merged);
                 persist(serverRows).catch(e =>
                   console.warn(`[TrainingForm] Non-critical: failed to cache ${table}`, e));
@@ -628,11 +630,11 @@ export default function TrainingForm() {
               }
             };
 
-            applyChild('delivery_approaches', deliveryApproaches, approachData as DbRow[] | null, setDeliveryApproaches as (r: DbRow[]) => void, (r) => saveTrainingDataOffline('delivery_approaches', id, r));
-            applyChild('operating_systems', operatingSystems, systemData as DbRow[] | null, setOperatingSystems as (r: DbRow[]) => void, (r) => saveTrainingDataOffline('operating_systems', id, r));
-            applyChild('immediate_attention', immediateAttention, attentionData as DbRow[] | null, setImmediateAttention as (r: DbRow[]) => void, (r) => saveTrainingDataOffline('immediate_attention', id, r));
-            applyChild('verifiable_items', verifiableItems, verifiableData as DbRow[] | null, setVerifiableItems as (r: DbRow[]) => void, (r) => saveTrainingDataOffline('verifiable_items', id, r));
-            applyChild('systems_in_place', systemsInPlace, systemsPlaceData as DbRow[] | null, setSystemsInPlace as (r: DbRow[]) => void, (r) => saveTrainingDataOffline('systems_in_place', id, r));
+            applyChild('delivery_approaches', deliveryApproaches, approachData, setDeliveryApproaches, (r) => saveTrainingDataOffline('delivery_approaches', id, r));
+            applyChild('operating_systems', operatingSystems, systemData, setOperatingSystems, (r) => saveTrainingDataOffline('operating_systems', id, r));
+            applyChild('immediate_attention', immediateAttention, attentionData, setImmediateAttention, (r) => saveTrainingDataOffline('immediate_attention', id, r));
+            applyChild('verifiable_items', verifiableItems, verifiableData, setVerifiableItems, (r) => saveTrainingDataOffline('verifiable_items', id, r));
+            applyChild('systems_in_place', systemsInPlace, systemsPlaceData, setSystemsInPlace, (r) => saveTrainingDataOffline('systems_in_place', id, r));
 
             // Summary singleton: per-field merge (or skip on active edit).
             if (summaryResult) {
