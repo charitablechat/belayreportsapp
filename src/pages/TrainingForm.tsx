@@ -1026,9 +1026,6 @@ export default function TrainingForm() {
 
   // Auto-save/sync retry is now handled by useAutoSync hook
 
-  // Debounce timer for 3-second auto-save after field changes
-  const saveDebounceTimerRef = useRef<NodeJS.Timeout | null>(null);
-
   // Debounced auto-save on data changes (3-second debounce) - immediate persistence
   useEffect(() => {
     if (isLoading || !training || !isOwner) return;
