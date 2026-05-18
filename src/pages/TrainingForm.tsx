@@ -655,26 +655,43 @@ export default function TrainingForm() {
             applyChild('verifiable_items', verifiableItems, verifiableData, setVerifiableItems, (r) => saveTrainingDataOffline('verifiable_items', id, r));
             applyChild('systems_in_place', systemsInPlace, systemsPlaceData, setSystemsInPlace, (r) => saveTrainingDataOffline('systems_in_place', id, r));
 
-            // Summary singleton: per-field merge (or skip on active edit).
+            // Summary singleton: dirty-field merge. Local Summary edits stay
+            // authoritative until the same/newer field timestamp is observed
+            // from the incoming row; focus/debounce windows are not enough for
+            // app-return after 1–2 minutes.
             if (summaryResult) {
-              if (childGuard.active) {
-                recordActiveEditSkip({ form: 'training', table: 'summary', rowId: (summaryResult as DbRow).id ?? null, reason: childGuard.reason!, source: 'load' });
-                // Persist incoming silently so IDB stays warm, but do not
-                // touch React state mid-edit.
-                saveTrainingDataOffline('summary', id, summaryResult).catch(e =>
-                  console.warn('[TrainingForm] Non-critical: failed to cache summary', e));
-              } else {
-                setSummary(prev => {
-                  if (!prev) return summaryResult as DbRow;
-                  return mergeRecordFields(
-                    prev as DbRow & { field_timestamps?: Record<string, string> | null },
-                    summaryResult as DbRow & { field_timestamps?: Record<string, string> | null },
-                    [...TRAINING_SUMMARY_FIELDS],
-                  );
+              const dirtyFields = pendingSummaryFieldsRef.current;
+              const dirtyNames = Object.keys(dirtyFields);
+              setSummary(prev => {
+                if (!prev) return summaryResult as DbRow;
+                let next = mergeRecordFields(
+                  prev as DbRow & { field_timestamps?: Record<string, string> | null },
+                  summaryResult as DbRow & { field_timestamps?: Record<string, string> | null },
+                  [...TRAINING_SUMMARY_FIELDS],
+                ) as DbRow;
+                const unresolved = dirtyNames.filter(field => {
+                  const dirtyMs = new Date(dirtyFields[field]).getTime();
+                  const incomingMs = summaryFieldTimestampMs(summaryResult as DbRow, field);
+                  return !Number.isFinite(dirtyMs) || incomingMs < dirtyMs;
                 });
-                saveTrainingDataOffline('summary', id, summaryResult).catch(e =>
-                  console.warn('[TrainingForm] Non-critical: failed to cache summary', e));
-              }
+                if (unresolved.length > 0) {
+                  next = { ...next, ...Object.fromEntries(unresolved.map(field => [field, prev[field]])) } as DbRow;
+                  next.field_timestamps = { ...((next.field_timestamps as Record<string, string> | null) ?? {}), ...Object.fromEntries(unresolved.map(field => [field, dirtyFields[field]])) };
+                  next.updated_at = prev.updated_at || next.updated_at;
+                  recordActiveEditSkip({ form: 'training', table: 'summary', rowId: (summaryResult as DbRow).id ?? null, field: unresolved.join(','), reason: childGuard.reason ?? 'dirty', source: 'load' });
+                  logTrainingSummaryAutosave('incoming-summary-merged-local-won', { source: 'load', fields: unresolved, pendingFields: dirtyNames, incomingUpdatedAt: summaryResult.updated_at ?? null });
+                } else if (dirtyNames.length > 0) {
+                  pendingSummaryFieldsRef.current = {};
+                  summaryLocalSnapshotRef.current = null;
+                  logTrainingSummaryAutosave('incoming-summary-confirmed', { source: 'load', fields: dirtyNames, incomingUpdatedAt: summaryResult.updated_at ?? null });
+                } else {
+                  logTrainingSummaryAutosave('incoming-summary-applied', { source: 'load', incomingUpdatedAt: summaryResult.updated_at ?? null });
+                }
+                summaryRef.current = next;
+                return next;
+              });
+              saveTrainingDataOffline('summary', id, summaryResult).catch(e =>
+                console.warn('[TrainingForm] Non-critical: failed to cache summary', e));
             } else if (!summaryData) {
               setSummary({ id: crypto.randomUUID(), training_id: id });
             }
