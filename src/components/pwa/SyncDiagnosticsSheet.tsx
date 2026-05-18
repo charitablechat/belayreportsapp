@@ -1260,3 +1260,68 @@ const PhotoFailureRow = ({ entry, busy, onRetry, onDismiss }: PhotoFailureRowPro
     </div>
   );
 };
+
+/**
+ * Read-only, in-memory diagnostics panel for the Active-Edit Guard.
+ * Renders the last N skip events recorded by `recordActiveEditSkip`.
+ *
+ * Contract:
+ *  - Metadata-only (form / table / row id / field NAME / reason / source).
+ *  - Never displays or stores report field VALUES.
+ *  - Not persisted — buffer lives in module memory and clears on reload.
+ */
+const ActiveEditGuardPanel = () => {
+  const [events, setEvents] = useState<readonly ActiveEditSkipEvent[]>(() => getActiveEditSkipEvents());
+  useEffect(() => {
+    const unsub = subscribeActiveEditSkips(() => setEvents(getActiveEditSkipEvents()));
+    return unsub;
+  }, []);
+  if (events.length === 0) {
+    return (
+      <div>
+        <h3 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-2">
+          Active-Edit Guard
+        </h3>
+        <p className="text-xs text-muted-foreground">
+          No stale snapshots have been blocked during this session.
+        </p>
+      </div>
+    );
+  }
+  return (
+    <div>
+      <div className="flex items-center justify-between mb-2">
+        <h3 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+          Active-Edit Guard ({events.length})
+        </h3>
+        <Button
+          size="sm"
+          variant="ghost"
+          className="h-6 px-2 text-xs"
+          onClick={() => clearActiveEditSkipEvents()}
+        >
+          Clear
+        </Button>
+      </div>
+      <p className="text-xs text-muted-foreground mb-2">
+        Stale server/realtime snapshots skipped while a local edit was in
+        progress. Metadata only — no report content is shown or stored.
+      </p>
+      <div className="rounded-md border border-border divide-y divide-border max-h-60 overflow-y-auto text-xs font-mono">
+        {events.slice().reverse().map((ev, idx) => (
+          <div key={`${ev.at}-${idx}`} className="p-2 flex flex-col gap-0.5">
+            <div className="flex items-center justify-between">
+              <span className="font-semibold">{ev.form} · {ev.table}</span>
+              <span className="text-muted-foreground">{format(ev.at, 'HH:mm:ss')}</span>
+            </div>
+            <div className="text-muted-foreground">
+              source={ev.source} reason={ev.reason}
+              {ev.field ? ` field=${ev.field}` : ''}
+              {ev.rowId ? ` row=${ev.rowId.slice(0, 8)}…` : ''}
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+};
