@@ -71,6 +71,18 @@ function errorMessage(error: unknown, fallback: string): string {
   }
   return fallback;
 }
+
+function summaryFieldTimestampMs(row: DbRow | null | undefined, field: string): number {
+  const explicit = (row?.field_timestamps as Record<string, string> | null | undefined)?.[field];
+  const raw = explicit || (typeof row?.updated_at === 'string' ? row.updated_at : null);
+  const ms = raw ? new Date(raw).getTime() : 0;
+  return Number.isFinite(ms) ? ms : 0;
+}
+
+function logTrainingSummaryAutosave(event: string, meta: Record<string, unknown> = {}) {
+  if (typeof console === 'undefined') return;
+  console.info('[TrainingSummaryAutosave]', { event, at: new Date().toISOString(), ...meta });
+}
 import { HtmlReportViewer } from "@/components/HtmlReportViewer";
 import { AttestationDialog } from "@/components/AttestationDialog";
 import { useUserProfile } from "@/hooks/useUserProfile";
@@ -149,6 +161,7 @@ export default function TrainingForm() {
     message: ''
   });
   const [training, setTraining] = useState<DbRow | null>(null);
+  const trainingRef = useRef<DbRow | null>(null);
   const { isInvoiced, toggling: invoiceToggling, toggleInvoiced } = useInvoicedStatus({
     reportId: id,
     reportType: 'training',
@@ -212,9 +225,13 @@ export default function TrainingForm() {
   }, [isCompletionLocked]);
 
   const autoSaveTimer = useRef<NodeJS.Timeout | null>(null);
+  const saveDebounceTimerRef = useRef<NodeJS.Timeout | null>(null);
   const isInternalUpdateRef = useRef(false);
   const summaryAutoPopulatedRef = useRef(false);
   const hasUnsavedRef = useRef(false);
+  const summaryRef = useRef<DbRow | null>(null);
+  const pendingSummaryFieldsRef = useRef<Record<string, string>>({});
+  const summaryLocalSnapshotRef = useRef<DbRow | null>(null);
 
   // Track which child data types loaded successfully (not from timeout fallback)
   const childDataLoadedRef = useRef<Record<string, boolean>>({
@@ -236,6 +253,11 @@ export default function TrainingForm() {
   // Tab navigation state
   const [currentTab, setCurrentTab] = useState("info");
   const tabOrder = ["info", "delivery", "systems", "attention", "verifiable", "summary", "photos"];
+
+  useEffect(() => {
+    trainingRef.current = training;
+    summaryRef.current = summary;
+  }, [training, summary]);
   
   // Hardware back button → navigate tabs on mobile
   const { handleTabChange } = useReportTabHistory(
@@ -269,9 +291,9 @@ export default function TrainingForm() {
   const saveTrainingRef = useRef<() => Promise<void>>();
   const saveBeforeLeaveRef = useRef<(() => Promise<void>) | null>(null);
   const handleSaveAndLeave = useCallback(async () => {
-    if (autoSaveTimer.current) {
-      clearTimeout(autoSaveTimer.current);
-      autoSaveTimer.current = null;
+    if (saveDebounceTimerRef.current) {
+      clearTimeout(saveDebounceTimerRef.current);
+      saveDebounceTimerRef.current = null;
     }
     try {
       await saveTrainingRef.current?.();
@@ -288,9 +310,9 @@ export default function TrainingForm() {
   // Flushes pending debounce timer and performs save now so values persist
   // before navigation. Identity is stable to keep React.memo children happy.
   const triggerImmediateSave = useCallback(() => {
-    if (autoSaveTimer.current) {
-      clearTimeout(autoSaveTimer.current);
-      autoSaveTimer.current = null;
+    if (saveDebounceTimerRef.current) {
+      clearTimeout(saveDebounceTimerRef.current);
+      saveDebounceTimerRef.current = null;
     }
     return saveTrainingRef.current?.() ?? Promise.resolve();
   }, []);
@@ -304,15 +326,17 @@ export default function TrainingForm() {
   });
 
   // Emergency save on page hide/refresh (Vector 1: zero-data-loss)
-  // Note: uses autoSaveTimer (declared above) since saveDebounceTimerRef is declared later
   useEmergencySave({
     hasUnsavedChanges,
     saving: isSaving,
-    saveDebounceTimerRef: autoSaveTimer,
+    saveDebounceTimerRef,
     performSaveRef: saveTrainingRef as React.MutableRefObject<((silent?: boolean) => Promise<void>) | undefined>,
     formName: 'TrainingForm',
     onEmergencySnapshot: () => {
-      if (training && id) {
+      const latestTraining = trainingRef.current;
+      const latestSummary = summaryRef.current;
+      if (latestTraining && id) {
+        logTrainingSummaryAutosave('visibility-hidden-snapshot', { pendingFields: Object.keys(pendingSummaryFieldsRef.current), hasSummary: !!latestSummary, summaryUpdatedAt: latestSummary?.updated_at ?? null });
         // Include photo metadata (IDs, captions) but NOT blobs
         import('@/lib/offline-storage').then(({ getOfflinePhotos }) => {
           getOfflinePhotos(id).then(photos => {
@@ -323,23 +347,23 @@ export default function TrainingForm() {
               display_order: p.display_order,
               uploaded: Boolean(p.uploaded),
             }));
-            saveReportSnapshot('training', id, training, {
+            saveReportSnapshot('training', id, latestTraining, {
               delivery_approaches: deliveryApproaches,
               operating_systems: operatingSystems,
               immediate_attention: immediateAttention,
               verifiable_items: verifiableItems,
               systems_in_place: systemsInPlace,
-              summary: summary ? [summary] : [],
-            }, !!training.synced_at, photoMeta);
+              summary: latestSummary ? [latestSummary] : [],
+            }, !!latestTraining.synced_at, photoMeta);
           }).catch(() => {
-            saveReportSnapshot('training', id, training, {
+            saveReportSnapshot('training', id, latestTraining, {
               delivery_approaches: deliveryApproaches,
               operating_systems: operatingSystems,
               immediate_attention: immediateAttention,
               verifiable_items: verifiableItems,
               systems_in_place: systemsInPlace,
-              summary: summary ? [summary] : [],
-            }, !!training.synced_at);
+              summary: latestSummary ? [latestSummary] : [],
+            }, !!latestTraining.synced_at);
           });
         });
       }
@@ -454,12 +478,13 @@ export default function TrainingForm() {
       try {
         // Race-fix: flush any pending debounced save into IDB before reading,
         // so the offline read includes the user's most recent edits.
-        if (autoSaveTimer.current || hasUnsavedRef.current) {
+        if (saveDebounceTimerRef.current || hasUnsavedRef.current) {
           try {
-            if (autoSaveTimer.current) {
-              clearTimeout(autoSaveTimer.current);
-              autoSaveTimer.current = null;
+            if (saveDebounceTimerRef.current) {
+              clearTimeout(saveDebounceTimerRef.current);
+              saveDebounceTimerRef.current = null;
             }
+            logTrainingSummaryAutosave('pre-load-flush-start', { pendingFields: Object.keys(pendingSummaryFieldsRef.current), hasUnsaved: hasUnsavedRef.current });
             await saveTrainingRef.current?.();
           } catch (e) {
             console.warn('[TrainingForm] Pre-load flush failed (continuing):', e);
@@ -492,9 +517,17 @@ export default function TrainingForm() {
           setImmediateAttention(immediate_attention || []);
           setVerifiableItems(verifiable_items || []);
           setSystemsInPlace(systems_in_place || []);
-          setSummary(summaryData || { 
-            id: crypto.randomUUID(),
-            training_id: id 
+          setSummary(prev => {
+            const incoming = summaryData || { id: crypto.randomUUID(), training_id: id };
+            const local = summaryRef.current ?? prev;
+            const dirtyFields = pendingSummaryFieldsRef.current;
+            const dirtyNames = Object.keys(dirtyFields);
+            if (!local || dirtyNames.length === 0) return incoming;
+            const unresolved = dirtyNames.filter(field => summaryFieldTimestampMs(incoming, field) < new Date(dirtyFields[field]).getTime());
+            if (unresolved.length === 0) return incoming;
+            recordActiveEditSkip({ form: 'training', table: 'summary', rowId: incoming.id ?? null, field: unresolved.join(','), reason: 'dirty', source: 'load' });
+            logTrainingSummaryAutosave('offline-summary-local-won', { source: 'load', fields: unresolved, pendingFields: dirtyNames, incomingUpdatedAt: incoming.updated_at ?? null });
+            return mergeRecordFields(local as DbRow & { field_timestamps?: Record<string, string> | null }, incoming as DbRow & { field_timestamps?: Record<string, string> | null }, [...TRAINING_SUMMARY_FIELDS]);
           });
         } else if (!id.startsWith('temp-')) {
           const backup = getReportSnapshot('training', id);
@@ -601,7 +634,7 @@ export default function TrainingForm() {
             // for the singleton summary row we keep local entirely on focus).
             const childGuard = isFieldActivelyEdited({
               hasUnsavedRef,
-              debounceTimerRef: autoSaveTimer,
+              debounceTimerRef: saveDebounceTimerRef,
               focusContainerSelector: '[data-form-section="training-summary"]',
             });
 
@@ -636,26 +669,43 @@ export default function TrainingForm() {
             applyChild('verifiable_items', verifiableItems, verifiableData, setVerifiableItems, (r) => saveTrainingDataOffline('verifiable_items', id, r));
             applyChild('systems_in_place', systemsInPlace, systemsPlaceData, setSystemsInPlace, (r) => saveTrainingDataOffline('systems_in_place', id, r));
 
-            // Summary singleton: per-field merge (or skip on active edit).
+            // Summary singleton: dirty-field merge. Local Summary edits stay
+            // authoritative until the same/newer field timestamp is observed
+            // from the incoming row; focus/debounce windows are not enough for
+            // app-return after 1–2 minutes.
             if (summaryResult) {
-              if (childGuard.active) {
-                recordActiveEditSkip({ form: 'training', table: 'summary', rowId: (summaryResult as DbRow).id ?? null, reason: childGuard.reason!, source: 'load' });
-                // Persist incoming silently so IDB stays warm, but do not
-                // touch React state mid-edit.
-                saveTrainingDataOffline('summary', id, summaryResult).catch(e =>
-                  console.warn('[TrainingForm] Non-critical: failed to cache summary', e));
-              } else {
-                setSummary(prev => {
-                  if (!prev) return summaryResult as DbRow;
-                  return mergeRecordFields(
-                    prev as DbRow & { field_timestamps?: Record<string, string> | null },
-                    summaryResult as DbRow & { field_timestamps?: Record<string, string> | null },
-                    [...TRAINING_SUMMARY_FIELDS],
-                  );
+              const dirtyFields = pendingSummaryFieldsRef.current;
+              const dirtyNames = Object.keys(dirtyFields);
+              setSummary(prev => {
+                if (!prev) return summaryResult as DbRow;
+                let next = mergeRecordFields(
+                  prev as DbRow & { field_timestamps?: Record<string, string> | null },
+                  summaryResult as DbRow & { field_timestamps?: Record<string, string> | null },
+                  [...TRAINING_SUMMARY_FIELDS],
+                ) as DbRow;
+                const unresolved = dirtyNames.filter(field => {
+                  const dirtyMs = new Date(dirtyFields[field]).getTime();
+                  const incomingMs = summaryFieldTimestampMs(summaryResult as DbRow, field);
+                  return !Number.isFinite(dirtyMs) || incomingMs < dirtyMs;
                 });
-                saveTrainingDataOffline('summary', id, summaryResult).catch(e =>
-                  console.warn('[TrainingForm] Non-critical: failed to cache summary', e));
-              }
+                if (unresolved.length > 0) {
+                  next = { ...next, ...Object.fromEntries(unresolved.map(field => [field, prev[field]])) } as DbRow;
+                  next.field_timestamps = { ...((next.field_timestamps as Record<string, string> | null) ?? {}), ...Object.fromEntries(unresolved.map(field => [field, dirtyFields[field]])) };
+                  next.updated_at = prev.updated_at || next.updated_at;
+                  recordActiveEditSkip({ form: 'training', table: 'summary', rowId: (summaryResult as DbRow).id ?? null, field: unresolved.join(','), reason: childGuard.reason ?? 'dirty', source: 'load' });
+                  logTrainingSummaryAutosave('incoming-summary-merged-local-won', { source: 'load', fields: unresolved, pendingFields: dirtyNames, incomingUpdatedAt: summaryResult.updated_at ?? null });
+                } else if (dirtyNames.length > 0) {
+                  pendingSummaryFieldsRef.current = {};
+                  summaryLocalSnapshotRef.current = null;
+                  logTrainingSummaryAutosave('incoming-summary-confirmed', { source: 'load', fields: dirtyNames, incomingUpdatedAt: summaryResult.updated_at ?? null });
+                } else {
+                  logTrainingSummaryAutosave('incoming-summary-applied', { source: 'load', incomingUpdatedAt: summaryResult.updated_at ?? null });
+                }
+                summaryRef.current = next;
+                return next;
+              });
+              saveTrainingDataOffline('summary', id, summaryResult).catch(e =>
+                console.warn('[TrainingForm] Non-critical: failed to cache summary', e));
             } else if (!summaryData) {
               setSummary({ id: crypto.randomUUID(), training_id: id });
             }
@@ -711,7 +761,7 @@ export default function TrainingForm() {
       // the ref and the eventual flush.
       const guard = isFieldActivelyEdited({
         hasUnsavedRef,
-        debounceTimerRef: autoSaveTimer,
+        debounceTimerRef: saveDebounceTimerRef,
         focusContainerSelector: '[data-form-section="training-summary"]',
       });
       if (guard.active) {
@@ -728,7 +778,7 @@ export default function TrainingForm() {
     onResumeOrDegraded: () => {
       const guard = isFieldActivelyEdited({
         hasUnsavedRef,
-        debounceTimerRef: autoSaveTimer,
+        debounceTimerRef: saveDebounceTimerRef,
         focusContainerSelector: '[data-form-section="training-summary"]',
       });
       if (guard.active) {
@@ -875,16 +925,19 @@ export default function TrainingForm() {
     }, 8000);
 
     try {
+      const latestSummary = summaryRef.current ?? summary;
+      const latestTraining = trainingRef.current ?? training;
       const payload = {
         id: id!,
-        training,
+        training: latestTraining,
         deliveryApproaches,
         operatingSystems,
         immediateAttention,
         verifiableItems,
         systemsInPlace,
-        summary,
+        summary: latestSummary,
       };
+      logTrainingSummaryAutosave('save-start', { silent, pendingFields: Object.keys(pendingSummaryFieldsRef.current), hasSummary: !!latestSummary, summaryUpdatedAt: latestSummary?.updated_at ?? null });
 
       // Phase 1 — IDB + snapshot + version history (always runs)
       const persisted = await persistTrainingToOffline(payload, {
@@ -928,6 +981,9 @@ export default function TrainingForm() {
       if (localSaveSucceeded && currentUser?.id && training?.inspector_id && currentUser.id !== training.inspector_id) {
         capturePreEditSnapshot('training', id!, training.inspector_id, currentUser.id);
       }
+      if (localSaveSucceeded) {
+        logTrainingSummaryAutosave('local-save-committed', { pendingFields: Object.keys(pendingSummaryFieldsRef.current), summaryUpdatedAt: latestSummary?.updated_at ?? null });
+      }
 
       // Phase 2 — push to Supabase (online + local save succeeded)
       if (isOnline && localSaveSucceeded) {
@@ -936,6 +992,7 @@ export default function TrainingForm() {
           // Mark local as synced only after server confirmation
           await saveTrainingOffline({ ...updatedTraining, synced_at: syncTimestamp });
           markSnapshotSynced('training', id!);
+          logTrainingSummaryAutosave('remote-save-committed', { pendingFields: Object.keys(pendingSummaryFieldsRef.current), syncTimestamp });
           if (import.meta.env.DEV) console.log('[Training Save] Synced to database (verified)');
         } catch (error) {
           if (import.meta.env.DEV) console.log('[Training Save] Failed to sync, queuing operation:', error);
@@ -983,15 +1040,12 @@ export default function TrainingForm() {
         saveInProgressRef.current = false;
       }
     }
-  }, [training, id, deliveryApproaches, operatingSystems, immediateAttention, verifiableItems, systemsInPlace, summary, isOnline]);
+      }, [training, id, deliveryApproaches, operatingSystems, immediateAttention, verifiableItems, systemsInPlace, summary, isOnline]);
 
   // Keep saveTrainingRef pointing to the latest saveTraining on every render
   saveTrainingRef.current = saveTraining;
 
   // Auto-save/sync retry is now handled by useAutoSync hook
-
-  // Debounce timer for 3-second auto-save after field changes
-  const saveDebounceTimerRef = useRef<NodeJS.Timeout | null>(null);
 
   // Debounced auto-save on data changes (3-second debounce) - immediate persistence
   useEffect(() => {
@@ -1451,7 +1505,10 @@ export default function TrainingForm() {
       if (!prev) return prev;
       const nowIso = new Date().toISOString();
       const isTracked = (TRAINING_SUMMARY_FIELDS as readonly string[]).includes(field);
-      return {
+      if (isTracked) {
+        pendingSummaryFieldsRef.current[field] = nowIso;
+      }
+      const next = {
         ...prev,
         [field]: value,
         updated_at: nowIso,
@@ -1464,6 +1521,10 @@ export default function TrainingForm() {
             }
           : {}),
       } as DbRow;
+      summaryRef.current = next;
+      summaryLocalSnapshotRef.current = next;
+      logTrainingSummaryAutosave('summary-field-changed', { field, pendingFields: Object.keys(pendingSummaryFieldsRef.current), updatedAt: nowIso });
+      return next;
     });
   };
 
