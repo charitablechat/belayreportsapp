@@ -333,7 +333,10 @@ export default function TrainingForm() {
     performSaveRef: saveTrainingRef as React.MutableRefObject<((silent?: boolean) => Promise<void>) | undefined>,
     formName: 'TrainingForm',
     onEmergencySnapshot: () => {
-      if (training && id) {
+      const latestTraining = trainingRef.current;
+      const latestSummary = summaryRef.current;
+      if (latestTraining && id) {
+        logTrainingSummaryAutosave('visibility-hidden-snapshot', { pendingFields: Object.keys(pendingSummaryFieldsRef.current), hasSummary: !!latestSummary, summaryUpdatedAt: latestSummary?.updated_at ?? null });
         // Include photo metadata (IDs, captions) but NOT blobs
         import('@/lib/offline-storage').then(({ getOfflinePhotos }) => {
           getOfflinePhotos(id).then(photos => {
@@ -344,23 +347,23 @@ export default function TrainingForm() {
               display_order: p.display_order,
               uploaded: Boolean(p.uploaded),
             }));
-            saveReportSnapshot('training', id, training, {
+            saveReportSnapshot('training', id, latestTraining, {
               delivery_approaches: deliveryApproaches,
               operating_systems: operatingSystems,
               immediate_attention: immediateAttention,
               verifiable_items: verifiableItems,
               systems_in_place: systemsInPlace,
-              summary: summary ? [summary] : [],
-            }, !!training.synced_at, photoMeta);
+              summary: latestSummary ? [latestSummary] : [],
+            }, !!latestTraining.synced_at, photoMeta);
           }).catch(() => {
-            saveReportSnapshot('training', id, training, {
+            saveReportSnapshot('training', id, latestTraining, {
               delivery_approaches: deliveryApproaches,
               operating_systems: operatingSystems,
               immediate_attention: immediateAttention,
               verifiable_items: verifiableItems,
               systems_in_place: systemsInPlace,
-              summary: summary ? [summary] : [],
-            }, !!training.synced_at);
+              summary: latestSummary ? [latestSummary] : [],
+            }, !!latestTraining.synced_at);
           });
         });
       }
