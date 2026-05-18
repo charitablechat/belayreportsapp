@@ -595,50 +595,65 @@ export default function TrainingForm() {
             childDataLoadedRef.current.verifiable_items = true;
             childDataLoadedRef.current.systems_in_place = true;
             childDataLoadedRef.current.summary = true;
-            if (approachData && approachData.length > 0) {
-              setDeliveryApproaches(approachData);
-              saveTrainingDataOffline('delivery_approaches', id, approachData).catch(e =>
-                console.warn('[TrainingForm] Non-critical: failed to cache delivery_approaches', e));
-            } else if (delivery_approaches.length > 0) {
-              console.warn('[TrainingForm] Server returned empty delivery_approaches but local has data -- preserving local');
-              setDeliveryApproaches(delivery_approaches);
-            }
-            if (systemData && systemData.length > 0) {
-              setOperatingSystems(systemData);
-              saveTrainingDataOffline('operating_systems', id, systemData).catch(e =>
-                console.warn('[TrainingForm] Non-critical: failed to cache operating_systems', e));
-            } else if (operating_systems.length > 0) {
-              console.warn('[TrainingForm] Server returned empty operating_systems but local has data -- preserving local');
-              setOperatingSystems(operating_systems);
-            }
-            if (attentionData && attentionData.length > 0) {
-              setImmediateAttention(attentionData);
-              saveTrainingDataOffline('immediate_attention', id, attentionData).catch(e =>
-                console.warn('[TrainingForm] Non-critical: failed to cache immediate_attention', e));
-            } else if (immediate_attention.length > 0) {
-              console.warn('[TrainingForm] Server returned empty immediate_attention but local has data -- preserving local');
-              setImmediateAttention(immediate_attention);
-            }
-            if (verifiableData && verifiableData.length > 0) {
-              setVerifiableItems(verifiableData);
-              saveTrainingDataOffline('verifiable_items', id, verifiableData).catch(e =>
-                console.warn('[TrainingForm] Non-critical: failed to cache verifiable_items', e));
-            } else if (verifiable_items.length > 0) {
-              console.warn('[TrainingForm] Server returned empty verifiable_items but local has data -- preserving local');
-              setVerifiableItems(verifiable_items);
-            }
-            if (systemsPlaceData && systemsPlaceData.length > 0) {
-              setSystemsInPlace(systemsPlaceData);
-              saveTrainingDataOffline('systems_in_place', id, systemsPlaceData).catch(e =>
-                console.warn('[TrainingForm] Non-critical: failed to cache systems_in_place', e));
-            } else if (systems_in_place.length > 0) {
-              console.warn('[TrainingForm] Server returned empty systems_in_place but local has data -- preserving local');
-              setSystemsInPlace(systems_in_place);
-            }
+
+            // Active-edit guard: if user is mid-edit, prefer per-row merge
+            // (mergeChildArray already preserves local-only + temp-* rows;
+            // for the singleton summary row we keep local entirely on focus).
+            const childGuard = isFieldActivelyEdited({
+              hasUnsavedRef,
+              debounceTimerRef: autoSaveTimer,
+              focusContainerSelector: '[data-form-section="training-summary"]',
+            });
+
+            const applyChild = <T extends { id: string; display_order?: number | null }>(
+              table: string,
+              localRows: T[],
+              serverRows: T[] | null | undefined,
+              setter: (rows: T[]) => void,
+              persist: (rows: T[]) => Promise<void>,
+            ) => {
+              if (serverRows && serverRows.length > 0) {
+                const merged = mergeChildArray(localRows, serverRows, { table });
+                setter(merged);
+                persist(serverRows).catch(e =>
+                  console.warn(`[TrainingForm] Non-critical: failed to cache ${table}`, e));
+                if (merged.length !== serverRows.length) {
+                  recordActiveEditSkip({ form: 'training', table, reason: childGuard.reason ?? 'dirty', source: 'load' });
+                }
+              } else if (localRows.length > 0) {
+                console.warn(`[TrainingForm] Server returned empty ${table} but local has data -- preserving local`);
+                if (childGuard.active) {
+                  recordActiveEditSkip({ form: 'training', table, reason: childGuard.reason!, source: 'load' });
+                }
+              }
+            };
+
+            applyChild('delivery_approaches', deliveryApproaches, approachData as DbRow[] | null, setDeliveryApproaches as (r: DbRow[]) => void, (r) => saveTrainingDataOffline('delivery_approaches', id, r));
+            applyChild('operating_systems', operatingSystems, systemData as DbRow[] | null, setOperatingSystems as (r: DbRow[]) => void, (r) => saveTrainingDataOffline('operating_systems', id, r));
+            applyChild('immediate_attention', immediateAttention, attentionData as DbRow[] | null, setImmediateAttention as (r: DbRow[]) => void, (r) => saveTrainingDataOffline('immediate_attention', id, r));
+            applyChild('verifiable_items', verifiableItems, verifiableData as DbRow[] | null, setVerifiableItems as (r: DbRow[]) => void, (r) => saveTrainingDataOffline('verifiable_items', id, r));
+            applyChild('systems_in_place', systemsInPlace, systemsPlaceData as DbRow[] | null, setSystemsInPlace as (r: DbRow[]) => void, (r) => saveTrainingDataOffline('systems_in_place', id, r));
+
+            // Summary singleton: per-field merge (or skip on active edit).
             if (summaryResult) {
-              setSummary(summaryResult);
-              saveTrainingDataOffline('summary', id, summaryResult).catch(e =>
-                console.warn('[TrainingForm] Non-critical: failed to cache summary', e));
+              if (childGuard.active) {
+                recordActiveEditSkip({ form: 'training', table: 'summary', rowId: (summaryResult as DbRow).id ?? null, reason: childGuard.reason!, source: 'load' });
+                // Persist incoming silently so IDB stays warm, but do not
+                // touch React state mid-edit.
+                saveTrainingDataOffline('summary', id, summaryResult).catch(e =>
+                  console.warn('[TrainingForm] Non-critical: failed to cache summary', e));
+              } else {
+                setSummary(prev => {
+                  if (!prev) return summaryResult as DbRow;
+                  return mergeRecordFields(
+                    prev as DbRow & { field_timestamps?: Record<string, string> | null },
+                    summaryResult as DbRow & { field_timestamps?: Record<string, string> | null },
+                    [...TRAINING_SUMMARY_FIELDS],
+                  );
+                });
+                saveTrainingDataOffline('summary', id, summaryResult).catch(e =>
+                  console.warn('[TrainingForm] Non-critical: failed to cache summary', e));
+              }
             } else if (!summaryData) {
               setSummary({ id: crypto.randomUUID(), training_id: id });
             }
