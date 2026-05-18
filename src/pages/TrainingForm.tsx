@@ -71,6 +71,18 @@ function errorMessage(error: unknown, fallback: string): string {
   }
   return fallback;
 }
+
+function summaryFieldTimestampMs(row: DbRow | null | undefined, field: string): number {
+  const explicit = (row?.field_timestamps as Record<string, string> | null | undefined)?.[field];
+  const raw = explicit || (typeof row?.updated_at === 'string' ? row.updated_at : null);
+  const ms = raw ? new Date(raw).getTime() : 0;
+  return Number.isFinite(ms) ? ms : 0;
+}
+
+function logTrainingSummaryAutosave(event: string, meta: Record<string, unknown> = {}) {
+  if (typeof console === 'undefined') return;
+  console.info('[TrainingSummaryAutosave]', { event, at: new Date().toISOString(), ...meta });
+}
 import { HtmlReportViewer } from "@/components/HtmlReportViewer";
 import { AttestationDialog } from "@/components/AttestationDialog";
 import { useUserProfile } from "@/hooks/useUserProfile";
