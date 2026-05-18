@@ -914,6 +914,7 @@ export default function TrainingForm() {
     }, 8000);
 
     try {
+      const latestSummary = summaryRef.current ?? summary;
       const payload = {
         id: id!,
         training,
@@ -922,8 +923,9 @@ export default function TrainingForm() {
         immediateAttention,
         verifiableItems,
         systemsInPlace,
-        summary,
+        summary: latestSummary,
       };
+      logTrainingSummaryAutosave('save-start', { silent, pendingFields: Object.keys(pendingSummaryFieldsRef.current), hasSummary: !!latestSummary, summaryUpdatedAt: latestSummary?.updated_at ?? null });
 
       // Phase 1 — IDB + snapshot + version history (always runs)
       const persisted = await persistTrainingToOffline(payload, {
@@ -967,6 +969,9 @@ export default function TrainingForm() {
       if (localSaveSucceeded && currentUser?.id && training?.inspector_id && currentUser.id !== training.inspector_id) {
         capturePreEditSnapshot('training', id!, training.inspector_id, currentUser.id);
       }
+      if (localSaveSucceeded) {
+        logTrainingSummaryAutosave('local-save-committed', { pendingFields: Object.keys(pendingSummaryFieldsRef.current), summaryUpdatedAt: latestSummary?.updated_at ?? null });
+      }
 
       // Phase 2 — push to Supabase (online + local save succeeded)
       if (isOnline && localSaveSucceeded) {
@@ -975,6 +980,7 @@ export default function TrainingForm() {
           // Mark local as synced only after server confirmation
           await saveTrainingOffline({ ...updatedTraining, synced_at: syncTimestamp });
           markSnapshotSynced('training', id!);
+          logTrainingSummaryAutosave('remote-save-committed', { pendingFields: Object.keys(pendingSummaryFieldsRef.current), syncTimestamp });
           if (import.meta.env.DEV) console.log('[Training Save] Synced to database (verified)');
         } catch (error) {
           if (import.meta.env.DEV) console.log('[Training Save] Failed to sync, queuing operation:', error);
