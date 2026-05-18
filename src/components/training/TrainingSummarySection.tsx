@@ -83,7 +83,11 @@ const TrainingSummarySection = React.memo(function TrainingSummarySection({ summ
               <Calendar
                 mode="single"
                 selected={summary?.submission_date ? new Date(summary.submission_date) : undefined}
-                onSelect={(date) => onUpdate('submission_date', date ? format(date, 'yyyy-MM-dd') : '')}
+                onSelect={(date) => {
+                  onUpdate('submission_date', date ? format(date, 'yyyy-MM-dd') : '');
+                  // Defer flush so the onUpdate state write commits first.
+                  setTimeout(() => { onImmediateSave?.(); }, 0);
+                }}
                 initialFocus
               />
             </PopoverContent>
