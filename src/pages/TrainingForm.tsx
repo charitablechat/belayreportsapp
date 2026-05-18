@@ -224,6 +224,7 @@ export default function TrainingForm() {
   }, [isCompletionLocked]);
 
   const autoSaveTimer = useRef<NodeJS.Timeout | null>(null);
+  const saveDebounceTimerRef = useRef<NodeJS.Timeout | null>(null);
   const isInternalUpdateRef = useRef(false);
   const summaryAutoPopulatedRef = useRef(false);
   const hasUnsavedRef = useRef(false);
@@ -288,9 +289,9 @@ export default function TrainingForm() {
   const saveTrainingRef = useRef<() => Promise<void>>();
   const saveBeforeLeaveRef = useRef<(() => Promise<void>) | null>(null);
   const handleSaveAndLeave = useCallback(async () => {
-    if (autoSaveTimer.current) {
-      clearTimeout(autoSaveTimer.current);
-      autoSaveTimer.current = null;
+    if (saveDebounceTimerRef.current) {
+      clearTimeout(saveDebounceTimerRef.current);
+      saveDebounceTimerRef.current = null;
     }
     try {
       await saveTrainingRef.current?.();
@@ -307,9 +308,9 @@ export default function TrainingForm() {
   // Flushes pending debounce timer and performs save now so values persist
   // before navigation. Identity is stable to keep React.memo children happy.
   const triggerImmediateSave = useCallback(() => {
-    if (autoSaveTimer.current) {
-      clearTimeout(autoSaveTimer.current);
-      autoSaveTimer.current = null;
+    if (saveDebounceTimerRef.current) {
+      clearTimeout(saveDebounceTimerRef.current);
+      saveDebounceTimerRef.current = null;
     }
     return saveTrainingRef.current?.() ?? Promise.resolve();
   }, []);
@@ -323,11 +324,10 @@ export default function TrainingForm() {
   });
 
   // Emergency save on page hide/refresh (Vector 1: zero-data-loss)
-  // Note: uses autoSaveTimer (declared above) since saveDebounceTimerRef is declared later
   useEmergencySave({
     hasUnsavedChanges,
     saving: isSaving,
-    saveDebounceTimerRef: autoSaveTimer,
+    saveDebounceTimerRef,
     performSaveRef: saveTrainingRef as React.MutableRefObject<((silent?: boolean) => Promise<void>) | undefined>,
     formName: 'TrainingForm',
     onEmergencySnapshot: () => {
