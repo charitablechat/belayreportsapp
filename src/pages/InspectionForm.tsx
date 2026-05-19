@@ -13,7 +13,8 @@ import { useFormRecordRealtime } from "@/hooks/useFormRecordRealtime";
 import { useNavigate, useParams } from "react-router-dom";
 import { goBack } from "@/lib/navigation";
 import { isLocalDataNewer } from "@/lib/local-data-guards";
-import { applyTrackedFieldWrite, mergeRecordFields, TRACKED_FIELDS } from "@/lib/field-merge";
+import { applyTrackedFieldWrite, mergeChildArray, mergeRecordFields, TRACKED_FIELDS } from "@/lib/field-merge";
+import { trackChildDeletions } from "@/lib/track-child-deletions";
 import { isFieldActivelyEdited, recordActiveEditSkip } from "@/lib/active-edit-guard";
 import { checkRequiredHeaderFields, formatMissingFieldLabels } from "@/lib/header-required-fields";
 import { hasTextContent } from "@/lib/html-content-cleaner";
@@ -210,6 +211,36 @@ export default function InspectionForm() {
   const [systems, setSystems] = useState<DbRow[]>([]);
   const [ziplines, setZiplines] = useState<DbRow[]>([]);
   const [equipment, setEquipment] = useState<DbRow[]>([]);
+
+  // ── Deletion-aware merge tracking ────────────────────────────────────────
+  // Session-scoped sets of child-row ids that the user intentionally deleted
+  // from the table UI. Passed to `mergeChildArray` on every reconcile so a
+  // stale server snapshot can't resurrect a row the user just deleted.
+  // Cleared per-id automatically when the server stops returning the id
+  // (handled inside mergeChildArray via onDeletedIdConfirmed), and wholesale
+  // after a confirmed successful sync round-trip / JSON import / unmount.
+  const deletedSystemIdsRef = useRef<Set<string>>(new Set());
+  const deletedZiplineIdsRef = useRef<Set<string>>(new Set());
+  const deletedEquipmentIdsRef = useRef<Set<string>>(new Set());
+  // Wrapped setters: pass these to the child tables' `onUpdate` so user-
+  // initiated removals are recorded. Programmatic reconciles MUST continue
+  // to call the raw `setSystems`/`setZiplines`/`setEquipment` directly so
+  // server omissions are not misinterpreted as user deletions.
+  const setSystemsTracked = useMemo(
+    () => trackChildDeletions(setSystems, deletedSystemIdsRef),
+    [],
+  );
+  const setZiplinesTracked = useMemo(
+    () => trackChildDeletions(setZiplines, deletedZiplineIdsRef),
+    [],
+  );
+  const setEquipmentTracked = useMemo(
+    () => trackChildDeletions(setEquipment, deletedEquipmentIdsRef),
+    [],
+  );
+  const dropDeletedSystemId = useCallback((rid: string) => { deletedSystemIdsRef.current.delete(rid); }, []);
+  const dropDeletedZiplineId = useCallback((rid: string) => { deletedZiplineIdsRef.current.delete(rid); }, []);
+  const dropDeletedEquipmentId = useCallback((rid: string) => { deletedEquipmentIdsRef.current.delete(rid); }, []);
 
   // Equipment type options per category — pass existing values so custom entries persist in dropdown
   const getExistingTypes = (cat: string) =>
@@ -1270,7 +1301,11 @@ export default function InspectionForm() {
           ...item,
           result: normalizeResultValue(item.result)
         }));
-        setSystems(normalizedSystems);
+        setSystems(prev => mergeChildArray(
+          prev as Array<DbRow & { id: string }>,
+          normalizedSystems as Array<DbRow & { id: string }>,
+          { table: 'systems', deletedIds: deletedSystemIdsRef.current, onDeletedIdConfirmed: dropDeletedSystemId },
+        ) as DbRow[]);
       }
       if (offlineZiplines.length > 0) {
         childDataLoadedRef.current.ziplines = true;
@@ -1281,7 +1316,11 @@ export default function InspectionForm() {
           braking_result: normalizeResultValue(item.braking_result),
           ead_result: normalizeResultValue(item.ead_result)
         }));
-        setZiplines(normalizedZiplines);
+        setZiplines(prev => mergeChildArray(
+          prev as Array<DbRow & { id: string }>,
+          normalizedZiplines as Array<DbRow & { id: string }>,
+          { table: 'ziplines', deletedIds: deletedZiplineIdsRef.current, onDeletedIdConfirmed: dropDeletedZiplineId },
+        ) as DbRow[]);
       }
       if (offlineEquipment.length > 0) {
         childDataLoadedRef.current.equipment = true;
@@ -1289,7 +1328,11 @@ export default function InspectionForm() {
           ...item,
           result: normalizeResultValue(item.result)
         }));
-        setEquipment(normalizedEquipment);
+        setEquipment(prev => mergeChildArray(
+          prev as Array<DbRow & { id: string }>,
+          normalizedEquipment as Array<DbRow & { id: string }>,
+          { table: 'equipment', deletedIds: deletedEquipmentIdsRef.current, onDeletedIdConfirmed: dropDeletedEquipmentId },
+        ) as DbRow[]);
       }
       if (offlineStandards.length > 0) {
         childDataLoadedRef.current.standards = true;
@@ -1490,7 +1533,11 @@ export default function InspectionForm() {
               ...item,
               result: normalizeResultValue(item.result)
             }));
-            setSystems(normalizedSystems);
+            setSystems(prev => mergeChildArray(
+              prev as Array<DbRow & { id: string }>,
+              normalizedSystems as Array<DbRow & { id: string }>,
+              { table: 'systems', deletedIds: deletedSystemIdsRef.current, onDeletedIdConfirmed: dropDeletedSystemId },
+            ) as DbRow[]);
             saveRelatedDataOffline('systems', id!, normalizedSystems).catch(e =>
               console.warn('[InspectionForm] Non-critical: failed to cache systems', e)
             );
@@ -1500,7 +1547,11 @@ export default function InspectionForm() {
               ...item,
               result: normalizeResultValue(item.result)
             }));
-            setSystems(normalizedSystems);
+            setSystems(prev => mergeChildArray(
+              prev as Array<DbRow & { id: string }>,
+              normalizedSystems as Array<DbRow & { id: string }>,
+              { table: 'systems', deletedIds: deletedSystemIdsRef.current, onDeletedIdConfirmed: dropDeletedSystemId },
+            ) as DbRow[]);
           }
 
           const { data: ziplinesData } = ziplinesResult;
@@ -1512,7 +1563,11 @@ export default function InspectionForm() {
               braking_result: normalizeResultValue(item.braking_result),
               ead_result: normalizeResultValue(item.ead_result)
             }));
-            setZiplines(normalizedZiplines);
+            setZiplines(prev => mergeChildArray(
+              prev as Array<DbRow & { id: string }>,
+              normalizedZiplines as Array<DbRow & { id: string }>,
+              { table: 'ziplines', deletedIds: deletedZiplineIdsRef.current, onDeletedIdConfirmed: dropDeletedZiplineId },
+            ) as DbRow[]);
             saveRelatedDataOffline('ziplines', id!, normalizedZiplines).catch(e =>
               console.warn('[InspectionForm] Non-critical: failed to cache ziplines', e)
             );
@@ -1525,7 +1580,11 @@ export default function InspectionForm() {
               braking_result: normalizeResultValue(item.braking_result),
               ead_result: normalizeResultValue(item.ead_result)
             }));
-            setZiplines(normalizedZiplines);
+            setZiplines(prev => mergeChildArray(
+              prev as Array<DbRow & { id: string }>,
+              normalizedZiplines as Array<DbRow & { id: string }>,
+              { table: 'ziplines', deletedIds: deletedZiplineIdsRef.current, onDeletedIdConfirmed: dropDeletedZiplineId },
+            ) as DbRow[]);
           }
 
           const { data: equipmentData } = equipmentResult;
@@ -1534,7 +1593,11 @@ export default function InspectionForm() {
               ...item,
               result: normalizeResultValue(item.result)
             }));
-            setEquipment(normalizedEquipment);
+            setEquipment(prev => mergeChildArray(
+              prev as Array<DbRow & { id: string }>,
+              normalizedEquipment as Array<DbRow & { id: string }>,
+              { table: 'equipment', deletedIds: deletedEquipmentIdsRef.current, onDeletedIdConfirmed: dropDeletedEquipmentId },
+            ) as DbRow[]);
             saveRelatedDataOffline('equipment', id!, normalizedEquipment).catch(e =>
               console.warn('[InspectionForm] Non-critical: failed to cache equipment', e)
             );
@@ -1544,7 +1607,11 @@ export default function InspectionForm() {
               ...item,
               result: normalizeResultValue(item.result)
             }));
-            setEquipment(normalizedEquipment);
+            setEquipment(prev => mergeChildArray(
+              prev as Array<DbRow & { id: string }>,
+              normalizedEquipment as Array<DbRow & { id: string }>,
+              { table: 'equipment', deletedIds: deletedEquipmentIdsRef.current, onDeletedIdConfirmed: dropDeletedEquipmentId },
+            ) as DbRow[]);
           }
 
           const { data: standardsData } = standardsResult;
@@ -1632,6 +1699,12 @@ export default function InspectionForm() {
           setInspection(offlineData);
           setInspectorId(offlineData.inspector_id);
         }
+        // JSON import is an explicit reset — clear deletion-tracking refs so
+        // imported rows can flow in even if they share ids with previously
+        // deleted ones.
+        deletedSystemIdsRef.current.clear();
+        deletedZiplineIdsRef.current.clear();
+        deletedEquipmentIdsRef.current.clear();
         setSystems(offSystems); childDataLoadedRef.current.systems = true;
         setZiplines(offZiplines); childDataLoadedRef.current.ziplines = true;
         setEquipment(offEquipment); childDataLoadedRef.current.equipment = true;
@@ -2025,6 +2098,13 @@ export default function InspectionForm() {
             });
 
             markSnapshotSynced('inspection', id!);
+            // Confirmed successful round-trip persisted the shorter child arrays.
+            // Safe to drop all in-session deletion-tracking ids; any future
+            // stale snapshot will be reconciled against the now-authoritative
+            // server state instead.
+            deletedSystemIdsRef.current.clear();
+            deletedZiplineIdsRef.current.clear();
+            deletedEquipmentIdsRef.current.clear();
             console.log('[InspectionForm Sync] Synced all data to Supabase successfully (verified)');
           } catch (error) {
             // Detect network-related errors for retry
@@ -3083,8 +3163,8 @@ export default function InspectionForm() {
 
           <div>
               <TabsContent value="details" className="space-y-6">
-                <OperatingSystemsTable systems={systems} onUpdate={setSystems} onImmediateSave={stableTriggerImmediateSave} inspectionId={id} onGalleryRefresh={handleGalleryRefresh} />
-                <ZiplinesTable ziplines={ziplines} onUpdate={setZiplines} onImmediateSave={stableTriggerImmediateSave} inspectionId={id} onGalleryRefresh={handleGalleryRefresh} />
+                <OperatingSystemsTable systems={systems} onUpdate={setSystemsTracked} onImmediateSave={stableTriggerImmediateSave} inspectionId={id} onGalleryRefresh={handleGalleryRefresh} />
+                <ZiplinesTable ziplines={ziplines} onUpdate={setZiplinesTracked} onImmediateSave={stableTriggerImmediateSave} inspectionId={id} onGalleryRefresh={handleGalleryRefresh} />
                 
                 <div className="mt-8 border-t pt-6">
                   <h3 className="text-lg font-semibold mb-4">Photos - Systems & Ziplines</h3>
@@ -3114,7 +3194,7 @@ export default function InspectionForm() {
                       category="harnesses"
                       displayName="Harnesses"
                       equipment={equipment}
-                      onUpdate={setEquipment}
+                      onUpdate={setEquipmentTracked}
                       onImmediateSave={stableTriggerImmediateSave}
                       categoryOptions={harnessesOpts.options}
                       onAddCategoryOption={harnessesOpts.addOption}
@@ -3125,7 +3205,7 @@ export default function InspectionForm() {
                       category="helmets"
                       displayName="Helmets"
                       equipment={equipment}
-                      onUpdate={setEquipment}
+                      onUpdate={setEquipmentTracked}
                       onImmediateSave={stableTriggerImmediateSave}
                       categoryOptions={helmetsOpts.options}
                       onAddCategoryOption={helmetsOpts.addOption}
@@ -3136,7 +3216,7 @@ export default function InspectionForm() {
                       category="lanyards"
                       displayName="Lanyards"
                       equipment={equipment}
-                      onUpdate={setEquipment}
+                      onUpdate={setEquipmentTracked}
                       onImmediateSave={stableTriggerImmediateSave}
                       categoryOptions={lanyardsOpts.options}
                       onAddCategoryOption={lanyardsOpts.addOption}
@@ -3147,7 +3227,7 @@ export default function InspectionForm() {
                       category="connectors"
                       displayName="Connectors (Carabiners & Quicklinks)"
                       equipment={equipment}
-                      onUpdate={setEquipment}
+                      onUpdate={setEquipmentTracked}
                       onImmediateSave={stableTriggerImmediateSave}
                       categoryOptions={connectorsOpts.options}
                       onAddCategoryOption={connectorsOpts.addOption}
@@ -3158,7 +3238,7 @@ export default function InspectionForm() {
                       category="rope"
                       displayName="Rope"
                       equipment={equipment}
-                      onUpdate={setEquipment}
+                      onUpdate={setEquipmentTracked}
                       onImmediateSave={stableTriggerImmediateSave}
                       categoryOptions={ropeOpts.options}
                       onAddCategoryOption={ropeOpts.addOption}
@@ -3169,7 +3249,7 @@ export default function InspectionForm() {
                       category="belay"
                       displayName="Belay/Descent Device"
                       equipment={equipment}
-                      onUpdate={setEquipment}
+                      onUpdate={setEquipmentTracked}
                       onImmediateSave={stableTriggerImmediateSave}
                       categoryOptions={belayOpts.options}
                       onAddCategoryOption={belayOpts.addOption}
@@ -3180,7 +3260,7 @@ export default function InspectionForm() {
                       category="trolleys"
                       displayName="Trolleys and Pulleys"
                       equipment={equipment}
-                      onUpdate={setEquipment}
+                      onUpdate={setEquipmentTracked}
                       onImmediateSave={stableTriggerImmediateSave}
                       categoryOptions={trolleysOpts.options}
                       onAddCategoryOption={trolleysOpts.addOption}
@@ -3191,7 +3271,7 @@ export default function InspectionForm() {
                       category="other"
                       displayName="Other Equipment"
                       equipment={equipment}
-                      onUpdate={setEquipment}
+                      onUpdate={setEquipmentTracked}
                       onImmediateSave={stableTriggerImmediateSave}
                       categoryOptions={otherOpts.options}
                       onAddCategoryOption={otherOpts.addOption}

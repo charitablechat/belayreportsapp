@@ -188,4 +188,87 @@ describe('mergeChildArray', () => {
   it('empty input + empty server → empty output', () => {
     expect(mergeChildArray<Row>([], [])).toEqual([]);
   });
+
+  // ── Deletion-aware merge ──────────────────────────────────────────────
+  describe('deletedIds (resurrection guard)', () => {
+    it('skips a server row whose id is in deletedIds (stale-refetch resurrection)', () => {
+      const local: Row[] = [{ id: '1', name: 'A' }];
+      const server: Row[] = [
+        { id: '1', name: 'A' },
+        { id: '2', name: 'Deleted but server stale' },
+      ];
+      const out = mergeChildArray<Row>(local, server, { deletedIds: new Set(['2']) });
+      expect(out.map(r => r.id)).toEqual(['1']);
+    });
+
+    it('fires onDeletedIdConfirmed exactly once per id no longer in server snapshot', () => {
+      const local: Row[] = [{ id: '1', name: 'A' }];
+      const server: Row[] = [{ id: '1', name: 'A' }];
+      const confirmed = vi.fn();
+      mergeChildArray<Row>(local, server, {
+        deletedIds: new Set(['2', '3']),
+        onDeletedIdConfirmed: confirmed,
+      });
+      expect(confirmed).toHaveBeenCalledTimes(2);
+      expect(confirmed).toHaveBeenCalledWith('2');
+      expect(confirmed).toHaveBeenCalledWith('3');
+    });
+
+    it('does NOT confirm an id while the server still returns it (kept suppressed)', () => {
+      const local: Row[] = [{ id: '1', name: 'A' }];
+      const server: Row[] = [
+        { id: '1', name: 'A' },
+        { id: '2', name: 'Still on server' },
+      ];
+      const confirmed = vi.fn();
+      const out = mergeChildArray<Row>(local, server, {
+        deletedIds: new Set(['2']),
+        onDeletedIdConfirmed: confirmed,
+      });
+      // Row stays suppressed AND the deletion is NOT confirmed (so the
+      // tracking set will keep it through the next stale refetch too).
+      expect(out.map(r => r.id)).toEqual(['1']);
+      expect(confirmed).not.toHaveBeenCalled();
+    });
+
+    it('does not affect local-only / temp-* preservation', () => {
+      const local: Row[] = [
+        { id: 'real-1', name: 'A' },
+        { id: 'temp-new', name: 'New' },
+        { id: 'real-orphan', name: 'Local orphan' },
+      ];
+      const server: Row[] = [{ id: 'real-1', name: 'A' }];
+      const out = mergeChildArray<Row>(local, server, {
+        deletedIds: new Set(['unrelated-id']),
+      });
+      expect(out.map(r => r.id)).toEqual(['real-1', 'temp-new', 'real-orphan']);
+    });
+
+    it('onDeletedIdConfirmed that throws does not break the merge', () => {
+      const local: Row[] = [{ id: '1', name: 'A' }];
+      const server: Row[] = [{ id: '1', name: 'A' }];
+      const confirmed = vi.fn(() => { throw new Error('boom'); });
+      const out = mergeChildArray<Row>(local, server, {
+        deletedIds: new Set(['ghost']),
+        onDeletedIdConfirmed: confirmed,
+      });
+      expect(out.map(r => r.id)).toEqual(['1']);
+      expect(confirmed).toHaveBeenCalled();
+    });
+
+    it('respects display_order sort even with deletedIds active', () => {
+      const local: Row[] = [
+        { id: 'real-1', name: 'A', display_order: 1 },
+        { id: 'temp-new', name: 'New', display_order: -1 },
+      ];
+      const server: Row[] = [
+        { id: 'real-1', name: 'A', display_order: 1 },
+        { id: 'deleted', name: 'Should not appear', display_order: 0 },
+      ];
+      const out = mergeChildArray<Row>(local, server, {
+        deletedIds: new Set(['deleted']),
+      });
+      expect(out.map(r => r.id)).toEqual(['temp-new', 'real-1']);
+    });
+  });
 });

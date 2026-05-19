@@ -1,4 +1,5 @@
-import { useEffect, useState, useCallback, useRef } from "react";
+import { useEffect, useMemo, useState, useCallback, useRef } from "react";
+import { trackChildDeletions } from "@/lib/track-child-deletions";
 import { formatReportFilename, formatReportTitle } from "@/lib/report-naming";
 import { useReportTabHistory } from "@/hooks/useReportTabHistory";
 import {
@@ -173,6 +174,40 @@ export default function TrainingForm() {
   const [verifiableItems, setVerifiableItems] = useState<DbRow[]>([]);
   const [systemsInPlace, setSystemsInPlace] = useState<DbRow[]>([]);
   const [summary, setSummary] = useState<DbRow | null>(null);
+
+  // ── Deletion-aware merge tracking ────────────────────────────────────────
+  // See InspectionForm for full rationale. Sets are populated only when the
+  // user removes a non-temp row via the table UI (the wrapped tracked setter
+  // below), and are auto-pruned per-id by `mergeChildArray` when the server
+  // snapshot confirms the row is gone. Wholesale clear happens only on
+  // confirmed sync success or component unmount.
+  const deletedDeliveryIdsRef = useRef<Set<string>>(new Set());
+  const deletedOperatingSystemIdsRef = useRef<Set<string>>(new Set());
+  const deletedImmediateAttentionIdsRef = useRef<Set<string>>(new Set());
+  const deletedVerifiableIdsRef = useRef<Set<string>>(new Set());
+  const deletedSystemsInPlaceIdsRef = useRef<Set<string>>(new Set());
+  const setDeliveryApproachesTracked = useMemo(
+    () => trackChildDeletions(setDeliveryApproaches, deletedDeliveryIdsRef), [],
+  );
+  const setOperatingSystemsTracked = useMemo(
+    () => trackChildDeletions(setOperatingSystems, deletedOperatingSystemIdsRef), [],
+  );
+  const setImmediateAttentionTracked = useMemo(
+    () => trackChildDeletions(setImmediateAttention, deletedImmediateAttentionIdsRef), [],
+  );
+  const setVerifiableItemsTracked = useMemo(
+    () => trackChildDeletions(setVerifiableItems, deletedVerifiableIdsRef), [],
+  );
+  const setSystemsInPlaceTracked = useMemo(
+    () => trackChildDeletions(setSystemsInPlace, deletedSystemsInPlaceIdsRef), [],
+  );
+  const trainingDeletedIdsByTable: Record<string, React.MutableRefObject<Set<string>>> = useMemo(() => ({
+    delivery_approaches: deletedDeliveryIdsRef,
+    operating_systems: deletedOperatingSystemIdsRef,
+    immediate_attention: deletedImmediateAttentionIdsRef,
+    verifiable_items: deletedVerifiableIdsRef,
+    systems_in_place: deletedSystemsInPlaceIdsRef,
+  }), []);
   const [photoRefreshKey, setPhotoRefreshKey] = useState(0);
   // Completion lock derived values (after report state is declared)
   const isCompletionLocked = training?.status === 'completed' && !completionLockOverridden;
@@ -648,7 +683,12 @@ export default function TrainingForm() {
               if (serverRows && serverRows.length > 0) {
                 const local = localRows.filter(r => typeof r.id === 'string') as (DbRow & { id: string; display_order?: number | null })[];
                 const server = serverRows.filter(r => typeof r.id === 'string') as (DbRow & { id: string; display_order?: number | null })[];
-                const merged = mergeChildArray(local, server, { table }) as unknown as DbRow[];
+                const deletedRef = trainingDeletedIdsByTable[table];
+                const merged = mergeChildArray(local, server, {
+                  table,
+                  deletedIds: deletedRef?.current,
+                  onDeletedIdConfirmed: deletedRef ? (rid: string) => { deletedRef.current.delete(rid); } : undefined,
+                }) as unknown as DbRow[];
                 setter(merged);
                 persist(serverRows).catch(e =>
                   console.warn(`[TrainingForm] Non-critical: failed to cache ${table}`, e));
@@ -836,6 +876,12 @@ export default function TrainingForm() {
           setTraining(offlineData);
           setInspectorId(offlineData.inspector_id);
         }
+        // JSON import is an explicit reset — clear deletion-tracking refs.
+        deletedDeliveryIdsRef.current.clear();
+        deletedOperatingSystemIdsRef.current.clear();
+        deletedImmediateAttentionIdsRef.current.clear();
+        deletedVerifiableIdsRef.current.clear();
+        deletedSystemsInPlaceIdsRef.current.clear();
         setDeliveryApproaches(da); childDataLoadedRef.current.delivery_approaches = true;
         setOperatingSystems(os); childDataLoadedRef.current.operating_systems = true;
         setImmediateAttention(ia); childDataLoadedRef.current.immediate_attention = true;
@@ -1032,6 +1078,14 @@ export default function TrainingForm() {
           // Mark local as synced only after server confirmation
           await saveTrainingOffline({ ...updatedTraining, synced_at: syncTimestamp });
           markSnapshotSynced('training', id!);
+          // Confirmed successful round-trip persisted the shorter child arrays.
+          // Wholesale-clear deletion-tracking refs; future stale snapshots are
+          // reconciled against now-authoritative server state.
+          deletedDeliveryIdsRef.current.clear();
+          deletedOperatingSystemIdsRef.current.clear();
+          deletedImmediateAttentionIdsRef.current.clear();
+          deletedVerifiableIdsRef.current.clear();
+          deletedSystemsInPlaceIdsRef.current.clear();
           logTrainingSummaryAutosave('remote-save-committed', { pendingFields: Object.keys(pendingSummaryFieldsRef.current), syncTimestamp });
           if (import.meta.env.DEV) console.log('[Training Save] Synced to database (verified)');
         } catch (error) {
@@ -1834,30 +1888,30 @@ export default function TrainingForm() {
               <TabsContent value="delivery" className="space-y-6">
                 <DeliveryApproachSection 
                   approaches={deliveryApproaches} 
-                  onUpdate={setDeliveryApproaches} 
+                  onUpdate={setDeliveryApproachesTracked} 
                 />
               </TabsContent>
 
               <TabsContent value="systems" className="space-y-6">
                 <OperatingSystemsSection 
                   systems={operatingSystems} 
-                  onUpdate={setOperatingSystems} 
+                  onUpdate={setOperatingSystemsTracked} 
                 />
               </TabsContent>
 
               <TabsContent value="attention" className="space-y-6">
                 <ImmediateAttentionSection 
                   items={immediateAttention} 
-                  onUpdate={setImmediateAttention} 
+                  onUpdate={setImmediateAttentionTracked} 
                 />
               </TabsContent>
 
               <TabsContent value="verifiable" className="space-y-6">
                 <VerifiableItemsSection 
                   items={verifiableItems} 
-                  onUpdate={setVerifiableItems}
+                  onUpdate={setVerifiableItemsTracked}
                   systemsInPlace={systemsInPlace}
-                  onUpdateSystemsInPlace={setSystemsInPlace}
+                  onUpdateSystemsInPlace={setSystemsInPlaceTracked}
                 />
               </TabsContent>
 

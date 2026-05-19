@@ -271,6 +271,23 @@ export interface MergeChildArrayOptions<T extends ChildArrayRow> {
    * have table-specific reconciliation logic (e.g. `mergeStandardsPreserveLocal`).
    */
   mergeRow?: (local: T, server: T) => T;
+  /**
+   * IDs of child rows that the user intentionally deleted during the current
+   * form session. Any server row whose id is in this set is skipped — this
+   * prevents a stale server snapshot (refetch racing the delete/save
+   * round-trip) from resurrecting a row the user just removed.
+   *
+   * Membership is added to this set ONLY at the UI delete site in the parent
+   * form, never as a side effect of reconcile, import, or normalization.
+   */
+  deletedIds?: ReadonlySet<string>;
+  /**
+   * Invoked once per id in `deletedIds` that did NOT appear in this server
+   * snapshot. Signals "the server has confirmed this id is gone" so the
+   * caller can drop it from its tracking set. Per-id confirmation keeps the
+   * set bounded without relying on save lifecycle timing.
+   */
+  onDeletedIdConfirmed?: (id: string) => void;
 }
 
 /**
@@ -285,6 +302,11 @@ export interface MergeChildArrayOptions<T extends ChildArrayRow> {
  *     RLS hiccup, replication lag) — preserved here, beaconed via the
  *     `onLocalOnlyPreserved` hook so we can quantify drift in prod.
  *
+ * Deletion-aware: rows whose id appears in `deletedIds` are filtered out of
+ * the server side so a stale refetch cannot resurrect a row the user just
+ * intentionally deleted. Per-id confirmations fire via `onDeletedIdConfirmed`
+ * the moment the server snapshot also stops returning the id.
+ *
  * Ordering: server order is respected for rows present on the server.
  * Local-only rows are appended in their original local order. If both sides
  * carry a numeric `display_order`, the final array is stable-sorted by it
@@ -295,13 +317,38 @@ export function mergeChildArray<T extends ChildArrayRow>(
   server: T[],
   options: MergeChildArrayOptions<T> = {},
 ): T[] {
-  const { trackedFields, onLocalOnlyPreserved, table, mergeRow } = options;
+  const {
+    trackedFields,
+    onLocalOnlyPreserved,
+    table,
+    mergeRow,
+    deletedIds,
+    onDeletedIdConfirmed,
+  } = options;
+
   const serverIds = new Set(server.map(r => r.id));
+
+  // Per-id deletion confirmation: any tracked deleted id that the server
+  // no longer returns is now safe to drop from the tracking set.
+  if (deletedIds && deletedIds.size > 0 && onDeletedIdConfirmed) {
+    for (const id of deletedIds) {
+      if (!serverIds.has(id)) {
+        try {
+          onDeletedIdConfirmed(id);
+        } catch {
+          // Tracking-set maintenance must never break the merge.
+        }
+      }
+    }
+  }
+
   const localById = new Map(local.map(r => [r.id, r]));
   const out: T[] = [];
 
   // 1. Walk server order; merge field-level for rows present on both sides.
+  //    Skip any server row whose id is in the local intentional-deletion set.
   for (const sr of server) {
+    if (deletedIds && deletedIds.has(sr.id)) continue;
     const lr = localById.get(sr.id);
     if (!lr) {
       out.push(sr);
