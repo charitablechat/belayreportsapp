@@ -271,6 +271,18 @@ function ItemPhotoUpload({
   }, [inspectionId, photoSection, itemName, onGalleryRefresh]);
 
   const handleUpload = useCallback(async (file: File) => {
+    // Defensive: reject a zero-byte File before we touch any persistence
+    // layer. The in-app camera dialog occasionally produces a 0-byte File
+    // on iOS Safari when the canvas-toBlob race loses; without this guard
+    // the row thumbnail showed a blob: preview that never made it into
+    // the bottom gallery (because no blob was ever cached).
+    if (!file || file.size === 0) {
+      toast.error("Photo capture failed", {
+        description: "The camera returned an empty image. Please try again.",
+      });
+      return;
+    }
+
     setUploading(true);
 
     // Safety timeout — force-clear spinner after 15s no matter what
@@ -298,6 +310,21 @@ function ItemPhotoUpload({
       const placeholderPath = `pending/${inspectionId}/items/${itemId}.jpg`;
       const deviceFileName = `RopeWorks_${photoSection || 'item'}_${Date.now()}.jpg`;
 
+      // Shared offline-save invocation (used for the initial attempt + one retry)
+      const tryOfflineSave = () => savePhotoOffline({
+        id: photoId,
+        inspectionId,
+        section: photoSection || 'item-photo',
+        blob: compressed,
+        fileName: `${itemId}.jpg`,
+        uploaded: false,
+        photoUrl: placeholderPath,
+        tableName: 'inspection_photos',
+        storageBucket: 'inspection-photos',
+        foreignKeyColumn: 'inspection_id',
+        caption: captionFromName,
+      });
+
       // 4. Circuit breaker pre-check — skip IDB if it's known-dead
       const cbStatus = getCircuitBreakerStatus();
       if (cbStatus.open) {
@@ -319,20 +346,13 @@ function ItemPhotoUpload({
         return; // skip IDB entirely
       }
 
-      // 5. LOCAL-FIRST: Save to IndexedDB
-      const saved = await savePhotoOffline({
-        id: photoId,
-        inspectionId,
-        section: photoSection || 'item-photo',
-        blob: compressed,
-        fileName: `${itemId}.jpg`,
-        uploaded: false,
-        photoUrl: placeholderPath,
-        tableName: 'inspection_photos',
-        storageBucket: 'inspection-photos',
-        foreignKeyColumn: 'inspection_id',
-        caption: captionFromName,
-      });
+      // 5. LOCAL-FIRST: Save to IndexedDB (one retry on failure)
+      let saved = await tryOfflineSave();
+      if (!saved) {
+        // brief backoff then one retry — covers transient quota/lock races
+        await new Promise(r => setTimeout(r, 150));
+        saved = await tryOfflineSave();
+      }
 
       // 6. Save receipt (always, regardless of IDB success)
       savePhotoReceipt({
@@ -344,15 +364,18 @@ function ItemPhotoUpload({
       });
 
       if (!saved) {
-        // IDB failed but circuit breaker wasn't open yet — graceful fallback
-        console.warn('[ItemPhotoUpload] IDB save failed — falling back to receipt + device save');
+        // Both durable paths failed. Per the contract: do NOT leave a
+        // misleading row-only thumbnail that vanishes on reopen. Clear
+        // the optimistic preview, do not call onPhotoChange, and surface
+        // a clear error. Photo bytes are still pushed to the device
+        // download/share path so the user has an unrecoverable copy.
+        console.warn('[ItemPhotoUpload] IDB save failed after retry — refusing to attach');
         saveToDevice(compressed, deviceFileName);
-        // Keep preview visible — don't clear it
-        onGalleryRefresh?.();
-        onPhotoChange(placeholderPath);
-        onImmediateSave?.();
-        toast.success("Photo saved to backup storage", {
-          description: "Will sync when storage recovers",
+        URL.revokeObjectURL(previewUrl);
+        setLocalPreview(null);
+        toast.error("Could not attach photo to report", {
+          description: "Your device storage may be full. The image was downloaded to your device — please retry.",
+          duration: 8000,
         });
         return;
       }
