@@ -972,6 +972,22 @@ export default function DailyAssessmentForm() {
     // Prevent duplicate save calls
     if (saveInProgressRef.current) {
       if (import.meta.env.DEV) console.log('[Save] Save already in progress, skipping');
+      // Save Progress UI lifecycle fix — give the user feedback instead
+      // of a silent no-op when they click during a previous save.
+      if (!silent) {
+        if (hasUnsavedRef.current || hasUnsavedChanges) {
+          setHasUnsavedChanges(true);
+          toast.info("Save queued", {
+            description: "Finishing previous sync — your latest changes will save next.",
+            duration: 2500,
+          });
+        } else {
+          toast.success("Already saved", {
+            description: "Finishing background sync.",
+            duration: 2000,
+          });
+        }
+      }
       return;
     }
     
@@ -980,19 +996,23 @@ export default function DailyAssessmentForm() {
     setSaving(true);
     if (!silent) setSaveError(null);
 
-    // Safety timeout - ensure saving state is cleared after max 8 seconds (reduced from 30).
-    //
-    // The `safetyTimerFired` flag is captured per-invocation so the finally
-    // block can tell whether THIS invocation still owns `saveInProgressRef`
-    // when it cleans up. Without it, an 8s+ save would have its mutex
-    // released by the safety timer, a concurrent caller would acquire the
-    // mutex, and then this invocation's finally block would clear the
-    // mutex while the new caller is still mid-flight — opening a window
-    // for a third caller to race the second. Same shape as the
-    // deadlock-timer ownership race PR #22 fixed in
-    // `InspectionForm.performSave` (`deadlockTimerFired`).
+    // Safety timeout + Save Progress UI lifecycle early-release. NARROW —
+    // only flips `saving` + `saveInProgressRef`. Dirty/lastSaved/merge
+    // logic untouched in the success path.
     let safetyTimerFired = false;
+    let localCommittedRef = false;
+    const releaseSaveUiAfterLocalCommit = () => {
+      if (localCommittedRef || safetyTimerFired) return;
+      localCommittedRef = true;
+      clearTimeout(safetyTimeout);
+      setSaving(false);
+      saveInProgressRef.current = false;
+      if (import.meta.env.DEV) {
+        console.log('[Save] Local hard-save committed — Save Progress button released; remote sync continues in background');
+      }
+    };
     const safetyTimeout = setTimeout(() => {
+      if (localCommittedRef) return;
       console.warn('[Save] Safety timeout reached, forcing save state reset');
       safetyTimerFired = true;
       setSaving(false);
