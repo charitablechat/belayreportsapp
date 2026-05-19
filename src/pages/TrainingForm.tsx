@@ -897,6 +897,25 @@ export default function TrainingForm() {
     // Prevent duplicate save calls
     if (saveInProgressRef.current) {
       if (import.meta.env.DEV) console.log('[Training Save] Save already in progress, skipping');
+      // Save Progress UI lifecycle fix: give the user clear feedback rather
+      // than a silent no-op when they click during a previous save (which
+      // may now be in its remote-sync tail after the local-commit
+      // early-release below). Mark dirty so the autosave layer picks up
+      // any new changes on its next cycle.
+      if (!silent) {
+        if (hasUnsavedRef.current || hasUnsavedChanges) {
+          setHasUnsavedChanges(true);
+          toast.info("Save queued", {
+            description: "Finishing previous sync — your latest changes will save next.",
+            duration: 2500,
+          });
+        } else {
+          toast.success("Already saved", {
+            description: "Finishing background sync.",
+            duration: 2000,
+          });
+        }
+      }
       return;
     }
 
