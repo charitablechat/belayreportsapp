@@ -111,13 +111,15 @@ export default function PhotoGallery({
   // Track whether we pushed a history entry for the lightbox
   const lightboxHistoryPushedRef = useRef(false);
 
+  // Close lightbox WITHOUT calling window.history.back(). Synthetic back
+  // navigation was being intercepted by the form's `useUnsavedChanges`
+  // blocker as a route change and surfaced "Leaving Report". The popstate
+  // listener below still consumes the pushed entry on a real device-back
+  // gesture so we don't leak an extra history slot.
   const closeLightbox = useCallback(() => {
     setSelectedPhotoIndex(null);
     setOverlayActive(false);
-    if (lightboxHistoryPushedRef.current) {
-      lightboxHistoryPushedRef.current = false;
-      window.history.back();
-    }
+    lightboxHistoryPushedRef.current = false;
   }, []);
 
   // Ref to track open state for the popstate handler (avoids stale closures)
@@ -293,7 +295,15 @@ export default function PhotoGallery({
               rawStoragePath: p.photoUrl || '', // preserve raw storage path for dedup
               blob: p.blob,
               uploaded: Boolean(p.uploaded),
-              caption: null,
+              // Prefer the caption written at capture time (ItemPhotoUpload
+              // passes the live item name into savePhotoOffline). This keeps
+              // pre-sync offline photos labeled with the correct item name
+              // in the bottom gallery. The existing rename-sync effect in
+              // ItemPhotoUpload still updates this caption on subsequent
+              // renames; the *last write wins* — i.e. the current item
+              // name at the most recent rename-sync tick, NOT the
+              // capture-time snapshot if the item has since been renamed.
+              caption: (p as any).caption ?? null,
               display_order: p.display_order ?? index,
               staleUpload: isStale,
             };
