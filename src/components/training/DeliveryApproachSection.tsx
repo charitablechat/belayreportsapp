@@ -26,7 +26,7 @@ const DeliveryApproachSection = React.memo(function DeliveryApproachSection({ ap
         created_at: new Date().toISOString()
       }, ...approaches]);
     } else {
-      onUpdate(approaches.filter(a => a.approach !== approach));
+      onUpdate((prev: any[]) => prev.filter(a => a.approach !== approach));
     }
   };
 

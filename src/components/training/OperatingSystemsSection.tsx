@@ -8,7 +8,7 @@ import { triggerHaptic } from "@/lib/haptics";
 
 interface OperatingSystemsSectionProps {
   systems: any[];
-  onUpdate: (systems: any[]) => void;
+  onUpdate: (systems: any[] | ((prev: any[]) => any[])) => void;
 }
 
 const OPERATING_SYSTEMS = [
@@ -47,7 +47,7 @@ const OperatingSystemsSection = React.memo(function OperatingSystemsSection({ sy
       created_at: new Date().toISOString()
     }, ...systems]);
     } else {
-      onUpdate(systems.filter(s => s.system_name !== systemName));
+      onUpdate((prev: any[]) => prev.filter(s => s.system_name !== systemName));
     }
   };
 
@@ -70,7 +70,7 @@ const OperatingSystemsSection = React.memo(function OperatingSystemsSection({ sy
 
   const handleRemoveOther = (id: string) => {
     triggerHaptic('light');
-    onUpdate(systems.filter(s => s.id !== id));
+    onUpdate((prev: any[]) => prev.filter(s => s.id !== id));
   };
 
   return (

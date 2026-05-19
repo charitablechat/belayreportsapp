@@ -5,7 +5,7 @@ import { triggerHaptic } from "@/lib/haptics";
 
 interface SystemsInPlaceSectionProps {
   items: any[];
-  onUpdate: (items: any[]) => void;
+  onUpdate: (items: any[] | ((prev: any[]) => any[])) => void;
 }
 
 const SYSTEMS_IN_PLACE = [
@@ -29,7 +29,7 @@ const SystemsInPlaceSection = React.memo(function SystemsInPlaceSection({ items,
         created_at: new Date().toISOString()
       }, ...items]);
     } else {
-      onUpdate(items.filter(i => i.system_item !== item));
+      onUpdate((prev: any[]) => prev.filter(i => i.system_item !== item));
     }
   };
 
