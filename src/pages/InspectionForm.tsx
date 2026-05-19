@@ -1699,6 +1699,12 @@ export default function InspectionForm() {
           setInspection(offlineData);
           setInspectorId(offlineData.inspector_id);
         }
+        // JSON import is an explicit reset — clear deletion-tracking refs so
+        // imported rows can flow in even if they share ids with previously
+        // deleted ones.
+        deletedSystemIdsRef.current.clear();
+        deletedZiplineIdsRef.current.clear();
+        deletedEquipmentIdsRef.current.clear();
         setSystems(offSystems); childDataLoadedRef.current.systems = true;
         setZiplines(offZiplines); childDataLoadedRef.current.ziplines = true;
         setEquipment(offEquipment); childDataLoadedRef.current.equipment = true;
