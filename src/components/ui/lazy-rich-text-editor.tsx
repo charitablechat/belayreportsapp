@@ -96,19 +96,24 @@ export function LazyRichTextEditor({
         )}
       >
         {hasContent ? (
-          <div 
-            className="prose prose-sm max-w-none"
-            dangerouslySetInnerHTML={{
-              // Narrow allow-list: keep <mark> and inline background-color so
-              // highlighted spans render in the read-only preview the same as
-              // they do inside the mounted TipTap editor. Do NOT broaden this
-              // to a global style allow-list.
-              __html: DOMPurify.sanitize(content, {
-                ADD_TAGS: ['mark'],
-                ADD_ATTR: ['style'],
-              }),
-            }}
-          />
+          (() => {
+            ensureHighlightSanitizerHook();
+            return (
+              <div
+                className="prose prose-sm max-w-none"
+                dangerouslySetInnerHTML={{
+                  // Allow <mark> and the style attr; the hook above strips
+                  // every style declaration except background-color and only
+                  // on <mark>/<span>. Highlight content round-trips; nothing
+                  // else gains inline-style power.
+                  __html: DOMPurify.sanitize(content, {
+                    ADD_TAGS: ['mark'],
+                    ADD_ATTR: ['style'],
+                  }),
+                }}
+              />
+            );
+          })()
         ) : (
           <span className="text-muted-foreground">{placeholder}</span>
         )}
