@@ -2194,24 +2194,20 @@ export default function InspectionForm() {
       setAutoSaving(false);
     }, 8000);
     
+    // NARROW: only release autoSaving button-state flag at local commit.
     let autoSaveCommitted = false;
     const releaseAutoSaveUi = () => {
       if (autoSaveCommitted) return;
       autoSaveCommitted = true;
       clearTimeout(safetyTimeout);
       setAutoSaving(false);
-      setLastSaved(new Date());
-      hasUnsavedRef.current = false;
-      setHasUnsavedChanges(false);
     };
 
     try {
       await performSave(true, releaseAutoSaveUi); // Silent auto-save
-      if (!autoSaveCommitted) {
-        setLastSaved(new Date());
-        hasUnsavedRef.current = false;
-        setHasUnsavedChanges(false);
-      }
+      setLastSaved(new Date());
+      hasUnsavedRef.current = false;
+      setHasUnsavedChanges(false);
       if (import.meta.env.DEV) {
         console.log("Auto-saved successfully at", new Date().toLocaleTimeString());
       }
