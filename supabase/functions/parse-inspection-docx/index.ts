@@ -116,7 +116,16 @@ serve(async (req) => {
             location: { type: "string", description: "Location/address" },
             onsite_contact: { type: "string", description: "Onsite contact person" },
             previous_inspector: { type: "string", description: "Inspector who performed the inspection" },
-            previous_inspection_date: { type: "string", description: "Date of inspection in YYYY-MM-DD format" },
+            report_inspection_date: {
+              type: "string",
+              description:
+                "The date the UPLOADED report itself was performed (cover page / report header date), in YYYY-MM-DD format. This is NOT the value the report lists under its own 'Previous Inspection Date' field.",
+            },
+            previous_inspection_date: {
+              type: "string",
+              description:
+                "The value the uploaded report listed under its own 'Previous Inspection Date' field (usually a prior year), in YYYY-MM-DD format. Do NOT confuse with the date the report itself was performed — that goes in report_inspection_date.",
+            },
             course_history: { type: "string", description: "Known course history or notes" },
             systems: {
               type: "array",
@@ -130,7 +139,7 @@ serve(async (req) => {
                 },
                 required: ["name"],
               },
-              description: "Operating systems / elements inspected",
+              description: "Operating systems / elements inspected. EXCLUDES ziplines — every zipline/zip-line/zip line element goes ONLY in the `ziplines` array.",
             },
             equipment: {
               type: "array",
@@ -207,7 +216,9 @@ CRITICAL RULES:
 6. If a field value is not found in the document, use null — do not guess or fill in default values.
 7. Include ALL items from every section — do not skip any element that appears in the document.
 8. Do NOT include equipment quantity — omit it entirely.
-9. Include the COMPLETE summary section with repairs performed, critical actions, future considerations, and next inspection date — copy all text verbatim.`;
+9. Include the COMPLETE summary section with repairs performed, critical actions, future considerations, and next inspection date — copy all text verbatim.
+10. DATE DISAMBIGUATION: The report itself was performed on a specific date (cover page, header, or "Inspection Date" field). Put THAT date in \`report_inspection_date\`. The report also lists a separate "Previous Inspection Date" field that refers to an EARLIER inspection (usually a prior year) — put THAT value in \`previous_inspection_date\`. Never put the same date in both fields unless the document literally shows the same date for both.
+11. ZIPLINE CLASSIFICATION: Any element whose name or type contains "zipline", "zip line", "zip-line", "canopy zipline", "racing zipline", or similar zipline terminology goes ONLY in the \`ziplines\` array. NEVER also list it under \`systems\`. The \`systems\` array is exclusively for non-zipline operating systems / elements (e.g. swings, climbing walls, traverses, belay systems).`;
 
     const userPrompt = `Extract ALL structured data from this inspection report. You MUST include:
 - Every operating system/element with its name, system_name, result, and full comments (verbatim)

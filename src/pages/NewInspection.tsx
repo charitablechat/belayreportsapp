@@ -20,6 +20,10 @@ import { getUserWithCache, getCachedUser, getOfflineUserId } from "@/lib/cached-
 import { triggerHaptic } from "@/lib/haptics";
 import { getCachedProfile } from "@/lib/profile-cache";
 import { toast } from "sonner";
+import {
+  mapImportedPreviousInspectionDate,
+  normalizeImportedChildData,
+} from "@/lib/import-normalize";
 
 // Types for extracted child data
 interface ExtractedSystem {
@@ -264,16 +268,30 @@ export default function NewInspection() {
         throw new Error(errBody.error || `Server returned ${res.status}`);
       }
 
-      const { data, truncated, partial } = await res.json();
+      const { data: rawData, truncated, partial } = await res.json();
 
-      // Populate form fields
+      // Normalize: move mistakenly-classified ziplines out of the generic
+      // systems ("Other Elements") array and dedupe.
+      const data = normalizeImportedChildData(rawData || {});
+
+      // Populate form fields. NOTE: the new report's "Previous Inspection
+      // Date" is the IMPORTED report's actual inspection date (because the
+      // imported report is now the previous inspection). Falls back to the
+      // imported report's own previous_inspection_date only when that's
+      // unavailable.
       setFormData(prev => ({
         ...prev,
         organization: data.organization || prev.organization,
         location: data.location || prev.location,
         onsite_contact: data.onsite_contact || prev.onsite_contact,
         previous_inspector: data.previous_inspector || prev.previous_inspector,
-        previous_inspection_date: data.previous_inspection_date || prev.previous_inspection_date,
+        previous_inspection_date: mapImportedPreviousInspectionDate(
+          {
+            report_inspection_date: data.report_inspection_date,
+            previous_inspection_date: data.previous_inspection_date,
+          },
+          prev.previous_inspection_date,
+        ),
         course_history: data.course_history || prev.course_history,
       }));
 
