@@ -5,9 +5,9 @@ import { triggerHaptic } from "@/lib/haptics";
 
 interface VerifiableItemsSectionProps {
   items: any[];
-  onUpdate: (items: any[]) => void;
+  onUpdate: (items: any[] | ((prev: any[]) => any[])) => void;
   systemsInPlace: any[];
-  onUpdateSystemsInPlace: (items: any[]) => void;
+  onUpdateSystemsInPlace: (items: any[] | ((prev: any[]) => any[])) => void;
 }
 
 const VERIFIABLE_ITEMS = [
@@ -38,7 +38,7 @@ const VerifiableItemsSection = React.memo(function VerifiableItemsSection({ item
         created_at: new Date().toISOString()
       }, ...items]);
     } else {
-      onUpdate(items.filter(i => i.item !== item));
+      onUpdate((prev: any[]) => prev.filter(i => i.item !== item));
     }
   };
 
@@ -51,7 +51,7 @@ const VerifiableItemsSection = React.memo(function VerifiableItemsSection({ item
         created_at: new Date().toISOString()
       }, ...systemsInPlace]);
     } else {
-      onUpdateSystemsInPlace(systemsInPlace.filter(i => i.system_item !== systemItem));
+      onUpdateSystemsInPlace((prev: any[]) => prev.filter(i => i.system_item !== systemItem));
     }
   };
 

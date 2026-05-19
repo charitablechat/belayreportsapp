@@ -5,7 +5,7 @@ import { triggerHaptic } from "@/lib/haptics";
 
 interface ImmediateAttentionSectionProps {
   items: any[];
-  onUpdate: (items: any[]) => void;
+  onUpdate: (items: any[] | ((prev: any[]) => any[])) => void;
 }
 
 const IMMEDIATE_ATTENTION_ITEMS = [
@@ -28,7 +28,7 @@ const ImmediateAttentionSection = React.memo(function ImmediateAttentionSection(
         created_at: new Date().toISOString()
       }, ...items]);
     } else {
-      onUpdate(items.filter(i => i.item !== item));
+      onUpdate((prev: any[]) => prev.filter(i => i.item !== item));
     }
   };
 

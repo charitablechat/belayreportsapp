@@ -5,7 +5,7 @@ import { triggerHaptic } from "@/lib/haptics";
 
 interface DeliveryApproachSectionProps {
   approaches: any[];
-  onUpdate: (approaches: any[]) => void;
+  onUpdate: (approaches: any[] | ((prev: any[]) => any[])) => void;
 }
 
 const DELIVERY_APPROACHES = [
@@ -26,7 +26,7 @@ const DeliveryApproachSection = React.memo(function DeliveryApproachSection({ ap
         created_at: new Date().toISOString()
       }, ...approaches]);
     } else {
-      onUpdate(approaches.filter(a => a.approach !== approach));
+      onUpdate((prev: any[]) => prev.filter(a => a.approach !== approach));
     }
   };
 
