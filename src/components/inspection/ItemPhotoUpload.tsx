@@ -53,19 +53,27 @@ function ItemPhotoUpload({
 
   const displayUrl = localPreview || signedUrl;
 
+  // Close lightbox WITHOUT calling window.history.back().
+  //
+  // Previously the close path emitted a synthetic `history.back()` to mirror
+  // the pushState made on open. React Router's `useBlocker` (wired into the
+  // form's `useUnsavedChanges`) intercepted the resulting popstate as a
+  // route-change attempt and surfaced the "Leaving Report" dialog. The
+  // lightbox is pure overlay UI — closing it must never look like a route
+  // navigation. We still consume the previously-pushed history entry on
+  // device-back-gesture via the popstate listener below.
   const closeLightbox = useCallback(() => {
     setLightboxOpen(false);
     setOverlayActive(false);
-    if (lightboxHistoryPushedRef.current) {
-      lightboxHistoryPushedRef.current = false;
-      window.history.back();
-    }
+    lightboxHistoryPushedRef.current = false;
   }, []);
 
   // Ref to track open state for the popstate handler (avoids stale closures)
   const lightboxOpenRef = useRef(false);
 
   // Push history state when lightbox opens; listen for popstate to close it
+  // (so the hardware/swipe back gesture closes the lightbox instead of
+  // navigating away from the report).
   useEffect(() => {
     lightboxOpenRef.current = lightboxOpen;
 
