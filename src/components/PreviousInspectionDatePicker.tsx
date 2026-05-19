@@ -89,7 +89,12 @@ export function PreviousInspectionDatePicker({ value, onChange, disabled }: Prev
           )}
         </Button>
       </PopoverTrigger>
-      <PopoverContent className="w-auto p-0" align="start">
+      <PopoverContent
+        className="w-auto p-0 max-h-[var(--radix-popover-content-available-height)] overflow-y-auto"
+        align="start"
+        sideOffset={6}
+        collisionPadding={12}
+      >
         {/* Quick select options */}
         <div className="p-3 space-y-2">
           <div className="grid grid-cols-2 gap-2">
