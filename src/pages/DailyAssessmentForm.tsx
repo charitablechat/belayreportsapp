@@ -1,4 +1,4 @@
-import { useEffect, useState, useRef, useCallback, useMemo } from "react";
+import { useEffect, useState, useRef, useCallback, useMemo, type Dispatch, type SetStateAction } from "react";
 import { formatReportFilename, formatReportTitle } from "@/lib/report-naming";
 import { useReportTabHistory } from "@/hooks/useReportTabHistory";
 import { isLocalDataNewer } from "@/lib/local-data-guards";
@@ -164,7 +164,7 @@ export default function DailyAssessmentForm() {
     deletedOperatingSystemIdsRef.current.delete(rid);
   }, []);
   const setOperatingSystemsTracked = useMemo(
-    () => trackChildDeletions(setOperatingSystems, deletedOperatingSystemIdsRef) as React.Dispatch<React.SetStateAction<DbRow[]>>,
+    () => trackChildDeletions(setOperatingSystems, deletedOperatingSystemIdsRef) as Dispatch<SetStateAction<DbRow[]>>,
     [],
   );
   const [equipmentChecks, setEquipmentChecks] = useState<DbRow[]>([]);
