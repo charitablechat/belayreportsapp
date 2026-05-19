@@ -897,6 +897,25 @@ export default function TrainingForm() {
     // Prevent duplicate save calls
     if (saveInProgressRef.current) {
       if (import.meta.env.DEV) console.log('[Training Save] Save already in progress, skipping');
+      // Save Progress UI lifecycle fix: give the user clear feedback rather
+      // than a silent no-op when they click during a previous save (which
+      // may now be in its remote-sync tail after the local-commit
+      // early-release below). Mark dirty so the autosave layer picks up
+      // any new changes on its next cycle.
+      if (!silent) {
+        if (hasUnsavedRef.current || hasUnsavedChanges) {
+          setHasUnsavedChanges(true);
+          toast.info("Save queued", {
+            description: "Finishing previous sync — your latest changes will save next.",
+            duration: 2500,
+          });
+        } else {
+          toast.success("Already saved", {
+            description: "Finishing background sync.",
+            duration: 2000,
+          });
+        }
+      }
       return;
     }
 
@@ -917,7 +936,25 @@ export default function TrainingForm() {
     // deadlock-timer ownership race PR #22 fixed in
     // `InspectionForm.performSave` (`deadlockTimerFired`).
     let safetyTimerFired = false;
+    // Save Progress UI lifecycle fix: tracks whether the early local-commit
+    // release has already flipped the button/loading flag. NARROW SCOPE —
+    // only releases `isSaving` + `saveInProgressRef` so the Save Progress
+    // button re-enables as soon as the local hard-save lands. Dirty
+    // clearing, `lastSaved`, and the merge/active-edit guard inputs are
+    // unchanged and still happen at full completion below.
+    let localCommittedRef = false;
+    const releaseSaveUiAfterLocalCommit = () => {
+      if (localCommittedRef || safetyTimerFired) return;
+      localCommittedRef = true;
+      clearTimeout(safetyTimeout);
+      setIsSaving(false);
+      saveInProgressRef.current = false;
+      if (import.meta.env.DEV) {
+        console.log('[Training Save] Local hard-save committed — Save Progress button released; remote sync continues in background');
+      }
+    };
     const safetyTimeout = setTimeout(() => {
+      if (localCommittedRef) return;
       console.warn('[Training Save] Safety timeout reached, forcing save state reset');
       safetyTimerFired = true;
       setIsSaving(false);
@@ -983,6 +1020,9 @@ export default function TrainingForm() {
       }
       if (localSaveSucceeded) {
         logTrainingSummaryAutosave('local-save-committed', { pendingFields: Object.keys(pendingSummaryFieldsRef.current), summaryUpdatedAt: latestSummary?.updated_at ?? null });
+        // Save Progress UI lifecycle fix — release the button BEFORE the
+        // remote sync tail runs. Only flips button/loading state.
+        releaseSaveUiAfterLocalCommit();
       }
 
       // Phase 2 — push to Supabase (online + local save succeeded)
@@ -1032,11 +1072,10 @@ export default function TrainingForm() {
     } finally {
       clearTimeout(safetyTimeout);
       if (import.meta.env.DEV) console.log('[Training Save] Completed, setting isSaving to false');
-      setIsSaving(false);
-      // Only release the mutex if this invocation still owns it. If the
-      // safety timer already fired, a concurrent caller has acquired the
-      // mutex and we must not stomp on it.
-      if (!safetyTimerFired) {
+      // Skip if the early local-commit release or the safety timer already
+      // handled UI/mutex cleanup — avoids stomping a newer invocation.
+      if (!safetyTimerFired && !localCommittedRef) {
+        setIsSaving(false);
         saveInProgressRef.current = false;
       }
     }
