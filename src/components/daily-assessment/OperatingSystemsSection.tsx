@@ -21,7 +21,7 @@ const OPERATING_SYSTEMS = [
 
 interface OperatingSystemsSectionProps {
   systems: any[];
-  onUpdate: (systems: any[]) => void;
+  onUpdate: (systems: any[] | ((prev: any[]) => any[])) => void;
   sectionComments: string;
   onSectionCommentsChange: (value: string) => void;
   onSectionCommentsBlur?: () => void;
@@ -35,7 +35,8 @@ const OperatingSystemsSection = React.memo(function OperatingSystemsSection({ sy
     const exists = systems.some(s => s.system_name === systemName);
     
     if (exists) {
-      onUpdate(systems.filter(s => s.system_name !== systemName));
+      // Functional update so deletion tracker (in DailyAssessmentForm) records the removed id.
+      onUpdate((prev: any[]) => prev.filter(s => s.system_name !== systemName));
     } else {
       // Generate stable ID immediately when creating new item
       onUpdate([{ 
@@ -72,7 +73,8 @@ const OperatingSystemsSection = React.memo(function OperatingSystemsSection({ sy
 
   const handleRemoveOther = (index: number) => {
     triggerHaptic('light');
-    onUpdate(systems.filter((_, i) => i !== index));
+    // Functional update so deletion tracker captures the removed id by diffing prev→next.
+    onUpdate((prev: any[]) => prev.filter((_, i) => i !== index));
   };
 
   const standardSystems = systems.filter(s => s.system_name !== 'Other');
