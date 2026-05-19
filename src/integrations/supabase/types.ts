@@ -2482,6 +2482,10 @@ export type Database = {
         Args: { report_inspector_id: string }
         Returns: boolean
       }
+      can_subscribe_realtime_topic: {
+        Args: { _topic: string }
+        Returns: boolean
+      }
       check_data_loss: {
         Args: {
           p_records_before: number
