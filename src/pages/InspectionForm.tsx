@@ -2268,10 +2268,16 @@ export default function InspectionForm() {
     setSaving(true);
     setSaveError(null);
 
-    // Tracks whether the early local-commit release has already flipped UI
-    // state. Used by both the safety timer and the finally block to avoid
-    // double-resetting (or, worse, stomping a newer invocation's state
-    // after this one's UI has already been released).
+    // Tracks whether the early local-commit release has already flipped
+    // the button/loading UI state. Used by both the safety timer and the
+    // finally block to avoid double-resetting (or stomping a newer
+    // invocation's state after this one's UI was released early).
+    //
+    // NARROW SCOPE: this early-release only touches the button/loading
+    // state (`saving` + `saveInProgressRef`). It does NOT clear dirty
+    // flags or stamp `lastSaved` — those stay in the existing success
+    // path so the active-edit guard / Training Summary merge / dirty
+    // ownership logic is unchanged.
     let localCommittedRef = false;
     let safetyTimerFired = false;
 
@@ -2281,12 +2287,8 @@ export default function InspectionForm() {
       clearTimeout(safetyTimeout);
       setSaving(false);
       saveInProgressRef.current = false;
-      setLastSaved(new Date());
-      setLastManuallySaved(new Date());
-      hasUnsavedRef.current = false;
-      setHasUnsavedChanges(false);
       if (import.meta.env.DEV) {
-        console.log('[InspectionForm] Local hard-save committed — UI released; remote sync continues in background');
+        console.log('[InspectionForm] Local hard-save committed — Save Progress button released; remote sync continues in background');
       }
     };
 
@@ -2304,16 +2306,10 @@ export default function InspectionForm() {
 
     try {
       await performSave(false, releaseUiAfterLocalCommit); // Show warnings on manual save
-      // If performSave returned without ever firing the early-release
-      // (e.g. required-field gate, preview-mode short-circuit, or local
-      // save failure path), fall back to the legacy "release on full
-      // completion" behavior.
-      if (!localCommittedRef && !safetyTimerFired) {
-        setLastSaved(new Date());
-        setLastManuallySaved(new Date());
-        hasUnsavedRef.current = false;
-        setHasUnsavedChanges(false);
-      }
+      setLastSaved(new Date());
+      setLastManuallySaved(new Date());
+      hasUnsavedRef.current = false;
+      setHasUnsavedChanges(false);
       if (import.meta.env.DEV) {
         console.log('[InspectionForm] Progress saved:', isOnline ? 'online' : 'offline');
       }
