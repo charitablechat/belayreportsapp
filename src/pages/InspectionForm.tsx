@@ -1654,7 +1654,7 @@ export default function InspectionForm() {
     return () => window.removeEventListener('report-data-imported', handleReportImported);
   }, [id]);
 
-  const performSave = async (silent: boolean = false) => {
+  const performSave = async (silent: boolean = false, onLocalSaved?: () => void) => {
     // Block all writes in Lovable preview to protect production data
     if ((await import('@/lib/environment')).isLovablePreview()) return;
     // Required-field gate: mirror the sync-time validator
