@@ -2,7 +2,8 @@ import { useEffect, useRef } from 'react';
 import { useEditor, EditorContent } from '@tiptap/react';
 import StarterKit from '@tiptap/starter-kit';
 import { Extension } from '@tiptap/react';
-import { Bold, Italic, List } from 'lucide-react';
+import Highlight from '@tiptap/extension-highlight';
+import { Bold, Italic, List, Eraser } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 interface RichTextEditorProps {
@@ -62,6 +63,11 @@ export const RichTextEditor = ({
           };
         },
       }),
+      // Highlight mark — registered so pasted/loaded <mark> and
+      // <span style="background-color"> round-trip safely AND so typing past
+      // the end of a highlighted run does not inherit the highlight
+      // (TipTap's Highlight mark is non-inclusive by default).
+      Highlight.configure({ multicolor: true }),
     ],
     content,
     autofocus: autoFocus ?? false,
@@ -146,6 +152,21 @@ export const RichTextEditor = ({
           title="Bullet List"
         >
           <List className="h-4 w-4" />
+        </button>
+        <button
+          type="button"
+          onClick={() => {
+            // Clear the highlight mark on selection or stored marks at caret.
+            // Escape hatch when the caret is inside a highlighted run.
+            editor.chain().focus().unsetHighlight().run();
+          }}
+          className={cn(
+            'p-1.5 rounded hover:bg-background transition-colors',
+            editor.isActive('highlight') && 'bg-background'
+          )}
+          title="Clear highlight"
+        >
+          <Eraser className="h-4 w-4" />
         </button>
       </div>
       <EditorContent editor={editor} />
