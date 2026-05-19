@@ -1329,11 +1329,10 @@ export default function DailyAssessmentForm() {
     } finally {
       clearTimeout(safetyTimeout);
       console.log('[Save] Completed, setting saving to false');
-      setSaving(false);
-      // Only release the mutex if this invocation still owns it. If the
-      // safety timer already fired, a concurrent caller has acquired the
-      // mutex and we must not stomp on it.
-      if (!safetyTimerFired) {
+      // Skip if the early local-commit release or safety timer already
+      // handled UI/mutex cleanup — avoids stomping a newer invocation.
+      if (!safetyTimerFired && !localCommittedRef) {
+        setSaving(false);
         saveInProgressRef.current = false;
       }
     }
