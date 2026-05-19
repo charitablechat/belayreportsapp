@@ -936,7 +936,25 @@ export default function TrainingForm() {
     // deadlock-timer ownership race PR #22 fixed in
     // `InspectionForm.performSave` (`deadlockTimerFired`).
     let safetyTimerFired = false;
+    // Save Progress UI lifecycle fix: tracks whether the early local-commit
+    // release has already flipped the button/loading flag. NARROW SCOPE —
+    // only releases `isSaving` + `saveInProgressRef` so the Save Progress
+    // button re-enables as soon as the local hard-save lands. Dirty
+    // clearing, `lastSaved`, and the merge/active-edit guard inputs are
+    // unchanged and still happen at full completion below.
+    let localCommittedRef = false;
+    const releaseSaveUiAfterLocalCommit = () => {
+      if (localCommittedRef || safetyTimerFired) return;
+      localCommittedRef = true;
+      clearTimeout(safetyTimeout);
+      setIsSaving(false);
+      saveInProgressRef.current = false;
+      if (import.meta.env.DEV) {
+        console.log('[Training Save] Local hard-save committed — Save Progress button released; remote sync continues in background');
+      }
+    };
     const safetyTimeout = setTimeout(() => {
+      if (localCommittedRef) return;
       console.warn('[Training Save] Safety timeout reached, forcing save state reset');
       safetyTimerFired = true;
       setIsSaving(false);
