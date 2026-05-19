@@ -1,8 +1,9 @@
-import { useEffect, useState, useRef, useCallback } from "react";
+import { useEffect, useState, useRef, useCallback, useMemo, type Dispatch, type SetStateAction } from "react";
 import { formatReportFilename, formatReportTitle } from "@/lib/report-naming";
 import { useReportTabHistory } from "@/hooks/useReportTabHistory";
 import { isLocalDataNewer } from "@/lib/local-data-guards";
-import { applyTrackedFieldWrite, mergeRecordFields, TRACKED_FIELDS } from "@/lib/field-merge";
+import { applyTrackedFieldWrite, mergeChildArray, mergeRecordFields, TRACKED_FIELDS } from "@/lib/field-merge";
+import { trackChildDeletions } from "@/lib/track-child-deletions";
 import { isFieldActivelyEdited, recordActiveEditSkip } from "@/lib/active-edit-guard";
 import { checkRequiredHeaderFields, formatMissingFieldLabels } from "@/lib/header-required-fields";
 import { getMissingAssessmentFields, formatMissingDescription, type MissingField } from "@/lib/required-fields";
@@ -152,6 +153,20 @@ export default function DailyAssessmentForm() {
   const [beginningOfDay, setBeginningOfDay] = useState<DbRow[]>([]);
   const [endOfDay, setEndOfDay] = useState<DbRow[]>([]);
   const [operatingSystems, setOperatingSystems] = useState<DbRow[]>([]);
+  // ── Deletion-aware merge tracking (Operating Systems only) ─────────────
+  // Session-scoped set of OS row ids the user intentionally unchecked or
+  // removed via the section UI. Passed to `mergeChildArray` on server
+  // reconcile so a stale snapshot can't resurrect a just-deleted row.
+  // Auto-cleared per-id via `onDeletedIdConfirmed` when the server stops
+  // returning the id, and wholesale on JSON import.
+  const deletedOperatingSystemIdsRef = useRef<Set<string>>(new Set());
+  const dropDeletedOperatingSystemId = useCallback((rid: string) => {
+    deletedOperatingSystemIdsRef.current.delete(rid);
+  }, []);
+  const setOperatingSystemsTracked = useMemo(
+    () => trackChildDeletions(setOperatingSystems, deletedOperatingSystemIdsRef) as Dispatch<SetStateAction<DbRow[]>>,
+    [],
+  );
   const [equipmentChecks, setEquipmentChecks] = useState<DbRow[]>([]);
   const [structureChecks, setStructureChecks] = useState<DbRow[]>([]);
   const [environmentChecks, setEnvironmentChecks] = useState<DbRow[]>([]);
@@ -773,7 +788,25 @@ export default function DailyAssessmentForm() {
 
           guardedSet(bodData.data, beginningOfDay, setBeginningOfDay, 'beginning_of_day');
           guardedSet(eodData.data, endOfDay, setEndOfDay, 'end_of_day');
-          guardedSet(osData.data, operatingSystems, setOperatingSystems, 'operating_systems');
+          // Operating Systems: deletion-aware merge so a stale server snapshot
+          // can't resurrect a row the user just unchecked/removed locally.
+          if (osData.data && osData.data.length > 0) {
+            setOperatingSystems(prev => mergeChildArray(
+              prev as Array<DbRow & { id: string }>,
+              osData.data as Array<DbRow & { id: string }>,
+              {
+                table: 'daily_assessment_operating_systems',
+                deletedIds: deletedOperatingSystemIdsRef.current,
+                onDeletedIdConfirmed: dropDeletedOperatingSystemId,
+              },
+            ) as DbRow[]);
+            saveAssessmentDataOffline('operating_systems', id!, osData.data).catch(e =>
+              console.warn('[DailyAssessmentForm] Non-critical: failed to cache operating_systems', e));
+          } else if (operatingSystems.length > 0) {
+            console.warn('[DailyAssessmentForm] Server returned empty operating_systems but local has data -- preserving local');
+          } else {
+            setOperatingSystems([]);
+          }
           guardedSet(eqData.data, equipmentChecks, setEquipmentChecks, 'equipment_checks');
           guardedSet(stData.data, structureChecks, setStructureChecks, 'structure_checks');
           guardedSet(envData.data, environmentChecks, setEnvironmentChecks, 'environment_checks');
@@ -919,6 +952,9 @@ export default function DailyAssessmentForm() {
         }
         setBeginningOfDay(bod); childDataLoadedRef.current.beginning_of_day = true;
         setEndOfDay(eod); childDataLoadedRef.current.end_of_day = true;
+        // JSON import is a wholesale user-driven replacement: clear the
+        // session deletion set so imported rows are not vetoed.
+        deletedOperatingSystemIdsRef.current.clear();
         setOperatingSystems(os); childDataLoadedRef.current.operating_systems = true;
         setEquipmentChecks(eq); childDataLoadedRef.current.equipment_checks = true;
         setStructureChecks(st); childDataLoadedRef.current.structure_checks = true;
@@ -1352,9 +1388,11 @@ export default function DailyAssessmentForm() {
     setEndOfDay(items);
   }, []);
 
-  const handleOperatingSystemsUpdate = useCallback((items: DbRow[]) => {
-    setOperatingSystems(items);
-  }, []);
+  // Routes through the tracked setter so functional shrink updates from the
+  // Operating Systems section record the removed id into the deletion ref.
+  const handleOperatingSystemsUpdate = useCallback<Dispatch<SetStateAction<DbRow[]>>>((action) => {
+    setOperatingSystemsTracked(action);
+  }, [setOperatingSystemsTracked]);
 
   const handleEquipmentChecksUpdate = useCallback((items: DbRow[]) => {
     setEquipmentChecks(items);
