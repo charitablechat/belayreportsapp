@@ -20,6 +20,10 @@ import { getUserWithCache, getCachedUser, getOfflineUserId } from "@/lib/cached-
 import { triggerHaptic } from "@/lib/haptics";
 import { getCachedProfile } from "@/lib/profile-cache";
 import { toast } from "sonner";
+import {
+  mapImportedPreviousInspectionDate,
+  normalizeImportedChildData,
+} from "@/lib/import-normalize";
 
 // Types for extracted child data
 interface ExtractedSystem {
