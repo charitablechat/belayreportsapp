@@ -1533,7 +1533,11 @@ export default function InspectionForm() {
               ...item,
               result: normalizeResultValue(item.result)
             }));
-            setSystems(normalizedSystems);
+            setSystems(prev => mergeChildArray(
+              prev as Array<DbRow & { id: string }>,
+              normalizedSystems as Array<DbRow & { id: string }>,
+              { table: 'systems', deletedIds: deletedSystemIdsRef.current, onDeletedIdConfirmed: dropDeletedSystemId },
+            ) as DbRow[]);
             saveRelatedDataOffline('systems', id!, normalizedSystems).catch(e =>
               console.warn('[InspectionForm] Non-critical: failed to cache systems', e)
             );
@@ -1543,7 +1547,11 @@ export default function InspectionForm() {
               ...item,
               result: normalizeResultValue(item.result)
             }));
-            setSystems(normalizedSystems);
+            setSystems(prev => mergeChildArray(
+              prev as Array<DbRow & { id: string }>,
+              normalizedSystems as Array<DbRow & { id: string }>,
+              { table: 'systems', deletedIds: deletedSystemIdsRef.current, onDeletedIdConfirmed: dropDeletedSystemId },
+            ) as DbRow[]);
           }
 
           const { data: ziplinesData } = ziplinesResult;
@@ -1555,7 +1563,11 @@ export default function InspectionForm() {
               braking_result: normalizeResultValue(item.braking_result),
               ead_result: normalizeResultValue(item.ead_result)
             }));
-            setZiplines(normalizedZiplines);
+            setZiplines(prev => mergeChildArray(
+              prev as Array<DbRow & { id: string }>,
+              normalizedZiplines as Array<DbRow & { id: string }>,
+              { table: 'ziplines', deletedIds: deletedZiplineIdsRef.current, onDeletedIdConfirmed: dropDeletedZiplineId },
+            ) as DbRow[]);
             saveRelatedDataOffline('ziplines', id!, normalizedZiplines).catch(e =>
               console.warn('[InspectionForm] Non-critical: failed to cache ziplines', e)
             );
@@ -1568,7 +1580,11 @@ export default function InspectionForm() {
               braking_result: normalizeResultValue(item.braking_result),
               ead_result: normalizeResultValue(item.ead_result)
             }));
-            setZiplines(normalizedZiplines);
+            setZiplines(prev => mergeChildArray(
+              prev as Array<DbRow & { id: string }>,
+              normalizedZiplines as Array<DbRow & { id: string }>,
+              { table: 'ziplines', deletedIds: deletedZiplineIdsRef.current, onDeletedIdConfirmed: dropDeletedZiplineId },
+            ) as DbRow[]);
           }
 
           const { data: equipmentData } = equipmentResult;
@@ -1577,7 +1593,11 @@ export default function InspectionForm() {
               ...item,
               result: normalizeResultValue(item.result)
             }));
-            setEquipment(normalizedEquipment);
+            setEquipment(prev => mergeChildArray(
+              prev as Array<DbRow & { id: string }>,
+              normalizedEquipment as Array<DbRow & { id: string }>,
+              { table: 'equipment', deletedIds: deletedEquipmentIdsRef.current, onDeletedIdConfirmed: dropDeletedEquipmentId },
+            ) as DbRow[]);
             saveRelatedDataOffline('equipment', id!, normalizedEquipment).catch(e =>
               console.warn('[InspectionForm] Non-critical: failed to cache equipment', e)
             );
@@ -1587,7 +1607,11 @@ export default function InspectionForm() {
               ...item,
               result: normalizeResultValue(item.result)
             }));
-            setEquipment(normalizedEquipment);
+            setEquipment(prev => mergeChildArray(
+              prev as Array<DbRow & { id: string }>,
+              normalizedEquipment as Array<DbRow & { id: string }>,
+              { table: 'equipment', deletedIds: deletedEquipmentIdsRef.current, onDeletedIdConfirmed: dropDeletedEquipmentId },
+            ) as DbRow[]);
           }
 
           const { data: standardsData } = standardsResult;
