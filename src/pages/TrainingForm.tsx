@@ -173,6 +173,40 @@ export default function TrainingForm() {
   const [verifiableItems, setVerifiableItems] = useState<DbRow[]>([]);
   const [systemsInPlace, setSystemsInPlace] = useState<DbRow[]>([]);
   const [summary, setSummary] = useState<DbRow | null>(null);
+
+  // ── Deletion-aware merge tracking ────────────────────────────────────────
+  // See InspectionForm for full rationale. Sets are populated only when the
+  // user removes a non-temp row via the table UI (the wrapped tracked setter
+  // below), and are auto-pruned per-id by `mergeChildArray` when the server
+  // snapshot confirms the row is gone. Wholesale clear happens only on
+  // confirmed sync success or component unmount.
+  const deletedDeliveryIdsRef = useRef<Set<string>>(new Set());
+  const deletedOperatingSystemIdsRef = useRef<Set<string>>(new Set());
+  const deletedImmediateAttentionIdsRef = useRef<Set<string>>(new Set());
+  const deletedVerifiableIdsRef = useRef<Set<string>>(new Set());
+  const deletedSystemsInPlaceIdsRef = useRef<Set<string>>(new Set());
+  const setDeliveryApproachesTracked = useMemo(
+    () => trackChildDeletions(setDeliveryApproaches, deletedDeliveryIdsRef), [],
+  );
+  const setOperatingSystemsTracked = useMemo(
+    () => trackChildDeletions(setOperatingSystems, deletedOperatingSystemIdsRef), [],
+  );
+  const setImmediateAttentionTracked = useMemo(
+    () => trackChildDeletions(setImmediateAttention, deletedImmediateAttentionIdsRef), [],
+  );
+  const setVerifiableItemsTracked = useMemo(
+    () => trackChildDeletions(setVerifiableItems, deletedVerifiableIdsRef), [],
+  );
+  const setSystemsInPlaceTracked = useMemo(
+    () => trackChildDeletions(setSystemsInPlace, deletedSystemsInPlaceIdsRef), [],
+  );
+  const trainingDeletedIdsByTable: Record<string, React.MutableRefObject<Set<string>>> = useMemo(() => ({
+    delivery_approaches: deletedDeliveryIdsRef,
+    operating_systems: deletedOperatingSystemIdsRef,
+    immediate_attention: deletedImmediateAttentionIdsRef,
+    verifiable_items: deletedVerifiableIdsRef,
+    systems_in_place: deletedSystemsInPlaceIdsRef,
+  }), []);
   const [photoRefreshKey, setPhotoRefreshKey] = useState(0);
   // Completion lock derived values (after report state is declared)
   const isCompletionLocked = training?.status === 'completed' && !completionLockOverridden;
