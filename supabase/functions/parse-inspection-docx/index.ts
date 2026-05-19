@@ -139,7 +139,7 @@ serve(async (req) => {
                 },
                 required: ["name"],
               },
-              description: "Operating systems / elements inspected",
+              description: "Operating systems / elements inspected. EXCLUDES ziplines — every zipline/zip-line/zip line element goes ONLY in the `ziplines` array.",
             },
             equipment: {
               type: "array",
