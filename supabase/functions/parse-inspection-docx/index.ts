@@ -116,7 +116,16 @@ serve(async (req) => {
             location: { type: "string", description: "Location/address" },
             onsite_contact: { type: "string", description: "Onsite contact person" },
             previous_inspector: { type: "string", description: "Inspector who performed the inspection" },
-            previous_inspection_date: { type: "string", description: "Date of inspection in YYYY-MM-DD format" },
+            report_inspection_date: {
+              type: "string",
+              description:
+                "The date the UPLOADED report itself was performed (cover page / report header date), in YYYY-MM-DD format. This is NOT the value the report lists under its own 'Previous Inspection Date' field.",
+            },
+            previous_inspection_date: {
+              type: "string",
+              description:
+                "The value the uploaded report listed under its own 'Previous Inspection Date' field (usually a prior year), in YYYY-MM-DD format. Do NOT confuse with the date the report itself was performed — that goes in report_inspection_date.",
+            },
             course_history: { type: "string", description: "Known course history or notes" },
             systems: {
               type: "array",
