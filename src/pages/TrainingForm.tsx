@@ -1072,6 +1072,14 @@ export default function TrainingForm() {
           // Mark local as synced only after server confirmation
           await saveTrainingOffline({ ...updatedTraining, synced_at: syncTimestamp });
           markSnapshotSynced('training', id!);
+          // Confirmed successful round-trip persisted the shorter child arrays.
+          // Wholesale-clear deletion-tracking refs; future stale snapshots are
+          // reconciled against now-authoritative server state.
+          deletedDeliveryIdsRef.current.clear();
+          deletedOperatingSystemIdsRef.current.clear();
+          deletedImmediateAttentionIdsRef.current.clear();
+          deletedVerifiableIdsRef.current.clear();
+          deletedSystemsInPlaceIdsRef.current.clear();
           logTrainingSummaryAutosave('remote-save-committed', { pendingFields: Object.keys(pendingSummaryFieldsRef.current), syncTimestamp });
           if (import.meta.env.DEV) console.log('[Training Save] Synced to database (verified)');
         } catch (error) {
