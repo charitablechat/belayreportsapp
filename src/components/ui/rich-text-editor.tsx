@@ -63,6 +63,11 @@ export const RichTextEditor = ({
           };
         },
       }),
+      // Highlight mark — registered so pasted/loaded <mark> and
+      // <span style="background-color"> round-trip safely AND so typing past
+      // the end of a highlighted run does not inherit the highlight
+      // (TipTap's Highlight mark is non-inclusive by default).
+      Highlight.configure({ multicolor: true }),
     ],
     content,
     autofocus: autoFocus ?? false,
