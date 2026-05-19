@@ -876,6 +876,12 @@ export default function TrainingForm() {
           setTraining(offlineData);
           setInspectorId(offlineData.inspector_id);
         }
+        // JSON import is an explicit reset — clear deletion-tracking refs.
+        deletedDeliveryIdsRef.current.clear();
+        deletedOperatingSystemIdsRef.current.clear();
+        deletedImmediateAttentionIdsRef.current.clear();
+        deletedVerifiableIdsRef.current.clear();
+        deletedSystemsInPlaceIdsRef.current.clear();
         setDeliveryApproaches(da); childDataLoadedRef.current.delivery_approaches = true;
         setOperatingSystems(os); childDataLoadedRef.current.operating_systems = true;
         setImmediateAttention(ia); childDataLoadedRef.current.immediate_attention = true;
