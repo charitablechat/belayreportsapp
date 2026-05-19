@@ -2098,6 +2098,13 @@ export default function InspectionForm() {
             });
 
             markSnapshotSynced('inspection', id!);
+            // Confirmed successful round-trip persisted the shorter child arrays.
+            // Safe to drop all in-session deletion-tracking ids; any future
+            // stale snapshot will be reconciled against the now-authoritative
+            // server state instead.
+            deletedSystemIdsRef.current.clear();
+            deletedZiplineIdsRef.current.clear();
+            deletedEquipmentIdsRef.current.clear();
             console.log('[InspectionForm Sync] Synced all data to Supabase successfully (verified)');
           } catch (error) {
             // Detect network-related errors for retry
