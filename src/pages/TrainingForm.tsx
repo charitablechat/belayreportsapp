@@ -683,7 +683,12 @@ export default function TrainingForm() {
               if (serverRows && serverRows.length > 0) {
                 const local = localRows.filter(r => typeof r.id === 'string') as (DbRow & { id: string; display_order?: number | null })[];
                 const server = serverRows.filter(r => typeof r.id === 'string') as (DbRow & { id: string; display_order?: number | null })[];
-                const merged = mergeChildArray(local, server, { table }) as unknown as DbRow[];
+                const deletedRef = trainingDeletedIdsByTable[table];
+                const merged = mergeChildArray(local, server, {
+                  table,
+                  deletedIds: deletedRef?.current,
+                  onDeletedIdConfirmed: deletedRef ? (rid: string) => { deletedRef.current.delete(rid); } : undefined,
+                }) as unknown as DbRow[];
                 setter(merged);
                 persist(serverRows).catch(e =>
                   console.warn(`[TrainingForm] Non-critical: failed to cache ${table}`, e));
