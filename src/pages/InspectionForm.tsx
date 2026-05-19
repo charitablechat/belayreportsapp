@@ -1301,7 +1301,11 @@ export default function InspectionForm() {
           ...item,
           result: normalizeResultValue(item.result)
         }));
-        setSystems(normalizedSystems);
+        setSystems(prev => mergeChildArray(
+          prev as Array<DbRow & { id: string }>,
+          normalizedSystems as Array<DbRow & { id: string }>,
+          { table: 'systems', deletedIds: deletedSystemIdsRef.current, onDeletedIdConfirmed: dropDeletedSystemId },
+        ) as DbRow[]);
       }
       if (offlineZiplines.length > 0) {
         childDataLoadedRef.current.ziplines = true;
@@ -1312,7 +1316,11 @@ export default function InspectionForm() {
           braking_result: normalizeResultValue(item.braking_result),
           ead_result: normalizeResultValue(item.ead_result)
         }));
-        setZiplines(normalizedZiplines);
+        setZiplines(prev => mergeChildArray(
+          prev as Array<DbRow & { id: string }>,
+          normalizedZiplines as Array<DbRow & { id: string }>,
+          { table: 'ziplines', deletedIds: deletedZiplineIdsRef.current, onDeletedIdConfirmed: dropDeletedZiplineId },
+        ) as DbRow[]);
       }
       if (offlineEquipment.length > 0) {
         childDataLoadedRef.current.equipment = true;
@@ -1320,7 +1328,11 @@ export default function InspectionForm() {
           ...item,
           result: normalizeResultValue(item.result)
         }));
-        setEquipment(normalizedEquipment);
+        setEquipment(prev => mergeChildArray(
+          prev as Array<DbRow & { id: string }>,
+          normalizedEquipment as Array<DbRow & { id: string }>,
+          { table: 'equipment', deletedIds: deletedEquipmentIdsRef.current, onDeletedIdConfirmed: dropDeletedEquipmentId },
+        ) as DbRow[]);
       }
       if (offlineStandards.length > 0) {
         childDataLoadedRef.current.standards = true;
