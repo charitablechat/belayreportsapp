@@ -153,6 +153,20 @@ export default function DailyAssessmentForm() {
   const [beginningOfDay, setBeginningOfDay] = useState<DbRow[]>([]);
   const [endOfDay, setEndOfDay] = useState<DbRow[]>([]);
   const [operatingSystems, setOperatingSystems] = useState<DbRow[]>([]);
+  // ── Deletion-aware merge tracking (Operating Systems only) ─────────────
+  // Session-scoped set of OS row ids the user intentionally unchecked or
+  // removed via the section UI. Passed to `mergeChildArray` on server
+  // reconcile so a stale snapshot can't resurrect a just-deleted row.
+  // Auto-cleared per-id via `onDeletedIdConfirmed` when the server stops
+  // returning the id, and wholesale on JSON import.
+  const deletedOperatingSystemIdsRef = useRef<Set<string>>(new Set());
+  const dropDeletedOperatingSystemId = useCallback((rid: string) => {
+    deletedOperatingSystemIdsRef.current.delete(rid);
+  }, []);
+  const setOperatingSystemsTracked = useMemo(
+    () => trackChildDeletions(setOperatingSystems, deletedOperatingSystemIdsRef) as React.Dispatch<React.SetStateAction<DbRow[]>>,
+    [],
+  );
   const [equipmentChecks, setEquipmentChecks] = useState<DbRow[]>([]);
   const [structureChecks, setStructureChecks] = useState<DbRow[]>([]);
   const [environmentChecks, setEnvironmentChecks] = useState<DbRow[]>([]);
