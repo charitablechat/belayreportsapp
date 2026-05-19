@@ -2,7 +2,8 @@ import { useEffect, useRef } from 'react';
 import { useEditor, EditorContent } from '@tiptap/react';
 import StarterKit from '@tiptap/starter-kit';
 import { Extension } from '@tiptap/react';
-import { Bold, Italic, List } from 'lucide-react';
+import Highlight from '@tiptap/extension-highlight';
+import { Bold, Italic, List, Eraser } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 interface RichTextEditorProps {
