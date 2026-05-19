@@ -2139,13 +2139,26 @@ export default function InspectionForm() {
       setAutoSaving(false);
     }, 8000);
     
-    try {
-      await performSave(true); // Silent immediate save
+    let autoLocalCommitted = false;
+    const releaseAutoUiAfterLocalCommit = () => {
+      if (autoLocalCommitted) return;
+      autoLocalCommitted = true;
+      clearTimeout(safetyTimeout);
+      setAutoSaving(false);
       setLastSaved(new Date());
       hasUnsavedRef.current = false;
       setHasUnsavedChanges(false);
-      // Non-intrusive success feedback (routes to notification center on mobile)
       toast.success("Changes saved");
+    };
+
+    try {
+      await performSave(true, releaseAutoUiAfterLocalCommit); // Silent immediate save
+      if (!autoLocalCommitted) {
+        setLastSaved(new Date());
+        hasUnsavedRef.current = false;
+        setHasUnsavedChanges(false);
+        toast.success("Changes saved");
+      }
       if (import.meta.env.DEV) {
         console.log("Immediate save triggered at", new Date().toLocaleTimeString());
       }
@@ -2155,7 +2168,7 @@ export default function InspectionForm() {
       setSaveError({ message: errorMessage(error, 'Immediate save failed'), code: errorCode(error) });
     } finally {
       clearTimeout(safetyTimeout);
-      setAutoSaving(false);
+      if (!autoLocalCommitted) setAutoSaving(false);
       // `anySaveInProgressRef` is NOT cleared here — owned by `performSave`.
     }
   };
