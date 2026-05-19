@@ -3150,8 +3150,8 @@ export default function InspectionForm() {
 
           <div>
               <TabsContent value="details" className="space-y-6">
-                <OperatingSystemsTable systems={systems} onUpdate={setSystems} onImmediateSave={stableTriggerImmediateSave} inspectionId={id} onGalleryRefresh={handleGalleryRefresh} />
-                <ZiplinesTable ziplines={ziplines} onUpdate={setZiplines} onImmediateSave={stableTriggerImmediateSave} inspectionId={id} onGalleryRefresh={handleGalleryRefresh} />
+                <OperatingSystemsTable systems={systems} onUpdate={setSystemsTracked} onImmediateSave={stableTriggerImmediateSave} inspectionId={id} onGalleryRefresh={handleGalleryRefresh} />
+                <ZiplinesTable ziplines={ziplines} onUpdate={setZiplinesTracked} onImmediateSave={stableTriggerImmediateSave} inspectionId={id} onGalleryRefresh={handleGalleryRefresh} />
                 
                 <div className="mt-8 border-t pt-6">
                   <h3 className="text-lg font-semibold mb-4">Photos - Systems & Ziplines</h3>
@@ -3181,7 +3181,7 @@ export default function InspectionForm() {
                       category="harnesses"
                       displayName="Harnesses"
                       equipment={equipment}
-                      onUpdate={setEquipment}
+                      onUpdate={setEquipmentTracked}
                       onImmediateSave={stableTriggerImmediateSave}
                       categoryOptions={harnessesOpts.options}
                       onAddCategoryOption={harnessesOpts.addOption}
@@ -3192,7 +3192,7 @@ export default function InspectionForm() {
                       category="helmets"
                       displayName="Helmets"
                       equipment={equipment}
-                      onUpdate={setEquipment}
+                      onUpdate={setEquipmentTracked}
                       onImmediateSave={stableTriggerImmediateSave}
                       categoryOptions={helmetsOpts.options}
                       onAddCategoryOption={helmetsOpts.addOption}
@@ -3203,7 +3203,7 @@ export default function InspectionForm() {
                       category="lanyards"
                       displayName="Lanyards"
                       equipment={equipment}
-                      onUpdate={setEquipment}
+                      onUpdate={setEquipmentTracked}
                       onImmediateSave={stableTriggerImmediateSave}
                       categoryOptions={lanyardsOpts.options}
                       onAddCategoryOption={lanyardsOpts.addOption}
@@ -3214,7 +3214,7 @@ export default function InspectionForm() {
                       category="connectors"
                       displayName="Connectors (Carabiners & Quicklinks)"
                       equipment={equipment}
-                      onUpdate={setEquipment}
+                      onUpdate={setEquipmentTracked}
                       onImmediateSave={stableTriggerImmediateSave}
                       categoryOptions={connectorsOpts.options}
                       onAddCategoryOption={connectorsOpts.addOption}
@@ -3225,7 +3225,7 @@ export default function InspectionForm() {
                       category="rope"
                       displayName="Rope"
                       equipment={equipment}
-                      onUpdate={setEquipment}
+                      onUpdate={setEquipmentTracked}
                       onImmediateSave={stableTriggerImmediateSave}
                       categoryOptions={ropeOpts.options}
                       onAddCategoryOption={ropeOpts.addOption}
@@ -3236,7 +3236,7 @@ export default function InspectionForm() {
                       category="belay"
                       displayName="Belay/Descent Device"
                       equipment={equipment}
-                      onUpdate={setEquipment}
+                      onUpdate={setEquipmentTracked}
                       onImmediateSave={stableTriggerImmediateSave}
                       categoryOptions={belayOpts.options}
                       onAddCategoryOption={belayOpts.addOption}
@@ -3247,7 +3247,7 @@ export default function InspectionForm() {
                       category="trolleys"
                       displayName="Trolleys and Pulleys"
                       equipment={equipment}
-                      onUpdate={setEquipment}
+                      onUpdate={setEquipmentTracked}
                       onImmediateSave={stableTriggerImmediateSave}
                       categoryOptions={trolleysOpts.options}
                       onAddCategoryOption={trolleysOpts.addOption}
@@ -3258,7 +3258,7 @@ export default function InspectionForm() {
                       category="other"
                       displayName="Other Equipment"
                       equipment={equipment}
-                      onUpdate={setEquipment}
+                      onUpdate={setEquipmentTracked}
                       onImmediateSave={stableTriggerImmediateSave}
                       categoryOptions={otherOpts.options}
                       onAddCategoryOption={otherOpts.addOption}
