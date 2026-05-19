@@ -295,7 +295,15 @@ export default function PhotoGallery({
               rawStoragePath: p.photoUrl || '', // preserve raw storage path for dedup
               blob: p.blob,
               uploaded: Boolean(p.uploaded),
-              caption: null,
+              // Prefer the caption written at capture time (ItemPhotoUpload
+              // passes the live item name into savePhotoOffline). This keeps
+              // pre-sync offline photos labeled with the correct item name
+              // in the bottom gallery. The existing rename-sync effect in
+              // ItemPhotoUpload still updates this caption on subsequent
+              // renames; the *last write wins* — i.e. the current item
+              // name at the most recent rename-sync tick, NOT the
+              // capture-time snapshot if the item has since been renamed.
+              caption: (p as any).caption ?? null,
               display_order: p.display_order ?? index,
               staleUpload: isStale,
             };
