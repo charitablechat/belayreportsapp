@@ -11,6 +11,36 @@ interface LazyRichTextEditorProps {
   className?: string;
 }
 
+// Narrow sanitizer: keep <mark> as a tag, and on <mark>/<span> keep ONLY a
+// style attribute that contains nothing but a `background-color: <value>`
+// declaration. Everything else (other tags' style attrs, other style props
+// like `position`, `background-image`, etc.) is dropped. This matches the
+// real TipTap Highlight schema (which only emits background-color via <mark>)
+// without globally permitting inline styles across the document.
+let highlightHookInstalled = false;
+function ensureHighlightSanitizerHook() {
+  if (highlightHookInstalled) return;
+  highlightHookInstalled = true;
+  DOMPurify.addHook('uponSanitizeAttribute', (node, data) => {
+    if (data.attrName !== 'style') return;
+    const tag = (node as Element).tagName?.toLowerCase();
+    if (tag !== 'mark' && tag !== 'span') {
+      data.keepAttr = false;
+      return;
+    }
+    const value = String(data.attrValue || '');
+    // Allow ONLY background-color declarations.
+    const declarations = value.split(';').map(s => s.trim()).filter(Boolean);
+    const safe = declarations.filter(d => /^background-color\s*:\s*[^;{}<>"']+$/i.test(d));
+    if (safe.length === 0) {
+      data.keepAttr = false;
+      return;
+    }
+    data.attrValue = safe.join('; ');
+  });
+}
+
+
 /**
  * PERFORMANCE: Lazy-loaded TipTap editor that only initializes when focused.
  * This reduces initial render time by ~96% for pages with many text editors.
