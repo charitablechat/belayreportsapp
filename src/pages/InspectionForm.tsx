@@ -212,6 +212,36 @@ export default function InspectionForm() {
   const [ziplines, setZiplines] = useState<DbRow[]>([]);
   const [equipment, setEquipment] = useState<DbRow[]>([]);
 
+  // ── Deletion-aware merge tracking ────────────────────────────────────────
+  // Session-scoped sets of child-row ids that the user intentionally deleted
+  // from the table UI. Passed to `mergeChildArray` on every reconcile so a
+  // stale server snapshot can't resurrect a row the user just deleted.
+  // Cleared per-id automatically when the server stops returning the id
+  // (handled inside mergeChildArray via onDeletedIdConfirmed), and wholesale
+  // after a confirmed successful sync round-trip / JSON import / unmount.
+  const deletedSystemIdsRef = useRef<Set<string>>(new Set());
+  const deletedZiplineIdsRef = useRef<Set<string>>(new Set());
+  const deletedEquipmentIdsRef = useRef<Set<string>>(new Set());
+  // Wrapped setters: pass these to the child tables' `onUpdate` so user-
+  // initiated removals are recorded. Programmatic reconciles MUST continue
+  // to call the raw `setSystems`/`setZiplines`/`setEquipment` directly so
+  // server omissions are not misinterpreted as user deletions.
+  const setSystemsTracked = useMemo(
+    () => trackChildDeletions(setSystems, deletedSystemIdsRef),
+    [],
+  );
+  const setZiplinesTracked = useMemo(
+    () => trackChildDeletions(setZiplines, deletedZiplineIdsRef),
+    [],
+  );
+  const setEquipmentTracked = useMemo(
+    () => trackChildDeletions(setEquipment, deletedEquipmentIdsRef),
+    [],
+  );
+  const dropDeletedSystemId = useCallback((rid: string) => { deletedSystemIdsRef.current.delete(rid); }, []);
+  const dropDeletedZiplineId = useCallback((rid: string) => { deletedZiplineIdsRef.current.delete(rid); }, []);
+  const dropDeletedEquipmentId = useCallback((rid: string) => { deletedEquipmentIdsRef.current.delete(rid); }, []);
+
   // Equipment type options per category — pass existing values so custom entries persist in dropdown
   const getExistingTypes = (cat: string) =>
     equipment
