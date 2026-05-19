@@ -1907,6 +1907,18 @@ export default function InspectionForm() {
         setSaveError({ message: 'Local save failed — please retry' });
       }
 
+      // Save Progress UI lifecycle fix: release the manual-save button UI
+      // as soon as the local hard-save is confirmed, BEFORE we start the
+      // remote sync. The remote push (with retries / backoff) can take
+      // several seconds, but the user's data is durable the moment IDB +
+      // localStorage snapshot have landed. Only fire on real local
+      // success so an IdbSaveError path keeps the spinner up correctly.
+      if (localSaveSucceeded) {
+        try { onLocalSaved?.(); } catch (cbErr) {
+          console.warn('[InspectionForm] onLocalSaved callback threw', cbErr);
+        }
+      }
+
       // DEV: warn if filtering excludes items from server sync
       if (import.meta.env.DEV) {
         if (validSystems.length !== systems.length) {
