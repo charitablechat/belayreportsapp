@@ -1125,6 +1125,12 @@ export default function DailyAssessmentForm() {
         capturePreEditSnapshot('daily_assessment', id!, assessment.inspector_id, currentUser.id);
       }
 
+      // Save Progress UI lifecycle fix — release button BEFORE the remote
+      // sync tail runs.
+      if (localSaveSucceeded) {
+        releaseSaveUiAfterLocalCommit();
+      }
+
       if (navigator.onLine && localSaveSucceeded) {
         if (import.meta.env.DEV) console.log('[Save] Online - syncing to database...');
         try {
