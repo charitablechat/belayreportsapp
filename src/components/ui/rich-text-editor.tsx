@@ -93,6 +93,17 @@ export const RichTextEditor = ({
   // and slamming the cursor to the end of the document.
   useEffect(() => {
     if (!editor) return;
+    // Guard: while the user is actively focused in this editor, ignore
+    // external prop changes. Sibling-field saves (e.g. changing a Result
+    // dropdown in the same row) can race a reconcile that returns
+    // slightly-stale `comments` and re-set parent state mid-typing; without
+    // this guard `setContent` would clobber the in-flight sentence and jump
+    // the cursor. Initial load, report reopen, regenerate, and
+    // import-from-old-report all populate the editor while it is NOT focused,
+    // so they continue to work normally. On blur, the next render runs this
+    // effect again with `editor.isFocused === false` and any genuinely-newer
+    // external value can apply.
+    if (editor.isFocused) return;
     const current = editor.getHTML();
     if (content === current) return;
     if (content === lastEmittedHtmlRef.current) return;
