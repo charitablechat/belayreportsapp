@@ -153,6 +153,21 @@ export const RichTextEditor = ({
         >
           <List className="h-4 w-4" />
         </button>
+        <button
+          type="button"
+          onClick={() => {
+            // Clear the highlight mark on selection or stored marks at caret.
+            // Escape hatch when the caret is inside a highlighted run.
+            editor.chain().focus().unsetHighlight().run();
+          }}
+          className={cn(
+            'p-1.5 rounded hover:bg-background transition-colors',
+            editor.isActive('highlight') && 'bg-background'
+          )}
+          title="Clear highlight"
+        >
+          <Eraser className="h-4 w-4" />
+        </button>
       </div>
       <EditorContent editor={editor} />
     </div>
