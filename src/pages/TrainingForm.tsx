@@ -1874,30 +1874,30 @@ export default function TrainingForm() {
               <TabsContent value="delivery" className="space-y-6">
                 <DeliveryApproachSection 
                   approaches={deliveryApproaches} 
-                  onUpdate={setDeliveryApproaches} 
+                  onUpdate={setDeliveryApproachesTracked} 
                 />
               </TabsContent>
 
               <TabsContent value="systems" className="space-y-6">
                 <OperatingSystemsSection 
                   systems={operatingSystems} 
-                  onUpdate={setOperatingSystems} 
+                  onUpdate={setOperatingSystemsTracked} 
                 />
               </TabsContent>
 
               <TabsContent value="attention" className="space-y-6">
                 <ImmediateAttentionSection 
                   items={immediateAttention} 
-                  onUpdate={setImmediateAttention} 
+                  onUpdate={setImmediateAttentionTracked} 
                 />
               </TabsContent>
 
               <TabsContent value="verifiable" className="space-y-6">
                 <VerifiableItemsSection 
                   items={verifiableItems} 
-                  onUpdate={setVerifiableItems}
+                  onUpdate={setVerifiableItemsTracked}
                   systemsInPlace={systemsInPlace}
-                  onUpdateSystemsInPlace={setSystemsInPlace}
+                  onUpdateSystemsInPlace={setSystemsInPlaceTracked}
                 />
               </TabsContent>
 
