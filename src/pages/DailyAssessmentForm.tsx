@@ -952,6 +952,9 @@ export default function DailyAssessmentForm() {
         }
         setBeginningOfDay(bod); childDataLoadedRef.current.beginning_of_day = true;
         setEndOfDay(eod); childDataLoadedRef.current.end_of_day = true;
+        // JSON import is a wholesale user-driven replacement: clear the
+        // session deletion set so imported rows are not vetoed.
+        deletedOperatingSystemIdsRef.current.clear();
         setOperatingSystems(os); childDataLoadedRef.current.operating_systems = true;
         setEquipmentChecks(eq); childDataLoadedRef.current.equipment_checks = true;
         setStructureChecks(st); childDataLoadedRef.current.structure_checks = true;
@@ -1385,9 +1388,11 @@ export default function DailyAssessmentForm() {
     setEndOfDay(items);
   }, []);
 
-  const handleOperatingSystemsUpdate = useCallback((items: DbRow[]) => {
-    setOperatingSystems(items);
-  }, []);
+  // Routes through the tracked setter so functional shrink updates from the
+  // Operating Systems section record the removed id into the deletion ref.
+  const handleOperatingSystemsUpdate = useCallback<Dispatch<SetStateAction<DbRow[]>>>((action) => {
+    setOperatingSystemsTracked(action);
+  }, [setOperatingSystemsTracked]);
 
   const handleEquipmentChecksUpdate = useCallback((items: DbRow[]) => {
     setEquipmentChecks(items);
