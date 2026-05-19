@@ -2194,9 +2194,34 @@ export default function InspectionForm() {
   const saveInProgressRef = useRef(false);
 
   const saveProgress = async () => {
-    // Prevent duplicate save calls
+    // Prevent duplicate save calls (this guard tracks the saveProgress wrapper
+    // itself — released as soon as local hard-save commits, NOT held through
+    // the remote-sync tail).
     if (saveInProgressRef.current) {
       console.log('[InspectionForm] Save already in progress, skipping');
+      return;
+    }
+
+    // Save Progress UI lifecycle fix: if a previous save has already
+    // committed locally and is only draining its remote-sync tail
+    // (`anySaveInProgressRef` is still held by the in-flight `performSave`
+    // but `saveInProgressRef` was released early via `localCommittedRef`),
+    // the new `performSave` would early-return silently and leave the user
+    // with no feedback. Instead, give explicit feedback and mark dirty so
+    // the autosave/sync layer picks up anything new on its next cycle.
+    if (anySaveInProgressRef.current) {
+      if (hasUnsavedRef.current || hasUnsavedChanges) {
+        setHasUnsavedChanges(true);
+        toast.info("Save queued", {
+          description: "Finishing previous sync — your latest changes will save next.",
+          duration: 2500,
+        });
+      } else {
+        toast.success("Already saved", {
+          description: "Finishing background sync.",
+          duration: 2000,
+        });
+      }
       return;
     }
 
@@ -2205,20 +2230,34 @@ export default function InspectionForm() {
     setSaving(true);
     setSaveError(null);
 
-    // Safety timeout - ensure saving UI state is cleared after max 8 seconds.
-    // Does NOT touch `anySaveInProgressRef` — owned by `performSave`.
-    //
-    // The `safetyTimerFired` flag is captured per-invocation so the finally
-    // block can tell whether THIS invocation still owns `saveInProgressRef`
-    // when it cleans up. Without it, an 8s+ save would have its mutex
-    // released by the timer, a concurrent caller would acquire it, then the
-    // original save's `finally` would stomp the new owner's mutex back to
-    // false — letting yet another caller race in. Same pattern as PR #26's
-    // fix in TrainingForm/DailyAssessmentForm; the underlying lesson is the
-    // deadlock-timer ownership race PR #22 fixed in
-    // `InspectionForm.performSave` (`deadlockTimerFired`).
+    // Tracks whether the early local-commit release has already flipped UI
+    // state. Used by both the safety timer and the finally block to avoid
+    // double-resetting (or, worse, stomping a newer invocation's state
+    // after this one's UI has already been released).
+    let localCommittedRef = false;
     let safetyTimerFired = false;
+
+    const releaseUiAfterLocalCommit = () => {
+      if (localCommittedRef || safetyTimerFired) return;
+      localCommittedRef = true;
+      clearTimeout(safetyTimeout);
+      setSaving(false);
+      saveInProgressRef.current = false;
+      setLastSaved(new Date());
+      setLastManuallySaved(new Date());
+      hasUnsavedRef.current = false;
+      setHasUnsavedChanges(false);
+      if (import.meta.env.DEV) {
+        console.log('[InspectionForm] Local hard-save committed — UI released; remote sync continues in background');
+      }
+    };
+
+    // Safety timeout - ensure saving UI state is cleared after max 8 seconds.
+    // After the local-commit early-release, this becomes a no-op. Kept as
+    // defense-in-depth for the case where `persistInspectionToOffline`
+    // itself stalls before reaching the early-release hook.
     const safetyTimeout = setTimeout(() => {
+      if (localCommittedRef) return;
       console.warn('[InspectionForm] Safety timeout reached, forcing save state reset');
       safetyTimerFired = true;
       setSaving(false);
@@ -2226,11 +2265,17 @@ export default function InspectionForm() {
     }, 8000);
 
     try {
-      await performSave(false); // Show warnings on manual save
-      setLastSaved(new Date());
-      setLastManuallySaved(new Date());
-      hasUnsavedRef.current = false;
-      setHasUnsavedChanges(false);
+      await performSave(false, releaseUiAfterLocalCommit); // Show warnings on manual save
+      // If performSave returned without ever firing the early-release
+      // (e.g. required-field gate, preview-mode short-circuit, or local
+      // save failure path), fall back to the legacy "release on full
+      // completion" behavior.
+      if (!localCommittedRef && !safetyTimerFired) {
+        setLastSaved(new Date());
+        setLastManuallySaved(new Date());
+        hasUnsavedRef.current = false;
+        setHasUnsavedChanges(false);
+      }
       if (import.meta.env.DEV) {
         console.log('[InspectionForm] Progress saved:', isOnline ? 'online' : 'offline');
       }
@@ -2240,13 +2285,10 @@ export default function InspectionForm() {
       setSaveError({ message: errorMessage(error, 'Failed to save progress'), code: errorCode(error) });
     } finally {
       clearTimeout(safetyTimeout);
-      // Only flip UI state + release the mutex if the safety timer hasn't
-      // already done so. If the safety timer already fired, a concurrent
-      // caller may have acquired the mutex AND called `setSaving(true)`
-      // — the stale invocation must not stomp either piece of their state.
-      // Both guards together keep the `saving` flag and the mutex coherent
-      // for the new owner.
-      if (!safetyTimerFired) {
+      // Only flip UI state + release the mutex if neither the early-release
+      // nor the safety timer already did so. Same ownership-guard pattern
+      // as the deadlock-timer fix in performSave.
+      if (!safetyTimerFired && !localCommittedRef) {
         console.log('[InspectionForm] Completed, setting saving to false');
         setSaving(false);
         saveInProgressRef.current = false;
