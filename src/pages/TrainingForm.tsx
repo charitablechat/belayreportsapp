@@ -1020,6 +1020,9 @@ export default function TrainingForm() {
       }
       if (localSaveSucceeded) {
         logTrainingSummaryAutosave('local-save-committed', { pendingFields: Object.keys(pendingSummaryFieldsRef.current), summaryUpdatedAt: latestSummary?.updated_at ?? null });
+        // Save Progress UI lifecycle fix — release the button BEFORE the
+        // remote sync tail runs. Only flips button/loading state.
+        releaseSaveUiAfterLocalCommit();
       }
 
       // Phase 2 — push to Supabase (online + local save succeeded)
