@@ -2139,26 +2139,24 @@ export default function InspectionForm() {
       setAutoSaving(false);
     }, 8000);
     
+    // NARROW: only release the autoSaving button-state flag at local commit.
+    // Dirty/lastSaved/toast still happen in the success path so we don't
+    // disturb merge/dirty ownership.
     let autoLocalCommitted = false;
     const releaseAutoUiAfterLocalCommit = () => {
       if (autoLocalCommitted) return;
       autoLocalCommitted = true;
       clearTimeout(safetyTimeout);
       setAutoSaving(false);
-      setLastSaved(new Date());
-      hasUnsavedRef.current = false;
-      setHasUnsavedChanges(false);
-      toast.success("Changes saved");
     };
 
     try {
       await performSave(true, releaseAutoUiAfterLocalCommit); // Silent immediate save
-      if (!autoLocalCommitted) {
-        setLastSaved(new Date());
-        hasUnsavedRef.current = false;
-        setHasUnsavedChanges(false);
-        toast.success("Changes saved");
-      }
+      setLastSaved(new Date());
+      hasUnsavedRef.current = false;
+      setHasUnsavedChanges(false);
+      // Non-intrusive success feedback (routes to notification center on mobile)
+      toast.success("Changes saved");
       if (import.meta.env.DEV) {
         console.log("Immediate save triggered at", new Date().toLocaleTimeString());
       }
