@@ -2196,11 +2196,24 @@ export default function InspectionForm() {
       setAutoSaving(false);
     }, 8000);
     
-    try {
-      await performSave(true); // Silent auto-save
+    let autoSaveCommitted = false;
+    const releaseAutoSaveUi = () => {
+      if (autoSaveCommitted) return;
+      autoSaveCommitted = true;
+      clearTimeout(safetyTimeout);
+      setAutoSaving(false);
       setLastSaved(new Date());
       hasUnsavedRef.current = false;
       setHasUnsavedChanges(false);
+    };
+
+    try {
+      await performSave(true, releaseAutoSaveUi); // Silent auto-save
+      if (!autoSaveCommitted) {
+        setLastSaved(new Date());
+        hasUnsavedRef.current = false;
+        setHasUnsavedChanges(false);
+      }
       if (import.meta.env.DEV) {
         console.log("Auto-saved successfully at", new Date().toLocaleTimeString());
       }
@@ -2210,7 +2223,7 @@ export default function InspectionForm() {
       setSaveError({ message: errorMessage(error, 'Auto-save failed'), code: errorCode(error) });
     } finally {
       clearTimeout(safetyTimeout);
-      setAutoSaving(false);
+      if (!autoSaveCommitted) setAutoSaving(false);
       // `anySaveInProgressRef` is NOT cleared here — owned by `performSave`.
     }
   };
