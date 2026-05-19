@@ -5,7 +5,7 @@ import { triggerHaptic } from "@/lib/haptics";
 
 interface DeliveryApproachSectionProps {
   approaches: any[];
-  onUpdate: (approaches: any[]) => void;
+  onUpdate: (approaches: any[] | ((prev: any[]) => any[])) => void;
 }
 
 const DELIVERY_APPROACHES = [
