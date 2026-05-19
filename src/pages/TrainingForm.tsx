@@ -1072,11 +1072,10 @@ export default function TrainingForm() {
     } finally {
       clearTimeout(safetyTimeout);
       if (import.meta.env.DEV) console.log('[Training Save] Completed, setting isSaving to false');
-      setIsSaving(false);
-      // Only release the mutex if this invocation still owns it. If the
-      // safety timer already fired, a concurrent caller has acquired the
-      // mutex and we must not stomp on it.
-      if (!safetyTimerFired) {
+      // Skip if the early local-commit release or the safety timer already
+      // handled UI/mutex cleanup — avoids stomping a newer invocation.
+      if (!safetyTimerFired && !localCommittedRef) {
+        setIsSaving(false);
         saveInProgressRef.current = false;
       }
     }
