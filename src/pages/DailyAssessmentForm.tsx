@@ -788,7 +788,25 @@ export default function DailyAssessmentForm() {
 
           guardedSet(bodData.data, beginningOfDay, setBeginningOfDay, 'beginning_of_day');
           guardedSet(eodData.data, endOfDay, setEndOfDay, 'end_of_day');
-          guardedSet(osData.data, operatingSystems, setOperatingSystems, 'operating_systems');
+          // Operating Systems: deletion-aware merge so a stale server snapshot
+          // can't resurrect a row the user just unchecked/removed locally.
+          if (osData.data && osData.data.length > 0) {
+            setOperatingSystems(prev => mergeChildArray(
+              prev as Array<DbRow & { id: string }>,
+              osData.data as Array<DbRow & { id: string }>,
+              {
+                table: 'daily_assessment_operating_systems',
+                deletedIds: deletedOperatingSystemIdsRef.current,
+                onDeletedIdConfirmed: dropDeletedOperatingSystemId,
+              },
+            ) as DbRow[]);
+            saveAssessmentDataOffline('operating_systems', id!, osData.data).catch(e =>
+              console.warn('[DailyAssessmentForm] Non-critical: failed to cache operating_systems', e));
+          } else if (operatingSystems.length > 0) {
+            console.warn('[DailyAssessmentForm] Server returned empty operating_systems but local has data -- preserving local');
+          } else {
+            setOperatingSystems([]);
+          }
           guardedSet(eqData.data, equipmentChecks, setEquipmentChecks, 'equipment_checks');
           guardedSet(stData.data, structureChecks, setStructureChecks, 'structure_checks');
           guardedSet(envData.data, environmentChecks, setEnvironmentChecks, 'environment_checks');
