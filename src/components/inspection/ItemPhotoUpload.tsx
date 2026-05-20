@@ -327,17 +327,28 @@ function ItemPhotoUpload({
   }, [inspectionId, photoSection, itemName, onGalleryRefresh]);
 
   const handleUpload = useCallback(async (file: File) => {
+    // [photo-trace] correlation id for this user-initiated photo action
+    const cid = import.meta.env.DEV ? newPhotoCid(itemId) : '';
+    if (import.meta.env.DEV) {
+      photoTrace('handleUpload.enter', {
+        itemId, itemName, section: photoSection, inspectionId,
+        oldPhotoUrl: photoUrl,
+        fileSize: file?.size, fileType: file?.type, fileName: (file as any)?.name,
+      }, cid);
+    }
     // Defensive: reject a zero-byte File before we touch any persistence
     // layer. The in-app camera dialog occasionally produces a 0-byte File
     // on iOS Safari when the canvas-toBlob race loses; without this guard
     // the row thumbnail showed a blob: preview that never made it into
     // the bottom gallery (because no blob was ever cached).
     if (!file || file.size === 0) {
+      if (import.meta.env.DEV) photoTrace('handleUpload.zero-byte-reject', { itemId }, cid);
       toast.error("Photo capture failed", {
         description: "The camera returned an empty image. Please try again.",
       });
       return;
     }
+
 
     setUploading(true);
 
