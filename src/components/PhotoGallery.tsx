@@ -481,7 +481,7 @@ export default function PhotoGallery({
         const dedupedPending = pendingPhotos.filter(p => {
           const rawPath = (p as any).rawStoragePath || '';
           const drop = dbStoragePaths.has(rawPath);
-          if (drop && import.meta.env.DEV) {
+          if (drop && isPhotoTraceEnabled()) {
             droppedByDedup.push({ id: p.id, rawStoragePath: rawPath, caption: p.caption });
           }
           return !drop;
@@ -490,7 +490,7 @@ export default function PhotoGallery({
           (a, b) => a.display_order - b.display_order
         );
 
-        if (import.meta.env.DEV) {
+        if (isPhotoTraceEnabled()) {
           const trace = {
             ts: Date.now(),
             event: 'PhotoGallery.load',
@@ -523,7 +523,7 @@ export default function PhotoGallery({
 
       } else {
         const sortedOffline = offlinePhotosList.sort((a, b) => a.display_order - b.display_order);
-        if (import.meta.env.DEV) {
+        if (isPhotoTraceEnabled()) {
           const trace = {
             ts: Date.now(),
             event: 'PhotoGallery.load.offline',

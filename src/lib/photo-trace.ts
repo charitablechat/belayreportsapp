@@ -1,24 +1,27 @@
 /**
- * TEMPORARY DEV-ONLY photo-pipeline tracing.
+ * TEMPORARY DEV/opt-in photo-pipeline tracing.
  *
- * Active only when `import.meta.env.DEV === true`. In production builds Vite
- * dead-code-eliminates the body via the `if (import.meta.env.DEV)` guard at
- * every call site, so this file ships as a no-op.
+ * Enabled when ANY of these are true:
+ *   - `import.meta.env.DEV === true` (local dev server)
+ *   - URL contains `?photoTrace=1` (also persists to localStorage)
+ *   - `localStorage.photo_trace === '1'` (sticky from a previous visit)
  *
- * To remove after diagnosis:
- *   rg -l "photo-trace" src/ | xargs sed -i '/\[photo-trace/d'   (rough)
- * or simply delete this file + the guarded blocks (each tagged `[photo-trace ...]`).
+ * Disable for the current page load with `?photoTrace=0` (clears localStorage).
+ *
+ * To remove after diagnosis: delete this file + every `[photo-trace ...]`
+ * call site (search prefix `[photo-trace`).
  */
 
 type TraceEntry = {
   ts: number;
   cid?: string;
   event: string;
-  // free-form payload
   [k: string]: unknown;
 };
 
 const MAX_ENTRIES = 200;
+const LS_KEY = 'photo_trace';
+let _enabled: boolean | null = null;
 
 declare global {
   interface Window {
@@ -26,8 +29,37 @@ declare global {
   }
 }
 
+/**
+ * Runtime check for whether photo tracing should record. Cached per page load.
+ * Survives SPA navigation via localStorage once `?photoTrace=1` has been hit.
+ */
+export function isPhotoTraceEnabled(): boolean {
+  if (_enabled !== null) return _enabled;
+  try {
+    if (typeof window !== 'undefined') {
+      const qs = new URLSearchParams(window.location.search);
+      const flag = qs.get('photoTrace');
+      if (flag === '0' || flag === 'off') {
+        try { localStorage.removeItem(LS_KEY); } catch { /* ignore */ }
+        return (_enabled = false);
+      }
+      if (flag === '1' || flag === 'on') {
+        try { localStorage.setItem(LS_KEY, '1'); } catch { /* ignore */ }
+        return (_enabled = true);
+      }
+    }
+    if (import.meta.env.DEV) return (_enabled = true);
+    if (typeof localStorage !== 'undefined' && localStorage.getItem(LS_KEY) === '1') {
+      return (_enabled = true);
+    }
+  } catch {
+    /* fall through */
+  }
+  return (_enabled = false);
+}
+
 export function photoTrace(event: string, data: Record<string, unknown> = {}, cid?: string): void {
-  if (!import.meta.env.DEV) return;
+  if (!isPhotoTraceEnabled()) return;
   try {
     const entry: TraceEntry = { ts: Date.now(), cid, event, ...data };
     if (typeof window !== 'undefined') {
@@ -37,7 +69,6 @@ export function photoTrace(event: string, data: Record<string, unknown> = {}, ci
         window.__photoTrace.splice(0, window.__photoTrace.length - MAX_ENTRIES);
       }
     }
-    // Console mirror — easy to filter with "[photo-trace"
     // eslint-disable-next-line no-console
     console.debug(`[photo-trace ${event}]`, cid ? { cid, ...data } : data);
   } catch {

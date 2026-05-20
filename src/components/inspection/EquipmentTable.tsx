@@ -366,7 +366,7 @@ function EquipmentTable({ category, displayName, equipment, onUpdate, onImmediat
   const updateEquipment = useCallback((item: any, field: string, value: any) => {
     onUpdate(prev => {
       const next = prev.map((eq) => eq.id === item.id ? { ...eq, [field]: value } : eq);
-      if (import.meta.env.DEV) {
+      if (isPhotoTraceEnabled()) {
         const before = prev.find(e => e.id === item.id);
         const after = next.find(e => e.id === item.id);
         // eslint-disable-next-line no-console
