@@ -83,6 +83,11 @@ export function CameraCaptureDialog({
       setPreviewUrl(null);
       setCapturedBlob(null);
       setState("initializing");
+      // Safe to zero the canvas here: dialog is fully closing, any captured
+      // blob/file has either been handed off (handleUsePhoto already zeroed)
+      // or is being discarded.
+      const c = canvasRef.current;
+      if (c) { c.width = 0; c.height = 0; }
     }
     return () => stopStream();
   }, [open, startStream, stopStream]); // eslint-disable-line react-hooks/exhaustive-deps
