@@ -478,7 +478,9 @@ export default function PhotoGallery({
         }
 
 
-        const supabasePhotos: Photo[] = [...cachedPhotos, ...batchPhotos];
+        const supabasePhotos: Photo[] = [...cachedPhotos, ...batchPhotos].filter(
+          (p) => !isPhotoTombstoned(inspectionId, section, p.rawStoragePath)
+        );
 
         // Include ALL offline rows (pending + already-uploaded). Previously
         // only `!uploaded` offline rows were merged, so a slow/empty/timed-out
@@ -486,14 +488,20 @@ export default function PhotoGallery({
         // even though the blob was on disk. Dedup by raw storage path against
         // the DB result so a row that already appears via Supabase isn't
         // duplicated, but a local row whose DB row hasn't materialised yet
-        // (or was missed by a transient query) still renders.
+        // (or was missed by a transient query) still renders. Also drop any
+        // offline row whose raw path is tombstoned (locally deleted) so a
+        // stale IDB row can't resurrect a just-deleted photo.
         const dbStoragePaths = new Set((data || []).map((p: any) => p.photo_url));
-        const droppedByDedup: Array<{ id: string; rawStoragePath: string; caption: string | null }> = [];
+        const droppedByDedup: Array<{ id: string; rawStoragePath: string; caption: string | null; reason: string }> = [];
         const dedupedOffline = offlinePhotosList.filter(p => {
           const rawPath = (p as any).rawStoragePath || '';
+          if (rawPath && isPhotoTombstoned(inspectionId, section, rawPath)) {
+            if (isPhotoTraceEnabled()) droppedByDedup.push({ id: p.id, rawStoragePath: rawPath, caption: p.caption, reason: 'tombstoned' });
+            return false;
+          }
           const drop = rawPath !== '' && dbStoragePaths.has(rawPath);
           if (drop && isPhotoTraceEnabled()) {
-            droppedByDedup.push({ id: p.id, rawStoragePath: rawPath, caption: p.caption });
+            droppedByDedup.push({ id: p.id, rawStoragePath: rawPath, caption: p.caption, reason: 'db-dup' });
           }
           return !drop;
         });
