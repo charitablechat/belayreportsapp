@@ -606,16 +606,42 @@ function ItemPhotoUpload({
         itemId, itemName, section: photoSection, beforePhoto, afterPhoto: null, rawPath: beforePhoto,
       });
     }
-    if (photoUrl && photoSection && inspectionId) {
+    // Always run the converged delete when we know which item + section +
+    // inspection this is, even if the row's local `photoUrl` is already null
+    // or stale. The item-scoped fallback inside deletePhotoEverywhere will
+    // soft-delete + tombstone any active inspection_photos row whose
+    // photo_url contains `items/${itemId}-…` so the bottom gallery converges
+    // with the row even when the form's photoUrl diverged from the DB's
+    // photo_url (placeholder vs realPath, or already-cleared form state).
+    if (photoSection && inspectionId && itemId) {
       try {
         const { deletePhotoEverywhere } = await import('@/lib/photo-deletion');
-        await deletePhotoEverywhere({
+        const res = await deletePhotoEverywhere({
           inspectionId,
           section: photoSection,
           rawStoragePath: photoUrl,
           itemIdScope: itemId,
         });
-      } catch { /* non-critical */ }
+        if (isPhotoTraceEnabled()) {
+          photoTrace('rowPhoto.clear.delete-result', {
+            itemId, itemName, section: photoSection,
+            rawPath: photoUrl,
+            dbMatched: res.dbResult.matched,
+            dbOk: res.dbResult.ok,
+            dbError: res.dbResult.error,
+            idbRemoved: res.idbRemoved,
+            tombstoned: res.tombstoned,
+            scopedMatchedPaths: res.scopedMatchedPaths,
+          });
+        }
+      } catch (err: any) {
+        if (isPhotoTraceEnabled()) {
+          photoTrace('rowPhoto.clear.delete-error', {
+            itemId, itemName, section: photoSection, rawPath: photoUrl,
+            err: String(err?.message ?? err),
+          });
+        }
+      }
       onGalleryRefresh?.();
     }
     setLocalPreview(null);
