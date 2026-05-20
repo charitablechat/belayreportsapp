@@ -1877,6 +1877,7 @@ export default function InspectionForm() {
       // S9: Reconcile user-clear intent. If the user has emptied every section
       // of a previously-synced inspection, stamp `user_cleared_at` so the
       // sync pipeline doesn't restore the server copy back into IDB.
+      const ziplinesSnapshot = ziplinesRef.current;
       const summarySnapshot = summaryRef.current;
       const summaryHasAnyContent = !!(summarySnapshot && (
         summarySnapshot.repairs_performed ||
@@ -1885,7 +1886,7 @@ export default function InspectionForm() {
         summarySnapshot.next_inspection_date
       ));
       const totalChildCount =
-        systems.length + ziplines.length + equipment.length +
+        systems.length + ziplinesSnapshot.length + equipment.length +
         standards.length + (summaryHasAnyContent ? 1 : 0);
       const { reconcileClearIntent } = await import('@/lib/clear-intent');
       const inspectionToSave = reconcileClearIntent(
@@ -1913,7 +1914,7 @@ export default function InspectionForm() {
       const validation = validateInspectionPackage({
         inspection: inspectionToSave,
         systems,
-        ziplines,
+        ziplines: ziplinesSnapshot,
         equipment: completeEquipment,
         standards,
         summary: summaryForValidation,
