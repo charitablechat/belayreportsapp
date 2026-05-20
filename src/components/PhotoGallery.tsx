@@ -387,6 +387,8 @@ export default function PhotoGallery({
           /* warning refinement is best-effort */
         }
 
+        const validCacheIds = await batchValidateCachedPhotos(supabasePhotoIds);
+
         // Split photos into cached (instant) vs uncached (need signed URLs)
         const allPhotos = (data || []) as any[];
         const cachedPhotos: Photo[] = [];
