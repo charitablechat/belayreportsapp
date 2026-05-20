@@ -23,6 +23,8 @@ import {
 } from "@/components/ui/alert-dialog";
 import { DraggableTableRow, DraggableMobileCard } from "./DraggableTableRow";
 import { useNativeDrag } from "@/hooks/useNativeDrag";
+import { WideTableScroller } from "@/components/ui/wide-table-scroller";
+
 
 import { isPhotoTraceEnabled } from "@/lib/photo-trace";
 interface ZiplinesTableProps {
