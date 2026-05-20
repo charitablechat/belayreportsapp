@@ -787,7 +787,11 @@ export default function PhotoGallery({
     }
   };
 
-  /** Core delete logic shared by single and batch operations */
+  /** Core delete logic shared by single and batch operations.
+   *  Routes every photo through deletePhotoEverywhere so the row-thumbnail
+   *  Remove and the bottom-gallery delete cannot diverge — DB soft-delete +
+   *  local tombstone + IDB removal happen for each photo regardless of
+   *  online/offline or uploaded/pending state. */
   const executeDelete = async (photosToDelete: Photo[]) => {
     if ((await import('@/lib/environment')).isLovablePreview()) {
       toast.info("Preview mode", { description: "Photo deletion is disabled in the Lovable preview." });
@@ -795,49 +799,54 @@ export default function PhotoGallery({
     }
     triggerHaptic('warning');
 
+    if (isPhotoTraceEnabled()) {
+      photoTrace('PhotoGallery.executeDelete.start', {
+        inspectionId,
+        section,
+        count: photosToDelete.length,
+        photos: photosToDelete.map(p => ({ id: p.id, rawStoragePath: p.rawStoragePath, uploaded: p.uploaded })),
+        isOnline,
+      });
+    }
+
     try {
-      // Partition photos by type
-      const uploadedOnline = photosToDelete.filter(p => p.uploaded && isOnline);
-      const uploadedOffline = photosToDelete.filter(p => p.uploaded && !isOnline);
-      const localOnly = photosToDelete.filter(p => !p.uploaded);
-
-      const now = new Date();
-      const retentionDate = new Date(now.getTime() + 60 * 24 * 60 * 60 * 1000);
-      const deletedAt = now.toISOString();
-      const retentionUntil = retentionDate.toISOString();
-
-      // Batch soft-delete uploaded+online photos in one query
-      if (uploadedOnline.length > 0) {
-        const ids = uploadedOnline.map(p => p.id);
-        const { error } = await (supabase
-          .from(tableName) as any)
-          .update({ deleted_at: deletedAt, retention_until: retentionUntil })
-          .in('id', ids);
-        if (error) throw error;
-      }
-
-      // Queue offline operations for uploaded+offline photos
-      if (uploadedOffline.length > 0) {
-        const { queueOperation } = await import('@/lib/offline-storage');
-        await Promise.all(uploadedOffline.map(p =>
-          queueOperation('update', p.id, {
-            id: p.id,
-            deleted_at: deletedAt,
-            retention_until: retentionUntil,
-          })
-        ));
-      }
-
-      // Delete local-only photos from IndexedDB
-      if (localOnly.length > 0) {
-        const { deleteOfflinePhoto } = await import('@/lib/offline-storage');
-        await Promise.all(localOnly.map(p => deleteOfflinePhoto(p.id)));
-      }
+      const results = await Promise.all(
+        photosToDelete.map(async (p) => {
+          // For uploaded photos pass dbPhotoId; for pending/offline photos
+          // there is no DB row yet so only rawStoragePath + IDB id apply.
+          const res = await deletePhotoEverywhere({
+            inspectionId,
+            section,
+            tableName,
+            foreignKeyColumn,
+            rawStoragePath: p.rawStoragePath ?? null,
+            dbPhotoId: p.uploaded ? p.id : null,
+          });
+          // Always try to remove the IDB row by photo.id too (covers the
+          // local-only case where rawStoragePath is a pending/ path and the
+          // IDB id equals the gallery photo id).
+          if (!p.uploaded) {
+            try {
+              const { deleteOfflinePhoto } = await import('@/lib/offline-storage');
+              await deleteOfflinePhoto(p.id);
+            } catch { /* ignore */ }
+          }
+          return res;
+        })
+      );
 
       const count = photosToDelete.length;
       toast.success(`${count} photo${count > 1 ? 's' : ''} deleted`, {
         description: "Recoverable for 60 days.",
       });
+
+      if (isPhotoTraceEnabled()) {
+        photoTrace('PhotoGallery.executeDelete.done', {
+          inspectionId,
+          section,
+          results,
+        });
+      }
 
       await loadPhotos();
     } catch (error) {
