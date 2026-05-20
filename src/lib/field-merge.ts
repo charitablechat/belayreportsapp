@@ -288,7 +288,21 @@ export interface MergeChildArrayOptions<T extends ChildArrayRow> {
    * set bounded without relying on save lifecycle timing.
    */
   onDeletedIdConfirmed?: (id: string) => void;
+  /**
+   * Opt-in safety net for the temp-ID race. After the id-keyed merge runs,
+   * if a row with a `temp-*` id collides with a real-id row on the
+   * caller-provided business key, drop the temp row. This prevents a
+   * post-navigation duplicate when the temp→real swap landed in React state
+   * but the corrected id was not durably written to IndexedDB in time.
+   *
+   * IMPORTANT: only fires when (a) one side is temp- and the other is real,
+   * and (b) every field in the key is a non-empty string/number on BOTH rows.
+   * Two real-id rows are NEVER coalesced. Rows missing key fields are NEVER
+   * coalesced. This keeps the helper safe to enable by default per-table.
+   */
+  coalesceTempByBusinessKey?: readonly string[];
 }
+
 
 /**
  * Merge a server-returned child-row array with the current local React state.
