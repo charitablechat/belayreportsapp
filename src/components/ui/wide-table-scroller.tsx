@@ -181,11 +181,9 @@ export function WideTableScroller({
       <div ref={scrollRef} className="overflow-x-auto scroll-hint-wrapper">
         {children}
       </div>
-      {/* Permanent scroll fixture: sticks to the bottom of the viewport while
-          the Zipline table is on screen so a horizontal scroll control is
-          always visible, regardless of OS overlay scrollbar behavior. */}
-      {overflow && (
-        <div className="sticky bottom-2 z-30 mt-2">
+      {/* Permanent scroll fixture. Render the measuring track at all times so
+          overflow can be detected before the visible control is shown. */}
+      <div className={cn("mt-3", overflow ? "block" : "invisible h-0 overflow-hidden pointer-events-none")}>
           <div className="rounded-md border-2 border-primary/50 bg-background/95 backdrop-blur-sm shadow-lg px-2 py-1.5">
             <div className="flex items-center gap-2">
               <span className="hidden sm:inline text-[11px] font-semibold text-foreground/80 whitespace-nowrap pr-1">
@@ -234,7 +232,6 @@ export function WideTableScroller({
             </div>
           </div>
         </div>
-      )}
     </div>
   );
 }
