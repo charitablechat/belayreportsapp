@@ -11,7 +11,14 @@ import {
 interface CameraCaptureDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  onCapture: (file: File) => void;
+  /**
+   * Receives the captured File. May return a Promise; the dialog will await
+   * it before tearing down the canvas backing store, so the underlying Blob
+   * survives any async persistence (compress → IndexedDB → optional upload).
+   * This matters on iOS/WebKit where eager canvas teardown has been observed
+   * to interact badly with pending Blob materialization.
+   */
+  onCapture: (file: File) => void | Promise<void>;
 }
 
 type CameraState = "initializing" | "streaming" | "preview" | "error";
