@@ -3,7 +3,7 @@ import { OptimizedImage } from "@/components/ui/optimized-image";
 import { supabase } from "@/integrations/supabase/client";
 import { getOfflinePhotos, updatePhotoDisplayOrder, getDB, putPhotoRecord, isIdbLayerBreakerOpen, getCircuitBreakerStatus } from "@/lib/offline-storage";
 import { cachePhotoFromRemote, batchValidateCachedPhotos } from "@/lib/photo-cache";
-import { getPhotoReceipts } from "@/lib/photo-receipts";
+import { getPhotoReceipts, removePhotoReceipts } from "@/lib/photo-receipts";
 import { useNetworkStatus } from "@/hooks/useNetworkStatus";
 import { isHeicPath, isHeicBlob, convertHeicBlobToJpeg } from "@/lib/heic-converter";
 import { processBackgroundCacheItem, migrateHeicToJpeg, type MigrateHeicOutcome } from "./photo-gallery-helpers";
@@ -324,8 +324,13 @@ export default function PhotoGallery({
 
       const receipts = getPhotoReceipts(inspectionId, section);
       const offlinePhotoIds = new Set(offlinePhotos.filter(p => p.section === section).map(p => p.id));
-      const evictedPhotos = receipts.filter(r => !r.uploaded && !offlinePhotoIds.has(r.id));
-      setEvictedCount(evictedPhotos.length);
+      // Provisional offline-only eviction count. The online branch below
+      // refines this by also excluding any receipt whose ID exists on the
+      // server (uploaded or intentionally soft-deleted), which prevents the
+      // "lost from local storage" warning from incrementing every time a
+      // synced photo is deleted.
+      const provisionalEvicted = receipts.filter(r => !r.uploaded && !offlinePhotoIds.has(r.id));
+      setEvictedCount(provisionalEvicted.length);
 
       if (isOnline) {
       const { data, error } = await (supabase
@@ -339,6 +344,49 @@ export default function PhotoGallery({
         if (error) throw error;
 
         const supabasePhotoIds = (data || []).map((p: any) => p.id);
+
+        // Refine evicted-photo count using server-side knowledge. A receipt
+        // ID that exists on the server (active OR soft-deleted) is NOT a
+        // lost photo: it was either successfully uploaded or intentionally
+        // deleted. Also self-heal stale receipts so the warning stops
+        // growing across reloads after past deletes.
+        try {
+          const receiptIds = receipts.map(r => r.id);
+          let serverKnownIds = new Set<string>(supabasePhotoIds);
+          if (receiptIds.length > 0) {
+            const { data: anyRows } = await (supabase
+              .from(tableName) as any)
+              .select('id')
+              .in('id', receiptIds);
+            for (const row of (anyRows || [])) {
+              if (row?.id) serverKnownIds.add(row.id);
+            }
+          }
+          const stillEvicted = receipts.filter(
+            r => !r.uploaded && !offlinePhotoIds.has(r.id) && !serverKnownIds.has(r.id)
+          );
+          const staleReceiptIds = receipts
+            .filter(r => serverKnownIds.has(r.id))
+            .map(r => r.id);
+          if (staleReceiptIds.length > 0) removePhotoReceipts(staleReceiptIds);
+          setEvictedCount(stillEvicted.length);
+          if (isPhotoTraceEnabled()) {
+            // eslint-disable-next-line no-console
+            console.debug('[photo-trace photoLossWarning.compute]', {
+              inspectionId,
+              section,
+              scannedReceipts: receipts.length,
+              offlineKnown: offlinePhotoIds.size,
+              serverKnown: serverKnownIds.size,
+              staleReceiptsCleared: staleReceiptIds.length,
+              countedLost: stillEvicted.length,
+              sampleLostIds: stillEvicted.slice(0, 5).map(r => r.id),
+            });
+          }
+        } catch {
+          /* warning refinement is best-effort */
+        }
+
         const validCacheIds = await batchValidateCachedPhotos(supabasePhotoIds);
 
         // Split photos into cached (instant) vs uncached (need signed URLs)
