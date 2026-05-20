@@ -13,7 +13,6 @@ import { focusNextCell, preserveScroll } from "@/lib/table-focus-utils";
 import { useState, useMemo, useCallback, useEffect, memo, useRef } from "react";
 import { useIsMobile } from "@/hooks/use-mobile";
 import {
-import { isPhotoTraceEnabled } from "@/lib/photo-trace";
   AlertDialog,
   AlertDialogAction,
   AlertDialogCancel,
@@ -25,6 +24,7 @@ import { isPhotoTraceEnabled } from "@/lib/photo-trace";
 } from "@/components/ui/alert-dialog";
 import { DraggableTableRow, DraggableMobileCard } from "./DraggableTableRow";
 
+import { isPhotoTraceEnabled } from "@/lib/photo-trace";
 interface EquipmentTableProps {
   category: string;
   displayName: string;

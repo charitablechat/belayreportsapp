@@ -12,7 +12,6 @@ import { DebouncedInput } from "./DebouncedInput";
 import { focusNextCell, preserveScroll } from "@/lib/table-focus-utils";
 import { useState, useCallback, useEffect, memo } from "react";
 import {
-import { isPhotoTraceEnabled } from "@/lib/photo-trace";
   AlertDialog,
   AlertDialogAction,
   AlertDialogCancel,
@@ -28,6 +27,7 @@ import { useSystemTypeOptions } from "@/hooks/useSystemTypeOptions";
 import { useElementNameOptions } from "@/hooks/useElementNameOptions";
 import { useMemo } from "react";
 
+import { isPhotoTraceEnabled } from "@/lib/photo-trace";
 interface OperatingSystemsTableProps {
   systems: any[];
   onUpdate: (systemsOrUpdater: any[] | ((prev: any[]) => any[])) => void;

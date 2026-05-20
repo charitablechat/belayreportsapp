@@ -12,7 +12,6 @@ import ItemPhotoUpload from "./ItemPhotoUpload";
 import { focusNextCell, preserveScroll } from "@/lib/table-focus-utils";
 import { useState, useCallback, useEffect, memo } from "react";
 import {
-import { isPhotoTraceEnabled } from "@/lib/photo-trace";
   AlertDialog,
   AlertDialogAction,
   AlertDialogCancel,
@@ -25,6 +24,7 @@ import { isPhotoTraceEnabled } from "@/lib/photo-trace";
 import { DraggableTableRow, DraggableMobileCard } from "./DraggableTableRow";
 import { useNativeDrag } from "@/hooks/useNativeDrag";
 
+import { isPhotoTraceEnabled } from "@/lib/photo-trace";
 interface ZiplinesTableProps {
   ziplines: any[];
   onUpdate: (ziplinesOrUpdater: any[] | ((prev: any[]) => any[])) => void;
