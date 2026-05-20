@@ -599,7 +599,13 @@ function ItemPhotoUpload({
   }, [handleUpload]);
 
   const handleRemove = useCallback(async () => {
-    if (isPhotoTraceEnabled()) photoTrace('handleRemove', { itemId, itemName, section: photoSection, photoUrlAtRemove: photoUrl });
+    const beforePhoto = photoUrl;
+    if (isPhotoTraceEnabled()) {
+      photoTrace('handleRemove', { itemId, itemName, section: photoSection, photoUrlAtRemove: beforePhoto });
+      photoTrace('rowPhoto.clear.requested', {
+        itemId, itemName, section: photoSection, beforePhoto, afterPhoto: null, rawPath: beforePhoto,
+      });
+    }
     if (photoUrl && photoSection && inspectionId) {
       try {
         const { deletePhotoEverywhere } = await import('@/lib/photo-deletion');
@@ -615,7 +621,12 @@ function ItemPhotoUpload({
     setSignedUrl(null);
     setIsOfflinePhoto(false);
     onPhotoChange(null);
-    if (isPhotoTraceEnabled()) photoTrace('handleRemove.onPhotoChange', { newPhotoUrl: null, itemId });
+    if (isPhotoTraceEnabled()) {
+      photoTrace('handleRemove.onPhotoChange', { newPhotoUrl: null, itemId });
+      photoTrace('rowPhoto.clear.applied', {
+        itemId, itemName, section: photoSection, beforePhoto, afterPhoto: null, rawPath: beforePhoto,
+      });
+    }
     onImmediateSave?.();
     closeLightbox();
   }, [photoUrl, onPhotoChange, onImmediateSave, photoSection, inspectionId, onGalleryRefresh, closeLightbox, itemId, itemName]);
