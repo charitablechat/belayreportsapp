@@ -1331,7 +1331,7 @@ export default function InspectionForm() {
         setEquipment(prev => mergeChildArray(
           prev as Array<DbRow & { id: string }>,
           normalizedEquipment as Array<DbRow & { id: string }>,
-          { table: 'equipment', deletedIds: deletedEquipmentIdsRef.current, onDeletedIdConfirmed: dropDeletedEquipmentId, coalesceTempByBusinessKey: ['inspection_id', 'equipment_type', 'name'] },
+          { table: 'equipment', deletedIds: deletedEquipmentIdsRef.current, onDeletedIdConfirmed: dropDeletedEquipmentId, coalesceTempByBusinessKey: ['inspection_id', 'equipment_category', 'equipment_type', 'production_year'] },
         ) as DbRow[]);
       }
       if (offlineStandards.length > 0) {
@@ -1596,7 +1596,7 @@ export default function InspectionForm() {
             setEquipment(prev => mergeChildArray(
               prev as Array<DbRow & { id: string }>,
               normalizedEquipment as Array<DbRow & { id: string }>,
-              { table: 'equipment', deletedIds: deletedEquipmentIdsRef.current, onDeletedIdConfirmed: dropDeletedEquipmentId, coalesceTempByBusinessKey: ['inspection_id', 'equipment_type', 'name'] },
+              { table: 'equipment', deletedIds: deletedEquipmentIdsRef.current, onDeletedIdConfirmed: dropDeletedEquipmentId, coalesceTempByBusinessKey: ['inspection_id', 'equipment_category', 'equipment_type', 'production_year'] },
             ) as DbRow[]);
             saveRelatedDataOffline('equipment', id!, normalizedEquipment).catch(e =>
               console.warn('[InspectionForm] Non-critical: failed to cache equipment', e)
@@ -1610,7 +1610,7 @@ export default function InspectionForm() {
             setEquipment(prev => mergeChildArray(
               prev as Array<DbRow & { id: string }>,
               normalizedEquipment as Array<DbRow & { id: string }>,
-              { table: 'equipment', deletedIds: deletedEquipmentIdsRef.current, onDeletedIdConfirmed: dropDeletedEquipmentId, coalesceTempByBusinessKey: ['inspection_id', 'equipment_type', 'name'] },
+              { table: 'equipment', deletedIds: deletedEquipmentIdsRef.current, onDeletedIdConfirmed: dropDeletedEquipmentId, coalesceTempByBusinessKey: ['inspection_id', 'equipment_category', 'equipment_type', 'production_year'] },
             ) as DbRow[]);
           }
 
