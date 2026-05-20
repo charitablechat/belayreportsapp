@@ -17,6 +17,7 @@ import { saveToDevice } from "@/lib/save-to-device";
 import { useNetworkStatus } from "@/hooks/useNetworkStatus";
 import { setOverlayActive } from "@/lib/navigation";
 import { photoTrace, newPhotoCid, isPhotoTraceEnabled } from "@/lib/photo-trace";
+import { isPhotoTombstoned } from "@/lib/photo-deletion";
 
 
 
@@ -127,10 +128,36 @@ function ItemPhotoUpload({
         photoTrace('props.photoUrl-change', {
           itemId, itemName, section: photoSection, from, to,
         });
+        // Rehydration trace: prop arrived (re)populated from outside state
+        // (form load, IDB merge, realtime). Captures the scenario where a
+        // deleted row photo comes back from cached form data.
+        if (to && from !== to) {
+          photoTrace('rowPhoto.rehydrated', {
+            itemId, itemName, section: photoSection, beforePhoto: from, afterPhoto: to, rawPath: to,
+          });
+        }
       }
       prevPhotoUrlPropRef.current = to;
     }
   }, [photoUrl, itemId, itemName, photoSection]);
+
+  // Tombstone guard: if the parent re-supplies a photoUrl whose raw storage
+  // path was just deleted, suppress it and clear the parent row so the
+  // deletion sticks across form rehydration / cached row data.
+  useEffect(() => {
+    if (!photoUrl || !photoSection || !inspectionId) return;
+    if (!isPhotoTombstoned(inspectionId, photoSection, photoUrl)) return;
+    if (isPhotoTraceEnabled()) {
+      photoTrace('rowPhoto.suppressedByTombstone', {
+        itemId, itemName, section: photoSection, beforePhoto: photoUrl, afterPhoto: null, rawPath: photoUrl,
+      });
+    }
+    setLocalPreview(null);
+    setSignedUrl(null);
+    setIsOfflinePhoto(false);
+    onPhotoChange(null);
+    onImmediateSave?.();
+  }, [photoUrl, photoSection, inspectionId, itemId, itemName, onPhotoChange, onImmediateSave]);
 
   // [photo-trace] DEV-only: log the render-decision inputs whenever any of
   // the inputs that drive the thumbnail change. This lets us see, at the
@@ -572,7 +599,13 @@ function ItemPhotoUpload({
   }, [handleUpload]);
 
   const handleRemove = useCallback(async () => {
-    if (isPhotoTraceEnabled()) photoTrace('handleRemove', { itemId, itemName, section: photoSection, photoUrlAtRemove: photoUrl });
+    const beforePhoto = photoUrl;
+    if (isPhotoTraceEnabled()) {
+      photoTrace('handleRemove', { itemId, itemName, section: photoSection, photoUrlAtRemove: beforePhoto });
+      photoTrace('rowPhoto.clear.requested', {
+        itemId, itemName, section: photoSection, beforePhoto, afterPhoto: null, rawPath: beforePhoto,
+      });
+    }
     if (photoUrl && photoSection && inspectionId) {
       try {
         const { deletePhotoEverywhere } = await import('@/lib/photo-deletion');
@@ -588,7 +621,12 @@ function ItemPhotoUpload({
     setSignedUrl(null);
     setIsOfflinePhoto(false);
     onPhotoChange(null);
-    if (isPhotoTraceEnabled()) photoTrace('handleRemove.onPhotoChange', { newPhotoUrl: null, itemId });
+    if (isPhotoTraceEnabled()) {
+      photoTrace('handleRemove.onPhotoChange', { newPhotoUrl: null, itemId });
+      photoTrace('rowPhoto.clear.applied', {
+        itemId, itemName, section: photoSection, beforePhoto, afterPhoto: null, rawPath: beforePhoto,
+      });
+    }
     onImmediateSave?.();
     closeLightbox();
   }, [photoUrl, onPhotoChange, onImmediateSave, photoSection, inspectionId, onGalleryRefresh, closeLightbox, itemId, itemName]);
