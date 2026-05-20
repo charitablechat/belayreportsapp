@@ -344,7 +344,48 @@ export default function PhotoGallery({
         if (error) throw error;
 
         const supabasePhotoIds = (data || []).map((p: any) => p.id);
-        const validCacheIds = await batchValidateCachedPhotos(supabasePhotoIds);
+
+        // Refine evicted-photo count using server-side knowledge. A receipt
+        // ID that exists on the server (active OR soft-deleted) is NOT a
+        // lost photo: it was either successfully uploaded or intentionally
+        // deleted. Also self-heal stale receipts so the warning stops
+        // growing across reloads after past deletes.
+        try {
+          const receiptIds = receipts.map(r => r.id);
+          let serverKnownIds = new Set<string>(supabasePhotoIds);
+          if (receiptIds.length > 0) {
+            const { data: anyRows } = await (supabase
+              .from(tableName) as any)
+              .select('id')
+              .in('id', receiptIds);
+            for (const row of (anyRows || [])) {
+              if (row?.id) serverKnownIds.add(row.id);
+            }
+          }
+          const stillEvicted = receipts.filter(
+            r => !r.uploaded && !offlinePhotoIds.has(r.id) && !serverKnownIds.has(r.id)
+          );
+          const staleReceiptIds = receipts
+            .filter(r => serverKnownIds.has(r.id))
+            .map(r => r.id);
+          if (staleReceiptIds.length > 0) removePhotoReceipts(staleReceiptIds);
+          setEvictedCount(stillEvicted.length);
+          if (isPhotoTraceEnabled()) {
+            // eslint-disable-next-line no-console
+            console.debug('[photo-trace photoLossWarning.compute]', {
+              inspectionId,
+              section,
+              scannedReceipts: receipts.length,
+              offlineKnown: offlinePhotoIds.size,
+              serverKnown: serverKnownIds.size,
+              staleReceiptsCleared: staleReceiptIds.length,
+              countedLost: stillEvicted.length,
+              sampleLostIds: stillEvicted.slice(0, 5).map(r => r.id),
+            });
+          }
+        } catch {
+          /* warning refinement is best-effort */
+        }
 
         // Split photos into cached (instant) vs uncached (need signed URLs)
         const allPhotos = (data || []) as any[];
