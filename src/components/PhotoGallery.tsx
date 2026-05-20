@@ -46,7 +46,8 @@ import {
   rectSortingStrategy,
 } from "@dnd-kit/sortable";
 
-import { isPhotoTraceEnabled } from "@/lib/photo-trace";
+import { isPhotoTraceEnabled, photoTrace } from "@/lib/photo-trace";
+import { deletePhotoEverywhere, isPhotoTombstoned } from "@/lib/photo-deletion";
 type PhotoTableName = "inspection_photos" | "training_photos" | "daily_assessment_photos";
 
 interface PhotoGalleryProps {
