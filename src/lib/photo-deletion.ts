@@ -212,14 +212,20 @@ export async function deletePhotoEverywhere(args: DeletePhotoArgs): Promise<Dele
       }
       return false;
     });
+    const removedReceiptIds: string[] = [];
     for (const m of matches) {
       try {
         await deleteOfflinePhoto((m as any).id);
         idbRemoved++;
+        removedReceiptIds.push((m as any).id);
       } catch {
         /* swallow per-row failures */
       }
     }
+    if (dbPhotoId) removedReceiptIds.push(dbPhotoId);
+    // Clear photo receipts so an intentionally-deleted photo cannot be
+    // re-counted by the "lost from local storage" warning in PhotoGallery.
+    try { removePhotoReceipts(removedReceiptIds); } catch { /* ignore */ }
   } catch {
     /* ignore */
   }
