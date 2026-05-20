@@ -5,9 +5,18 @@ import { isPreviewOrIframeEnvironment, isServiceWorkerAllowed } from "@/lib/envi
 import { initSentry } from "@/lib/sentry";
 import { logError } from "@/lib/log-error";
 import { registerSW } from "virtual:pwa-register";
+import { isPhotoTraceEnabled } from "@/lib/photo-trace";
 
 // Initialize error monitoring as early as possible (production-only, lazy-loaded).
 void initSentry();
+
+// TEMPORARY diagnostic — confirm photo-trace activation state on boot.
+// Activate in any environment with `?photoTrace=1` (sticky via localStorage);
+// disable with `?photoTrace=0`. See src/lib/photo-trace.ts.
+if (isPhotoTraceEnabled()) {
+  // eslint-disable-next-line no-console
+  console.log('[photo-trace] enabled — window.__photoTrace ring buffer active');
+}
 
 // Global handlers — surface async failures that never reach a `try/catch`
 // (e.g. orphaned promises, uncaught render errors below the React tree).
