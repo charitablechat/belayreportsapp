@@ -1945,7 +1945,7 @@ export default function InspectionForm() {
 
       const saveData = {
         systems,
-        ziplines,
+        ziplines: ziplinesSnapshot,
         equipment,
         standards,
         summary: currentSummary,
@@ -1956,7 +1956,7 @@ export default function InspectionForm() {
       const validSystems = systems.filter(s => 
         s.system_name && s.system_name.trim() !== ""
       );
-      const validZiplines = ziplines.filter(z => 
+      const validZiplines = ziplinesSnapshot.filter(z => 
         z.zipline_name && z.zipline_name.trim() !== ""
       );
       const validEquipment = equipment.filter(e => 
@@ -1991,7 +1991,7 @@ export default function InspectionForm() {
             id: id!,
             inspection: inspectionToSave,
             systems,
-            ziplines,
+            ziplines: ziplinesSnapshot,
             equipment,
             standards,
             summary: currentSummary,
@@ -2069,7 +2069,7 @@ export default function InspectionForm() {
           console.warn(`[InspectionForm] ${systems.length - validSystems.length} system(s) filtered out (empty name) — saved locally but excluded from server sync`);
         }
         if (validZiplines.length !== ziplines.length) {
-          console.warn(`[InspectionForm] ${ziplines.length - validZiplines.length} zipline(s) filtered out (empty name) — saved locally but excluded from server sync`);
+          console.warn(`[InspectionForm] ${ziplinesSnapshot.length - validZiplines.length} zipline(s) filtered out (empty name) — saved locally but excluded from server sync`);
         }
         console.log('[InspectionForm] Saved all data to offline storage');
       }
@@ -2106,7 +2106,7 @@ export default function InspectionForm() {
                   id: id!,
                   inspection: updatedInspection,
                   systems,
-                  ziplines,
+                  ziplines: ziplinesSnapshot,
                   equipment,
                   standards,
                   summary: currentSummary,
