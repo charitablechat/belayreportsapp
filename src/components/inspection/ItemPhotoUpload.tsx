@@ -128,10 +128,36 @@ function ItemPhotoUpload({
         photoTrace('props.photoUrl-change', {
           itemId, itemName, section: photoSection, from, to,
         });
+        // Rehydration trace: prop arrived (re)populated from outside state
+        // (form load, IDB merge, realtime). Captures the scenario where a
+        // deleted row photo comes back from cached form data.
+        if (to && from !== to) {
+          photoTrace('rowPhoto.rehydrated', {
+            itemId, itemName, section: photoSection, beforePhoto: from, afterPhoto: to, rawPath: to,
+          });
+        }
       }
       prevPhotoUrlPropRef.current = to;
     }
   }, [photoUrl, itemId, itemName, photoSection]);
+
+  // Tombstone guard: if the parent re-supplies a photoUrl whose raw storage
+  // path was just deleted, suppress it and clear the parent row so the
+  // deletion sticks across form rehydration / cached row data.
+  useEffect(() => {
+    if (!photoUrl || !photoSection || !inspectionId) return;
+    if (!isPhotoTombstoned(inspectionId, photoSection, photoUrl)) return;
+    if (isPhotoTraceEnabled()) {
+      photoTrace('rowPhoto.suppressedByTombstone', {
+        itemId, itemName, section: photoSection, beforePhoto: photoUrl, afterPhoto: null, rawPath: photoUrl,
+      });
+    }
+    setLocalPreview(null);
+    setSignedUrl(null);
+    setIsOfflinePhoto(false);
+    onPhotoChange(null);
+    onImmediateSave?.();
+  }, [photoUrl, photoSection, inspectionId, itemId, itemName, onPhotoChange, onImmediateSave]);
 
   // [photo-trace] DEV-only: log the render-decision inputs whenever any of
   // the inputs that drive the thumbnail change. This lets us see, at the
