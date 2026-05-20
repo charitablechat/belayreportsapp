@@ -602,15 +602,24 @@ function ItemPhotoUpload({
             </div>
           )}
         </button>
-      ) : hasPhoto && isOfflinePhoto ? (
+      ) : hasPhoto ? (
+        // photoUrl exists but neither a signed URL nor a local preview is
+        // ready yet (cache miss + pending upload + transient signed-URL
+        // failure). Render a stable placeholder thumbnail so the row never
+        // collapses back to blank upload buttons while a photo is attached.
         <button
           data-lightbox-trigger
           type="button"
           onClick={() => setLightboxOpen(true)}
           className="relative w-12 h-12 rounded-md overflow-hidden border border-border bg-muted flex items-center justify-center"
           disabled={disabled}
+          title="Photo loading…"
         >
-          <CloudOff className="w-5 h-5 text-muted-foreground" />
+          {uploading ? (
+            <Loader2 className="w-4 h-4 animate-spin text-primary" />
+          ) : (
+            <CloudOff className="w-5 h-5 text-muted-foreground" />
+          )}
         </button>
       ) : (
         <div className="flex gap-1">
