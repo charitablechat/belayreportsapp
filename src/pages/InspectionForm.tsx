@@ -279,6 +279,8 @@ export default function InspectionForm() {
   const [systems, setSystems] = useState<DbRow[]>([]);
   const [ziplines, setZiplines] = useState<DbRow[]>([]);
   const [equipment, setEquipment] = useState<DbRow[]>([]);
+  const ziplinesRef = useRef<DbRow[]>([]);
+  useEffect(() => { ziplinesRef.current = ziplines; }, [ziplines]);
 
   // ── Deletion-aware merge tracking ────────────────────────────────────────
   // Session-scoped sets of child-row ids that the user intentionally deleted
