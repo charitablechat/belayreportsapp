@@ -1,5 +1,6 @@
 import { useEffect, useCallback, useRef } from "react";
 import { useNavigate, useBlocker } from "react-router-dom";
+import { isOverlayActive } from "@/lib/navigation";
 
 interface UseUnsavedChangesOptions {
   hasUnsavedChanges: boolean;
