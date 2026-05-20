@@ -17,6 +17,7 @@ import { saveToDevice } from "@/lib/save-to-device";
 import { useNetworkStatus } from "@/hooks/useNetworkStatus";
 import { setOverlayActive } from "@/lib/navigation";
 import { photoTrace, newPhotoCid, isPhotoTraceEnabled } from "@/lib/photo-trace";
+import { isPhotoTombstoned } from "@/lib/photo-deletion";
 
 
 
