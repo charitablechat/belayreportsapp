@@ -423,7 +423,7 @@ function EquipmentTable({ category, displayName, equipment, onUpdate, onImmediat
       </CardHeader>
       <CardContent className="px-3 lg:px-6">
         {/* Desktop grid view */}
-        <div className="hidden lg:block overflow-x-auto">
+        <div className="hidden lg:block overflow-x-auto scrollbar-prominent pb-3">
           {/* Header */}
           <div className={`grid ${EQ_GRID_COLS} bg-blue-50 dark:bg-blue-950/20 border-b border-border`}>
             <div className="p-3 text-center font-semibold text-sm border-r border-border"></div>
