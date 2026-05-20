@@ -115,6 +115,48 @@ function ItemPhotoUpload({
   const itemNameRef = useRef<string | undefined>(itemName);
   useEffect(() => { itemNameRef.current = itemName; }, [itemName]);
 
+  // [photo-trace] DEV-only: observe external photoUrl prop transitions so we
+  // can tell whether the row state was cleared by an outside updater (e.g.
+  // result→Pass) vs. by our own onPhotoChange. Tracks previous via ref.
+  const prevPhotoUrlPropRef = useRef<string | null>(photoUrl);
+  useEffect(() => {
+    if (import.meta.env.DEV) {
+      const from = prevPhotoUrlPropRef.current;
+      const to = photoUrl;
+      if (from !== to) {
+        photoTrace('props.photoUrl-change', {
+          itemId, itemName, section: photoSection, from, to,
+        });
+      }
+      prevPhotoUrlPropRef.current = to;
+    }
+  }, [photoUrl, itemId, itemName, photoSection]);
+
+  // [photo-trace] DEV-only: log the render-decision inputs whenever any of
+  // the inputs that drive the thumbnail change. This lets us see, at the
+  // moment a thumbnail disappears, whether the component fell into the
+  // blank-state branch and which input drove it.
+  useEffect(() => {
+    if (import.meta.env.DEV) {
+      const hasPhotoNow = !!(photoUrl || localPreview);
+      let branch: 'thumb-with-url' | 'thumb-offline-placeholder' | 'blank-buttons';
+      if (hasPhotoNow && (localPreview || signedUrl)) branch = 'thumb-with-url';
+      else if (hasPhotoNow && isOfflinePhoto) branch = 'thumb-offline-placeholder';
+      else branch = 'blank-buttons';
+      photoTrace('render.branch', {
+        itemId,
+        itemName,
+        section: photoSection,
+        branch,
+        photoUrl,
+        hasLocalPreview: !!localPreview,
+        hasSignedUrl: !!signedUrl,
+        isOfflinePhoto,
+      });
+    }
+  }, [photoUrl, localPreview, signedUrl, isOfflinePhoto, itemId, itemName, photoSection]);
+
+
   // Cleanup object URLs on unmount
   useEffect(() => {
     return () => {
