@@ -281,9 +281,9 @@ function ZiplinesTable({ ziplines, onUpdate, onImmediateSave: rawOnImmediateSave
             </div>
           </div>
           </div>
-          <p className="lg:hidden mt-1 text-[11px] text-muted-foreground italic">Scroll horizontally to see more columns →</p>
-          <p className="hidden lg:block mt-1 text-[11px] text-muted-foreground italic">Scroll horizontally to see more columns →</p>
+          <p className="mt-1 text-[11px] text-muted-foreground italic">Scroll horizontally to see more columns →</p>
         </div>
+
         
 
         
