@@ -111,15 +111,17 @@ export default function PhotoGallery({
   // Track whether we pushed a history entry for the lightbox
   const lightboxHistoryPushedRef = useRef(false);
 
-  // Close lightbox WITHOUT calling window.history.back(). Synthetic back
-  // navigation was being intercepted by the form's `useUnsavedChanges`
-  // blocker as a route change and surfaced "Leaving Report". The popstate
-  // listener below still consumes the pushed entry on a real device-back
-  // gesture so we don't leak an extra history slot.
+  // Close lightbox while keeping browser history stack clean. See matching
+  // explanation in ItemPhotoUpload.closeLightbox — overlay flag stays true
+  // across the synthetic history.back() so useUnsavedChanges short-circuits;
+  // the popstate listener finishes cleanup.
   const closeLightbox = useCallback(() => {
-    setSelectedPhotoIndex(null);
-    setOverlayActive(false);
-    lightboxHistoryPushedRef.current = false;
+    if (lightboxHistoryPushedRef.current) {
+      window.history.back();
+    } else {
+      setSelectedPhotoIndex(null);
+      setOverlayActive(false);
+    }
   }, []);
 
   // Ref to track open state for the popstate handler (avoids stale closures)
@@ -139,9 +141,10 @@ export default function PhotoGallery({
     const onPopState = () => {
       if (lightboxOpenRef.current) {
         lightboxHistoryPushedRef.current = false;
-        setOverlayActive(false);
         setSelectedPhotoIndex(null);
         lightboxOpenRef.current = false;
+        // Clear overlay flag AFTER state close (mirrors ItemPhotoUpload).
+        setOverlayActive(false);
       }
     };
 
