@@ -18,6 +18,7 @@ import { toast } from "sonner";
 import PhotoCaptionInput from "./PhotoCaptionInput";
 import { DraggablePhotoItem } from "./DraggablePhotoItem";
 import {
+import { isPhotoTraceEnabled } from "@/lib/photo-trace";
   AlertDialog,
   AlertDialogAction,
   AlertDialogCancel,

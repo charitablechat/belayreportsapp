@@ -12,6 +12,7 @@ import { DebouncedInput } from "./DebouncedInput";
 import { focusNextCell, preserveScroll } from "@/lib/table-focus-utils";
 import { useState, useCallback, useEffect, memo } from "react";
 import {
+import { isPhotoTraceEnabled } from "@/lib/photo-trace";
   AlertDialog,
   AlertDialogAction,
   AlertDialogCancel,
