@@ -16,6 +16,9 @@ import { savePhotoReceipt } from "@/lib/photo-receipts";
 import { saveToDevice } from "@/lib/save-to-device";
 import { useNetworkStatus } from "@/hooks/useNetworkStatus";
 import { setOverlayActive } from "@/lib/navigation";
+import { photoTrace, newPhotoCid } from "@/lib/photo-trace";
+
+
 
 interface ItemPhotoUploadProps {
   itemId: string;
