@@ -219,6 +219,7 @@ function ItemPhotoUpload({
       const url = URL.createObjectURL(cachedBlob);
       prevObjectUrlRef.current = url;
       setSignedUrl(url);
+      setIsOfflinePhoto(false);
       return;
     }
 
@@ -228,12 +229,24 @@ function ItemPhotoUpload({
       return;
     }
 
+    // 2b. Pending placeholder path — no signed URL exists yet on the server.
+    // Show the offline-style placeholder thumbnail so the row never falls
+    // back to blank upload buttons while the background upload is in flight.
+    if (photoUrl.startsWith('pending/')) {
+      setIsOfflinePhoto(true);
+      return;
+    }
+
     // 3. Fetch signed URL from server
     try {
       const { data } = await supabase.storage
         .from("inspection-photos")
         .createSignedUrl(photoUrl, 3600);
-      if (!data?.signedUrl) return;
+      if (!data?.signedUrl) {
+        // Transient: render placeholder thumbnail, not blank buttons.
+        setIsOfflinePhoto(true);
+        return;
+      }
       setSignedUrl(data.signedUrl);
       setIsOfflinePhoto(false);
 
@@ -245,7 +258,10 @@ function ItemPhotoUpload({
           await cachePhotoFromRemote(photoUrl, blob, photoUrl, inspectionId, 'item-photo');
         }
       } catch { /* non-critical */ }
-    } catch { /* silent fail */ }
+    } catch {
+      // Network/Supabase failure — surface a placeholder, not blank buttons.
+      setIsOfflinePhoto(true);
+    }
   }, [photoUrl, inspectionId]);
 
   useEffect(() => { loadSignedUrl(); }, [loadSignedUrl]);
@@ -386,11 +402,20 @@ function ItemPhotoUpload({
       if (isPhotoTraceEnabled()) photoTrace('handleUpload.localPreview-created', { previewUrl }, cid);
 
 
-      // 3. Generate deterministic file path
-      const photoId = `item-${itemId}-${Date.now()}`;
-      const placeholderPath = `pending/${inspectionId}/items/${itemId}.jpg`;
-      const deviceFileName = `RopeWorks_${photoSection || 'item'}_${Date.now()}.jpg`;
-      if (isPhotoTraceEnabled()) photoTrace('handleUpload.placeholder', { photoId, placeholderPath, caption: captionFromName }, cid);
+      // 3. Generate UNIQUE file path per upload. Replacement uploads to the
+      //    same item used to reuse `items/<itemId>.jpg`, so a second upload
+      //    overwrote the first in storage AND collided with the existing
+      //    inspection_photos row (uploadInBackground.gallery-existing).
+      //    PhotoGallery then deduped the new photo against the stale DB row,
+      //    surfacing the prior image under the new label. Per-upload uuid
+      //    suffix guarantees a distinct storage path / DB row identity.
+      const uploadTs = Date.now();
+      const uploadSuffix = `${uploadTs}-${Math.random().toString(36).slice(2, 8)}`;
+      const photoId = `item-${itemId}-${uploadTs}`;
+      const placeholderPath = `pending/${inspectionId}/items/${itemId}-${uploadSuffix}.jpg`;
+      const deviceFileName = `RopeWorks_${photoSection || 'item'}_${uploadTs}.jpg`;
+      const previousPhotoUrl = photoUrl; // capture before any state mutation
+      if (isPhotoTraceEnabled()) photoTrace('handleUpload.placeholder', { photoId, placeholderPath, caption: captionFromName, replacing: previousPhotoUrl }, cid);
 
       // Shared offline-save invocation (used for the initial attempt + one retry)
       const tryOfflineSave = () => savePhotoOffline({
@@ -398,7 +423,7 @@ function ItemPhotoUpload({
         inspectionId,
         section: photoSection || 'item-photo',
         blob: compressed,
-        fileName: `${itemId}.jpg`,
+        fileName: `${itemId}-${uploadSuffix}.jpg`,
         uploaded: false,
         photoUrl: placeholderPath,
         tableName: 'inspection_photos',
@@ -406,6 +431,37 @@ function ItemPhotoUpload({
         foreignKeyColumn: 'inspection_id',
         caption: captionFromName,
       });
+
+      // 3b. Replacement: soft-delete the previous photo's gallery row +
+      //    offline IDB record so the bottom gallery converges on the new
+      //    upload instead of showing both (or worse, only the stale one).
+      //    Best-effort; never blocks the new upload.
+      if (previousPhotoUrl && previousPhotoUrl !== placeholderPath) {
+        try {
+          const now = new Date();
+          const retentionDate = new Date(now.getTime() + 60 * 24 * 60 * 60 * 1000);
+          if (photoSection && inspectionId && !inspectionId.startsWith('temp-') && !previousPhotoUrl.startsWith('pending/')) {
+            supabase.from('inspection_photos')
+              .update({ deleted_at: now.toISOString(), retention_until: retentionDate.toISOString() })
+              .eq('photo_url', previousPhotoUrl)
+              .eq('inspection_id', inspectionId)
+              .is('deleted_at', null)
+              .then(() => { /* no-op */ });
+          }
+          // Soft-clear offline rows pointing at the prior URL
+          import('@/lib/offline-storage').then(async (m) => {
+            try {
+              const offline = await m.getOfflinePhotos(inspectionId);
+              for (const p of offline) {
+                if (p.photoUrl === previousPhotoUrl && p.section === (photoSection || 'item-photo')) {
+                  await m.deleteOfflinePhoto(p.id).catch(() => {});
+                }
+              }
+            } catch { /* non-critical */ }
+          }).catch(() => {});
+          if (isPhotoTraceEnabled()) photoTrace('handleUpload.replaced-prior', { previousPhotoUrl }, cid);
+        } catch { /* non-critical */ }
+      }
 
       // 4. Circuit breaker pre-check — skip IDB if it's known-dead
       const cbStatus = getCircuitBreakerStatus();
@@ -484,7 +540,7 @@ function ItemPhotoUpload({
         getUserWithCache()
           .then(async (user) => {
             if (user?.id) {
-              const realPath = `${user.id}/${inspectionId}/items/${itemId}.jpg`;
+              const realPath = `${user.id}/${inspectionId}/items/${itemId}-${uploadSuffix}.jpg`;
               await updatePhotoPath(photoId, realPath);
               onPhotoChange(realPath);
               if (isPhotoTraceEnabled()) photoTrace('handleUpload.onPhotoChange-realPath', { realPath }, cid);
@@ -586,15 +642,24 @@ function ItemPhotoUpload({
             </div>
           )}
         </button>
-      ) : hasPhoto && isOfflinePhoto ? (
+      ) : hasPhoto ? (
+        // photoUrl exists but neither a signed URL nor a local preview is
+        // ready yet (cache miss + pending upload + transient signed-URL
+        // failure). Render a stable placeholder thumbnail so the row never
+        // collapses back to blank upload buttons while a photo is attached.
         <button
           data-lightbox-trigger
           type="button"
           onClick={() => setLightboxOpen(true)}
           className="relative w-12 h-12 rounded-md overflow-hidden border border-border bg-muted flex items-center justify-center"
           disabled={disabled}
+          title="Photo loading…"
         >
-          <CloudOff className="w-5 h-5 text-muted-foreground" />
+          {uploading ? (
+            <Loader2 className="w-4 h-4 animate-spin text-primary" />
+          ) : (
+            <CloudOff className="w-5 h-5 text-muted-foreground" />
+          )}
         </button>
       ) : (
         <div className="flex gap-1">

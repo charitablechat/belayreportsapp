@@ -474,20 +474,24 @@ export default function PhotoGallery({
 
         const supabasePhotos: Photo[] = [...cachedPhotos, ...batchPhotos];
 
-        const pendingPhotos = offlinePhotosList.filter(p => !p.uploaded);
-        // Dedup: filter out offline photos whose raw storage path already exists in DB results
-        // Use raw DB photo_url paths (not signed/object URLs) for reliable comparison
+        // Include ALL offline rows (pending + already-uploaded). Previously
+        // only `!uploaded` offline rows were merged, so a slow/empty/timed-out
+        // DB response would drop valid uploaded local photos from the gallery
+        // even though the blob was on disk. Dedup by raw storage path against
+        // the DB result so a row that already appears via Supabase isn't
+        // duplicated, but a local row whose DB row hasn't materialised yet
+        // (or was missed by a transient query) still renders.
         const dbStoragePaths = new Set((data || []).map((p: any) => p.photo_url));
         const droppedByDedup: Array<{ id: string; rawStoragePath: string; caption: string | null }> = [];
-        const dedupedPending = pendingPhotos.filter(p => {
+        const dedupedOffline = offlinePhotosList.filter(p => {
           const rawPath = (p as any).rawStoragePath || '';
-          const drop = dbStoragePaths.has(rawPath);
+          const drop = rawPath !== '' && dbStoragePaths.has(rawPath);
           if (drop && isPhotoTraceEnabled()) {
             droppedByDedup.push({ id: p.id, rawStoragePath: rawPath, caption: p.caption });
           }
           return !drop;
         });
-        const mergedPhotos = [...dedupedPending, ...supabasePhotos].sort(
+        const mergedPhotos = [...dedupedOffline, ...supabasePhotos].sort(
           (a, b) => a.display_order - b.display_order
         );
 
