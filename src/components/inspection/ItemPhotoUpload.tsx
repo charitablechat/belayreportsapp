@@ -516,6 +516,7 @@ function ItemPhotoUpload({
   }, [handleUpload]);
 
   const handleRemove = useCallback(async () => {
+    if (import.meta.env.DEV) photoTrace('handleRemove', { itemId, itemName, section: photoSection, photoUrlAtRemove: photoUrl });
     if (photoUrl) {
       // Soft-delete: set deleted_at + 60-day retention (consistent with PhotoGallery)
       const now = new Date();
@@ -538,9 +539,11 @@ function ItemPhotoUpload({
     setSignedUrl(null);
     setIsOfflinePhoto(false);
     onPhotoChange(null);
+    if (import.meta.env.DEV) photoTrace('handleRemove.onPhotoChange', { newPhotoUrl: null, itemId });
     onImmediateSave?.();
     closeLightbox();
-  }, [photoUrl, onPhotoChange, onImmediateSave, photoSection, inspectionId, onGalleryRefresh, closeLightbox]);
+  }, [photoUrl, onPhotoChange, onImmediateSave, photoSection, inspectionId, onGalleryRefresh, closeLightbox, itemId, itemName]);
+
 
   const hasPhoto = !!(photoUrl || localPreview);
 
