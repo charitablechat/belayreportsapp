@@ -541,7 +541,9 @@ export default function PhotoGallery({
         });
 
       } else {
-        const sortedOffline = offlinePhotosList.sort((a, b) => a.display_order - b.display_order);
+        const sortedOffline = offlinePhotosList
+          .filter(p => !isPhotoTombstoned(inspectionId, section, (p as any).rawStoragePath))
+          .sort((a, b) => a.display_order - b.display_order);
         if (isPhotoTraceEnabled()) {
           const trace = {
             ts: Date.now(),
