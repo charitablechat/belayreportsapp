@@ -1304,7 +1304,7 @@ export default function InspectionForm() {
         setSystems(prev => mergeChildArray(
           prev as Array<DbRow & { id: string }>,
           normalizedSystems as Array<DbRow & { id: string }>,
-          { table: 'systems', deletedIds: deletedSystemIdsRef.current, onDeletedIdConfirmed: dropDeletedSystemId },
+          { table: 'systems', deletedIds: deletedSystemIdsRef.current, onDeletedIdConfirmed: dropDeletedSystemId, coalesceTempByBusinessKey: ['inspection_id', 'system_name'] },
         ) as DbRow[]);
       }
       if (offlineZiplines.length > 0) {
@@ -1319,7 +1319,7 @@ export default function InspectionForm() {
         setZiplines(prev => mergeChildArray(
           prev as Array<DbRow & { id: string }>,
           normalizedZiplines as Array<DbRow & { id: string }>,
-          { table: 'ziplines', deletedIds: deletedZiplineIdsRef.current, onDeletedIdConfirmed: dropDeletedZiplineId },
+          { table: 'ziplines', deletedIds: deletedZiplineIdsRef.current, onDeletedIdConfirmed: dropDeletedZiplineId, coalesceTempByBusinessKey: ['inspection_id', 'zipline_name'] },
         ) as DbRow[]);
       }
       if (offlineEquipment.length > 0) {
@@ -1331,7 +1331,7 @@ export default function InspectionForm() {
         setEquipment(prev => mergeChildArray(
           prev as Array<DbRow & { id: string }>,
           normalizedEquipment as Array<DbRow & { id: string }>,
-          { table: 'equipment', deletedIds: deletedEquipmentIdsRef.current, onDeletedIdConfirmed: dropDeletedEquipmentId },
+          { table: 'equipment', deletedIds: deletedEquipmentIdsRef.current, onDeletedIdConfirmed: dropDeletedEquipmentId, coalesceTempByBusinessKey: ['inspection_id', 'equipment_type', 'name'] },
         ) as DbRow[]);
       }
       if (offlineStandards.length > 0) {
@@ -1536,7 +1536,7 @@ export default function InspectionForm() {
             setSystems(prev => mergeChildArray(
               prev as Array<DbRow & { id: string }>,
               normalizedSystems as Array<DbRow & { id: string }>,
-              { table: 'systems', deletedIds: deletedSystemIdsRef.current, onDeletedIdConfirmed: dropDeletedSystemId },
+              { table: 'systems', deletedIds: deletedSystemIdsRef.current, onDeletedIdConfirmed: dropDeletedSystemId, coalesceTempByBusinessKey: ['inspection_id', 'system_name'] },
             ) as DbRow[]);
             saveRelatedDataOffline('systems', id!, normalizedSystems).catch(e =>
               console.warn('[InspectionForm] Non-critical: failed to cache systems', e)
@@ -1550,7 +1550,7 @@ export default function InspectionForm() {
             setSystems(prev => mergeChildArray(
               prev as Array<DbRow & { id: string }>,
               normalizedSystems as Array<DbRow & { id: string }>,
-              { table: 'systems', deletedIds: deletedSystemIdsRef.current, onDeletedIdConfirmed: dropDeletedSystemId },
+              { table: 'systems', deletedIds: deletedSystemIdsRef.current, onDeletedIdConfirmed: dropDeletedSystemId, coalesceTempByBusinessKey: ['inspection_id', 'system_name'] },
             ) as DbRow[]);
           }
 
@@ -1566,7 +1566,7 @@ export default function InspectionForm() {
             setZiplines(prev => mergeChildArray(
               prev as Array<DbRow & { id: string }>,
               normalizedZiplines as Array<DbRow & { id: string }>,
-              { table: 'ziplines', deletedIds: deletedZiplineIdsRef.current, onDeletedIdConfirmed: dropDeletedZiplineId },
+              { table: 'ziplines', deletedIds: deletedZiplineIdsRef.current, onDeletedIdConfirmed: dropDeletedZiplineId, coalesceTempByBusinessKey: ['inspection_id', 'zipline_name'] },
             ) as DbRow[]);
             saveRelatedDataOffline('ziplines', id!, normalizedZiplines).catch(e =>
               console.warn('[InspectionForm] Non-critical: failed to cache ziplines', e)
@@ -1583,7 +1583,7 @@ export default function InspectionForm() {
             setZiplines(prev => mergeChildArray(
               prev as Array<DbRow & { id: string }>,
               normalizedZiplines as Array<DbRow & { id: string }>,
-              { table: 'ziplines', deletedIds: deletedZiplineIdsRef.current, onDeletedIdConfirmed: dropDeletedZiplineId },
+              { table: 'ziplines', deletedIds: deletedZiplineIdsRef.current, onDeletedIdConfirmed: dropDeletedZiplineId, coalesceTempByBusinessKey: ['inspection_id', 'zipline_name'] },
             ) as DbRow[]);
           }
 
@@ -1596,7 +1596,7 @@ export default function InspectionForm() {
             setEquipment(prev => mergeChildArray(
               prev as Array<DbRow & { id: string }>,
               normalizedEquipment as Array<DbRow & { id: string }>,
-              { table: 'equipment', deletedIds: deletedEquipmentIdsRef.current, onDeletedIdConfirmed: dropDeletedEquipmentId },
+              { table: 'equipment', deletedIds: deletedEquipmentIdsRef.current, onDeletedIdConfirmed: dropDeletedEquipmentId, coalesceTempByBusinessKey: ['inspection_id', 'equipment_type', 'name'] },
             ) as DbRow[]);
             saveRelatedDataOffline('equipment', id!, normalizedEquipment).catch(e =>
               console.warn('[InspectionForm] Non-critical: failed to cache equipment', e)
@@ -1610,7 +1610,7 @@ export default function InspectionForm() {
             setEquipment(prev => mergeChildArray(
               prev as Array<DbRow & { id: string }>,
               normalizedEquipment as Array<DbRow & { id: string }>,
-              { table: 'equipment', deletedIds: deletedEquipmentIdsRef.current, onDeletedIdConfirmed: dropDeletedEquipmentId },
+              { table: 'equipment', deletedIds: deletedEquipmentIdsRef.current, onDeletedIdConfirmed: dropDeletedEquipmentId, coalesceTempByBusinessKey: ['inspection_id', 'equipment_type', 'name'] },
             ) as DbRow[]);
           }
 
