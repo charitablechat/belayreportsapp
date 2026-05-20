@@ -351,13 +351,21 @@ export async function pushInspectionToRemote(
   let inspReconciledDeletes: ReconciledTableDelete[] = [];
   const user = await getUserWithCache();
   if (user) {
+    // expectedNonEmpty: true — this save path is driven by user-initiated
+    // form actions (debounced edit, blur, explicit save). The React state
+    // arrays passed in here ARE the canonical local truth (loaded from IDB
+    // or server during the page mount). Without this flag, deleting the
+    // LAST row in any child table triggers reconcile Guard B
+    // ("local empty but server has N — preserving server data"), which
+    // leaves the row on the server. On the next refresh the load query
+    // re-hydrates it and the deleted row resurrects.
     const reconcileResult = await reconcileAllChildTables(
       [
-        { childTable: "inspection_systems", parentIdColumn: "inspection_id", localItems: systems },
-        { childTable: "inspection_ziplines", parentIdColumn: "inspection_id", localItems: ziplines },
-        { childTable: "inspection_equipment", parentIdColumn: "inspection_id", localItems: equipment },
-        { childTable: "inspection_standards", parentIdColumn: "inspection_id", localItems: standards },
-        { childTable: "inspection_summary", parentIdColumn: "inspection_id", localItems: summary ? [summary] : [] },
+        { childTable: "inspection_systems", parentIdColumn: "inspection_id", localItems: systems, expectedNonEmpty: true },
+        { childTable: "inspection_ziplines", parentIdColumn: "inspection_id", localItems: ziplines, expectedNonEmpty: true },
+        { childTable: "inspection_equipment", parentIdColumn: "inspection_id", localItems: equipment, expectedNonEmpty: true },
+        { childTable: "inspection_standards", parentIdColumn: "inspection_id", localItems: standards, expectedNonEmpty: true },
+        { childTable: "inspection_summary", parentIdColumn: "inspection_id", localItems: summary ? [summary] : [], expectedNonEmpty: true },
       ],
       id,
       "inspection",
