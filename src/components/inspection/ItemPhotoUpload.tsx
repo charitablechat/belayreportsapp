@@ -53,19 +53,27 @@ function ItemPhotoUpload({
 
   const displayUrl = localPreview || signedUrl;
 
-  // Close lightbox WITHOUT calling window.history.back().
+  // Close lightbox while keeping the browser history stack clean.
   //
-  // Previously the close path emitted a synthetic `history.back()` to mirror
-  // the pushState made on open. React Router's `useBlocker` (wired into the
-  // form's `useUnsavedChanges`) intercepted the resulting popstate as a
-  // route-change attempt and surfaced the "Leaving Report" dialog. The
-  // lightbox is pure overlay UI — closing it must never look like a route
-  // navigation. We still consume the previously-pushed history entry on
-  // device-back-gesture via the popstate listener below.
+  // Opening pushes a synthetic history entry so OS/browser/swipe Back closes
+  // the overlay instead of leaving the report. If the X button merely cleared
+  // React state, that synthetic entry would linger; a later Back would pop it
+  // and — with the blocker not knowing it's an overlay pop — surface
+  // SaveBeforeLeaveDialog falsely.
+  //
+  // Correct sequence:
+  //   1. Leave overlay flag = true (useUnsavedChanges blocker short-circuits).
+  //   2. window.history.back() pops the synthetic entry.
+  //   3. The popstate listener below runs, clears overlay flag + open state.
+  // If no synthetic entry exists (defensive), fall back to direct close.
   const closeLightbox = useCallback(() => {
-    setLightboxOpen(false);
-    setOverlayActive(false);
-    lightboxHistoryPushedRef.current = false;
+    if (lightboxHistoryPushedRef.current) {
+      // Cleanup finishes in onPopState. Do NOT clear setOverlayActive here.
+      window.history.back();
+    } else {
+      setLightboxOpen(false);
+      setOverlayActive(false);
+    }
   }, []);
 
   // Ref to track open state for the popstate handler (avoids stale closures)
@@ -85,9 +93,11 @@ function ItemPhotoUpload({
     const onPopState = () => {
       if (lightboxOpenRef.current) {
         lightboxHistoryPushedRef.current = false;
-        setOverlayActive(false);
         setLightboxOpen(false);
         lightboxOpenRef.current = false;
+        // Clear overlay flag AFTER state close so the blocker short-circuit
+        // covers any navigation queued during the same task.
+        setOverlayActive(false);
       }
     };
     window.addEventListener('popstate', onPopState);
