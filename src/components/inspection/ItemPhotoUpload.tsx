@@ -244,6 +244,7 @@ function ItemPhotoUpload({
           .select('id')
           .eq('photo_url', filePath)
           .eq('inspection_id', inspectionId)
+          .is('deleted_at', null)
           .maybeSingle();
 
         if (!existing) {
