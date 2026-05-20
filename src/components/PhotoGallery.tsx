@@ -390,6 +390,7 @@ export default function PhotoGallery({
                 return {
                   id: photo.id,
                   photoUrl: urlData.signedUrl,
+                  rawStoragePath: photo.photo_url,
                   uploaded: true,
                   caption: photo.caption,
                   display_order: photo.display_order ?? index,
