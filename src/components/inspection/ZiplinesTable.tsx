@@ -31,14 +31,15 @@ interface ZiplinesTableProps {
   ziplines: any[];
   onUpdate: (ziplinesOrUpdater: any[] | ((prev: any[]) => any[])) => void;
   onImmediateSave?: () => void;
+  onDeleteZipline?: (zipline: any) => void;
   inspectionId?: string;
   onGalleryRefresh?: () => void;
 }
 
 const ZIP_GRID_COLS = "grid-cols-[40px_88px_minmax(180px,1.5fr)_80px_80px_80px_80px_100px_80px_100px_80px_100px_100px_minmax(220px,1.5fr)_56px]";
 
-function ZiplinesTable({ ziplines, onUpdate, onImmediateSave: rawOnImmediateSave, inspectionId, onGalleryRefresh }: ZiplinesTableProps) {
-  const [itemToDelete, setItemToDelete] = useState<{ id: string; name: string } | null>(null);
+function ZiplinesTable({ ziplines, onUpdate, onImmediateSave: rawOnImmediateSave, onDeleteZipline, inspectionId, onGalleryRefresh }: ZiplinesTableProps) {
+  const [itemToDelete, setItemToDelete] = useState<{ id: string; name: string; row?: any } | null>(null);
   const [newItemId, setNewItemId] = useState<string | null>(null);
   const effectiveInspectionId = inspectionId || window.location.pathname.split('/').pop() || '';
 
@@ -141,11 +142,15 @@ function ZiplinesTable({ ziplines, onUpdate, onImmediateSave: rawOnImmediateSave
 
   const handleDeleteConfirm = useCallback(() => {
     if (itemToDelete) {
-      onUpdate(prev => prev.filter(z => z.id !== itemToDelete.id));
-      onImmediateSave?.();
+      if (onDeleteZipline && itemToDelete.row) {
+        onDeleteZipline(itemToDelete.row);
+      } else {
+        onUpdate(prev => prev.filter(z => z.id !== itemToDelete.id));
+        onImmediateSave?.();
+      }
       setItemToDelete(null);
     }
-  }, [itemToDelete, onUpdate, onImmediateSave]);
+  }, [itemToDelete, onDeleteZipline, onUpdate, onImmediateSave]);
 
   return (
     <Card>
