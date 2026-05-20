@@ -597,7 +597,7 @@ export default function PhotoGallery({
       });
       objectUrlsRef.current = [];
     };
-  }, [inspectionId, section]);
+  }, [inspectionId, section, isOnline]);
 
   // Silent refresh on network change — no spinner
   useEffect(() => {
