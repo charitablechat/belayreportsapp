@@ -338,7 +338,9 @@ export function mergeChildArray<T extends ChildArrayRow>(
     mergeRow,
     deletedIds,
     onDeletedIdConfirmed,
+    coalesceTempByBusinessKey,
   } = options;
+
 
   const serverIds = new Set(server.map(r => r.id));
 
