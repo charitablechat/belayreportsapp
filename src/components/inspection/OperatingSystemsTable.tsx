@@ -27,6 +27,7 @@ import { useSystemTypeOptions } from "@/hooks/useSystemTypeOptions";
 import { useElementNameOptions } from "@/hooks/useElementNameOptions";
 import { useMemo } from "react";
 
+import { isPhotoTraceEnabled } from "@/lib/photo-trace";
 interface OperatingSystemsTableProps {
   systems: any[];
   onUpdate: (systemsOrUpdater: any[] | ((prev: any[]) => any[])) => void;
@@ -136,7 +137,7 @@ function OperatingSystemsTable({ systems, onUpdate, onImmediateSave: rawOnImmedi
   const updateSystem = useCallback((item: any, field: string, value: any) => {
     onUpdate(prev => {
       const next = prev.map(s => s.id === item.id ? { ...s, [field]: value } : s);
-      if (import.meta.env.DEV) {
+      if (isPhotoTraceEnabled()) {
         const before = prev.find(s => s.id === item.id);
         const after = next.find(s => s.id === item.id);
         // eslint-disable-next-line no-console

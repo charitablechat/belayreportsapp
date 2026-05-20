@@ -1,171 +1,107 @@
+# Enable photo-trace in preview/prod builds via URL flag
 
-# Production-Readiness Cleanup — Sequenced Plan
+## Root cause of empty `window.__photoTrace`
 
-Workflow contract: each step pauses for your "go ahead" before the next. After every file change, the relevant Vitest suite must pass (or the step does not count as done).
+Lovable preview (`id-preview--…lovable.app`) is served as a **production Vite build**, so `import.meta.env.DEV === false`. Every `if (import.meta.env.DEV) photoTrace(...)` block is dead-code-eliminated, so the ring buffer never gets populated and `window.__photoTrace` is `undefined`.
 
----
+## Fix (narrow, temporary, diagnostic-only)
 
-## Step 0 — Baseline (no code changes)
+Add a second activation path: URL flag with sticky `localStorage`. No behavior changes; zero production noise unless explicitly opted in.
 
-Run the full suite to capture ground truth before changing anything.
-
-```
-bun run test 2>&1 | tee /tmp/baseline-vitest.log
-bun run test src/lib/__tests__/photo-sync-temp-parent.test.ts 2>&1 | tee /tmp/photo-sync-isolated.log
-```
-
-Report back:
-- Total pass/fail counts.
-- Exact failing assertion(s) and stack for `photo-sync-temp-parent.test.ts` in both modes (full suite vs isolated).
-- Any other red files (so we know what we're walking into for later steps).
-
-**Pause for your go-ahead** before Step 1.
-
----
-
-## Step 1 — Security: replace `xlsx` with `exceljs`
-
-Scope: only the two consumers + `package.json`.
-- `src/lib/backup-export.ts` — `downloadBackupAsExcel`, `downloadBackupAsCsv`.
-- Anything else `rg "from \"xlsx\"" src` finds (will be confirmed before edits).
-
-Approach:
-1. `bun add exceljs` and `bun add -d @types/node` (already present).
-2. `bun remove xlsx`.
-3. Rewrite the two helpers using `ExcelJS.Workbook` for `.xlsx`. For the CSV ZIP path, replace `XLSX.utils.sheet_to_csv` with a small in-house JSON-to-CSV (≈15 lines, RFC-4180 quoting) so we don't need a second library.
-4. Add a focused unit test: `src/lib/__tests__/backup-export.test.ts` that round-trips a known `BackupData` shape through both helpers and asserts the output ZIP / Workbook structure (sheet names, header row, first data row).
-5. Run `bun run test src/lib/__tests__/backup-export.test.ts` and `bun run test` (full suite — must stay green).
-
-**Pause** for go-ahead before Step 2.
-
----
-
-## Step 2 — Stability: photo-sync-temp-parent
-
-I will not write a fix until Step 0 shows me the actual failure. The fix proposal (mock shape, IDB seeding, or production code change) lands in this step's plan revision after baseline.
-
-Acceptance: `bun run test src/lib/__tests__/photo-sync-temp-parent.test.ts` green in isolation **and** in the full suite.
-
----
-
-## Step 3 — Architecture: form decomposition (one form at a time)
-
-Order: `TrainingForm.tsx` → `DailyAssessmentForm.tsx` → `InspectionForm.tsx` (largest last so we apply lessons learned). Each form gets its own pause point.
-
-For `TrainingForm.tsx` (2,269 LOC), target split:
-
-```
-src/pages/TrainingForm.tsx                (orchestrator, ≤300 LOC: routing, RHF root, layout)
-src/components/training/
-  TrainingHeaderSection.tsx               (header fields, attestation status)
-  TrainingParticipantsSection.tsx         (roster table)
-  TrainingTopicsSection.tsx               (curriculum + comments)
-  TrainingEquipmentSection.tsx
-  TrainingSummarySection.tsx              (auto-generated summary, race-aware)
-  TrainingFooterActions.tsx               (Save / Complete / Sign)
-src/lib/form-loaders/
-  trainingLoader.ts                       (IDB read, server reconcile, mergeLocal helpers)
-  trainingSaver.ts                        (debounced save, immediate-save flush, sync hand-off)
-  trainingValidation.ts                   (re-export from existing validation-schemas)
-```
-
-Hard rules:
-- No behavioural changes — pure mechanical extraction. Snapshot any inline helpers into the loader/saver modules verbatim, then re-export.
-- Every section receives `control` (RHF), `disabled`, and section-scoped callbacks; no prop-drilling of the entire form value object.
-- Memo each section with `React.memo` to stop the re-render storm.
-- Preserve all memory contracts — especially `notes-onblur-immediate-save`, `dropdown-commit-immediate-save`, `autocomplete-select-defer-onblur`, `training-summary-generation-race`.
-
-Verification per form:
-1. `bun run test` (full vitest suite) — green.
-2. `bun run test:e2e:smoke` — green.
-3. Manual smoke checklist (I'll generate one and you confirm) covering: load existing training → edit a topic → blur (save fires) → reload → values persist; offline edit → online → no duplicate.
-
-**Pause** after each form before starting the next.
-
----
-
-## Step 4 — Safety Gates: any-budget + strictNullChecks
-
-Phase A — ratchet `.eslint-any-budget`:
-1. Run `npx eslint . -f json | node -e "..."` to count current `no-explicit-any` violations.
-2. Set `.eslint-any-budget` to `current_count` exactly (no slack). Commit.
-
-Phase B — `strictNullChecks` for `src/lib/**` only, gradually:
-1. Create `tsconfig.lib-strict.json` extending app config with `strictNullChecks: true` and `include: ["src/lib/**/*"]`. Add `bun run typecheck:lib-strict` script.
-2. Run it; capture full error list.
-3. Fix file-by-file in dependency order (leaves first: `date-utils`, `file-ext`, `password-strength`, …; roots last: `offline-storage`, `atomic-sync-manager`).
-4. Allowed remediations only:
-   - Narrow types (`string | undefined` → guard then use).
-   - Early-return guards: `if (!x) return;`.
-   - Explicit fallbacks: `x ?? defaultValue`.
-   - Discriminated-union refactor when a function genuinely returns two shapes.
-5. Forbidden: `!` non-null assertion, `as Foo` casts that hide null, `any`, `@ts-ignore`. `@ts-expect-error` only with a justifying comment and a linked TODO.
-6. Per file: run vitest for tests touching that file (`bun run test <pattern>`), then full suite at end of phase.
-
-If a file resists clean fixing → stop, leave it out of the strict include list, add it to a `STRICT_NULL_BLOCKERS.md` report for you to triage during Step 3 form decomposition.
-
-Phase C — extend strictness to `src/hooks/**`, then `src/components/**`, then flip `strictNullChecks: true` repo-wide. Each phase paused for go-ahead.
-
----
-
-## Step 5 — Reliability: retry helper for `await import()`
-
-New module:
+### 1. `src/lib/photo-trace.ts` — runtime enable with on/off switch
 
 ```ts
-// src/lib/dynamic-import.ts
-const DEFAULT_ATTEMPTS = 4;
-const DEFAULT_BASE_MS = 300;
+const LS_KEY = 'photo_trace';
+let _enabled: boolean | null = null;
 
-export async function dynamicImport<T>(
-  loader: () => Promise<T>,
-  opts: { attempts?: number; baseMs?: number; label?: string } = {},
-): Promise<T> {
-  const attempts = opts.attempts ?? DEFAULT_ATTEMPTS;
-  const baseMs = opts.baseMs ?? DEFAULT_BASE_MS;
-  let lastErr: unknown;
-  for (let i = 0; i < attempts; i++) {
-    try {
-      return await loader();
-    } catch (err) {
-      lastErr = err;
-      // ChunkLoadError shape across bundlers — always retryable.
-      const name = (err as { name?: string } | null)?.name ?? "";
-      const msg  = (err as { message?: string } | null)?.message ?? "";
-      const retryable =
-        name === "ChunkLoadError" ||
-        /Loading (CSS )?chunk \d+ failed/.test(msg) ||
-        /Failed to fetch dynamically imported module/.test(msg) ||
-        /error loading dynamically imported module/.test(msg);
-      if (!retryable || i === attempts - 1) break;
-      const jitter = Math.random() * baseMs;
-      await new Promise(r => setTimeout(r, baseMs * 2 ** i + jitter));
+export function isPhotoTraceEnabled(): boolean {
+  if (_enabled !== null) return _enabled;
+  try {
+    const qs = new URLSearchParams(window.location.search);
+    const flag = qs.get('photoTrace');
+    if (flag === '0' || flag === 'off') {
+      try { localStorage.removeItem(LS_KEY); } catch {}
+      return (_enabled = false);                 // explicit off for this load
     }
-  }
-  throw lastErr;
+    if (flag === '1' || flag === 'on') {
+      try { localStorage.setItem(LS_KEY, '1'); } catch {}
+      return (_enabled = true);
+    }
+    if (import.meta.env.DEV) return (_enabled = true);
+    if (localStorage.getItem(LS_KEY) === '1') return (_enabled = true);
+  } catch {}
+  return (_enabled = false);
 }
 ```
 
-Migration:
-1. Find every `await import(` and `import(` returning a promise: `rg -n "(?<!type )\bimport\(" src`.
-2. Wrap each with `dynamicImport(() => import("..."))`. Skip type-only `import()` (TS types).
-3. Add unit tests: success on first try, success on second try after one ChunkLoadError, failure after exhausting attempts, non-retryable error rethrown immediately.
-4. Add `dynamicImport` to the ESLint allow-list and add a custom rule (or grep-based CI check) that fails if a bare `await import(` shows up under `src/`.
+- `?photoTrace=1` → enable + persist (sticky across SPA navigation).
+- `?photoTrace=0` → remove `localStorage.photo_trace` + disable for that page load.
+- DEV builds stay on automatically.
+- Cached per page load → zero per-call overhead.
 
-Verification: full vitest + `test:e2e:smoke`.
+`photoTrace()` and `newPhotoCid()` early-return on `!isPhotoTraceEnabled()` instead of checking `import.meta.env.DEV`. Ring buffer, `window.__photoTrace`, and `[photo-trace …]` console prefix unchanged.
 
----
+### 2. Remove outer `import.meta.env.DEV` wrappers at call sites
 
-## Closing Gate
+`ItemPhotoUpload.tsx`, `PhotoGallery.tsx`, `EquipmentTable.tsx`, `ZiplinesTable.tsx`, `OperatingSystemsTable.tsx` currently wrap each `photoTrace(...)` in `if (import.meta.env.DEV) { ... }`, defeating the runtime flag. Drop those outer wrappers around `photoTrace(...)` calls only. The new internal check is the single source of truth and is a no-op when disabled. Any non-photoTrace `console.debug` left over stays guarded.
 
-Before declaring the cleanup done:
-- `bun run test` — 100% green.
-- `bun run test:e2e:smoke` — green.
-- `bun run lint` — clean.
-- `bun run lint:any-budget` — under budget.
-- `bun run bundle-size:budget` — under budget (likely smaller after `xlsx` → `exceljs`).
-- A short delta report from me: bundle size before/after, any-count before/after, strict-null files in scope.
+### 3. Boot confirmation log
 
----
+In `src/main.tsx`:
 
-**My next action, on your go-ahead:** execute Step 0 only and report the baseline.
+```ts
+import { isPhotoTraceEnabled } from '@/lib/photo-trace';
+if (isPhotoTraceEnabled()) {
+  console.log('[photo-trace] enabled — window.__photoTrace ring buffer active');
+}
+```
+
+## Usage instructions (after merge)
+
+Enable for a session:
+
+```
+https://id-preview--93f93be1-56ac-449d-97cf-041ac1649624.lovable.app/?photoTrace=1
+```
+
+Or against the production domain:
+
+```
+https://rwreports.com/?photoTrace=1
+```
+
+You should see in the browser DevTools Console immediately on load:
+
+```
+[photo-trace] enabled — window.__photoTrace ring buffer active
+```
+
+Then navigate to the inspection report and reproduce the bug. After repro:
+
+```js
+copy(JSON.stringify(window.__photoTrace, null, 2));
+```
+
+To disable: visit `…/?photoTrace=0` once (clears `localStorage.photo_trace` and disables for that load). Subsequent loads without the flag stay disabled.
+
+## Validation
+
+1. Open preview with `?photoTrace=1` → confirm `[photo-trace] enabled …` in Console.
+2. Reproduce Harnesses double-upload and Mohawk Walk cases; confirm `window.__photoTrace` populated.
+3. Open preview with `?photoTrace=0` → no enabled log, `window.__photoTrace` undefined.
+4. Open preview with no flag and no prior localStorage → no enabled log (default off in prod).
+5. `bunx vitest run` — no regressions.
+
+## Out of scope / untouched
+
+No DB schema, RLS, service worker, offline queue, UUID/temp-ID, dashboard, sessionStorage, Save Progress, report/PDF, photo-section semantics, 0-byte rejection, retry, or caption-persistence behavior. Pure diagnostic plumbing.
+
+## Files to change
+
+- `src/lib/photo-trace.ts` — runtime enable check with on/off + export.
+- `src/main.tsx` — boot confirmation log.
+- `src/components/inspection/ItemPhotoUpload.tsx` — drop outer `if (import.meta.env.DEV)` wrappers around `photoTrace(...)`.
+- `src/components/PhotoGallery.tsx` — same.
+- `src/components/inspection/EquipmentTable.tsx` — same.
+- `src/components/inspection/ZiplinesTable.tsx` — same.
+- `src/components/inspection/OperatingSystemsTable.tsx` — same.

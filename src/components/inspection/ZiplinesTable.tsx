@@ -24,6 +24,7 @@ import {
 import { DraggableTableRow, DraggableMobileCard } from "./DraggableTableRow";
 import { useNativeDrag } from "@/hooks/useNativeDrag";
 
+import { isPhotoTraceEnabled } from "@/lib/photo-trace";
 interface ZiplinesTableProps {
   ziplines: any[];
   onUpdate: (ziplinesOrUpdater: any[] | ((prev: any[]) => any[])) => void;
@@ -110,7 +111,7 @@ function ZiplinesTable({ ziplines, onUpdate, onImmediateSave: rawOnImmediateSave
   const updateZipline = useCallback((item: any, field: string, value: any) => {
     onUpdate(prev => {
       const next = prev.map(z => z.id === item.id ? { ...z, [field]: value } : z);
-      if (import.meta.env.DEV) {
+      if (isPhotoTraceEnabled()) {
         const before = prev.find(z => z.id === item.id);
         const after = next.find(z => z.id === item.id);
         // eslint-disable-next-line no-console
