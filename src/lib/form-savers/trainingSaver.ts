@@ -267,14 +267,19 @@ export async function pushTrainingToRemote(
   let reconciledDeletes: ReconciledTableDelete[] = [];
   const user = await getUserWithCache();
   if (user) {
+    // expectedNonEmpty: true — see InspectionSaver for rationale.
+    // Form-saver path is user-driven; React state is canonical, so a delete
+    // of the last row must be allowed to propagate to the server. Without
+    // this flag, reconcile Guard B preserves the server row and the deleted
+    // entry resurrects on refresh.
     const reconcileResult = await reconcileAllChildTables(
       [
-        { childTable: "training_delivery_approaches", parentIdColumn: "training_id", localItems: deliveryApproaches },
-        { childTable: "training_operating_systems", parentIdColumn: "training_id", localItems: operatingSystems },
-        { childTable: "training_immediate_attention", parentIdColumn: "training_id", localItems: immediateAttention },
-        { childTable: "training_verifiable_items", parentIdColumn: "training_id", localItems: verifiableItems },
-        { childTable: "training_systems_in_place", parentIdColumn: "training_id", localItems: systemsInPlace },
-        { childTable: "training_summary", parentIdColumn: "training_id", localItems: summary ? [summary] : [] },
+        { childTable: "training_delivery_approaches", parentIdColumn: "training_id", localItems: deliveryApproaches, expectedNonEmpty: true },
+        { childTable: "training_operating_systems", parentIdColumn: "training_id", localItems: operatingSystems, expectedNonEmpty: true },
+        { childTable: "training_immediate_attention", parentIdColumn: "training_id", localItems: immediateAttention, expectedNonEmpty: true },
+        { childTable: "training_verifiable_items", parentIdColumn: "training_id", localItems: verifiableItems, expectedNonEmpty: true },
+        { childTable: "training_systems_in_place", parentIdColumn: "training_id", localItems: systemsInPlace, expectedNonEmpty: true },
+        { childTable: "training_summary", parentIdColumn: "training_id", localItems: summary ? [summary] : [], expectedNonEmpty: true },
       ],
       id,
       "training",
