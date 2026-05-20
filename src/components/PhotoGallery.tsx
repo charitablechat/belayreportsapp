@@ -324,8 +324,13 @@ export default function PhotoGallery({
 
       const receipts = getPhotoReceipts(inspectionId, section);
       const offlinePhotoIds = new Set(offlinePhotos.filter(p => p.section === section).map(p => p.id));
-      const evictedPhotos = receipts.filter(r => !r.uploaded && !offlinePhotoIds.has(r.id));
-      setEvictedCount(evictedPhotos.length);
+      // Provisional offline-only eviction count. The online branch below
+      // refines this by also excluding any receipt whose ID exists on the
+      // server (uploaded or intentionally soft-deleted), which prevents the
+      // "lost from local storage" warning from incrementing every time a
+      // synced photo is deleted.
+      const provisionalEvicted = receipts.filter(r => !r.uploaded && !offlinePhotoIds.has(r.id));
+      setEvictedCount(provisionalEvicted.length);
 
       if (isOnline) {
       const { data, error } = await (supabase
