@@ -364,13 +364,33 @@ function EquipmentTable({ category, displayName, equipment, onUpdate, onImmediat
   const COMMIT_FIELDS = new Set(['result', 'equipment_category', 'equipment_type']);
 
   const updateEquipment = useCallback((item: any, field: string, value: any) => {
-    onUpdate(prev => prev.map((eq) =>
-      eq.id === item.id ? { ...eq, [field]: value } : eq
-    ));
+    onUpdate(prev => {
+      const next = prev.map((eq) => eq.id === item.id ? { ...eq, [field]: value } : eq);
+      if (import.meta.env.DEV) {
+        const before = prev.find(e => e.id === item.id);
+        const after = next.find(e => e.id === item.id);
+        // eslint-disable-next-line no-console
+        console.debug('[photo-trace updater equipment]', {
+          itemId: item.id,
+          itemName: before?.equipment_type || before?.divider_text,
+          field, value,
+          beforePhoto: before?.photo_url ?? null,
+          afterPhoto: after?.photo_url ?? null,
+          identityChanged: before !== after,
+          arrayLen: next.length,
+        });
+        try {
+          (window as any).__photoTrace = (window as any).__photoTrace || [];
+          (window as any).__photoTrace.push({ ts: Date.now(), event: 'updater.equipment', itemId: item.id, field, value, beforePhoto: before?.photo_url ?? null, afterPhoto: after?.photo_url ?? null });
+        } catch { /* ignore */ }
+      }
+      return next;
+    });
     if (COMMIT_FIELDS.has(field) && onImmediateSave) {
       setTimeout(() => onImmediateSave(), 0);
     }
   }, [onUpdate, onImmediateSave]);
+
 
   const handleDeleteConfirm = useCallback(() => {
     if (itemToDelete) {

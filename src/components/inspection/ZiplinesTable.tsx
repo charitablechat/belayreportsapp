@@ -108,13 +108,33 @@ function ZiplinesTable({ ziplines, onUpdate, onImmediateSave: rawOnImmediateSave
   ]);
 
   const updateZipline = useCallback((item: any, field: string, value: any) => {
-    onUpdate(prev => prev.map(z =>
-      z.id === item.id ? { ...z, [field]: value } : z
-    ));
+    onUpdate(prev => {
+      const next = prev.map(z => z.id === item.id ? { ...z, [field]: value } : z);
+      if (import.meta.env.DEV) {
+        const before = prev.find(z => z.id === item.id);
+        const after = next.find(z => z.id === item.id);
+        // eslint-disable-next-line no-console
+        console.debug('[photo-trace updater zipline]', {
+          itemId: item.id,
+          itemName: before?.zipline_name,
+          field, value,
+          beforePhoto: before?.photo_url ?? null,
+          afterPhoto: after?.photo_url ?? null,
+          identityChanged: before !== after,
+          arrayLen: next.length,
+        });
+        try {
+          (window as any).__photoTrace = (window as any).__photoTrace || [];
+          (window as any).__photoTrace.push({ ts: Date.now(), event: 'updater.zipline', itemId: item.id, field, value, beforePhoto: before?.photo_url ?? null, afterPhoto: after?.photo_url ?? null });
+        } catch { /* ignore */ }
+      }
+      return next;
+    });
     if (COMMIT_FIELDS.has(field) && onImmediateSave) {
       setTimeout(() => onImmediateSave(), 0);
     }
   }, [onUpdate, onImmediateSave]);
+
 
   const handleDeleteConfirm = useCallback(() => {
     if (itemToDelete) {

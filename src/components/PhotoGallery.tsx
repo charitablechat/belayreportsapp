@@ -477,13 +477,39 @@ export default function PhotoGallery({
         // Dedup: filter out offline photos whose raw storage path already exists in DB results
         // Use raw DB photo_url paths (not signed/object URLs) for reliable comparison
         const dbStoragePaths = new Set((data || []).map((p: any) => p.photo_url));
+        const droppedByDedup: Array<{ id: string; rawStoragePath: string; caption: string | null }> = [];
         const dedupedPending = pendingPhotos.filter(p => {
           const rawPath = (p as any).rawStoragePath || '';
-          return !dbStoragePaths.has(rawPath);
+          const drop = dbStoragePaths.has(rawPath);
+          if (drop && import.meta.env.DEV) {
+            droppedByDedup.push({ id: p.id, rawStoragePath: rawPath, caption: p.caption });
+          }
+          return !drop;
         });
         const mergedPhotos = [...dedupedPending, ...supabasePhotos].sort(
           (a, b) => a.display_order - b.display_order
         );
+
+        if (import.meta.env.DEV) {
+          const trace = {
+            ts: Date.now(),
+            event: 'PhotoGallery.load',
+            inspectionId,
+            section,
+            dbRows: (data || []).map((p: any) => ({ id: p.id, photo_url: p.photo_url, caption: p.caption, display_order: p.display_order })),
+            offlineRows: offlinePhotosList.map(p => ({ id: p.id, rawStoragePath: (p as any).rawStoragePath, caption: p.caption, uploaded: p.uploaded, display_order: p.display_order })),
+            droppedByDedup,
+            finalRows: mergedPhotos.map(p => ({ id: p.id, photoUrl: p.photoUrl.startsWith('blob:') ? 'blob:…' : p.photoUrl, caption: p.caption, uploaded: p.uploaded, display_order: p.display_order })),
+            signedUrlFailures,
+          };
+          // eslint-disable-next-line no-console
+          console.debug('[photo-trace PhotoGallery.load]', trace);
+          try {
+            (window as any).__photoTrace = (window as any).__photoTrace || [];
+            (window as any).__photoTrace.push(trace);
+          } catch { /* ignore */ }
+        }
+
         const oldUrls = objectUrlsRef.current;
         objectUrlsRef.current = newObjectUrls;
         setPhotos(mergedPhotos);
@@ -494,8 +520,20 @@ export default function PhotoGallery({
             oldUrls.forEach(url => URL.revokeObjectURL(url));
           }, 0);
         });
+
       } else {
         const sortedOffline = offlinePhotosList.sort((a, b) => a.display_order - b.display_order);
+        if (import.meta.env.DEV) {
+          const trace = {
+            ts: Date.now(),
+            event: 'PhotoGallery.load.offline',
+            inspectionId, section,
+            offlineRows: sortedOffline.map(p => ({ id: p.id, caption: p.caption, uploaded: p.uploaded, rawStoragePath: (p as any).rawStoragePath })),
+          };
+          // eslint-disable-next-line no-console
+          console.debug('[photo-trace PhotoGallery.load.offline]', trace);
+          try { (window as any).__photoTrace = (window as any).__photoTrace || []; (window as any).__photoTrace.push(trace); } catch { /* ignore */ }
+        }
         const oldUrls = objectUrlsRef.current;
         objectUrlsRef.current = newObjectUrls;
         setPhotos(sortedOffline);
@@ -507,6 +545,7 @@ export default function PhotoGallery({
           }, 0);
         });
       }
+
     } catch (error) {
       console.error('[PhotoGallery] Failed to load photos:', error);
       // Do NOT clear photos — keep the last-known list rendered so a transient

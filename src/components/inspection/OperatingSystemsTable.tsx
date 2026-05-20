@@ -134,13 +134,33 @@ function OperatingSystemsTable({ systems, onUpdate, onImmediateSave: rawOnImmedi
   const COMMIT_FIELDS = new Set(['result', 'system_name']);
 
   const updateSystem = useCallback((item: any, field: string, value: any) => {
-    onUpdate(prev => prev.map(s =>
-      s.id === item.id ? { ...s, [field]: value } : s
-    ));
+    onUpdate(prev => {
+      const next = prev.map(s => s.id === item.id ? { ...s, [field]: value } : s);
+      if (import.meta.env.DEV) {
+        const before = prev.find(s => s.id === item.id);
+        const after = next.find(s => s.id === item.id);
+        // eslint-disable-next-line no-console
+        console.debug('[photo-trace updater system]', {
+          itemId: item.id,
+          itemName: before?.system_name,
+          field, value,
+          beforePhoto: before?.photo_url ?? null,
+          afterPhoto: after?.photo_url ?? null,
+          identityChanged: before !== after,
+          arrayLen: next.length,
+        });
+        try {
+          (window as any).__photoTrace = (window as any).__photoTrace || [];
+          (window as any).__photoTrace.push({ ts: Date.now(), event: 'updater.system', itemId: item.id, field, value, beforePhoto: before?.photo_url ?? null, afterPhoto: after?.photo_url ?? null });
+        } catch { /* ignore */ }
+      }
+      return next;
+    });
     if (COMMIT_FIELDS.has(field) && onImmediateSave) {
       setTimeout(() => onImmediateSave(), 0);
     }
   }, [onUpdate, onImmediateSave]);
+
 
   const handleDeleteConfirm = useCallback(() => {
     if (itemToDelete) {
