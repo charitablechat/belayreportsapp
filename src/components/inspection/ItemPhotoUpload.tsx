@@ -219,6 +219,7 @@ function ItemPhotoUpload({
       const url = URL.createObjectURL(cachedBlob);
       prevObjectUrlRef.current = url;
       setSignedUrl(url);
+      setIsOfflinePhoto(false);
       return;
     }
 
@@ -228,12 +229,24 @@ function ItemPhotoUpload({
       return;
     }
 
+    // 2b. Pending placeholder path — no signed URL exists yet on the server.
+    // Show the offline-style placeholder thumbnail so the row never falls
+    // back to blank upload buttons while the background upload is in flight.
+    if (photoUrl.startsWith('pending/')) {
+      setIsOfflinePhoto(true);
+      return;
+    }
+
     // 3. Fetch signed URL from server
     try {
       const { data } = await supabase.storage
         .from("inspection-photos")
         .createSignedUrl(photoUrl, 3600);
-      if (!data?.signedUrl) return;
+      if (!data?.signedUrl) {
+        // Transient: render placeholder thumbnail, not blank buttons.
+        setIsOfflinePhoto(true);
+        return;
+      }
       setSignedUrl(data.signedUrl);
       setIsOfflinePhoto(false);
 
@@ -245,7 +258,10 @@ function ItemPhotoUpload({
           await cachePhotoFromRemote(photoUrl, blob, photoUrl, inspectionId, 'item-photo');
         }
       } catch { /* non-critical */ }
-    } catch { /* silent fail */ }
+    } catch {
+      // Network/Supabase failure — surface a placeholder, not blank buttons.
+      setIsOfflinePhoto(true);
+    }
   }, [photoUrl, inspectionId]);
 
   useEffect(() => { loadSignedUrl(); }, [loadSignedUrl]);
