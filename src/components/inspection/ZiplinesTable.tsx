@@ -23,6 +23,8 @@ import {
 } from "@/components/ui/alert-dialog";
 import { DraggableTableRow, DraggableMobileCard } from "./DraggableTableRow";
 import { useNativeDrag } from "@/hooks/useNativeDrag";
+import { WideTableScroller } from "@/components/ui/wide-table-scroller";
+
 
 import { isPhotoTraceEnabled } from "@/lib/photo-trace";
 interface ZiplinesTableProps {
@@ -164,12 +166,13 @@ function ZiplinesTable({ ziplines, onUpdate, onImmediateSave: rawOnImmediateSave
         </div>
 
         {/* Desktop grid view */}
-        <div className="hidden lg:block scroll-hint-wrapper">
-          <div className="overflow-x-auto scrollbar-prominent pb-3">
+        <div className="hidden lg:block">
+          <WideTableScroller ariaLabel="Ziplines table horizontal scroll">
             <div className="min-w-[1440px]">
 
             {/* Header */}
             <div className={`grid ${ZIP_GRID_COLS} bg-blue-50 dark:bg-blue-950/20 border-b border-border text-xs`}>
+
               <div className="p-2 text-center font-semibold border-r border-border"></div>
               <div className="p-2 text-center font-semibold border-r border-border text-xs">Photo</div>
               <div className="p-2 text-left font-semibold border-r border-border">Line Name</div>
@@ -280,9 +283,9 @@ function ZiplinesTable({ ziplines, onUpdate, onImmediateSave: rawOnImmediateSave
               ))}
             </div>
           </div>
-          </div>
-          <p className="mt-1 text-[11px] text-muted-foreground italic">Scroll horizontally to see more columns →</p>
+          </WideTableScroller>
         </div>
+
 
         
 
