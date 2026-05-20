@@ -115,6 +115,74 @@ import { InspectionHeaderSection } from "@/components/inspection/InspectionHeade
 // Mirrors the `RelatedDataType` union in `@/lib/offline-storage`.
 type RelatedDataKey = 'systems' | 'ziplines' | 'equipment' | 'standards' | 'summary';
 
+const ZIPLINE_DELETE_TOMBSTONE_KEY_PREFIX = 'rw_deleted_zipline_rows_v1:';
+const ZIPLINE_DELETE_TOMBSTONE_TTL_MS = 60 * 24 * 60 * 60 * 1000;
+
+type ZiplineDeleteTombstone = { id: string; deletedAt: number; name?: string | null };
+
+function traceZipline(event: string, payload: Record<string, unknown>) {
+  if (!import.meta.env.DEV) return;
+  try {
+    // eslint-disable-next-line no-console
+    console.debug(`[${event}]`, payload);
+  } catch { /* noop */ }
+}
+
+function readZiplineDeleteTombstones(inspectionId: string): Map<string, ZiplineDeleteTombstone> {
+  try {
+    const raw = localStorage.getItem(`${ZIPLINE_DELETE_TOMBSTONE_KEY_PREFIX}${inspectionId}`);
+    const parsed = raw ? JSON.parse(raw) : [];
+    const now = Date.now();
+    const entries = Array.isArray(parsed) ? parsed : [];
+    return new Map(
+      entries
+        .filter((t): t is ZiplineDeleteTombstone => !!t?.id && typeof t.deletedAt === 'number' && now - t.deletedAt < ZIPLINE_DELETE_TOMBSTONE_TTL_MS)
+        .map((t) => [t.id, t]),
+    );
+  } catch {
+    return new Map();
+  }
+}
+
+function writeZiplineDeleteTombstones(inspectionId: string, tombstones: Map<string, ZiplineDeleteTombstone>) {
+  try {
+    localStorage.setItem(`${ZIPLINE_DELETE_TOMBSTONE_KEY_PREFIX}${inspectionId}`, JSON.stringify([...tombstones.values()]));
+  } catch { /* best-effort local suppression */ }
+}
+
+function addZiplineDeleteTombstone(inspectionId: string, rowId: string, name?: string | null) {
+  const tombstones = readZiplineDeleteTombstones(inspectionId);
+  tombstones.set(rowId, { id: rowId, deletedAt: Date.now(), name: name ?? null });
+  writeZiplineDeleteTombstones(inspectionId, tombstones);
+}
+
+function isZiplineTombstoned(inspectionId: string, rowId?: string | null): boolean {
+  if (!rowId) return false;
+  return readZiplineDeleteTombstones(inspectionId).has(rowId);
+}
+
+function filterDeletedZiplines<T extends DbRow>(inspectionId: string, rows: T[], source: 'local' | 'server' | 'merge' | 'seed'): T[] {
+  const tombstones = readZiplineDeleteTombstones(inspectionId);
+  if (tombstones.size === 0) return rows;
+  const suppressed: Array<{ id: string; name?: string | null }> = [];
+  const kept = rows.filter((row) => {
+    const id = row.id;
+    const drop = !!id && tombstones.has(id);
+    if (drop) suppressed.push({ id, name: typeof row.zipline_name === 'string' ? row.zipline_name : null });
+    return !drop;
+  });
+  if (suppressed.length > 0) {
+    traceZipline('zipline.merge.suppressedDeletedRow', {
+      inspectionId,
+      source,
+      before: rows.length,
+      after: kept.length,
+      suppressed,
+    });
+  }
+  return kept;
+}
+
 function errorMessage(error: unknown, fallback: string): string {
   if (error instanceof Error) return error.message;
   if (typeof error === 'string') return error;
