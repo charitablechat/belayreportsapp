@@ -84,6 +84,18 @@ export interface DeletePhotoArgs {
   rawStoragePath?: string | null;
   /** inspection_photos row id, when known (from the gallery card). */
   dbPhotoId?: string | null;
+  /**
+   * Optional item scope. When provided, ALSO soft-delete + tombstone every
+   * active DB row for this inspection whose `photo_url` matches
+   * `%items/${itemIdScope}-%`. This covers the row/lightbox-delete case
+   * where the form row's `photoUrl` (passed as `rawStoragePath`) is the
+   * placeholder `pending/...` path but the actual gallery DB row was
+   * written under the post-upload `${userId}/${inspectionId}/items/${itemId}-...jpg`
+   * path. The two paths differ but both belong to the same item, so a
+   * plain `.eq('photo_url', rawStoragePath)` misses the real row and the
+   * bottom gallery keeps the photo after refresh.
+   */
+  itemIdScope?: string | null;
   tableName?: "inspection_photos" | "training_photos" | "daily_assessment_photos";
   foreignKeyColumn?: string;
 }
@@ -92,6 +104,7 @@ export interface DeletePhotoResult {
   dbResult: { ok: boolean; matched: number; error?: string };
   idbRemoved: number;
   tombstoned: boolean;
+  scopedMatchedPaths?: string[];
 }
 
 export async function deletePhotoEverywhere(args: DeletePhotoArgs): Promise<DeletePhotoResult> {
@@ -100,6 +113,7 @@ export async function deletePhotoEverywhere(args: DeletePhotoArgs): Promise<Dele
     section,
     rawStoragePath,
     dbPhotoId,
+    itemIdScope,
     tableName = "inspection_photos",
     foreignKeyColumn = "inspection_id",
   } = args;
@@ -110,6 +124,7 @@ export async function deletePhotoEverywhere(args: DeletePhotoArgs): Promise<Dele
       section,
       rawStoragePath,
       dbPhotoId,
+      itemIdScope,
       tableName,
     });
   }
@@ -118,7 +133,7 @@ export async function deletePhotoEverywhere(args: DeletePhotoArgs): Promise<Dele
   const deletedAt = now.toISOString();
   const retentionUntil = new Date(now.getTime() + 60 * 24 * 60 * 60 * 1000).toISOString();
 
-  // 1. Soft-delete DB row (best-effort)
+  // 1. Soft-delete DB row by exact id / path (best-effort)
   let dbResult: DeletePhotoResult["dbResult"] = { ok: true, matched: 0 };
   try {
     if (dbPhotoId || rawStoragePath) {
@@ -136,21 +151,64 @@ export async function deletePhotoEverywhere(args: DeletePhotoArgs): Promise<Dele
     dbResult = { ok: false, matched: 0, error: e?.message ?? String(e) };
   }
 
+  // 1b. Item-scoped soft-delete + tombstone fallback. Catches the
+  //     form-photoUrl-vs-DB-photo_url divergence (placeholder vs real path).
+  const scopedMatchedPaths: string[] = [];
+  if (itemIdScope) {
+    try {
+      const pattern = `%items/${itemIdScope}-%`;
+      const { data, error } = await (supabase.from(tableName) as any)
+        .update({ deleted_at: deletedAt, retention_until: retentionUntil })
+        .eq(foreignKeyColumn, inspectionId)
+        .is("deleted_at", null)
+        .like("photo_url", pattern)
+        .select("id, photo_url");
+      if (!error && Array.isArray(data)) {
+        for (const row of data) {
+          const p = (row as any).photo_url as string | undefined;
+          if (p) {
+            scopedMatchedPaths.push(p);
+            addPhotoTombstone(inspectionId, section, p);
+          }
+        }
+        dbResult = {
+          ok: dbResult.ok,
+          matched: dbResult.matched + data.length,
+          error: dbResult.error,
+        };
+      } else if (error && !dbResult.error) {
+        dbResult = { ...dbResult, ok: false, error: error.message };
+      }
+    } catch (e: any) {
+      if (!dbResult.error) dbResult = { ...dbResult, ok: false, error: e?.message ?? String(e) };
+    }
+  }
+
   // 2. Tombstone (so merge cannot resurrect)
   let tombstoned = false;
   if (rawStoragePath) {
     addPhotoTombstone(inspectionId, section, rawStoragePath);
     tombstoned = true;
   }
+  if (scopedMatchedPaths.length > 0) tombstoned = true;
 
-  // 3. Remove matching IDB photos (by id OR raw storage path)
+  // 3. Remove matching IDB photos (by id OR raw storage path OR scoped paths)
   let idbRemoved = 0;
   try {
     const offline = await getOfflinePhotos(inspectionId);
+    const scopedSet = new Set(scopedMatchedPaths);
     const matches = (offline || []).filter((p: any) => {
       if (p?.section !== section) return false;
       if (dbPhotoId && p.id === dbPhotoId) return true;
       if (rawStoragePath && p.photoUrl === rawStoragePath) return true;
+      if (p.photoUrl && scopedSet.has(p.photoUrl)) return true;
+      if (
+        itemIdScope &&
+        typeof p.photoUrl === "string" &&
+        p.photoUrl.includes(`items/${itemIdScope}-`)
+      ) {
+        return true;
+      }
       return false;
     });
     for (const m of matches) {
@@ -171,11 +229,13 @@ export async function deletePhotoEverywhere(args: DeletePhotoArgs): Promise<Dele
       section,
       rawStoragePath,
       dbPhotoId,
+      itemIdScope,
       dbResult,
       idbRemoved,
       tombstoned,
+      scopedMatchedPaths,
     });
   }
 
-  return { dbResult, idbRemoved, tombstoned };
+  return { dbResult, idbRemoved, tombstoned, scopedMatchedPaths };
 }

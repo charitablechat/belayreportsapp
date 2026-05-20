@@ -613,6 +613,7 @@ function ItemPhotoUpload({
           inspectionId,
           section: photoSection,
           rawStoragePath: photoUrl,
+          itemIdScope: itemId,
         });
       } catch { /* non-critical */ }
       onGalleryRefresh?.();
