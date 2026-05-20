@@ -64,9 +64,22 @@ export function getPhotoReceipts(inspectionId: string, section: string): PhotoRe
  * Remove a receipt (e.g. after user deletes the photo).
  */
 export function removePhotoReceipt(photoId: string): void {
+  removePhotoReceipts([photoId]);
+}
+
+/**
+ * Remove multiple receipts in a single localStorage write. Used by the
+ * deletion flow so intentionally-deleted photos cannot be re-counted as
+ * "lost from local storage".
+ */
+export function removePhotoReceipts(photoIds: string[]): void {
+  if (!photoIds || photoIds.length === 0) return;
   try {
+    const ids = new Set(photoIds);
     const receipts: PhotoReceipt[] = JSON.parse(localStorage.getItem(RECEIPTS_KEY) || '[]');
-    const filtered = receipts.filter(r => r.id !== photoId);
-    safeSetItem(RECEIPTS_KEY, JSON.stringify(filtered), { scope: 'photo-receipts.remove' });
+    const filtered = receipts.filter(r => !ids.has(r.id));
+    if (filtered.length !== receipts.length) {
+      safeSetItem(RECEIPTS_KEY, JSON.stringify(filtered), { scope: 'photo-receipts.remove' });
+    }
   } catch {}
 }
