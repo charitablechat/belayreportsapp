@@ -36,7 +36,7 @@ interface ZiplinesTableProps {
   onGalleryRefresh?: () => void;
 }
 
-const ZIP_GRID_COLS = "grid-cols-[40px_88px_minmax(180px,1.5fr)_80px_80px_80px_80px_100px_80px_100px_80px_100px_100px_minmax(220px,1.5fr)_56px]";
+const ZIP_GRID_COLS = "grid-cols-[40px_88px_220px_92px_92px_92px_92px_116px_96px_116px_96px_116px_112px_420px_72px]";
 
 function ZiplinesTable({ ziplines, onUpdate, onImmediateSave: rawOnImmediateSave, onDeleteZipline, inspectionId, onGalleryRefresh }: ZiplinesTableProps) {
   const [itemToDelete, setItemToDelete] = useState<{ id: string; name: string; row?: any } | null>(null);
@@ -173,7 +173,7 @@ function ZiplinesTable({ ziplines, onUpdate, onImmediateSave: rawOnImmediateSave
         {/* Desktop grid view */}
         <div className="hidden lg:block">
           <WideTableScroller ariaLabel="Ziplines table horizontal scroll">
-            <div className="min-w-[1440px]">
+            <div className="min-w-[1900px]">
 
             {/* Header */}
             <div className={`grid ${ZIP_GRID_COLS} bg-blue-50 dark:bg-blue-950/20 border-b border-border text-xs`}>
@@ -276,11 +276,11 @@ function ZiplinesTable({ ziplines, onUpdate, onImmediateSave: rawOnImmediateSave
                   <div className="p-1 border-r border-border">
                     <ResultSelect value={zipline.result} onChange={(value) => updateZipline(zipline, "result", value)} />
                   </div>
-                  <div className="p-1 border-r border-border min-w-0 overflow-hidden">
-                    <VoiceRichTextEditor content={zipline.comments || ""} onChange={(value) => updateZipline(zipline, "comments", value)} onBlur={onImmediateSave} placeholder="Comments..." className="border-0 bg-transparent" />
+                  <div className="p-2 border-r border-border min-w-0">
+                    <VoiceRichTextEditor content={zipline.comments || ""} onChange={(value) => updateZipline(zipline, "comments", value)} onBlur={onImmediateSave} placeholder="Comments..." className="min-h-[128px]" />
                   </div>
-                  <div className="p-1 text-center">
-                    <Button variant="ghost" size="sm" onClick={() => setItemToDelete({ id: zipline.id, name: zipline.zipline_name || "this zipline" })} className="h-8 w-8 p-0 text-destructive hover:text-destructive hover:bg-destructive/10">
+                  <div className="p-2 text-center flex items-start justify-center">
+                    <Button variant="ghost" size="sm" onClick={() => setItemToDelete({ id: zipline.id, name: zipline.zipline_name || "this zipline", row: zipline })} className="h-9 w-9 p-0 text-destructive hover:text-destructive hover:bg-destructive/10">
                       <Trash2 className="h-4 w-4" />
                     </Button>
                   </div>
