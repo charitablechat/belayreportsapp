@@ -523,6 +523,17 @@ export default function PhotoGallery({
 
       } else {
         const sortedOffline = offlinePhotosList.sort((a, b) => a.display_order - b.display_order);
+        if (import.meta.env.DEV) {
+          const trace = {
+            ts: Date.now(),
+            event: 'PhotoGallery.load.offline',
+            inspectionId, section,
+            offlineRows: sortedOffline.map(p => ({ id: p.id, caption: p.caption, uploaded: p.uploaded, rawStoragePath: (p as any).rawStoragePath })),
+          };
+          // eslint-disable-next-line no-console
+          console.debug('[photo-trace PhotoGallery.load.offline]', trace);
+          try { (window as any).__photoTrace = (window as any).__photoTrace || []; (window as any).__photoTrace.push(trace); } catch { /* ignore */ }
+        }
         const oldUrls = objectUrlsRef.current;
         objectUrlsRef.current = newObjectUrls;
         setPhotos(sortedOffline);
@@ -534,6 +545,7 @@ export default function PhotoGallery({
           }, 0);
         });
       }
+
     } catch (error) {
       console.error('[PhotoGallery] Failed to load photos:', error);
       // Do NOT clear photos — keep the last-known list rendered so a transient
