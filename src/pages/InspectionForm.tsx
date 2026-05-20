@@ -1633,12 +1633,14 @@ export default function InspectionForm() {
               braking_result: normalizeResultValue(item.braking_result),
               ead_result: normalizeResultValue(item.ead_result)
             }));
+            const activeServerZiplines = filterDeletedZiplines(id!, normalizedZiplines as DbRow[], 'server');
+            traceZipline('zipline.load.serverRows', { inspectionId: id, source: 'server', before: normalizedZiplines.length, after: activeServerZiplines.length });
             setZiplines(prev => mergeChildArray(
-              prev as Array<DbRow & { id: string }>,
-              normalizedZiplines as Array<DbRow & { id: string }>,
+              filterDeletedZiplines(id!, prev as DbRow[], 'merge') as Array<DbRow & { id: string }>,
+              activeServerZiplines as Array<DbRow & { id: string }>,
               { table: 'ziplines', deletedIds: deletedZiplineIdsRef.current, onDeletedIdConfirmed: dropDeletedZiplineId, coalesceTempByBusinessKey: ['inspection_id', 'zipline_name'] },
             ) as DbRow[]);
-            saveRelatedDataOffline('ziplines', id!, normalizedZiplines).catch(e =>
+            saveRelatedDataOffline('ziplines', id!, activeServerZiplines, { allowEmpty: true }).catch(e =>
               console.warn('[InspectionForm] Non-critical: failed to cache ziplines', e)
             );
           } else if (offlineZiplines.length > 0) {
