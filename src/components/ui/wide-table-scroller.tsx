@@ -163,16 +163,15 @@ export function WideTableScroller({
 
   return (
     <div className={cn("relative", className)}>
-      <div ref={scrollRef} className="overflow-x-auto scroll-hint-wrapper pb-16">
+      <div ref={scrollRef} className="overflow-x-auto scroll-hint-wrapper">
         {children}
-        {/* Sticky in-flow scroll fixture: stays pinned to the bottom edge of the
-            scroller viewport whenever the Zipline table is on screen, so the
-            user always sees a permanent horizontal scroll control. */}
-        {overflow && (
-          <div
-            className="sticky bottom-2 left-0 z-20 mt-3 rounded-md border-2 border-primary/50 bg-background/95 backdrop-blur-sm shadow-lg px-2 py-1.5"
-            style={{ width: "calc(100% - 0.5rem)", marginLeft: "0.25rem" }}
-          >
+      </div>
+      {/* Permanent scroll fixture: sticks to the bottom of the viewport while
+          the Zipline table is on screen so a horizontal scroll control is
+          always visible, regardless of OS overlay scrollbar behavior. */}
+      {overflow && (
+        <div className="sticky bottom-2 z-30 mt-2">
+          <div className="rounded-md border-2 border-primary/50 bg-background/95 backdrop-blur-sm shadow-lg px-2 py-1.5">
             <div className="flex items-center gap-2">
               <span className="hidden sm:inline text-[11px] font-semibold text-foreground/80 whitespace-nowrap pr-1">
                 Scroll →
@@ -219,8 +218,8 @@ export function WideTableScroller({
               </button>
             </div>
           </div>
-        )}
-      </div>
+        </div>
+      )}
     </div>
   );
 }
