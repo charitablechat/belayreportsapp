@@ -372,10 +372,20 @@ function ItemPhotoUpload({
       const previewUrl = URL.createObjectURL(compressed);
       setLocalPreview(previewUrl);
 
+      // 1. Compress image
+      const compressed = await compressImage(file, { maxWidth: 1200, maxHeight: 1200, quality: 0.8 });
+      if (import.meta.env.DEV) photoTrace('handleUpload.compressed', { size: compressed.size, type: compressed.type }, cid);
+
+      // 2. Instant local preview
+      const previewUrl = URL.createObjectURL(compressed);
+      setLocalPreview(previewUrl);
+      if (import.meta.env.DEV) photoTrace('handleUpload.localPreview-created', { previewUrl }, cid);
+
       // 3. Generate deterministic file path
       const photoId = `item-${itemId}-${Date.now()}`;
       const placeholderPath = `pending/${inspectionId}/items/${itemId}.jpg`;
       const deviceFileName = `RopeWorks_${photoSection || 'item'}_${Date.now()}.jpg`;
+      if (import.meta.env.DEV) photoTrace('handleUpload.placeholder', { photoId, placeholderPath, caption: captionFromName }, cid);
 
       // Shared offline-save invocation (used for the initial attempt + one retry)
       const tryOfflineSave = () => savePhotoOffline({
@@ -395,6 +405,7 @@ function ItemPhotoUpload({
       // 4. Circuit breaker pre-check — skip IDB if it's known-dead
       const cbStatus = getCircuitBreakerStatus();
       if (cbStatus.open) {
+        if (import.meta.env.DEV) photoTrace('handleUpload.circuitBreakerOpen', {}, cid);
         console.warn('[ItemPhotoUpload] Circuit breaker open — skipping IDB, saving receipt');
         savePhotoReceipt({
           id: photoId,
@@ -406,6 +417,7 @@ function ItemPhotoUpload({
         saveToDevice(compressed, deviceFileName);
         onGalleryRefresh?.();
         onPhotoChange(placeholderPath);
+        if (import.meta.env.DEV) photoTrace('handleUpload.onPhotoChange', { newPhotoUrl: placeholderPath, branch: 'breaker-open' }, cid);
         onImmediateSave?.();
         toast.success("Photo saved to backup storage", {
           description: "Will sync when storage recovers",
@@ -415,10 +427,12 @@ function ItemPhotoUpload({
 
       // 5. LOCAL-FIRST: Save to IndexedDB (one retry on failure)
       let saved = await tryOfflineSave();
+      if (import.meta.env.DEV) photoTrace('handleUpload.idb-save', { attempt: 1, saved }, cid);
       if (!saved) {
         // brief backoff then one retry — covers transient quota/lock races
         await new Promise(r => setTimeout(r, 150));
         saved = await tryOfflineSave();
+        if (import.meta.env.DEV) photoTrace('handleUpload.idb-save', { attempt: 2, saved }, cid);
       }
 
       // 6. Save receipt (always, regardless of IDB success)
@@ -436,6 +450,7 @@ function ItemPhotoUpload({
         // the optimistic preview, do not call onPhotoChange, and surface
         // a clear error. Photo bytes are still pushed to the device
         // download/share path so the user has an unrecoverable copy.
+        if (import.meta.env.DEV) photoTrace('handleUpload.idb-failed-clear-preview', {}, cid);
         console.warn('[ItemPhotoUpload] IDB save failed after retry — refusing to attach');
         saveToDevice(compressed, deviceFileName);
         URL.revokeObjectURL(previewUrl);
@@ -455,6 +470,7 @@ function ItemPhotoUpload({
 
       // 7. Update form state immediately
       onPhotoChange(placeholderPath);
+      if (import.meta.env.DEV) photoTrace('handleUpload.onPhotoChange', { newPhotoUrl: placeholderPath, branch: 'placeholder' }, cid);
       onImmediateSave?.();
 
       // 8. Background upload if online
@@ -466,7 +482,8 @@ function ItemPhotoUpload({
               const realPath = `${user.id}/${inspectionId}/items/${itemId}.jpg`;
               await updatePhotoPath(photoId, realPath);
               onPhotoChange(realPath);
-              uploadInBackground(photoId, compressed, user.id, realPath).catch(() => {});
+              if (import.meta.env.DEV) photoTrace('handleUpload.onPhotoChange-realPath', { realPath }, cid);
+              uploadInBackground(photoId, compressed, user.id, realPath, cid).catch(() => {});
             }
           })
           .catch(() => {});
@@ -476,6 +493,7 @@ function ItemPhotoUpload({
         });
       }
     } catch (err: any) {
+      if (import.meta.env.DEV) photoTrace('handleUpload.error', { err: String(err?.message ?? err) }, cid);
       console.error("[ItemPhotoUpload] Save failed:", err);
       toast.error(err?.message || "Failed to save photo");
       setLocalPreview(null);
@@ -483,7 +501,8 @@ function ItemPhotoUpload({
       clearTimeout(safetyTimer);
       setUploading(false);
     }
-  }, [itemId, inspectionId, onPhotoChange, onImmediateSave, photoSection, isOnline, uploadInBackground, itemName, onGalleryRefresh]);
+  }, [itemId, inspectionId, onPhotoChange, onImmediateSave, photoSection, isOnline, uploadInBackground, itemName, onGalleryRefresh, photoUrl]);
+
 
   const handleFileChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
