@@ -166,52 +166,57 @@ export function WideTableScroller({
       <div ref={scrollRef} className="overflow-x-auto scroll-hint-wrapper">
         {children}
       </div>
+      {/* Permanent scroll fixture: sticks to the bottom of the viewport while
+          the Zipline table is on screen so a horizontal scroll control is
+          always visible, regardless of OS overlay scrollbar behavior. */}
       {overflow && (
-        <div className="mt-2">
-          {hint && (
-            <p className="text-[11px] text-muted-foreground italic mb-1">{hint}</p>
-          )}
-          <div className="flex items-center gap-2">
-            <button
-              type="button"
-              aria-label="Scroll left"
-              onClick={() => nudge(-1)}
-              className="shrink-0 h-6 w-6 rounded border border-border bg-muted hover:bg-muted-foreground/20 text-foreground text-sm leading-none flex items-center justify-center"
-            >
-              ‹
-            </button>
-            <div
-              ref={trackRef}
-              role="scrollbar"
-              aria-controls="wide-table-scroll"
-              aria-orientation="horizontal"
-              aria-label={ariaLabel}
-              aria-valuemin={0}
-              aria-valuemax={100}
-              aria-valuenow={ariaValueNow}
-              onClick={onTrackClick}
-              className="relative flex-1 h-4 rounded-full bg-muted border border-border cursor-pointer select-none"
-            >
+        <div className="sticky bottom-2 z-30 mt-2">
+          <div className="rounded-md border-2 border-primary/50 bg-background/95 backdrop-blur-sm shadow-lg px-2 py-1.5">
+            <div className="flex items-center gap-2">
+              <span className="hidden sm:inline text-[11px] font-semibold text-foreground/80 whitespace-nowrap pr-1">
+                Scroll →
+              </span>
+              <button
+                type="button"
+                aria-label="Scroll left"
+                onClick={() => nudge(-1)}
+                className="shrink-0 h-7 w-7 rounded border border-border bg-muted hover:bg-muted-foreground/20 text-foreground text-base leading-none flex items-center justify-center"
+              >
+                ‹
+              </button>
               <div
-                data-role="thumb"
-                tabIndex={0}
-                onKeyDown={onThumbKey}
-                onPointerDown={beginDrag}
-                onPointerMove={onDragMove}
-                onPointerUp={endDrag}
-                onPointerCancel={endDrag}
-                style={{ width: thumb.width, transform: `translateX(${thumb.left}px)` }}
-                className="absolute top-0 left-0 h-full rounded-full bg-primary/80 hover:bg-primary cursor-grab active:cursor-grabbing shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1 touch-none"
-              />
+                ref={trackRef}
+                role="scrollbar"
+                aria-controls="wide-table-scroll"
+                aria-orientation="horizontal"
+                aria-label={ariaLabel}
+                aria-valuemin={0}
+                aria-valuemax={100}
+                aria-valuenow={ariaValueNow}
+                onClick={onTrackClick}
+                className="relative flex-1 h-5 rounded-full bg-muted border border-border cursor-pointer select-none"
+              >
+                <div
+                  data-role="thumb"
+                  tabIndex={0}
+                  onKeyDown={onThumbKey}
+                  onPointerDown={beginDrag}
+                  onPointerMove={onDragMove}
+                  onPointerUp={endDrag}
+                  onPointerCancel={endDrag}
+                  style={{ width: thumb.width, transform: `translateX(${thumb.left}px)` }}
+                  className="absolute top-0 left-0 h-full rounded-full bg-primary hover:bg-primary/90 cursor-grab active:cursor-grabbing shadow-md ring-1 ring-primary-foreground/30 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1 touch-none"
+                />
+              </div>
+              <button
+                type="button"
+                aria-label="Scroll right"
+                onClick={() => nudge(1)}
+                className="shrink-0 h-7 w-7 rounded border border-border bg-muted hover:bg-muted-foreground/20 text-foreground text-base leading-none flex items-center justify-center"
+              >
+                ›
+              </button>
             </div>
-            <button
-              type="button"
-              aria-label="Scroll right"
-              onClick={() => nudge(1)}
-              className="shrink-0 h-6 w-6 rounded border border-border bg-muted hover:bg-muted-foreground/20 text-foreground text-sm leading-none flex items-center justify-center"
-            >
-              ›
-            </button>
           </div>
         </div>
       )}
