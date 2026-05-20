@@ -573,23 +573,16 @@ function ItemPhotoUpload({
 
   const handleRemove = useCallback(async () => {
     if (isPhotoTraceEnabled()) photoTrace('handleRemove', { itemId, itemName, section: photoSection, photoUrlAtRemove: photoUrl });
-    if (photoUrl) {
-      // Soft-delete: set deleted_at + 60-day retention (consistent with PhotoGallery)
-      const now = new Date();
-      const retentionDate = new Date(now.getTime() + 60 * 24 * 60 * 60 * 1000);
-      const deletedAt = now.toISOString();
-      const retentionUntil = retentionDate.toISOString();
-
-      if (photoSection && inspectionId) {
-        try {
-          await supabase.from('inspection_photos')
-            .update({ deleted_at: deletedAt, retention_until: retentionUntil })
-            .eq('photo_url', photoUrl)
-            .eq('inspection_id', inspectionId);
-          onGalleryRefresh?.();
-        } catch { /* non-critical */ }
-      }
-      // Note: storage blob is NOT removed — it will be cleaned up when retention expires
+    if (photoUrl && photoSection && inspectionId) {
+      try {
+        const { deletePhotoEverywhere } = await import('@/lib/photo-deletion');
+        await deletePhotoEverywhere({
+          inspectionId,
+          section: photoSection,
+          rawStoragePath: photoUrl,
+        });
+      } catch { /* non-critical */ }
+      onGalleryRefresh?.();
     }
     setLocalPreview(null);
     setSignedUrl(null);

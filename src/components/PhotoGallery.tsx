@@ -46,7 +46,8 @@ import {
   rectSortingStrategy,
 } from "@dnd-kit/sortable";
 
-import { isPhotoTraceEnabled } from "@/lib/photo-trace";
+import { isPhotoTraceEnabled, photoTrace } from "@/lib/photo-trace";
+import { deletePhotoEverywhere, isPhotoTombstoned } from "@/lib/photo-deletion";
 type PhotoTableName = "inspection_photos" | "training_photos" | "daily_assessment_photos";
 
 interface PhotoGalleryProps {
@@ -61,6 +62,9 @@ interface PhotoGalleryProps {
 interface Photo {
   id: string;
   photoUrl: string;
+  /** Raw storage path (DB photo_url) preserved so deletes can tombstone +
+   *  clean IDB by the same identifier the offline rows use. */
+  rawStoragePath?: string;
   blob?: Blob;
   uploaded: boolean;
   caption: string | null;
@@ -352,6 +356,7 @@ export default function PhotoGallery({
             cachedPhotos.push({
               id: photo.id,
               photoUrl: objectUrl,
+              rawStoragePath: photo.photo_url,
               blob: existingOfflinePhoto.blob,
               uploaded: true,
               caption: photo.caption,
@@ -385,6 +390,7 @@ export default function PhotoGallery({
                 return {
                   id: photo.id,
                   photoUrl: urlData.signedUrl,
+                  rawStoragePath: photo.photo_url,
                   uploaded: true,
                   caption: photo.caption,
                   display_order: photo.display_order ?? index,
@@ -472,7 +478,9 @@ export default function PhotoGallery({
         }
 
 
-        const supabasePhotos: Photo[] = [...cachedPhotos, ...batchPhotos];
+        const supabasePhotos: Photo[] = [...cachedPhotos, ...batchPhotos].filter(
+          (p) => !isPhotoTombstoned(inspectionId, section, p.rawStoragePath)
+        );
 
         // Include ALL offline rows (pending + already-uploaded). Previously
         // only `!uploaded` offline rows were merged, so a slow/empty/timed-out
@@ -480,14 +488,20 @@ export default function PhotoGallery({
         // even though the blob was on disk. Dedup by raw storage path against
         // the DB result so a row that already appears via Supabase isn't
         // duplicated, but a local row whose DB row hasn't materialised yet
-        // (or was missed by a transient query) still renders.
+        // (or was missed by a transient query) still renders. Also drop any
+        // offline row whose raw path is tombstoned (locally deleted) so a
+        // stale IDB row can't resurrect a just-deleted photo.
         const dbStoragePaths = new Set((data || []).map((p: any) => p.photo_url));
-        const droppedByDedup: Array<{ id: string; rawStoragePath: string; caption: string | null }> = [];
+        const droppedByDedup: Array<{ id: string; rawStoragePath: string; caption: string | null; reason: string }> = [];
         const dedupedOffline = offlinePhotosList.filter(p => {
           const rawPath = (p as any).rawStoragePath || '';
+          if (rawPath && isPhotoTombstoned(inspectionId, section, rawPath)) {
+            if (isPhotoTraceEnabled()) droppedByDedup.push({ id: p.id, rawStoragePath: rawPath, caption: p.caption, reason: 'tombstoned' });
+            return false;
+          }
           const drop = rawPath !== '' && dbStoragePaths.has(rawPath);
           if (drop && isPhotoTraceEnabled()) {
-            droppedByDedup.push({ id: p.id, rawStoragePath: rawPath, caption: p.caption });
+            droppedByDedup.push({ id: p.id, rawStoragePath: rawPath, caption: p.caption, reason: 'db-dup' });
           }
           return !drop;
         });
@@ -527,7 +541,9 @@ export default function PhotoGallery({
         });
 
       } else {
-        const sortedOffline = offlinePhotosList.sort((a, b) => a.display_order - b.display_order);
+        const sortedOffline = offlinePhotosList
+          .filter(p => !isPhotoTombstoned(inspectionId, section, (p as any).rawStoragePath))
+          .sort((a, b) => a.display_order - b.display_order);
         if (isPhotoTraceEnabled()) {
           const trace = {
             ts: Date.now(),
@@ -771,7 +787,11 @@ export default function PhotoGallery({
     }
   };
 
-  /** Core delete logic shared by single and batch operations */
+  /** Core delete logic shared by single and batch operations.
+   *  Routes every photo through deletePhotoEverywhere so the row-thumbnail
+   *  Remove and the bottom-gallery delete cannot diverge — DB soft-delete +
+   *  local tombstone + IDB removal happen for each photo regardless of
+   *  online/offline or uploaded/pending state. */
   const executeDelete = async (photosToDelete: Photo[]) => {
     if ((await import('@/lib/environment')).isLovablePreview()) {
       toast.info("Preview mode", { description: "Photo deletion is disabled in the Lovable preview." });
@@ -779,49 +799,54 @@ export default function PhotoGallery({
     }
     triggerHaptic('warning');
 
+    if (isPhotoTraceEnabled()) {
+      photoTrace('PhotoGallery.executeDelete.start', {
+        inspectionId,
+        section,
+        count: photosToDelete.length,
+        photos: photosToDelete.map(p => ({ id: p.id, rawStoragePath: p.rawStoragePath, uploaded: p.uploaded })),
+        isOnline,
+      });
+    }
+
     try {
-      // Partition photos by type
-      const uploadedOnline = photosToDelete.filter(p => p.uploaded && isOnline);
-      const uploadedOffline = photosToDelete.filter(p => p.uploaded && !isOnline);
-      const localOnly = photosToDelete.filter(p => !p.uploaded);
-
-      const now = new Date();
-      const retentionDate = new Date(now.getTime() + 60 * 24 * 60 * 60 * 1000);
-      const deletedAt = now.toISOString();
-      const retentionUntil = retentionDate.toISOString();
-
-      // Batch soft-delete uploaded+online photos in one query
-      if (uploadedOnline.length > 0) {
-        const ids = uploadedOnline.map(p => p.id);
-        const { error } = await (supabase
-          .from(tableName) as any)
-          .update({ deleted_at: deletedAt, retention_until: retentionUntil })
-          .in('id', ids);
-        if (error) throw error;
-      }
-
-      // Queue offline operations for uploaded+offline photos
-      if (uploadedOffline.length > 0) {
-        const { queueOperation } = await import('@/lib/offline-storage');
-        await Promise.all(uploadedOffline.map(p =>
-          queueOperation('update', p.id, {
-            id: p.id,
-            deleted_at: deletedAt,
-            retention_until: retentionUntil,
-          })
-        ));
-      }
-
-      // Delete local-only photos from IndexedDB
-      if (localOnly.length > 0) {
-        const { deleteOfflinePhoto } = await import('@/lib/offline-storage');
-        await Promise.all(localOnly.map(p => deleteOfflinePhoto(p.id)));
-      }
+      const results = await Promise.all(
+        photosToDelete.map(async (p) => {
+          // For uploaded photos pass dbPhotoId; for pending/offline photos
+          // there is no DB row yet so only rawStoragePath + IDB id apply.
+          const res = await deletePhotoEverywhere({
+            inspectionId,
+            section,
+            tableName,
+            foreignKeyColumn,
+            rawStoragePath: p.rawStoragePath ?? null,
+            dbPhotoId: p.uploaded ? p.id : null,
+          });
+          // Always try to remove the IDB row by photo.id too (covers the
+          // local-only case where rawStoragePath is a pending/ path and the
+          // IDB id equals the gallery photo id).
+          if (!p.uploaded) {
+            try {
+              const { deleteOfflinePhoto } = await import('@/lib/offline-storage');
+              await deleteOfflinePhoto(p.id);
+            } catch { /* ignore */ }
+          }
+          return res;
+        })
+      );
 
       const count = photosToDelete.length;
       toast.success(`${count} photo${count > 1 ? 's' : ''} deleted`, {
         description: "Recoverable for 60 days.",
       });
+
+      if (isPhotoTraceEnabled()) {
+        photoTrace('PhotoGallery.executeDelete.done', {
+          inspectionId,
+          section,
+          results,
+        });
+      }
 
       await loadPhotos();
     } catch (error) {
