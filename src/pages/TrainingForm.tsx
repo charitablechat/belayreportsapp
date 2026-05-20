@@ -621,8 +621,9 @@ export default function TrainingForm() {
           
           const localIsNewer = isLocalDataNewer(offlineTraining, trainingData);
 
+          // Parent row: respect localIsNewer to preserve in-flight parent edits.
           if (localIsNewer) {
-            if (import.meta.env.DEV) console.log('[TrainingForm] Local data is newer -- preserving local state (parent + child)');
+            if (import.meta.env.DEV) console.log('[TrainingForm] Local parent is newer -- preserving local parent state (children still refresh)');
             if (trainingData) {
               setTraining(prev => ({ ...prev, status: trainingData.status }));
               setInspectorId(trainingData.inspector_id);
@@ -646,7 +647,15 @@ export default function TrainingForm() {
             ).catch(e =>
               console.warn('[TrainingForm] Non-critical: failed to cache training', e)
             );
+          }
 
+          // Children: always fetch + merge from server when parent exists
+          // server-side. Decoupled from `localIsNewer` so observations,
+          // recommendations, and other child rows that were added/edited on
+          // another device (or never cached locally — e.g. admin opening a
+          // foreign report) become visible in the editor, matching what the
+          // generator/exporter already reads.
+          if (trainingData) {
             const {
               delivery_approaches: approachData,
               operating_systems: systemData,
@@ -748,6 +757,31 @@ export default function TrainingForm() {
                 console.warn('[TrainingForm] Non-critical: failed to cache summary', e));
             } else if (!summaryData) {
               setSummary({ id: crypto.randomUUID(), training_id: id });
+            }
+
+            if (import.meta.env.DEV) {
+              try {
+                const obs = (summaryResult as DbRow | null | undefined)?.observations as string | null | undefined;
+                const rec = (summaryResult as DbRow | null | undefined)?.recommendations as string | null | undefined;
+                console.debug('[training-editor.load.parity]', {
+                  trainingId: id,
+                  source: 'editor',
+                  summary: {
+                    id: (summaryResult as DbRow | null | undefined)?.id ?? null,
+                    hasObservations: !!obs,
+                    hasRecommendations: !!rec,
+                    obsLen: typeof obs === 'string' ? obs.length : 0,
+                    recLen: typeof rec === 'string' ? rec.length : 0,
+                  },
+                  counts: {
+                    delivery: (approachData || []).length,
+                    operating_systems: (systemData || []).length,
+                    immediate_attention: (attentionData || []).length,
+                    verifiable: (verifiableData || []).length,
+                    systems_in_place: (systemsPlaceData || []).length,
+                  },
+                });
+              } catch { /* ignore trace errors */ }
             }
           }
         } else if (!offlineTraining) {
