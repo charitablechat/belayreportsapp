@@ -76,15 +76,30 @@ export function WideTableScroller({
     if (sc.firstElementChild) ro.observe(sc.firstElementChild);
     if (trackRef.current) ro.observe(trackRef.current);
     window.addEventListener("resize", measure);
+    // iOS Safari / iPad PWA: rotation, on-screen keyboard, and pinch-zoom
+    // change the layout viewport without always firing `resize`. Hook into
+    // visualViewport + orientationchange + visibilitychange so the scroll
+    // fixture stays accurate across mobile/PWA lifecycle events.
+    window.addEventListener("orientationchange", measure);
+    const onVisibility = () => { if (!document.hidden) measure(); };
+    document.addEventListener("visibilitychange", onVisibility);
+    const vv = (window as any).visualViewport as VisualViewport | undefined;
+    vv?.addEventListener("resize", measure);
+    vv?.addEventListener("scroll", measure);
     // Re-measure shortly after mount in case fonts/images change layout.
     const t = setTimeout(measure, 250);
     return () => {
       sc.removeEventListener("scroll", onScroll);
       ro.disconnect();
       window.removeEventListener("resize", measure);
+      window.removeEventListener("orientationchange", measure);
+      document.removeEventListener("visibilitychange", onVisibility);
+      vv?.removeEventListener("resize", measure);
+      vv?.removeEventListener("scroll", measure);
       clearTimeout(t);
     };
   }, [measure]);
+
 
   const beginDrag = useCallback((e: React.PointerEvent) => {
     const sc = scrollRef.current;
