@@ -288,7 +288,21 @@ export interface MergeChildArrayOptions<T extends ChildArrayRow> {
    * set bounded without relying on save lifecycle timing.
    */
   onDeletedIdConfirmed?: (id: string) => void;
+  /**
+   * Opt-in safety net for the temp-ID race. After the id-keyed merge runs,
+   * if a row with a `temp-*` id collides with a real-id row on the
+   * caller-provided business key, drop the temp row. This prevents a
+   * post-navigation duplicate when the temp→real swap landed in React state
+   * but the corrected id was not durably written to IndexedDB in time.
+   *
+   * IMPORTANT: only fires when (a) one side is temp- and the other is real,
+   * and (b) every field in the key is a non-empty string/number on BOTH rows.
+   * Two real-id rows are NEVER coalesced. Rows missing key fields are NEVER
+   * coalesced. This keeps the helper safe to enable by default per-table.
+   */
+  coalesceTempByBusinessKey?: readonly string[];
 }
+
 
 /**
  * Merge a server-returned child-row array with the current local React state.
@@ -324,7 +338,9 @@ export function mergeChildArray<T extends ChildArrayRow>(
     mergeRow,
     deletedIds,
     onDeletedIdConfirmed,
+    coalesceTempByBusinessKey,
   } = options;
+
 
   const serverIds = new Set(server.map(r => r.id));
 
@@ -382,13 +398,63 @@ export function mergeChildArray<T extends ChildArrayRow>(
     }
   }
 
+  // 2b. Opt-in temp/real business-key coalescer. Only drops a temp-* row when
+  //     it collides with a real-id row on EVERY field of the provided key, and
+  //     all those fields are non-empty on both sides. Never coalesces two real
+  //     rows; never coalesces when any key field is missing/blank.
+  let coalesced = out;
+  if (coalesceTempByBusinessKey && coalesceTempByBusinessKey.length > 0) {
+    const keyFields = coalesceTempByBusinessKey;
+    const isUsable = (v: unknown): boolean => {
+      if (v === null || v === undefined) return false;
+      if (typeof v === 'string') return v.trim() !== '';
+      if (typeof v === 'number') return Number.isFinite(v);
+      return false;
+    };
+    const keyFor = (row: T): string | null => {
+      const parts: string[] = [];
+      for (const f of keyFields) {
+        const v = (row as Record<string, unknown>)[f];
+        if (!isUsable(v)) return null;
+        parts.push(typeof v === 'string' ? v.trim().toLowerCase() : String(v));
+      }
+      return parts.join('||');
+    };
+    const realByKey = new Map<string, T>();
+    for (const row of out) {
+      if (!row.id.startsWith('temp-')) {
+        const k = keyFor(row);
+        if (k) realByKey.set(k, row);
+      }
+    }
+    if (realByKey.size > 0) {
+      const dropped: Array<{ tempId: string; realId: string; key: string }> = [];
+      coalesced = out.filter(row => {
+        if (!row.id.startsWith('temp-')) return true;
+        const k = keyFor(row);
+        if (!k) return true;
+        const real = realByKey.get(k);
+        if (!real) return true;
+        dropped.push({ tempId: row.id, realId: real.id, key: k });
+        return false;
+      });
+      if (dropped.length > 0 && typeof console !== 'undefined') {
+        try {
+          // eslint-disable-next-line no-console
+          console.debug('[merge.tempCollisionDropped]', { table, count: dropped.length, dropped });
+        } catch { /* ignore */ }
+      }
+    }
+  }
+
   // 3. If every row carries a numeric `display_order`, sort by it so newly
   //    added rows land at the position the user picked (forms set negative
   //    `display_order` to prepend). Falls back to insertion order otherwise.
-  const allOrdered = out.length > 0 && out.every(r => typeof r.display_order === 'number');
+  const allOrdered = coalesced.length > 0 && coalesced.every(r => typeof r.display_order === 'number');
   if (allOrdered) {
-    out.sort((a, b) => (a.display_order as number) - (b.display_order as number));
+    coalesced.sort((a, b) => (a.display_order as number) - (b.display_order as number));
   }
 
-  return out;
+  return coalesced;
 }
+

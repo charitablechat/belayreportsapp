@@ -1304,7 +1304,7 @@ export default function InspectionForm() {
         setSystems(prev => mergeChildArray(
           prev as Array<DbRow & { id: string }>,
           normalizedSystems as Array<DbRow & { id: string }>,
-          { table: 'systems', deletedIds: deletedSystemIdsRef.current, onDeletedIdConfirmed: dropDeletedSystemId },
+          { table: 'systems', deletedIds: deletedSystemIdsRef.current, onDeletedIdConfirmed: dropDeletedSystemId, coalesceTempByBusinessKey: ['inspection_id', 'system_name'] },
         ) as DbRow[]);
       }
       if (offlineZiplines.length > 0) {
@@ -1319,7 +1319,7 @@ export default function InspectionForm() {
         setZiplines(prev => mergeChildArray(
           prev as Array<DbRow & { id: string }>,
           normalizedZiplines as Array<DbRow & { id: string }>,
-          { table: 'ziplines', deletedIds: deletedZiplineIdsRef.current, onDeletedIdConfirmed: dropDeletedZiplineId },
+          { table: 'ziplines', deletedIds: deletedZiplineIdsRef.current, onDeletedIdConfirmed: dropDeletedZiplineId, coalesceTempByBusinessKey: ['inspection_id', 'zipline_name'] },
         ) as DbRow[]);
       }
       if (offlineEquipment.length > 0) {
@@ -1331,7 +1331,7 @@ export default function InspectionForm() {
         setEquipment(prev => mergeChildArray(
           prev as Array<DbRow & { id: string }>,
           normalizedEquipment as Array<DbRow & { id: string }>,
-          { table: 'equipment', deletedIds: deletedEquipmentIdsRef.current, onDeletedIdConfirmed: dropDeletedEquipmentId },
+          { table: 'equipment', deletedIds: deletedEquipmentIdsRef.current, onDeletedIdConfirmed: dropDeletedEquipmentId, coalesceTempByBusinessKey: ['inspection_id', 'equipment_category', 'equipment_type', 'production_year'] },
         ) as DbRow[]);
       }
       if (offlineStandards.length > 0) {
@@ -1536,7 +1536,7 @@ export default function InspectionForm() {
             setSystems(prev => mergeChildArray(
               prev as Array<DbRow & { id: string }>,
               normalizedSystems as Array<DbRow & { id: string }>,
-              { table: 'systems', deletedIds: deletedSystemIdsRef.current, onDeletedIdConfirmed: dropDeletedSystemId },
+              { table: 'systems', deletedIds: deletedSystemIdsRef.current, onDeletedIdConfirmed: dropDeletedSystemId, coalesceTempByBusinessKey: ['inspection_id', 'system_name'] },
             ) as DbRow[]);
             saveRelatedDataOffline('systems', id!, normalizedSystems).catch(e =>
               console.warn('[InspectionForm] Non-critical: failed to cache systems', e)
@@ -1550,7 +1550,7 @@ export default function InspectionForm() {
             setSystems(prev => mergeChildArray(
               prev as Array<DbRow & { id: string }>,
               normalizedSystems as Array<DbRow & { id: string }>,
-              { table: 'systems', deletedIds: deletedSystemIdsRef.current, onDeletedIdConfirmed: dropDeletedSystemId },
+              { table: 'systems', deletedIds: deletedSystemIdsRef.current, onDeletedIdConfirmed: dropDeletedSystemId, coalesceTempByBusinessKey: ['inspection_id', 'system_name'] },
             ) as DbRow[]);
           }
 
@@ -1566,7 +1566,7 @@ export default function InspectionForm() {
             setZiplines(prev => mergeChildArray(
               prev as Array<DbRow & { id: string }>,
               normalizedZiplines as Array<DbRow & { id: string }>,
-              { table: 'ziplines', deletedIds: deletedZiplineIdsRef.current, onDeletedIdConfirmed: dropDeletedZiplineId },
+              { table: 'ziplines', deletedIds: deletedZiplineIdsRef.current, onDeletedIdConfirmed: dropDeletedZiplineId, coalesceTempByBusinessKey: ['inspection_id', 'zipline_name'] },
             ) as DbRow[]);
             saveRelatedDataOffline('ziplines', id!, normalizedZiplines).catch(e =>
               console.warn('[InspectionForm] Non-critical: failed to cache ziplines', e)
@@ -1583,7 +1583,7 @@ export default function InspectionForm() {
             setZiplines(prev => mergeChildArray(
               prev as Array<DbRow & { id: string }>,
               normalizedZiplines as Array<DbRow & { id: string }>,
-              { table: 'ziplines', deletedIds: deletedZiplineIdsRef.current, onDeletedIdConfirmed: dropDeletedZiplineId },
+              { table: 'ziplines', deletedIds: deletedZiplineIdsRef.current, onDeletedIdConfirmed: dropDeletedZiplineId, coalesceTempByBusinessKey: ['inspection_id', 'zipline_name'] },
             ) as DbRow[]);
           }
 
@@ -1596,7 +1596,7 @@ export default function InspectionForm() {
             setEquipment(prev => mergeChildArray(
               prev as Array<DbRow & { id: string }>,
               normalizedEquipment as Array<DbRow & { id: string }>,
-              { table: 'equipment', deletedIds: deletedEquipmentIdsRef.current, onDeletedIdConfirmed: dropDeletedEquipmentId },
+              { table: 'equipment', deletedIds: deletedEquipmentIdsRef.current, onDeletedIdConfirmed: dropDeletedEquipmentId, coalesceTempByBusinessKey: ['inspection_id', 'equipment_category', 'equipment_type', 'production_year'] },
             ) as DbRow[]);
             saveRelatedDataOffline('equipment', id!, normalizedEquipment).catch(e =>
               console.warn('[InspectionForm] Non-critical: failed to cache equipment', e)
@@ -1610,7 +1610,7 @@ export default function InspectionForm() {
             setEquipment(prev => mergeChildArray(
               prev as Array<DbRow & { id: string }>,
               normalizedEquipment as Array<DbRow & { id: string }>,
-              { table: 'equipment', deletedIds: deletedEquipmentIdsRef.current, onDeletedIdConfirmed: dropDeletedEquipmentId },
+              { table: 'equipment', deletedIds: deletedEquipmentIdsRef.current, onDeletedIdConfirmed: dropDeletedEquipmentId, coalesceTempByBusinessKey: ['inspection_id', 'equipment_category', 'equipment_type', 'production_year'] },
             ) as DbRow[]);
           }
 
@@ -2053,39 +2053,70 @@ export default function InspectionForm() {
             if (tempIdMappings.systems.size > 0) {
               queueMicrotask(() => {
                 isInternalUpdateRef.current = true;
-                setSystems(prev => prev.map(s => {
-                  if (s.id && s.id.startsWith('temp-') && tempIdMappings.systems.has(s.id)) {
-                    const replacement = tempIdMappings.systems.get(s.id)!;
-                    return { ...s, id: replacement.id, inspection_id: replacement.inspection_id };
-                  }
-                  return s;
-                }));
+                setSystems(prev => {
+                  const next = prev.map(s => {
+                    if (s.id && s.id.startsWith('temp-') && tempIdMappings.systems.has(s.id)) {
+                      const replacement = tempIdMappings.systems.get(s.id)!;
+                      if (import.meta.env.DEV) {
+                        // eslint-disable-next-line no-console
+                        console.debug('[inspection.save.tempIdSwap]', { table: 'systems', tempId: s.id, realId: replacement.id, persistedToIDB: true });
+                      }
+                      return { ...s, id: replacement.id, inspection_id: replacement.inspection_id };
+                    }
+                    return s;
+                  });
+                  saveRelatedDataOffline('systems', id!, next).catch(e =>
+                    console.warn('[InspectionForm] Non-critical: failed to persist systems tempIdSwap to IDB', e)
+                  );
+                  return next;
+                });
               });
             }
             if (tempIdMappings.ziplines.size > 0) {
               queueMicrotask(() => {
                 isInternalUpdateRef.current = true;
-                setZiplines(prev => prev.map(z => {
-                  if (z.id && z.id.startsWith('temp-') && tempIdMappings.ziplines.has(z.id)) {
-                    const replacement = tempIdMappings.ziplines.get(z.id)!;
-                    return { ...z, id: replacement.id, inspection_id: replacement.inspection_id };
-                  }
-                  return z;
-                }));
+                setZiplines(prev => {
+                  const next = prev.map(z => {
+                    if (z.id && z.id.startsWith('temp-') && tempIdMappings.ziplines.has(z.id)) {
+                      const replacement = tempIdMappings.ziplines.get(z.id)!;
+                      if (import.meta.env.DEV) {
+                        // eslint-disable-next-line no-console
+                        console.debug('[inspection.save.tempIdSwap]', { table: 'ziplines', tempId: z.id, realId: replacement.id, persistedToIDB: true });
+                      }
+                      return { ...z, id: replacement.id, inspection_id: replacement.inspection_id };
+                    }
+                    return z;
+                  });
+                  saveRelatedDataOffline('ziplines', id!, next).catch(e =>
+                    console.warn('[InspectionForm] Non-critical: failed to persist ziplines tempIdSwap to IDB', e)
+                  );
+                  return next;
+                });
               });
             }
             if (tempIdMappings.equipment.size > 0) {
               queueMicrotask(() => {
                 isInternalUpdateRef.current = true;
-                setEquipment(prev => prev.map(e => {
-                  if (e.id && e.id.startsWith('temp-') && tempIdMappings.equipment.has(e.id)) {
-                    const replacement = tempIdMappings.equipment.get(e.id)!;
-                    return { ...e, id: replacement.id, inspection_id: replacement.inspection_id };
-                  }
-                  return e;
-                }));
+                setEquipment(prev => {
+                  const next = prev.map(e => {
+                    if (e.id && e.id.startsWith('temp-') && tempIdMappings.equipment.has(e.id)) {
+                      const replacement = tempIdMappings.equipment.get(e.id)!;
+                      if (import.meta.env.DEV) {
+                        // eslint-disable-next-line no-console
+                        console.debug('[inspection.save.tempIdSwap]', { table: 'equipment', tempId: e.id, realId: replacement.id, persistedToIDB: true });
+                      }
+                      return { ...e, id: replacement.id, inspection_id: replacement.inspection_id };
+                    }
+                    return e;
+                  });
+                  saveRelatedDataOffline('equipment', id!, next).catch(err =>
+                    console.warn('[InspectionForm] Non-critical: failed to persist equipment tempIdSwap to IDB', err)
+                  );
+                  return next;
+                });
               });
             }
+
 
             // Only mark local as synced after server confirmation. When items
             // were filtered out (empty name), keep updated_at > synced_at so

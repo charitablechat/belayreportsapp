@@ -33,7 +33,7 @@ interface ZiplinesTableProps {
   onGalleryRefresh?: () => void;
 }
 
-const ZIP_GRID_COLS = "grid-cols-[40px_88px_minmax(180px,1.5fr)_80px_80px_80px_80px_100px_80px_100px_80px_100px_100px_minmax(120px,1fr)_48px]";
+const ZIP_GRID_COLS = "grid-cols-[40px_88px_minmax(180px,1.5fr)_80px_80px_80px_80px_100px_80px_100px_80px_100px_100px_minmax(220px,1.5fr)_56px]";
 
 function ZiplinesTable({ ziplines, onUpdate, onImmediateSave: rawOnImmediateSave, inspectionId, onGalleryRefresh }: ZiplinesTableProps) {
   const [itemToDelete, setItemToDelete] = useState<{ id: string; name: string } | null>(null);
@@ -164,8 +164,10 @@ function ZiplinesTable({ ziplines, onUpdate, onImmediateSave: rawOnImmediateSave
         </div>
 
         {/* Desktop grid view */}
-        <div className="hidden lg:block overflow-x-auto">
-          <div className="min-w-[1280px]">
+        <div className="hidden lg:block scroll-hint-wrapper">
+          <div className="overflow-x-auto scrollbar-prominent pb-3">
+            <div className="min-w-[1440px]">
+
             {/* Header */}
             <div className={`grid ${ZIP_GRID_COLS} bg-blue-50 dark:bg-blue-950/20 border-b border-border text-xs`}>
               <div className="p-2 text-center font-semibold border-r border-border"></div>
@@ -278,7 +280,12 @@ function ZiplinesTable({ ziplines, onUpdate, onImmediateSave: rawOnImmediateSave
               ))}
             </div>
           </div>
+          </div>
+          <p className="mt-1 text-[11px] text-muted-foreground italic">Scroll horizontally to see more columns →</p>
         </div>
+
+        
+
         
         {/* Mobile/Tablet card view */}
         <div className="lg:hidden space-y-3">

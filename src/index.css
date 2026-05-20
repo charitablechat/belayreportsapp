@@ -810,3 +810,49 @@ html, body {
   -webkit-user-select: none;
   user-select: none;
 }
+
+/* Prominent horizontal scrollbar for wide inspection tables.
+   On macOS/iPad the default overlay scrollbar auto-hides, leaving no
+   indication that the table scrolls. This utility makes the scrollbar
+   thicker and persistent so non-technical users on touch/track-pad
+   devices see they can scroll horizontally. Pair with `.scroll-hint`
+   below for a visible affordance on platforms that still hide the
+   scrollbar despite these styles. */
+.scrollbar-prominent {
+  scrollbar-width: auto;
+  scrollbar-color: hsl(var(--muted-foreground) / 0.6) hsl(var(--muted));
+}
+.scrollbar-prominent::-webkit-scrollbar {
+  height: 14px;
+  -webkit-appearance: none;
+}
+.scrollbar-prominent::-webkit-scrollbar-track {
+  background: hsl(var(--muted));
+  border-radius: 8px;
+}
+.scrollbar-prominent::-webkit-scrollbar-thumb {
+  background: hsl(var(--muted-foreground) / 0.5);
+  border-radius: 8px;
+  border: 3px solid hsl(var(--muted));
+}
+.scrollbar-prominent::-webkit-scrollbar-thumb:hover {
+  background: hsl(var(--muted-foreground) / 0.8);
+}
+
+/* Subtle right-edge scroll-shadow + persistent hint for wide tables.
+   The wrapper element gets a fade on its right edge as a visual cue
+   that more columns exist off-screen. */
+.scroll-hint-wrapper {
+  position: relative;
+}
+.scroll-hint-wrapper::after {
+  content: "";
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 14px; /* sit above the scrollbar */
+  width: 32px;
+  pointer-events: none;
+  background: linear-gradient(to right, hsl(var(--background) / 0), hsl(var(--background)));
+  opacity: 0.9;
+}
