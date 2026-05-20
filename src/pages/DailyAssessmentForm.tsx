@@ -1175,14 +1175,18 @@ export default function DailyAssessmentForm() {
           let assessmentReconciledDeletes: ReconciledTableDelete[] = [];
           const user = await getUserWithCache();
           if (user) {
+            // expectedNonEmpty: true — user-driven form save path; React
+            // state is canonical. Without it, deleting the last row in a
+            // child table trips reconcile Guard B and the row resurrects
+            // on refresh.
             const reconcileResult = await reconcileAllChildTables(
               [
-                { childTable: 'daily_assessment_beginning_of_day', parentIdColumn: 'assessment_id', localItems: beginningOfDay },
-                { childTable: 'daily_assessment_end_of_day', parentIdColumn: 'assessment_id', localItems: endOfDay },
-                { childTable: 'daily_assessment_operating_systems', parentIdColumn: 'assessment_id', localItems: operatingSystems },
-                { childTable: 'daily_assessment_equipment_checks', parentIdColumn: 'assessment_id', localItems: equipmentChecks },
-                { childTable: 'daily_assessment_structure_checks', parentIdColumn: 'assessment_id', localItems: structureChecks },
-                { childTable: 'daily_assessment_environment_checks', parentIdColumn: 'assessment_id', localItems: environmentChecks },
+                { childTable: 'daily_assessment_beginning_of_day', parentIdColumn: 'assessment_id', localItems: beginningOfDay, expectedNonEmpty: true },
+                { childTable: 'daily_assessment_end_of_day', parentIdColumn: 'assessment_id', localItems: endOfDay, expectedNonEmpty: true },
+                { childTable: 'daily_assessment_operating_systems', parentIdColumn: 'assessment_id', localItems: operatingSystems, expectedNonEmpty: true },
+                { childTable: 'daily_assessment_equipment_checks', parentIdColumn: 'assessment_id', localItems: equipmentChecks, expectedNonEmpty: true },
+                { childTable: 'daily_assessment_structure_checks', parentIdColumn: 'assessment_id', localItems: structureChecks, expectedNonEmpty: true },
+                { childTable: 'daily_assessment_environment_checks', parentIdColumn: 'assessment_id', localItems: environmentChecks, expectedNonEmpty: true },
               ],
               id!,
               'daily_assessment',
