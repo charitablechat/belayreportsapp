@@ -540,7 +540,7 @@ function ItemPhotoUpload({
         getUserWithCache()
           .then(async (user) => {
             if (user?.id) {
-              const realPath = `${user.id}/${inspectionId}/items/${itemId}.jpg`;
+              const realPath = `${user.id}/${inspectionId}/items/${itemId}-${uploadSuffix}.jpg`;
               await updatePhotoPath(photoId, realPath);
               onPhotoChange(realPath);
               if (isPhotoTraceEnabled()) photoTrace('handleUpload.onPhotoChange-realPath', { realPath }, cid);
