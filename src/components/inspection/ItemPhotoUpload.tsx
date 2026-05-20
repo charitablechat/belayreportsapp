@@ -265,8 +265,10 @@ function ItemPhotoUpload({
     compressed: File,
     userId: string,
     filePath: string,
+    cid?: string,
   ) => {
     try {
+      if (import.meta.env.DEV) photoTrace('uploadInBackground.enter', { photoId, filePath, inspectionId, photoSection }, cid);
       // DB rows for item photos require a real UUID inspection_id.
       // If this report is still temp/local, keep the photo queued for sync.
       if (photoSection && inspectionId.startsWith('temp-')) {
@@ -278,9 +280,11 @@ function ItemPhotoUpload({
         .upload(filePath, compressed, { contentType: "image/jpeg", upsert: true });
 
       if (uploadError) throw uploadError;
+      if (import.meta.env.DEV) photoTrace('uploadInBackground.storage-uploaded', { filePath }, cid);
 
       // ✅ Mark uploaded FIRST to close race window with syncPhotos
       await markPhotoAsUploaded(photoId, filePath);
+      if (import.meta.env.DEV) photoTrace('uploadInBackground.markUploaded', { photoId }, cid);
 
       // Insert into gallery if applicable
       if (photoSection) {
@@ -291,14 +295,17 @@ function ItemPhotoUpload({
           .eq('inspection_id', inspectionId)
           .is('deleted_at', null)
           .maybeSingle();
+        if (import.meta.env.DEV) photoTrace('uploadInBackground.gallery-existing', { existingId: existing?.id ?? null, filePath }, cid);
 
         if (!existing) {
+          const caption = (itemNameRef.current || itemName || '').trim() || 'Item photo';
           const { error: galleryError } = await supabase.from('inspection_photos').insert({
             inspection_id: inspectionId,
             photo_url: filePath,
             photo_section: photoSection,
-            caption: (itemNameRef.current || itemName || '').trim() || 'Item photo',
+            caption,
           });
+          if (import.meta.env.DEV) photoTrace('uploadInBackground.gallery-insert', { caption, err: galleryError?.message ?? null }, cid);
 
           if (galleryError) throw galleryError;
         }
@@ -309,20 +316,24 @@ function ItemPhotoUpload({
       const { data: signedData } = await supabase.storage
         .from("inspection-photos")
         .createSignedUrl(filePath, 3600);
+      let revokedPreview = false;
       if (signedData?.signedUrl) {
         setSignedUrl(signedData.signedUrl);
         setLocalPreview(prev => {
-          if (prev) URL.revokeObjectURL(prev);
+          if (prev) { URL.revokeObjectURL(prev); revokedPreview = true; }
           return null;
         });
       }
+      if (import.meta.env.DEV) photoTrace('uploadInBackground.signedUrl-set', { hasSignedUrl: !!signedData?.signedUrl, revokedPreview }, cid);
 
       if (import.meta.env.DEV) {
         console.log('[ItemPhotoUpload] Background upload completed:', photoId);
       }
     } catch (error) {
+      if (import.meta.env.DEV) photoTrace('uploadInBackground.failed', { err: String((error as any)?.message ?? error) }, cid);
       // Photo remains in IndexedDB with uploaded=false — useAutoSync will retry
       console.warn('[ItemPhotoUpload] Background upload failed, queued for later:', error);
+
     }
   }, [inspectionId, photoSection, itemName, onGalleryRefresh]);
 
