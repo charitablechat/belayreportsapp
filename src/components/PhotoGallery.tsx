@@ -356,6 +356,7 @@ export default function PhotoGallery({
             cachedPhotos.push({
               id: photo.id,
               photoUrl: objectUrl,
+              rawStoragePath: photo.photo_url,
               blob: existingOfflinePhoto.blob,
               uploaded: true,
               caption: photo.caption,
