@@ -87,6 +87,20 @@ export function CameraCaptureDialog({
     return () => stopStream();
   }, [open, startStream, stopStream]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  /**
+   * Zero canvas dimensions to release backing-store memory (critical for
+   * iPad Safari). Called ONLY after the captured Blob/File has been fully
+   * handed off and any async persistence has settled — never inside the
+   * `toBlob` callback, where iOS/WebKit has been observed to drop the Blob
+   * payload if the source canvas is torn down too eagerly.
+   */
+  const clearCanvas = useCallback(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    canvas.width = 0;
+    canvas.height = 0;
+  }, []);
+
   const handleShutter = useCallback(() => {
     const video = videoRef.current;
     const canvas = canvasRef.current;
@@ -100,14 +114,13 @@ export function CameraCaptureDialog({
     ctx.drawImage(video, 0, 0);
     canvas.toBlob(
       (blob) => {
-        // Zero canvas dimensions to release backing store memory (critical for iPad Safari)
-        canvas.width = 0;
-        canvas.height = 0;
         if (!blob) return;
         setCapturedBlob(blob);
         setPreviewUrl(URL.createObjectURL(blob));
         setState("preview");
         stopStream();
+        // NOTE: canvas is intentionally NOT zeroed here. Teardown happens
+        // in handleRetake / handleUsePhoto / dialog-close cleanup.
       },
       "image/jpeg",
       0.9,
@@ -118,17 +131,28 @@ export function CameraCaptureDialog({
     if (previewUrl) URL.revokeObjectURL(previewUrl);
     setPreviewUrl(null);
     setCapturedBlob(null);
+    clearCanvas();
     startStream();
-  }, [previewUrl, startStream]);
+  }, [previewUrl, startStream, clearCanvas]);
 
-  const handleUsePhoto = useCallback(() => {
+  const handleUsePhoto = useCallback(async () => {
     if (!capturedBlob) return;
     const file = new File([capturedBlob], `capture-${Date.now()}.jpg`, {
       type: "image/jpeg",
     });
-    onCapture(file);
+    // Close the dialog UI first for responsive feel, then await the parent's
+    // persistence pipeline before tearing down the canvas. We swallow errors
+    // here so the parent's existing failure toast / retry path owns
+    // user-facing feedback (consistent with the prior fix).
     onOpenChange(false);
-  }, [capturedBlob, onCapture, onOpenChange]);
+    try {
+      await Promise.resolve(onCapture(file));
+    } catch {
+      /* parent owns failure surfacing */
+    } finally {
+      clearCanvas();
+    }
+  }, [capturedBlob, onCapture, onOpenChange, clearCanvas]);
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
