@@ -1,5 +1,6 @@
 import { useEffect, useCallback, useRef } from "react";
 import { useNavigate, useBlocker } from "react-router-dom";
+import { isOverlayActive } from "@/lib/navigation";
 
 interface UseUnsavedChangesOptions {
   hasUnsavedChanges: boolean;
@@ -29,6 +30,11 @@ export function useUnsavedChanges({
   // The bypassRef lets callers disable the guard synchronously before proceed().
   const blocker = useBlocker(() => {
     if (bypassRef.current) return false;
+    // Overlay-aware: synthetic popstate from closing a lightbox/photo overlay
+    // must not surface SaveBeforeLeaveDialog. Overlay owners hold the flag
+    // true across the synthetic history.back() until their popstate handler
+    // finishes cleanup, so this short-circuit is race-safe.
+    if (isOverlayActive()) return false;
     return alwaysBlock || hasUnsavedChanges;
   });
 
