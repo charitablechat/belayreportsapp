@@ -136,7 +136,18 @@ export async function reconcileChildTable({
     parentFkColumn: parentIdColumn,
     parentId,
     idsToDelete,
-    context: { source: 'reconcileChildTable', reportType, userId },
+    context: {
+      source: 'reconcileChildTable',
+      reportType,
+      userId,
+      // Form saves pass expectedNonEmpty=true only after the child array has
+      // been successfully loaded and is now the user's canonical local truth.
+      // Deleting the last Zipline is a legitimate explicit action; without
+      // this opt-in the 70% tripwire blocks 1/1 deletes and the row returns
+      // from the server on refresh.
+      bulk: expectedNonEmpty === true,
+      reason: expectedNonEmpty === true ? 'explicit_form_child_delete' : undefined,
+    },
   });
   if (!tripwire.allowed) {
     return { deletedCount: 0, deletedRows: [], blocked: true, blockReason: 'tripwire_refused' };
