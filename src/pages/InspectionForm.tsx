@@ -115,6 +115,74 @@ import { InspectionHeaderSection } from "@/components/inspection/InspectionHeade
 // Mirrors the `RelatedDataType` union in `@/lib/offline-storage`.
 type RelatedDataKey = 'systems' | 'ziplines' | 'equipment' | 'standards' | 'summary';
 
+const ZIPLINE_DELETE_TOMBSTONE_KEY_PREFIX = 'rw_deleted_zipline_rows_v1:';
+const ZIPLINE_DELETE_TOMBSTONE_TTL_MS = 60 * 24 * 60 * 60 * 1000;
+
+type ZiplineDeleteTombstone = { id: string; deletedAt: number; name?: string | null };
+
+function traceZipline(event: string, payload: Record<string, unknown>) {
+  if (!import.meta.env.DEV) return;
+  try {
+    // eslint-disable-next-line no-console
+    console.debug(`[${event}]`, payload);
+  } catch { /* noop */ }
+}
+
+function readZiplineDeleteTombstones(inspectionId: string): Map<string, ZiplineDeleteTombstone> {
+  try {
+    const raw = localStorage.getItem(`${ZIPLINE_DELETE_TOMBSTONE_KEY_PREFIX}${inspectionId}`);
+    const parsed = raw ? JSON.parse(raw) : [];
+    const now = Date.now();
+    const entries = Array.isArray(parsed) ? parsed : [];
+    return new Map(
+      entries
+        .filter((t): t is ZiplineDeleteTombstone => !!t?.id && typeof t.deletedAt === 'number' && now - t.deletedAt < ZIPLINE_DELETE_TOMBSTONE_TTL_MS)
+        .map((t) => [t.id, t]),
+    );
+  } catch {
+    return new Map();
+  }
+}
+
+function writeZiplineDeleteTombstones(inspectionId: string, tombstones: Map<string, ZiplineDeleteTombstone>) {
+  try {
+    localStorage.setItem(`${ZIPLINE_DELETE_TOMBSTONE_KEY_PREFIX}${inspectionId}`, JSON.stringify([...tombstones.values()]));
+  } catch { /* best-effort local suppression */ }
+}
+
+function addZiplineDeleteTombstone(inspectionId: string, rowId: string, name?: string | null) {
+  const tombstones = readZiplineDeleteTombstones(inspectionId);
+  tombstones.set(rowId, { id: rowId, deletedAt: Date.now(), name: name ?? null });
+  writeZiplineDeleteTombstones(inspectionId, tombstones);
+}
+
+function isZiplineTombstoned(inspectionId: string, rowId?: string | null): boolean {
+  if (!rowId) return false;
+  return readZiplineDeleteTombstones(inspectionId).has(rowId);
+}
+
+function filterDeletedZiplines<T extends DbRow>(inspectionId: string, rows: T[], source: 'local' | 'server' | 'merge' | 'seed'): T[] {
+  const tombstones = readZiplineDeleteTombstones(inspectionId);
+  if (tombstones.size === 0) return rows;
+  const suppressed: Array<{ id: string; name?: string | null }> = [];
+  const kept = rows.filter((row) => {
+    const id = row.id;
+    const drop = !!id && tombstones.has(id);
+    if (drop) suppressed.push({ id, name: typeof row.zipline_name === 'string' ? row.zipline_name : null });
+    return !drop;
+  });
+  if (suppressed.length > 0) {
+    traceZipline('zipline.merge.suppressedDeletedRow', {
+      inspectionId,
+      source,
+      before: rows.length,
+      after: kept.length,
+      suppressed,
+    });
+  }
+  return kept;
+}
+
 function errorMessage(error: unknown, fallback: string): string {
   if (error instanceof Error) return error.message;
   if (typeof error === 'string') return error;
@@ -211,6 +279,8 @@ export default function InspectionForm() {
   const [systems, setSystems] = useState<DbRow[]>([]);
   const [ziplines, setZiplines] = useState<DbRow[]>([]);
   const [equipment, setEquipment] = useState<DbRow[]>([]);
+  const ziplinesRef = useRef<DbRow[]>([]);
+  useEffect(() => { ziplinesRef.current = ziplines; }, [ziplines]);
 
   // ── Deletion-aware merge tracking ────────────────────────────────────────
   // Session-scoped sets of child-row ids that the user intentionally deleted
@@ -1563,12 +1633,14 @@ export default function InspectionForm() {
               braking_result: normalizeResultValue(item.braking_result),
               ead_result: normalizeResultValue(item.ead_result)
             }));
+            const activeServerZiplines = filterDeletedZiplines(id!, normalizedZiplines as DbRow[], 'server');
+            traceZipline('zipline.load.serverRows', { inspectionId: id, source: 'server', before: normalizedZiplines.length, after: activeServerZiplines.length });
             setZiplines(prev => mergeChildArray(
-              prev as Array<DbRow & { id: string }>,
-              normalizedZiplines as Array<DbRow & { id: string }>,
+              filterDeletedZiplines(id!, prev as DbRow[], 'merge') as Array<DbRow & { id: string }>,
+              activeServerZiplines as Array<DbRow & { id: string }>,
               { table: 'ziplines', deletedIds: deletedZiplineIdsRef.current, onDeletedIdConfirmed: dropDeletedZiplineId, coalesceTempByBusinessKey: ['inspection_id', 'zipline_name'] },
             ) as DbRow[]);
-            saveRelatedDataOffline('ziplines', id!, normalizedZiplines).catch(e =>
+            saveRelatedDataOffline('ziplines', id!, activeServerZiplines, { allowEmpty: true }).catch(e =>
               console.warn('[InspectionForm] Non-critical: failed to cache ziplines', e)
             );
           } else if (offlineZiplines.length > 0) {
@@ -1807,6 +1879,7 @@ export default function InspectionForm() {
       // S9: Reconcile user-clear intent. If the user has emptied every section
       // of a previously-synced inspection, stamp `user_cleared_at` so the
       // sync pipeline doesn't restore the server copy back into IDB.
+      const ziplinesSnapshot = ziplinesRef.current;
       const summarySnapshot = summaryRef.current;
       const summaryHasAnyContent = !!(summarySnapshot && (
         summarySnapshot.repairs_performed ||
@@ -1815,7 +1888,7 @@ export default function InspectionForm() {
         summarySnapshot.next_inspection_date
       ));
       const totalChildCount =
-        systems.length + ziplines.length + equipment.length +
+        systems.length + ziplinesSnapshot.length + equipment.length +
         standards.length + (summaryHasAnyContent ? 1 : 0);
       const { reconcileClearIntent } = await import('@/lib/clear-intent');
       const inspectionToSave = reconcileClearIntent(
@@ -1843,7 +1916,7 @@ export default function InspectionForm() {
       const validation = validateInspectionPackage({
         inspection: inspectionToSave,
         systems,
-        ziplines,
+        ziplines: ziplinesSnapshot,
         equipment: completeEquipment,
         standards,
         summary: summaryForValidation,
@@ -1874,7 +1947,7 @@ export default function InspectionForm() {
 
       const saveData = {
         systems,
-        ziplines,
+        ziplines: ziplinesSnapshot,
         equipment,
         standards,
         summary: currentSummary,
@@ -1885,7 +1958,7 @@ export default function InspectionForm() {
       const validSystems = systems.filter(s => 
         s.system_name && s.system_name.trim() !== ""
       );
-      const validZiplines = ziplines.filter(z => 
+      const validZiplines = ziplinesSnapshot.filter(z => 
         z.zipline_name && z.zipline_name.trim() !== ""
       );
       const validEquipment = equipment.filter(e => 
@@ -1920,7 +1993,7 @@ export default function InspectionForm() {
             id: id!,
             inspection: inspectionToSave,
             systems,
-            ziplines,
+            ziplines: ziplinesSnapshot,
             equipment,
             standards,
             summary: currentSummary,
@@ -1998,7 +2071,7 @@ export default function InspectionForm() {
           console.warn(`[InspectionForm] ${systems.length - validSystems.length} system(s) filtered out (empty name) — saved locally but excluded from server sync`);
         }
         if (validZiplines.length !== ziplines.length) {
-          console.warn(`[InspectionForm] ${ziplines.length - validZiplines.length} zipline(s) filtered out (empty name) — saved locally but excluded from server sync`);
+          console.warn(`[InspectionForm] ${ziplinesSnapshot.length - validZiplines.length} zipline(s) filtered out (empty name) — saved locally but excluded from server sync`);
         }
         console.log('[InspectionForm] Saved all data to offline storage');
       }
@@ -2035,7 +2108,7 @@ export default function InspectionForm() {
                   id: id!,
                   inspection: updatedInspection,
                   systems,
-                  ziplines,
+                  ziplines: ziplinesSnapshot,
                   equipment,
                   standards,
                   summary: currentSummary,
