@@ -62,6 +62,9 @@ interface PhotoGalleryProps {
 interface Photo {
   id: string;
   photoUrl: string;
+  /** Raw storage path (DB photo_url) preserved so deletes can tombstone +
+   *  clean IDB by the same identifier the offline rows use. */
+  rawStoragePath?: string;
   blob?: Blob;
   uploaded: boolean;
   caption: string | null;
