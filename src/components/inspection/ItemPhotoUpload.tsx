@@ -367,19 +367,13 @@ function ItemPhotoUpload({
 
       // 1. Compress image
       const compressed = await compressImage(file, { maxWidth: 1200, maxHeight: 1200, quality: 0.8 });
-
-      // 2. Instant local preview
-      const previewUrl = URL.createObjectURL(compressed);
-      setLocalPreview(previewUrl);
-
-      // 1. Compress image
-      const compressed = await compressImage(file, { maxWidth: 1200, maxHeight: 1200, quality: 0.8 });
       if (import.meta.env.DEV) photoTrace('handleUpload.compressed', { size: compressed.size, type: compressed.type }, cid);
 
       // 2. Instant local preview
       const previewUrl = URL.createObjectURL(compressed);
       setLocalPreview(previewUrl);
       if (import.meta.env.DEV) photoTrace('handleUpload.localPreview-created', { previewUrl }, cid);
+
 
       // 3. Generate deterministic file path
       const photoId = `item-${itemId}-${Date.now()}`;
