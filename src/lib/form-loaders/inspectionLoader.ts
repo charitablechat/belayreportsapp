@@ -16,6 +16,19 @@ import {
   getRelatedDataOffline,
   type DbRow,
 } from "@/lib/offline-storage";
+import { filterChildRows } from "@/lib/child-row-tombstones";
+
+/**
+ * Business-key derivation for operating-system rows. Must match the
+ * derivation used at delete-time in OperatingSystemsTable so tombstones
+ * filter unsynced temp-id rows correctly.
+ */
+function osBusinessKey(row: any): string | null {
+  const a = (row?.name ?? "").toString().trim().toLowerCase();
+  const b = (row?.system_name ?? "").toString().trim().toLowerCase();
+  const k = [a, b].filter(Boolean).join("|");
+  return k || null;
+}
 
 // ---- STANDARDS_TEMPLATE + merge helpers (moved verbatim from page) -------
 
@@ -97,7 +110,12 @@ export async function loadInspectionFromOffline(
 
   return {
     inspection: offlineInspection ?? null,
-    systems: systems || [],
+    systems: filterChildRows(
+      "inspection_operating_system",
+      id,
+      systems || [],
+      osBusinessKey,
+    ),
     ziplines: ziplines || [],
     equipment: equipment || [],
     standards: standards || [],

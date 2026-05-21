@@ -11,6 +11,7 @@ import { Input } from "@/components/ui/input";
 import { DebouncedInput } from "./DebouncedInput";
 import { focusNextCell, preserveScroll } from "@/lib/table-focus-utils";
 import { useState, useCallback, useEffect, memo } from "react";
+import { addChildTombstone } from "@/lib/child-row-tombstones";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -165,11 +166,30 @@ function OperatingSystemsTable({ systems, onUpdate, onImmediateSave: rawOnImmedi
 
   const handleDeleteConfirm = useCallback(() => {
     if (itemToDelete) {
+      // Persistent tombstone — survives reload, server refetch, default-seed
+      // imports, and "ensure ≥1 row" merge defaults. Anchored to both server
+      // id (when present) and a stable businessKey (name+systemName) so
+      // unsynced temp-id rows are also covered.
+      const target = systems.find((s: any) => s.id === itemToDelete.id);
+      const businessKey = target
+        ? [(target.name ?? "").toString().trim().toLowerCase(),
+           (target.system_name ?? "").toString().trim().toLowerCase()]
+            .filter(Boolean).join("|") || null
+        : null;
+      addChildTombstone(
+        "inspection_operating_system",
+        effectiveInspectionId,
+        {
+          id: itemToDelete.id?.startsWith("temp-") ? null : itemToDelete.id,
+          businessKey,
+        },
+        "explicit-user-delete",
+      );
       onUpdate(prev => prev.filter(s => s.id !== itemToDelete.id));
       onImmediateSave?.();
       setItemToDelete(null);
     }
-  }, [itemToDelete, onUpdate, onImmediateSave]);
+  }, [itemToDelete, onUpdate, onImmediateSave, systems, effectiveInspectionId]);
 
   return (
     <Card>
