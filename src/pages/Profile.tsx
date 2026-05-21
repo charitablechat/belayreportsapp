@@ -18,6 +18,7 @@ import { SyncDiagnosticsSheet } from "@/components/pwa/SyncDiagnosticsSheet";
 import { usePWA } from "@/hooks/usePWA";
 import { format } from "date-fns";
 import { VersionBadge } from "@/components/VersionBadge";
+import { OfflineReadinessCard } from "@/components/diagnostics/OfflineReadinessCard";
 
 export default function Profile() {
   const navigate = useNavigate();
