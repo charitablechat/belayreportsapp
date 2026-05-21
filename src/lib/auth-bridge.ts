@@ -27,6 +27,7 @@ import {
   getOfflineUserId,
 } from '@/lib/cached-auth';
 import { isPlaceholderToken } from '@/lib/synthetic-session-guard';
+import { getLastKnownAccount } from '@/lib/last-known-account';
 
 let initialized = false;
 
