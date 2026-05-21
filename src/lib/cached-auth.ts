@@ -276,6 +276,21 @@ function initAuthListener() {
         if (session?.user?.email && session?.refresh_token) {
           saveUserMapping(session.user.email, session.user.id, session.refresh_token).catch(() => {});
         }
+        // Phase 1 — persist a non-secret last-known-account pointer so the
+        // device can reopen offline even after explicit sign-out clears
+        // tokens. Survives signOut() by design.
+        if (session?.user?.id) {
+          saveLastKnownAccount({
+            userId: session.user.id,
+            email: session.user.email ?? null,
+            displayName:
+              (session.user.user_metadata as { full_name?: string } | undefined)
+                ?.full_name ?? null,
+          });
+          // Best-effort: ask the browser to mark our storage as persistent.
+          // Non-blocking; result is recorded in readiness diagnostics.
+          void requestPersistentStorageOnce();
+        }
       }
       // C5/C6: Only forward REAL JWTs to the SW. Never the offline placeholder.
       if (
