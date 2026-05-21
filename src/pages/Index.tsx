@@ -8,6 +8,8 @@ import {
   createOfflineSession,
 } from "@/lib/offline-auth";
 import { readGuestSession, createGuestSession } from "@/lib/guest-session";
+import { getLastKnownAccount } from "@/lib/last-known-account";
+import { recordBootAuthOutcome } from "@/lib/offline-readiness";
 import { openDB } from "idb";
 
 const SUPABASE_SESSION_KEY = `sb-${import.meta.env.VITE_SUPABASE_PROJECT_ID}-auth-token`;
