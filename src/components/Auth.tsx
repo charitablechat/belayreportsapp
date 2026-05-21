@@ -252,6 +252,16 @@ export default function Auth() {
               Continue offline as Guest <ArrowRight className="ml-2 h-4 w-4" />
             </GradientButton>
           )}
+          {lastKnown && (
+            <Button
+              type="button"
+              variant="outline"
+              onClick={handleResumeLastKnown}
+              className="w-full mb-3"
+            >
+              Continue offline as {lastKnown.email ?? 'last account'}
+            </Button>
+          )}
           {!isOnline && hasCachedSessionForOffline() && (
             <Button
               type="button"
