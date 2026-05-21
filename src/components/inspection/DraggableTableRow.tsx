@@ -131,7 +131,9 @@ export function DraggableMobileCard({
       onTouchCancel={onTouchDragCancel}
       style={{
         opacity: isDragging ? 0.4 : 1,
-        pointerEvents: isTouchDragging ? 'none' : undefined,
+        // See note in DraggableTableRow — pointer-events:none on the card
+        // blocked dropdown taps when isTouchDragging stuck open. Drag is
+        // anchored to the grip handle's touchAction:'none' instead.
         userSelect: 'none',
         WebkitTouchCallout: 'none',
       } as React.CSSProperties}
