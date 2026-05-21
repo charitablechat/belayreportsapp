@@ -432,11 +432,11 @@ function EquipmentTable({ category, displayName, equipment, onUpdate, onImmediat
             EQUIPMENT - {displayName.toUpperCase()}
           </CardTitle>
           <div className="flex gap-2 w-full lg:w-auto">
-            <Button onClick={addDivider} size="sm" variant="outline" className="flex-1 lg:flex-none shrink-0">
+            <Button onClick={addDivider} disabled={addDisabled} aria-disabled={addDisabled} data-testid={`add-divider-${category}`} size="sm" variant="outline" className="flex-1 lg:flex-none shrink-0">
               <Minus className="w-4 h-4 mr-2" />
               Divider
             </Button>
-            <Button onClick={addEquipment} size="sm" className="flex-1 lg:flex-none shrink-0">
+            <Button onClick={addEquipment} disabled={addDisabled} aria-disabled={addDisabled} data-testid={`add-equipment-${category}`} size="sm" className="flex-1 lg:flex-none shrink-0">
               <Plus className="w-4 h-4 mr-2" />
               <span className="lg:hidden">Add</span>
               <span className="hidden lg:inline">Add {displayName}</span>
