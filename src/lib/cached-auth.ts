@@ -304,6 +304,19 @@ function initAuthListener() {
               const { prewarmActiveReportPhotos } = await import("@/lib/photo-prewarm");
               await prewarmActiveReportPhotos();
             } catch {/* ignore */}
+            // Phase 4–6: if the device has guest-owned local work, migrate
+            // it onto this newly-signed-in user. Idempotent — safe to call
+            // on every SIGNED_IN; no-op when no guest data exists. Never
+            // throws; failure leaves the guest data intact for retry.
+            try {
+              const { detectGuestDataForClaim, claimGuestData } = await import(
+                "@/lib/guest-claim"
+              );
+              const counts = await detectGuestDataForClaim();
+              if (counts.total > 0) {
+                await claimGuestData(session.user!.id);
+              }
+            } catch {/* ignore — telemetry surfaced via guest.claim.failed event */}
           })();
         }
       }

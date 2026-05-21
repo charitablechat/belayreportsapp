@@ -40,6 +40,7 @@ import {
 } from '@/lib/drain-mode';
 import { clearIdbClosingQuarantinesWhenInactive } from '@/lib/sync-quarantine';
 import { isTombstoned } from '@/lib/local-record-tombstones';
+import { registerReconnectRunners } from '@/lib/reconnect-coordinator';
 
 /**
  * Result returned by each per-table atomic-sync helper
@@ -1452,6 +1453,36 @@ export const useAutoSync = () => {
       }
       updateUnsyncedCounts({ force: true });
     }, INITIAL_SYNC_DELAY);
+
+    // Reconnect-coordinator runners. The coordinator is the single-flight
+    // outer envelope around reconnect recovery. Ad-hoc listeners below
+    // (online/visibility/pageshow/focus) are retained as belt-and-
+    // suspenders; the coordinator's single-flight + 5s min-gap collapses
+    // duplicate triggers cleanly.
+    const unregisterRunners = registerReconnectRunners({
+      authReconcile: async () => {
+        try { await reconcileThenSync(); } catch { /* swallow */ }
+      },
+      reportQueueDrain: async () => {
+        try { await performSync(true); } catch { /* swallow */ }
+      },
+      photoQueueDrain: async () => {
+        // performSync already drains photos via syncPhotos; safe no-op stage.
+      },
+      deletionQueueDrain: async () => {
+        try { await processQueuedSoftDeletes(); } catch { /* swallow */ }
+      },
+      refreshLocalState: async () => {
+        try {
+          await updateUnsyncedCounts({ force: true });
+          window.dispatchEvent(new CustomEvent('dashboard-stale'));
+        } catch { /* swallow */ }
+      },
+      prewarm: async () => {
+        // Pre-warm is opportunistic — owned by cached-auth SIGNED_IN handler
+        // and explicit user-data refresh. Coordinator stage is a no-op here.
+      },
+    });
     
     // Event listeners
     window.addEventListener('online', handleOnline);
@@ -1710,6 +1741,7 @@ export const useAutoSync = () => {
 
     return () => {
       clearTimeout(initialSyncTimer);
+      unregisterRunners();
       window.removeEventListener('online', handleOnline);
       window.removeEventListener('sync-photos-updated', handleSyncPhotosUpdated);
       window.removeEventListener('sync-records-updated', handleSyncRecordsUpdated);
