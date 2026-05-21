@@ -312,6 +312,33 @@ export default function InspectionForm() {
   const dropDeletedZiplineId = useCallback((rid: string) => { deletedZiplineIdsRef.current.delete(rid); }, []);
   const dropDeletedEquipmentId = useCallback((rid: string) => { deletedEquipmentIdsRef.current.delete(rid); }, []);
 
+  // Forward ref to the immediate-save function (defined below). Lets the
+  // explicit zipline-delete handler trigger a save without a circular dep.
+  const stableTriggerImmediateSaveRef = useRef<(() => void) | null>(null);
+
+  /**
+   * Explicit user-confirmed deletion of a Zipline row.
+   * - Adds a local tombstone so any racing server snapshot can't rehydrate it
+   *   on refresh before the next sync completes.
+   * - Tracks the id in deletedZiplineIdsRef so mergeChildArray rejects it.
+   * - Removes it from local state via the tracked setter and triggers an
+   *   immediate save -- the reconciler runs with expectedNonEmpty=true and
+   *   the tripwire bypass (`bulk: true`) is scoped to that form-save path,
+   *   so the row is deleted from the server even when it's the last one.
+   */
+  const handleDeleteZipline = useCallback((row: { id?: string; zipline_name?: string | null } | null | undefined) => {
+    if (!row?.id || !id) return;
+    const rowId = row.id;
+    const name = (row.zipline_name ?? null) as string | null;
+    if (!rowId.startsWith('temp-')) {
+      addZiplineDeleteTombstone(id, rowId, name);
+    }
+    deletedZiplineIdsRef.current.add(rowId);
+    setZiplinesTracked(prev => prev.filter(z => z.id !== rowId));
+    traceZipline('zipline.delete.userConfirmed', { inspectionId: id, rowId, name });
+    setTimeout(() => { stableTriggerImmediateSaveRef.current?.(); }, 0);
+  }, [id, setZiplinesTracked]);
+
   // Equipment type options per category — pass existing values so custom entries persist in dropdown
   const getExistingTypes = (cat: string) =>
     equipment
@@ -1386,9 +1413,10 @@ export default function InspectionForm() {
           braking_result: normalizeResultValue(item.braking_result),
           ead_result: normalizeResultValue(item.ead_result)
         }));
+        const activeOfflineZiplines = filterDeletedZiplines(id!, normalizedZiplines as DbRow[], 'local');
         setZiplines(prev => mergeChildArray(
-          prev as Array<DbRow & { id: string }>,
-          normalizedZiplines as Array<DbRow & { id: string }>,
+          filterDeletedZiplines(id!, prev as DbRow[], 'merge') as Array<DbRow & { id: string }>,
+          activeOfflineZiplines as Array<DbRow & { id: string }>,
           { table: 'ziplines', deletedIds: deletedZiplineIdsRef.current, onDeletedIdConfirmed: dropDeletedZiplineId, coalesceTempByBusinessKey: ['inspection_id', 'zipline_name'] },
         ) as DbRow[]);
       }
@@ -1652,9 +1680,10 @@ export default function InspectionForm() {
               braking_result: normalizeResultValue(item.braking_result),
               ead_result: normalizeResultValue(item.ead_result)
             }));
+            const activeOfflineZiplines = filterDeletedZiplines(id!, normalizedZiplines as DbRow[], 'local');
             setZiplines(prev => mergeChildArray(
-              prev as Array<DbRow & { id: string }>,
-              normalizedZiplines as Array<DbRow & { id: string }>,
+              filterDeletedZiplines(id!, prev as DbRow[], 'merge') as Array<DbRow & { id: string }>,
+              activeOfflineZiplines as Array<DbRow & { id: string }>,
               { table: 'ziplines', deletedIds: deletedZiplineIdsRef.current, onDeletedIdConfirmed: dropDeletedZiplineId, coalesceTempByBusinessKey: ['inspection_id', 'zipline_name'] },
             ) as DbRow[]);
           }
@@ -1778,7 +1807,7 @@ export default function InspectionForm() {
         deletedZiplineIdsRef.current.clear();
         deletedEquipmentIdsRef.current.clear();
         setSystems(offSystems); childDataLoadedRef.current.systems = true;
-        setZiplines(offZiplines); childDataLoadedRef.current.ziplines = true;
+        setZiplines(filterDeletedZiplines(id!, offZiplines as DbRow[], 'seed')); childDataLoadedRef.current.ziplines = true;
         setEquipment(offEquipment); childDataLoadedRef.current.equipment = true;
         setStandards(prev => mergeStandardsPreserveLocal(offStandards, prev)); childDataLoadedRef.current.standards = true;
         if (offSummary.length > 0) { setSummary(offSummary[0] as typeof summary); }
@@ -2362,6 +2391,8 @@ export default function InspectionForm() {
   const stableTriggerImmediateSave = useCallback(() => {
     return triggerImmediateSaveRef.current?.() ?? Promise.resolve();
   }, []);
+  // Expose to the early-defined handleDeleteZipline via ref.
+  stableTriggerImmediateSaveRef.current = stableTriggerImmediateSave;
 
   const autoSaveProgress = async () => {
     if (!hasUnsavedChanges || saving || autoSaving || anySaveInProgressRef.current) return;
@@ -3268,7 +3299,7 @@ export default function InspectionForm() {
           <div>
               <TabsContent value="details" className="space-y-6">
                 <OperatingSystemsTable systems={systems} onUpdate={setSystemsTracked} onImmediateSave={stableTriggerImmediateSave} inspectionId={id} onGalleryRefresh={handleGalleryRefresh} />
-                <ZiplinesTable ziplines={ziplines} onUpdate={setZiplinesTracked} onImmediateSave={stableTriggerImmediateSave} inspectionId={id} onGalleryRefresh={handleGalleryRefresh} />
+                <ZiplinesTable ziplines={ziplines} onUpdate={setZiplinesTracked} onImmediateSave={stableTriggerImmediateSave} onDeleteZipline={handleDeleteZipline} inspectionId={id} onGalleryRefresh={handleGalleryRefresh} />
                 
                 <div className="mt-8 border-t pt-6">
                   <h3 className="text-lg font-semibold mb-4">Photos - Systems & Ziplines</h3>
