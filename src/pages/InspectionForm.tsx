@@ -2389,6 +2389,8 @@ export default function InspectionForm() {
   const stableTriggerImmediateSave = useCallback(() => {
     return triggerImmediateSaveRef.current?.() ?? Promise.resolve();
   }, []);
+  // Expose to the early-defined handleDeleteZipline via ref.
+  stableTriggerImmediateSaveRef.current = stableTriggerImmediateSave;
 
   const autoSaveProgress = async () => {
     if (!hasUnsavedChanges || saving || autoSaving || anySaveInProgressRef.current) return;
