@@ -37,6 +37,7 @@ import {
   type ReconciledTableDelete,
 } from "@/lib/sync-reconciliation";
 import { getUserWithCache } from "@/lib/cached-auth";
+import { recordSaveWithoutIdentity } from "@/lib/offline-readiness";
 
 // ---- Types ----------------------------------------------------------------
 
