@@ -40,6 +40,7 @@ import {
   type ReconciledTableDelete,
 } from "@/lib/sync-reconciliation";
 import { getUserWithCache } from "@/lib/cached-auth";
+import { recordSaveWithoutIdentity } from "@/lib/offline-readiness";
 
 // ---- Types ----------------------------------------------------------------
 
@@ -165,6 +166,21 @@ export async function persistInspectionToOffline(
 ): Promise<PersistResult> {
   const { id, inspection, systems, ziplines, equipment, standards, summary } = payload;
   const { currentUserId, childDataLoaded, silent, onVersionAppended, onSnapshotSaved } = opts;
+
+  // Phase 2 telemetry — record (but don't block) when a save proceeds with
+  // no resolvable identity. Local queue still owns the data; this just
+  // surfaces the case so we can quantify silent drops.
+  if (!currentUserId && !inspection?.inspector_id) {
+    try {
+      recordSaveWithoutIdentity({
+        op: "inspection-save",
+        reportId: id,
+        online: typeof navigator !== "undefined" ? navigator.onLine : null,
+      });
+    } catch {
+      // never let telemetry break save
+    }
+  }
 
   // Stamp updated_at + last_modified_by (when current user isn't the owner)
   const baseInspectionToSave: DbRow = {

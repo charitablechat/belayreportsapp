@@ -290,6 +290,21 @@ function initAuthListener() {
           // Best-effort: ask the browser to mark our storage as persistent.
           // Non-blocking; result is recorded in readiness diagnostics.
           void requestPersistentStorageOnce();
+          // Phase 2 — warm core shell routes + user data (one-shot per session).
+          void (async () => {
+            try {
+              const { warmShellRoutes } = await import("@/lib/shell-warmup");
+              await warmShellRoutes();
+            } catch {/* ignore */}
+            try {
+              const { prefetchAllUserData } = await import("@/lib/prefetch-user-data");
+              await prefetchAllUserData({ userId: session.user!.id });
+            } catch {/* ignore */}
+            try {
+              const { prewarmActiveReportPhotos } = await import("@/lib/photo-prewarm");
+              await prewarmActiveReportPhotos();
+            } catch {/* ignore */}
+          })();
         }
       }
       // C5/C6: Only forward REAL JWTs to the SW. Never the offline placeholder.

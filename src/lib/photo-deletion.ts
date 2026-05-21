@@ -20,6 +20,8 @@ import { supabase } from "@/integrations/supabase/client";
 import { getOfflinePhotos, deleteOfflinePhoto } from "@/lib/offline-storage";
 import { photoTrace, isPhotoTraceEnabled } from "@/lib/photo-trace";
 import { removePhotoReceipts } from "@/lib/photo-receipts";
+import { getOfflineUserId } from "@/lib/cached-auth";
+import { recordSaveWithoutIdentity } from "@/lib/offline-readiness";
 
 const TOMBSTONE_KEY = "photo_tombstones_v1";
 const TOMBSTONE_TTL_MS = 24 * 60 * 60 * 1000;
@@ -128,6 +130,21 @@ export async function deletePhotoEverywhere(args: DeletePhotoArgs): Promise<Dele
       itemIdScope,
       tableName,
     });
+  }
+
+  // Phase 2 telemetry — record (but don't block) deletes that proceed
+  // without identity. Local tombstone + IDB removal still run; this just
+  // surfaces the case so we can quantify silent paths.
+  try {
+    if (!getOfflineUserId()) {
+      recordSaveWithoutIdentity({
+        op: "photo-delete",
+        reportId: inspectionId,
+        online: typeof navigator !== "undefined" ? navigator.onLine : null,
+      });
+    }
+  } catch {
+    // never block
   }
 
   const now = new Date();
