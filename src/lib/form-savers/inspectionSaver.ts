@@ -309,6 +309,15 @@ export async function pushInspectionToRemote(
   const { id, systems, ziplines, equipment, standards, summary } = payload;
   const { updatedInspection } = opts;
 
+  // SELF-WRITE SUPPRESSION (S6): mark this inspection as a recent self-write
+  // BEFORE the first server mutation so that any same-device Realtime
+  // postgres_changes event fired by our own UPDATE/UPSERT/INSERT calls is
+  // ignored by useFormRecordRealtime.onUpdate (which would otherwise call
+  // loadInspection() and overwrite local equipment adds/deletes still in
+  // React state, e.g. a row the user just added or removed during the save
+  // round-trip).
+  registerSelfWrite(id);
+
   const sanitized = sanitizeInspectionForRemote(
     updatedInspection as unknown as Record<string, unknown>,
   );
