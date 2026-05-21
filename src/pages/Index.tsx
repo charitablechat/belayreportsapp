@@ -176,9 +176,24 @@ const Index = () => {
             } catch {/* show sign-in form */}
           }
           if (readGuestSession()) {
+            recordBootAuthOutcome("guest-session");
             setSession({ guest: true });
             navigate('/dashboard', { replace: true });
             return;
+          }
+          // Captive-portal final rung: last-known-account local resume.
+          const lka = getLastKnownAccount();
+          if (lka) {
+            try {
+              await createOfflineSession(lka.email ?? '', '');
+              recordBootAuthOutcome("captive-portal-offline-mode", {
+                via: "last-known-account",
+                userId: lka.userId,
+              });
+              setSession({ offline: true });
+              navigate('/dashboard', { replace: true });
+              return;
+            } catch {/* show sign-in form */}
           }
         }
       } catch (error) {
