@@ -17,11 +17,21 @@
  * (e.g. "Sync now") via `runReconnect("auth"|"manual")`.
  *
  * Idempotent: calling `initReconnectEvents()` a second time is a no-op.
+ * Tracked listener references are retained so `__test_only__resetReconnectEvents`
+ * can remove them cleanly between tests (otherwise the flag-only reset
+ * would leak listeners and inflate dispatch counts).
  */
 
 import { runReconnect } from "./reconnect-coordinator";
 
 let initialized = false;
+
+type Registered = {
+  target: EventTarget;
+  type: string;
+  handler: EventListener;
+};
+let registered: Registered[] = [];
 
 export function initReconnectEvents(): void {
   if (initialized) return;
@@ -29,16 +39,20 @@ export function initReconnectEvents(): void {
   initialized = true;
 
   const fire = (trigger: "online" | "visibility" | "pageshow" | "focus") => {
-    // Fire-and-forget — coordinator never throws.
     void runReconnect(trigger);
   };
 
+  const add = (target: EventTarget, type: string, handler: EventListener) => {
+    target.addEventListener(type, handler);
+    registered.push({ target, type, handler });
+  };
+
   try {
-    window.addEventListener("online", () => fire("online"));
-    window.addEventListener("focus", () => fire("focus"));
-    window.addEventListener("pageshow", () => fire("pageshow"));
+    add(window, "online", () => fire("online"));
+    add(window, "focus", () => fire("focus"));
+    add(window, "pageshow", () => fire("pageshow"));
     if (typeof document !== "undefined") {
-      document.addEventListener("visibilitychange", () => {
+      add(document, "visibilitychange", () => {
         if (document.visibilityState === "visible") fire("visibility");
       });
     }
@@ -47,7 +61,15 @@ export function initReconnectEvents(): void {
   }
 }
 
-/** Test-only: tears down the init flag so tests can re-arm listeners. */
+/** Test-only: removes all registered listeners and clears the init flag. */
 export function __test_only__resetReconnectEvents(): void {
+  for (const r of registered) {
+    try {
+      r.target.removeEventListener(r.type, r.handler);
+    } catch {
+      /* ignore */
+    }
+  }
+  registered = [];
   initialized = false;
 }
