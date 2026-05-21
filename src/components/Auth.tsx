@@ -14,6 +14,7 @@ import authVideo from "@/assets/auth-background.mp4";
 import { hasCachedSessionForOffline } from "@/lib/cached-auth";
 import { createOfflineSession } from "@/lib/offline-auth";
 import { createGuestSession } from "@/lib/guest-session";
+import { getLastKnownAccount } from "@/lib/last-known-account";
 import { isCredentialsDamaged, clearCredentialsDamagedFlag } from "@/lib/auth-resilience";
 import { triggerHaptic } from "@/lib/haptics";
 import { toast } from "sonner";
