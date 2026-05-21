@@ -143,6 +143,13 @@ import('@/lib/auth-resilience').then(({ validateAuthStateOnBoot }) => {
 import { initAuthBridge } from '@/lib/auth-bridge';
 initAuthBridge();
 
+// Phase 4–6 — reconnect-event wiring. Single-flight coordinator subscribes
+// to online/visibility/pageshow/focus and fans into the registered runners
+// (registered by useAutoSync on mount). Synchronous import so listeners
+// are attached before the first navigation event can fire.
+import { initReconnectEvents } from '@/lib/reconnect-events';
+initReconnectEvents();
+
 // Fix 1.D — one-time storage RLS probe (non-blocking, runs after mount).
 Promise.resolve().then(() => {
   import('@/lib/storage-rls-probe').then(({ runStorageRlsProbeOnce }) => {
