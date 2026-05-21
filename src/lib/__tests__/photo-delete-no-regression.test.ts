@@ -1,18 +1,13 @@
 /**
- * Photo-delete no-regression: verifies that photo-deletion writes the
- * receipt the existing reconciliation path expects (the user-facing fix
- * preserved by Phase 4–6). This test does NOT touch the deletion API —
- * it only asserts the receipt key shape so an accidental rewrite in a
- * future phase trips the suite.
- *
- * The receipt module is the durable record that prevents a server
- * cross-check from re-surfacing a deleted photo as a "lost" warning.
+ * Photo-delete no-regression: verifies the receipt API stays stable so
+ * the existing receipt-cleanup + server cross-check behavior cannot be
+ * accidentally rewritten in Phase 4–6.
  */
 import { describe, it, expect, beforeEach } from "vitest";
 import {
-  recordPhotoDeletionReceipt,
-  hasPhotoDeletionReceipt,
-  clearPhotoDeletionReceipt,
+  savePhotoReceipt,
+  getPhotoReceipts,
+  removePhotoReceipt,
 } from "../photo-receipts";
 
 describe("photo-deletion receipts (no regression)", () => {
@@ -20,20 +15,24 @@ describe("photo-deletion receipts (no regression)", () => {
     try { localStorage.clear(); } catch { /* noop */ }
   });
 
-  it("records and reads back a receipt for a deleted photo path", () => {
-    const path = "user-1/insp-9/abc.jpg";
-    recordPhotoDeletionReceipt(path);
-    expect(hasPhotoDeletionReceipt(path)).toBe(true);
+  it("save/get round-trip preserves a receipt", () => {
+    savePhotoReceipt({
+      photoId: "p1",
+      inspectionId: "i1",
+      section: "systems",
+      uploaded: false,
+      createdAt: Date.now(),
+    } as any);
+    const list = getPhotoReceipts("i1", "systems");
+    expect(list.some((r) => r.photoId === "p1")).toBe(true);
   });
 
-  it("clearPhotoDeletionReceipt removes the entry", () => {
-    const path = "user-1/insp-9/zzz.jpg";
-    recordPhotoDeletionReceipt(path);
-    clearPhotoDeletionReceipt(path);
-    expect(hasPhotoDeletionReceipt(path)).toBe(false);
-  });
-
-  it("untouched paths are not falsely reported as deleted", () => {
-    expect(hasPhotoDeletionReceipt("user-1/never-deleted.jpg")).toBe(false);
+  it("removePhotoReceipt clears the entry without affecting siblings", () => {
+    savePhotoReceipt({ photoId: "a", inspectionId: "i1", section: "s", uploaded: false, createdAt: Date.now() } as any);
+    savePhotoReceipt({ photoId: "b", inspectionId: "i1", section: "s", uploaded: false, createdAt: Date.now() } as any);
+    removePhotoReceipt("a");
+    const list = getPhotoReceipts("i1", "s");
+    expect(list.find((r) => r.photoId === "a")).toBeUndefined();
+    expect(list.find((r) => r.photoId === "b")).toBeTruthy();
   });
 });

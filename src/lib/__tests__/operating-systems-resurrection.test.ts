@@ -51,7 +51,7 @@ vi.mock("@/integrations/supabase/client", () => ({
 import {
   loadInspectionFromOffline,
   fetchInspectionChildrenFromServer,
-} from "../../form-loaders/inspectionLoader";
+} from "../form-loaders/inspectionLoader";
 
 describe("operating-systems resurrection guard", () => {
   beforeEach(() => {
