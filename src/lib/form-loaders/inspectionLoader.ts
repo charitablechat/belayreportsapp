@@ -174,8 +174,6 @@ export async function fetchInspectionChildrenFromServer(id: string) {
   ]);
 
   return {
-    systems: (systemsData as DbRow[]) || [],
-  return {
     systems: filterChildRows(
       "inspection_operating_system",
       id,
