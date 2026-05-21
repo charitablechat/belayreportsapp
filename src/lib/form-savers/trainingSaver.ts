@@ -137,6 +137,19 @@ export async function persistTrainingToOffline(
   } = payload;
   const { currentUserId, childDataLoaded, silent, onVersionAppended } = opts;
 
+  // Phase 2 telemetry — surface saves that proceed without identity.
+  if (!currentUserId && !training?.inspector_id) {
+    try {
+      recordSaveWithoutIdentity({
+        op: "training-save",
+        reportId: id,
+        online: typeof navigator !== "undefined" ? navigator.onLine : null,
+      });
+    } catch {
+      // ignore
+    }
+  }
+
   // Stamp updated_at + last_modified_by (when current user isn't the owner)
   const baseUpdatedTraining: DbRow = {
     ...training,
