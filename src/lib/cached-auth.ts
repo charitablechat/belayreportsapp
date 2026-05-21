@@ -702,7 +702,10 @@ export function getOfflineUserId(): string | null {
     const synthetic = readSyntheticSession();
     if (synthetic?.user?.id) return synthetic.user.id;
     const guest = readGuestSession();
-    return guest?.id || null;
+    if (guest?.id) return guest.id;
+    // Phase 1 — last-known-account fallback. Local-only; never transmitted.
+    const lka = getLastKnownAccount();
+    return lka?.userId ?? null;
   } catch {
     return null;
   }
