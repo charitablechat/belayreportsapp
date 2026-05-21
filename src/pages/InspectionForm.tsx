@@ -1807,7 +1807,7 @@ export default function InspectionForm() {
         deletedZiplineIdsRef.current.clear();
         deletedEquipmentIdsRef.current.clear();
         setSystems(offSystems); childDataLoadedRef.current.systems = true;
-        setZiplines(offZiplines); childDataLoadedRef.current.ziplines = true;
+        setZiplines(filterDeletedZiplines(id!, offZiplines as DbRow[], 'seed')); childDataLoadedRef.current.ziplines = true;
         setEquipment(offEquipment); childDataLoadedRef.current.equipment = true;
         setStandards(prev => mergeStandardsPreserveLocal(offStandards, prev)); childDataLoadedRef.current.standards = true;
         if (offSummary.length > 0) { setSummary(offSummary[0] as typeof summary); }
