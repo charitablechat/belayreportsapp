@@ -1859,6 +1859,15 @@ export default function Dashboard() {
       <main className="container mx-auto px-1 md:px-4 py-8">
         <IOSInstallPromptOnce />
         <BackgroundSyncStatus />
+        {!isOnline && (
+          <div
+            role="status"
+            data-testid="dashboard-offline-banner"
+            className="mb-3 rounded-md border border-amber-200/60 bg-amber-50/60 dark:border-amber-800/40 dark:bg-amber-950/20 px-3 py-2 text-sm text-amber-800 dark:text-amber-300"
+          >
+            Working offline — showing locally cached reports. Edits save to this device and will sync when you reconnect.
+          </div>
+        )}
         {/* Inline sync status -- always present, visibility via opacity only */}
         <div
           className={cn(
