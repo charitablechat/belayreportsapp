@@ -762,7 +762,11 @@ export function hasCachedSessionForOffline(): boolean {
       }
     }
     if (readSyntheticSession()) return true;
-    return !!readGuestSession();
+    if (readGuestSession()) return true;
+    // Phase 1 — last-known-account is a valid offline identity for local
+    // access only (no transmission). Lets returning users reach /dashboard
+    // after sign-out + offline relaunch.
+    return !!getLastKnownAccount();
   } catch {
     return false;
   }
