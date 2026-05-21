@@ -157,7 +157,11 @@ async function rewriteOwnerInStore(
   const errors: Array<{ recordId?: string; message: string }> = [];
   let migrated = 0;
   try {
-    const db = await getDB();
+    const db = (await getDB()) as unknown as {
+      objectStoreNames: DOMStringList;
+      getAll: (name: string) => Promise<unknown[]>;
+      put: (name: string, value: unknown) => Promise<unknown>;
+    } | null;
     if (!db) return { migrated, errors };
     if (!db.objectStoreNames.contains(storeName)) return { migrated, errors };
 
@@ -189,7 +193,6 @@ async function rewriteOwnerInStore(
           ...row,
           _claimedFromGuestId: prevGuestId,
           _claimedAt: new Date().toISOString(),
-          // Force a re-sync of the rewritten record on the next drain.
           dirty: true,
           synced_at: null,
           updated_at: new Date().toISOString(),
@@ -203,7 +206,6 @@ async function rewriteOwnerInStore(
           if (typeof row.inspector_id === "string") {
             updated.inspector_id = newUserId;
           }
-          // photos.uploaded must remain 0|1 (numeric IDB index contract).
           if (typeof row.uploaded === "boolean") {
             updated.uploaded = row.uploaded ? 1 : 0;
           }
