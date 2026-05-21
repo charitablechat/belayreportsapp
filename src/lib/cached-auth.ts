@@ -654,15 +654,26 @@ export function getCachedUserFromStorage(): CachedUser | null {
     }
 
     // Offline fallback: dedicated synthetic session slot.
+    // Phase 1: also accept these in lying-online states (captive portal,
+    // Supabase outage) — RequireAuth/Index decide whether to call us in
+    // that situation; we just return the local identity if it exists.
+    const synthetic = readSyntheticSession();
+    if (synthetic?.user?.id) {
+      return synthetic.user as CachedUser;
+    }
+    // Last-resort fallbacks (offline-only execution paths):
     if (!navigator.onLine) {
-      const synthetic = readSyntheticSession();
-      if (synthetic?.user?.id) {
-        return synthetic.user as CachedUser;
-      }
-      // Last-resort fallback: a guest session is offline-only.
       const guest = readGuestSession();
       if (guest) {
         return { id: guest.id, email: undefined, isGuest: true } as CachedUser;
+      }
+      const lka = getLastKnownAccount();
+      if (lka) {
+        return {
+          id: lka.userId,
+          email: lka.email ?? undefined,
+          isOfflineRestored: true,
+        } as CachedUser;
       }
     }
 
