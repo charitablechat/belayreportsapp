@@ -82,7 +82,11 @@ export function OfflineReadinessCard() {
     snapshot.guestSessionPresent ||
     snapshot.lastKnownAccountPresent;
 
-  const rows: Row[] = [
+  // ──────────────────────────────────────────────────────────────────────
+  // Group A — Shell & Auth (required to OPEN the app offline).
+  // If any of these fail, a cold offline launch can dead-end.
+  // ──────────────────────────────────────────────────────────────────────
+  const shellAuthRows: Row[] = [
     {
       label: "Service worker",
       status: snapshot.swInstalled && snapshot.serviceWorkerReady ? "ok" : "warn",
@@ -112,9 +116,7 @@ export function OfflineReadinessCard() {
       status:
         snapshot.persistentStorageGranted === true
           ? "ok"
-          : snapshot.persistentStorageGranted === false
-            ? "warn"
-            : "warn",
+          : "warn",
       detail:
         snapshot.persistentStorageGranted === true
           ? "granted"
@@ -124,11 +126,17 @@ export function OfflineReadinessCard() {
     },
   ];
 
-  // Shell warm-up results
+  // ──────────────────────────────────────────────────────────────────────
+  // Group B — Report data & photos (required to fully WORK offline).
+  // If these are warn/missing, the app still opens but cached reports
+  // and photos may be incomplete until next online sync.
+  // ──────────────────────────────────────────────────────────────────────
+  const dataRows: Row[] = [];
+
   const warm = getShellWarmupResults();
   if (warm) {
     const failed = Object.entries(warm).filter(([, v]) => v === "failed");
-    rows.push({
+    dataRows.push({
       label: "Core routes warmed",
       status: failed.length === 0 ? "ok" : "warn",
       detail:
@@ -136,31 +144,46 @@ export function OfflineReadinessCard() {
           ? `${Object.keys(warm).length} routes ready`
           : `failed: ${failed.map(([k]) => k).join(", ")}`,
     });
-  }
-
-  // Data pre-warm
-  const pf = getPrefetchResults();
-  if (pf) {
-    rows.push({
-      label: "Reports cached",
-      status: pf.failed.length === 0 ? "ok" : "warn",
-      detail: `${pf.inspections} inspections · ${pf.trainings} trainings · ${pf.dailyAssessments} DAs`,
+  } else {
+    dataRows.push({
+      label: "Core routes warmed",
+      status: "warn",
+      detail: "not warmed yet — sign in online to prepare routes",
     });
   }
 
-  // Photo pre-warm
+  const pf = getPrefetchResults();
+  if (pf) {
+    dataRows.push({
+      label: "Reports cached for offline",
+      status: pf.failed.length === 0 ? "ok" : "warn",
+      detail: `${pf.inspections} inspections · ${pf.trainings} trainings · ${pf.dailyAssessments} DAs${pf.failed.length ? ` · ${pf.failed.length} failed` : ""}`,
+    });
+  } else {
+    dataRows.push({
+      label: "Reports cached for offline",
+      status: "warn",
+      detail: "not prefetched yet — child rows may be missing offline",
+    });
+  }
+
   const pw = getPhotoPrewarmResult();
   if (pw && pw.attempted > 0) {
-    rows.push({
+    dataRows.push({
       label: "Active-report photos warmed",
       status: pw.failed === 0 ? "ok" : "warn",
       detail: `${pw.ok}/${pw.attempted} cached${pw.skippedDueToPressure ? " (skipped: storage pressure)" : ""}`,
     });
+  } else {
+    dataRows.push({
+      label: "Active-report photos warmed",
+      status: "warn",
+      detail: "no photos pre-cached yet — viewing offline may show placeholders",
+    });
   }
 
-  // Installed PWA without offline auth — special hint
   if (isStandalonePWA() && !offlineAuthOk) {
-    rows.push({
+    shellAuthRows.push({
       label: "Installed PWA",
       status: "warn",
       detail:
@@ -168,32 +191,24 @@ export function OfflineReadinessCard() {
     });
   }
 
-  const allOk = rows.every((r) => r.status === "ok");
-  const anyFail = rows.some((r) => r.status === "fail");
+  const allRows = [...shellAuthRows, ...dataRows];
+  const shellAuthOk = shellAuthRows.every((r) => r.status === "ok");
+  const anyFail = allRows.some((r) => r.status === "fail");
+  const allOk = allRows.every((r) => r.status === "ok");
 
-  return (
-    <div
-      className="rounded-lg border bg-card p-4 space-y-3"
-      data-testid="offline-readiness-card"
-      data-overall-status={anyFail ? "fail" : allOk ? "ok" : "warn"}
-    >
-      <div className="flex items-center justify-between">
-        <h3 className="text-sm font-semibold">
-          {allOk
-            ? "This device is ready for offline use"
-            : anyFail
-              ? "Offline access not yet prepared on this device"
-              : "Offline use: some checks need attention"}
-        </h3>
-        <button
-          type="button"
-          onClick={refresh}
-          className="text-muted-foreground hover:text-foreground"
-          aria-label="Refresh offline readiness"
-          disabled={refreshing}
-        >
-          <RefreshCw className={`h-4 w-4 ${refreshing ? "animate-spin" : ""}`} />
-        </button>
+  const headerText = anyFail
+    ? "Offline access not yet prepared on this device"
+    : allOk
+      ? "This device is fully ready for offline use"
+      : shellAuthOk
+        ? "Can open offline · report data still preparing"
+        : "Offline use: some checks need attention";
+
+  const renderGroup = (title: string, subtitle: string, rows: Row[]) => (
+    <div className="space-y-1.5">
+      <div>
+        <div className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">{title}</div>
+        <div className="text-[11px] text-muted-foreground">{subtitle}</div>
       </div>
       <ul className="space-y-1.5 text-sm">
         {rows.map((row) => (
@@ -208,6 +223,38 @@ export function OfflineReadinessCard() {
           </li>
         ))}
       </ul>
+    </div>
+  );
+
+  return (
+    <div
+      className="rounded-lg border bg-card p-4 space-y-4"
+      data-testid="offline-readiness-card"
+      data-overall-status={anyFail ? "fail" : allOk ? "ok" : "warn"}
+      data-shell-auth-status={shellAuthOk ? "ok" : "warn"}
+    >
+      <div className="flex items-center justify-between">
+        <h3 className="text-sm font-semibold">{headerText}</h3>
+        <button
+          type="button"
+          onClick={refresh}
+          className="text-muted-foreground hover:text-foreground"
+          aria-label="Refresh offline readiness"
+          disabled={refreshing}
+        >
+          <RefreshCw className={`h-4 w-4 ${refreshing ? "animate-spin" : ""}`} />
+        </button>
+      </div>
+      {renderGroup(
+        "Shell & Auth",
+        "Required to open the app offline",
+        shellAuthRows,
+      )}
+      {renderGroup(
+        "Report data & photos",
+        "Required to view and edit your reports offline",
+        dataRows,
+      )}
     </div>
   );
 }
