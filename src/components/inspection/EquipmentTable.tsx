@@ -56,6 +56,13 @@ function EquipmentTable({ category, displayName, equipment, onUpdate, onImmediat
 
   const [itemToDelete, setItemToDelete] = useState<{ item: any; name: string } | null>(null);
   const [newItemId, setNewItemId] = useState<string | null>(null);
+  // P1: Add-row tap cooldown. Rapid taps on mobile (300ms double-tap +
+  // imperceptible debounce drift) can otherwise produce two or three temp
+  // rows from a single user-perceived click. Cleared on unmount.
+  const addCooldownRef = useRef<number>(0);
+  const [addDisabled, setAddDisabled] = useState(false);
+  const ADD_COOLDOWN_MS = 400;
+  useEffect(() => () => { addCooldownRef.current = 0; }, []);
 
   useEffect(() => {
     if (!newItemId) return;
@@ -308,6 +315,16 @@ function EquipmentTable({ category, displayName, equipment, onUpdate, onImmediat
   }), [draggingId, dragOverId, dropPosition, isTouchMode, handleDragStart, handleDragOver, handleDragLeave, handleDrop, handleDragEnd, handleTouchStart, handleTouchMove, handleTouchEnd, handleTouchCancel]);
 
   const addEquipment = useCallback(() => {
+    // P1: Tap-cooldown guard — drops repeat invocations within the cooldown
+    // window so a double-tap, React 18 dev double-fire, or React.memo+
+    // immediate-save re-render burst cannot insert two or three rows for a
+    // single user click.
+    const now = Date.now();
+    if (now - addCooldownRef.current < ADD_COOLDOWN_MS) return;
+    addCooldownRef.current = now;
+    setAddDisabled(true);
+    window.setTimeout(() => setAddDisabled(false), ADD_COOLDOWN_MS);
+
     const id = `temp-${crypto.randomUUID()}`;
     setNewItemId(id);
     onUpdate(prev => {
@@ -336,6 +353,12 @@ function EquipmentTable({ category, displayName, equipment, onUpdate, onImmediat
   }, [category, onUpdate]);
 
   const addDivider = useCallback(() => {
+    const now = Date.now();
+    if (now - addCooldownRef.current < ADD_COOLDOWN_MS) return;
+    addCooldownRef.current = now;
+    setAddDisabled(true);
+    window.setTimeout(() => setAddDisabled(false), ADD_COOLDOWN_MS);
+
     onUpdate(prev => {
       const minOrder = prev.reduce(
         (m, p) => Math.min(m, typeof p.display_order === 'number' ? p.display_order : 0),
@@ -409,11 +432,11 @@ function EquipmentTable({ category, displayName, equipment, onUpdate, onImmediat
             EQUIPMENT - {displayName.toUpperCase()}
           </CardTitle>
           <div className="flex gap-2 w-full lg:w-auto">
-            <Button onClick={addDivider} size="sm" variant="outline" className="flex-1 lg:flex-none shrink-0">
+            <Button onClick={addDivider} disabled={addDisabled} aria-disabled={addDisabled} data-testid={`add-divider-${category}`} size="sm" variant="outline" className="flex-1 lg:flex-none shrink-0">
               <Minus className="w-4 h-4 mr-2" />
               Divider
             </Button>
-            <Button onClick={addEquipment} size="sm" className="flex-1 lg:flex-none shrink-0">
+            <Button onClick={addEquipment} disabled={addDisabled} aria-disabled={addDisabled} data-testid={`add-equipment-${category}`} size="sm" className="flex-1 lg:flex-none shrink-0">
               <Plus className="w-4 h-4 mr-2" />
               <span className="lg:hidden">Add</span>
               <span className="hidden lg:inline">Add {displayName}</span>

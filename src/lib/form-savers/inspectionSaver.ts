@@ -41,6 +41,7 @@ import {
 } from "@/lib/sync-reconciliation";
 import { getUserWithCache } from "@/lib/cached-auth";
 import { recordSaveWithoutIdentity } from "@/lib/offline-readiness";
+import { registerSelfWrite } from "@/lib/sync-events";
 
 // ---- Types ----------------------------------------------------------------
 
@@ -308,6 +309,15 @@ export async function pushInspectionToRemote(
   const { id, systems, ziplines, equipment, standards, summary } = payload;
   const { updatedInspection } = opts;
 
+  // SELF-WRITE SUPPRESSION (S6): mark this inspection as a recent self-write
+  // BEFORE the first server mutation so that any same-device Realtime
+  // postgres_changes event fired by our own UPDATE/UPSERT/INSERT calls is
+  // ignored by useFormRecordRealtime.onUpdate (which would otherwise call
+  // loadInspection() and overwrite local equipment adds/deletes still in
+  // React state, e.g. a row the user just added or removed during the save
+  // round-trip).
+  registerSelfWrite(id);
+
   const sanitized = sanitizeInspectionForRemote(
     updatedInspection as unknown as Record<string, unknown>,
   );
@@ -533,6 +543,10 @@ export async function pushInspectionToRemote(
 
   // DEFERRED: set synced_at ONLY after all child data committed.
   const syncTimestamp = new Date().toISOString();
+  // Re-mark self-write right before the final synced_at update — it is a
+  // separate server write and emits its own Realtime event ~hundreds of ms
+  // after the first registration, which could expire under load.
+  registerSelfWrite(id);
   const { data: verifyData, error: finalSyncError } = await supabase
     .from("inspections")
     .update({ synced_at: syncTimestamp })
