@@ -56,6 +56,13 @@ function EquipmentTable({ category, displayName, equipment, onUpdate, onImmediat
 
   const [itemToDelete, setItemToDelete] = useState<{ item: any; name: string } | null>(null);
   const [newItemId, setNewItemId] = useState<string | null>(null);
+  // P1: Add-row tap cooldown. Rapid taps on mobile (300ms double-tap +
+  // imperceptible debounce drift) can otherwise produce two or three temp
+  // rows from a single user-perceived click. Cleared on unmount.
+  const addCooldownRef = useRef<number>(0);
+  const [addDisabled, setAddDisabled] = useState(false);
+  const ADD_COOLDOWN_MS = 400;
+  useEffect(() => () => { addCooldownRef.current = 0; }, []);
 
   useEffect(() => {
     if (!newItemId) return;
