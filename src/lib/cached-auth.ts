@@ -8,6 +8,11 @@ import {
 import { isPlaceholderToken, looksLikeJwt } from "@/lib/synthetic-session-guard";
 import { safeSetItem } from "@/lib/safe-local-storage";
 import { readGuestSession } from "@/lib/guest-session";
+import {
+  getLastKnownAccount,
+  saveLastKnownAccount,
+} from "@/lib/last-known-account";
+import { requestPersistentStorageOnce } from "@/lib/offline-readiness";
 
 export interface CachedUser {
   id: string;
