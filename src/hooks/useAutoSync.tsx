@@ -818,6 +818,17 @@ export const useAutoSync = () => {
           if (cleanSuccess) {
             emitSyncComplete();
 
+            // Phase 2 — refresh photo prewarm after a clean sync so the
+            // diagnostics card reflects newly-uploaded photos. One-shot per
+            // session is enforced internally.
+            void (async () => {
+              try {
+                const { prewarmActiveReportPhotos } = await import("@/lib/photo-prewarm");
+                await prewarmActiveReportPhotos();
+              } catch {/* ignore */}
+            })();
+
+
             // Finding 7: Update localStorage backup ledger sync status
             // Mark all previously-unsynced snapshots as synced to keep backup ledger accurate
             try {
