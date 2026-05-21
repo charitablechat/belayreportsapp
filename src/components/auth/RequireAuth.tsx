@@ -101,11 +101,11 @@ export function RequireAuth({ children }: RequireAuthProps) {
           return;
         }
 
-        if (!navigator.onLine) {
-          if (hasCachedSessionForOffline() || getOfflineUserId()) {
-            setLegacyStatus("ok");
-            return;
-          }
+        // Phase 1: any local identity is accepted, regardless of
+        // navigator.onLine. Sync transmits are still gated downstream.
+        if (hasCachedSessionForOffline() || getOfflineUserId()) {
+          setLegacyStatus("ok");
+          return;
         }
 
         setLegacyStatus("redirect");
