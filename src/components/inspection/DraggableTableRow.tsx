@@ -54,7 +54,12 @@ export function DraggableTableRow({
       onTouchCancel={onTouchDragCancel}
       style={{
         opacity: isDragging ? 0.4 : 1,
-        pointerEvents: isTouchDragging ? 'none' : undefined,
+        // NOTE (P1): do NOT set pointer-events:none on the whole row, even
+        // during touch-drag. The grip handle uses touchAction:'none' to claim
+        // the drag, and elementFromPoint in handleTouchMove handles drop
+        // detection — blocking row pointer events here caused Type/Result
+        // dropdowns inside the row to become un-tappable on touch devices
+        // when a stale isTouchDragging flag persisted past an aborted drag.
         userSelect: 'none',
         WebkitTouchCallout: 'none',
       } as React.CSSProperties}
