@@ -1,4 +1,6 @@
 import { useEffect, useRef } from "react";
+import { getOfflineUserId } from "@/lib/cached-auth";
+import { recordSaveWithoutIdentity } from "@/lib/offline-readiness";
 
 interface UseEmergencySaveOptions {
   hasUnsavedChanges: boolean;
@@ -75,6 +77,17 @@ export function useEmergencySave({
       }
 
       // Fire-and-forget — page is being torn down
+      try {
+        if (!getOfflineUserId()) {
+          recordSaveWithoutIdentity({
+            op: "emergency-save",
+            formName,
+            online: typeof navigator !== "undefined" ? navigator.onLine : null,
+          });
+        }
+      } catch {
+        // never block emergency save
+      }
       performSaveRef.current?.(true);
 
       if (import.meta.env.DEV) {
