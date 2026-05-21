@@ -27,7 +27,7 @@ describe("shell-warmup", () => {
   it("does not re-warm when session flag already set (no force)", async () => {
     const fetcher = vi.fn(async () => new Response("", { status: 200 })) as unknown as typeof fetch;
     await warmShellRoutes({ force: true, fetcher });
-    fetcher.mockClear?.();
+    (fetcher as unknown as { mockClear: () => void }).mockClear();
     await warmShellRoutes({ fetcher });
     expect(fetcher).not.toHaveBeenCalled();
     expect(getShellWarmupResults()).toBeTruthy();
