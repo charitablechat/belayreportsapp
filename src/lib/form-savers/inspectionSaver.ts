@@ -41,6 +41,7 @@ import {
 } from "@/lib/sync-reconciliation";
 import { getUserWithCache } from "@/lib/cached-auth";
 import { recordSaveWithoutIdentity } from "@/lib/offline-readiness";
+import { registerSelfWrite } from "@/lib/sync-events";
 
 // ---- Types ----------------------------------------------------------------
 
