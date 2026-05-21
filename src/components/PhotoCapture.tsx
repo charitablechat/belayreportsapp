@@ -210,6 +210,14 @@ export default function PhotoCapture({
       // Truly anonymous capture (extremely rare). Will be routed to dead-letter
       // by the sync guard if no user surfaces.
       storagePath = `pending/${inspectionId}/${photoId}.${fileExt}`;
+      try {
+        const { recordSaveWithoutIdentity } = await import('@/lib/offline-readiness');
+        recordSaveWithoutIdentity({
+          op: 'photo-capture',
+          reportId: inspectionId,
+          online: typeof navigator !== 'undefined' ? navigator.onLine : null,
+        });
+      } catch { /* telemetry best-effort */ }
     }
 
     // ===== CIRCUIT BREAKER PRE-CHECK =====
