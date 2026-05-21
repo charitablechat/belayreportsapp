@@ -17,22 +17,22 @@ describe("photo-deletion receipts (no regression)", () => {
 
   it("save/get round-trip preserves a receipt", () => {
     savePhotoReceipt({
-      photoId: "p1",
+      id: "p1",
       inspectionId: "i1",
       section: "systems",
       uploaded: false,
-      createdAt: Date.now(),
-    } as any);
+      timestamp: Date.now(),
+    });
     const list = getPhotoReceipts("i1", "systems");
-    expect(list.some((r) => r.photoId === "p1")).toBe(true);
+    expect(list.some((r) => r.id === "p1")).toBe(true);
   });
 
   it("removePhotoReceipt clears the entry without affecting siblings", () => {
-    savePhotoReceipt({ photoId: "a", inspectionId: "i1", section: "s", uploaded: false, createdAt: Date.now() } as any);
-    savePhotoReceipt({ photoId: "b", inspectionId: "i1", section: "s", uploaded: false, createdAt: Date.now() } as any);
+    savePhotoReceipt({ id: "a", inspectionId: "i1", section: "s", uploaded: false, timestamp: Date.now() });
+    savePhotoReceipt({ id: "b", inspectionId: "i1", section: "s", uploaded: false, timestamp: Date.now() });
     removePhotoReceipt("a");
     const list = getPhotoReceipts("i1", "s");
-    expect(list.find((r) => r.photoId === "a")).toBeUndefined();
-    expect(list.find((r) => r.photoId === "b")).toBeTruthy();
+    expect(list.find((r) => r.id === "a")).toBeUndefined();
+    expect(list.find((r) => r.id === "b")).toBeTruthy();
   });
 });
