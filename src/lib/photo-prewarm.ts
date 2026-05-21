@@ -77,20 +77,18 @@ export async function prewarmActiveReportPhotos(
 
   try {
     // Pull recent active-report photo URLs. We deliberately keep this read
-    // narrow: only photo_url + inspection_id + updated_at; no payload data.
-    let query = supabase
+    // narrow: only photo_url + inspection_id + created_at; no payload data.
+    const { data, error } = await supabase
       .from("inspection_photos")
-      .select("id, photo_url, inspection_id, updated_at")
+      .select("id, photo_url, inspection_id, created_at")
       .is("deleted_at", null)
-      .gte("updated_at", since)
-      .order("updated_at", { ascending: false })
+      .gte("created_at", since)
+      .order("created_at", { ascending: false })
       .limit(maxPhotos);
-
-    const { data, error } = await query;
     if (error) throw error;
 
     const rows: Array<{ photo_url?: string | null; inspection_id?: string }> =
-      data || [];
+      ((data || []) as unknown) as Array<{ photo_url?: string | null; inspection_id?: string }>;
 
     // Also fetch a small batch for the currently-open report if it falls
     // outside the 30-day window.
