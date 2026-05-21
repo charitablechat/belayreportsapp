@@ -1680,9 +1680,10 @@ export default function InspectionForm() {
               braking_result: normalizeResultValue(item.braking_result),
               ead_result: normalizeResultValue(item.ead_result)
             }));
+            const activeOfflineZiplines = filterDeletedZiplines(id!, normalizedZiplines as DbRow[], 'local');
             setZiplines(prev => mergeChildArray(
-              prev as Array<DbRow & { id: string }>,
-              normalizedZiplines as Array<DbRow & { id: string }>,
+              filterDeletedZiplines(id!, prev as DbRow[], 'merge') as Array<DbRow & { id: string }>,
+              activeOfflineZiplines as Array<DbRow & { id: string }>,
               { table: 'ziplines', deletedIds: deletedZiplineIdsRef.current, onDeletedIdConfirmed: dropDeletedZiplineId, coalesceTempByBusinessKey: ['inspection_id', 'zipline_name'] },
             ) as DbRow[]);
           }
