@@ -1741,6 +1741,7 @@ export const useAutoSync = () => {
 
     return () => {
       clearTimeout(initialSyncTimer);
+      unregisterRunners();
       window.removeEventListener('online', handleOnline);
       window.removeEventListener('sync-photos-updated', handleSyncPhotosUpdated);
       window.removeEventListener('sync-records-updated', handleSyncRecordsUpdated);
