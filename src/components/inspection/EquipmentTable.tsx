@@ -315,6 +315,16 @@ function EquipmentTable({ category, displayName, equipment, onUpdate, onImmediat
   }), [draggingId, dragOverId, dropPosition, isTouchMode, handleDragStart, handleDragOver, handleDragLeave, handleDrop, handleDragEnd, handleTouchStart, handleTouchMove, handleTouchEnd, handleTouchCancel]);
 
   const addEquipment = useCallback(() => {
+    // P1: Tap-cooldown guard — drops repeat invocations within the cooldown
+    // window so a double-tap, React 18 dev double-fire, or React.memo+
+    // immediate-save re-render burst cannot insert two or three rows for a
+    // single user click.
+    const now = Date.now();
+    if (now - addCooldownRef.current < ADD_COOLDOWN_MS) return;
+    addCooldownRef.current = now;
+    setAddDisabled(true);
+    window.setTimeout(() => setAddDisabled(false), ADD_COOLDOWN_MS);
+
     const id = `temp-${crypto.randomUUID()}`;
     setNewItemId(id);
     onUpdate(prev => {
@@ -343,6 +353,12 @@ function EquipmentTable({ category, displayName, equipment, onUpdate, onImmediat
   }, [category, onUpdate]);
 
   const addDivider = useCallback(() => {
+    const now = Date.now();
+    if (now - addCooldownRef.current < ADD_COOLDOWN_MS) return;
+    addCooldownRef.current = now;
+    setAddDisabled(true);
+    window.setTimeout(() => setAddDisabled(false), ADD_COOLDOWN_MS);
+
     onUpdate(prev => {
       const minOrder = prev.reduce(
         (m, p) => Math.min(m, typeof p.display_order === 'number' ? p.display_order : 0),
