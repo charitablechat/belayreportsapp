@@ -27,6 +27,7 @@ import {
   getOfflineUserId,
 } from '@/lib/cached-auth';
 import { isPlaceholderToken } from '@/lib/synthetic-session-guard';
+import { getLastKnownAccount } from '@/lib/last-known-account';
 
 let initialized = false;
 
@@ -60,12 +61,23 @@ function deriveCurrentState(): {
     };
   }
 
-  // 3) Last-resort offline id.
-  if (!navigator.onLine && (hasCachedSessionForOffline() || getOfflineUserId())) {
+  // 3) Last-resort offline id — regardless of navigator.onLine. Captive
+  //    portal / Supabase outage must not log the user out of local access.
+  if (hasCachedSessionForOffline() || getOfflineUserId()) {
     return {
       state: 'OFFLINE_AUTHENTICATED',
       userId: getOfflineUserId(),
       email: null,
+    };
+  }
+
+  // 4) Last-known-account pointer (survives sign-out, local-only).
+  const lka = getLastKnownAccount();
+  if (lka) {
+    return {
+      state: 'OFFLINE_AUTHENTICATED',
+      userId: lka.userId,
+      email: lka.email,
     };
   }
 

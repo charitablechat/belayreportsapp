@@ -8,6 +8,11 @@ import {
 import { isPlaceholderToken, looksLikeJwt } from "@/lib/synthetic-session-guard";
 import { safeSetItem } from "@/lib/safe-local-storage";
 import { readGuestSession } from "@/lib/guest-session";
+import {
+  getLastKnownAccount,
+  saveLastKnownAccount,
+} from "@/lib/last-known-account";
+import { requestPersistentStorageOnce } from "@/lib/offline-readiness";
 
 export interface CachedUser {
   id: string;
@@ -270,6 +275,21 @@ function initAuthListener() {
       if (event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED') {
         if (session?.user?.email && session?.refresh_token) {
           saveUserMapping(session.user.email, session.user.id, session.refresh_token).catch(() => {});
+        }
+        // Phase 1 — persist a non-secret last-known-account pointer so the
+        // device can reopen offline even after explicit sign-out clears
+        // tokens. Survives signOut() by design.
+        if (session?.user?.id) {
+          saveLastKnownAccount({
+            userId: session.user.id,
+            email: session.user.email ?? null,
+            displayName:
+              (session.user.user_metadata as { full_name?: string } | undefined)
+                ?.full_name ?? null,
+          });
+          // Best-effort: ask the browser to mark our storage as persistent.
+          // Non-blocking; result is recorded in readiness diagnostics.
+          void requestPersistentStorageOnce();
         }
       }
       // C5/C6: Only forward REAL JWTs to the SW. Never the offline placeholder.
@@ -634,15 +654,26 @@ export function getCachedUserFromStorage(): CachedUser | null {
     }
 
     // Offline fallback: dedicated synthetic session slot.
+    // Phase 1: also accept these in lying-online states (captive portal,
+    // Supabase outage) — RequireAuth/Index decide whether to call us in
+    // that situation; we just return the local identity if it exists.
+    const synthetic = readSyntheticSession();
+    if (synthetic?.user?.id) {
+      return synthetic.user as CachedUser;
+    }
+    // Last-resort fallbacks (offline-only execution paths):
     if (!navigator.onLine) {
-      const synthetic = readSyntheticSession();
-      if (synthetic?.user?.id) {
-        return synthetic.user as CachedUser;
-      }
-      // Last-resort fallback: a guest session is offline-only.
       const guest = readGuestSession();
       if (guest) {
         return { id: guest.id, email: undefined, isGuest: true } as CachedUser;
+      }
+      const lka = getLastKnownAccount();
+      if (lka) {
+        return {
+          id: lka.userId,
+          email: lka.email ?? undefined,
+          isOfflineRestored: true,
+        } as CachedUser;
       }
     }
 
@@ -682,7 +713,10 @@ export function getOfflineUserId(): string | null {
     const synthetic = readSyntheticSession();
     if (synthetic?.user?.id) return synthetic.user.id;
     const guest = readGuestSession();
-    return guest?.id || null;
+    if (guest?.id) return guest.id;
+    // Phase 1 — last-known-account fallback. Local-only; never transmitted.
+    const lka = getLastKnownAccount();
+    return lka?.userId ?? null;
   } catch {
     return null;
   }
@@ -739,7 +773,11 @@ export function hasCachedSessionForOffline(): boolean {
       }
     }
     if (readSyntheticSession()) return true;
-    return !!readGuestSession();
+    if (readGuestSession()) return true;
+    // Phase 1 — last-known-account is a valid offline identity for local
+    // access only (no transmission). Lets returning users reach /dashboard
+    // after sign-out + offline relaunch.
+    return !!getLastKnownAccount();
   } catch {
     return false;
   }

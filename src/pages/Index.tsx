@@ -8,6 +8,8 @@ import {
   createOfflineSession,
 } from "@/lib/offline-auth";
 import { readGuestSession, createGuestSession } from "@/lib/guest-session";
+import { getLastKnownAccount } from "@/lib/last-known-account";
+import { recordBootAuthOutcome } from "@/lib/offline-readiness";
 import { openDB } from "idb";
 
 const SUPABASE_SESSION_KEY = `sb-${import.meta.env.VITE_SUPABASE_PROJECT_ID}-auth-token`;
@@ -97,12 +99,30 @@ const Index = () => {
 
           // 4. Guest session
           if (readGuestSession()) {
+            recordBootAuthOutcome("guest-session");
             setSession({ guest: true });
             navigate('/dashboard', { replace: true });
             return;
           }
 
+          // 5. Last-known-account — local-only resume after sign-out.
+          //    Mints an offline session for the user we last saw sign in
+          //    on this device. No tokens, no transmission.
+          const lka = getLastKnownAccount();
+          if (lka) {
+            try {
+              await createOfflineSession(lka.email ?? '', '');
+              recordBootAuthOutcome("last-known-account-resume", {
+                userId: lka.userId,
+              });
+              setSession({ offline: true });
+              navigate('/dashboard', { replace: true });
+              return;
+            } catch {/* fall through to Auth screen */}
+          }
+
           // No way in offline — render the Auth screen so the user can pick.
+          recordBootAuthOutcome("guest-offered");
           setLoading(false);
           return;
         }
@@ -156,9 +176,24 @@ const Index = () => {
             } catch {/* show sign-in form */}
           }
           if (readGuestSession()) {
+            recordBootAuthOutcome("guest-session");
             setSession({ guest: true });
             navigate('/dashboard', { replace: true });
             return;
+          }
+          // Captive-portal final rung: last-known-account local resume.
+          const lka = getLastKnownAccount();
+          if (lka) {
+            try {
+              await createOfflineSession(lka.email ?? '', '');
+              recordBootAuthOutcome("captive-portal-offline-mode", {
+                via: "last-known-account",
+                userId: lka.userId,
+              });
+              setSession({ offline: true });
+              navigate('/dashboard', { replace: true });
+              return;
+            } catch {/* show sign-in form */}
           }
         }
       } catch (error) {

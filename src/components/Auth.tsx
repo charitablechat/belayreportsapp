@@ -14,6 +14,7 @@ import authVideo from "@/assets/auth-background.mp4";
 import { hasCachedSessionForOffline } from "@/lib/cached-auth";
 import { createOfflineSession } from "@/lib/offline-auth";
 import { createGuestSession } from "@/lib/guest-session";
+import { getLastKnownAccount } from "@/lib/last-known-account";
 import { isCredentialsDamaged, clearCredentialsDamagedFlag } from "@/lib/auth-resilience";
 import { triggerHaptic } from "@/lib/haptics";
 import { toast } from "sonner";
@@ -61,9 +62,22 @@ export default function Auth() {
   const [isForgotPassword, setIsForgotPassword] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [credentialsDamaged] = useState<boolean>(() => isCredentialsDamaged());
+  const [lastKnown] = useState(() => getLastKnownAccount());
 
   const handleGoToDashboard = () => {
     navigate("/dashboard");
+  };
+
+  const handleResumeLastKnown = async () => {
+    if (!lastKnown) return;
+    triggerHaptic('medium');
+    try {
+      await createOfflineSession(lastKnown.email ?? '', '');
+      toast.success(`Continuing offline as ${lastKnown.email ?? 'your account'}.`);
+      navigate('/dashboard', { replace: true });
+    } catch {
+      toast.error("Could not resume offline. Try guest mode or reconnect to sign in.");
+    }
   };
 
   const handleGuestMode = () => {
@@ -237,6 +251,16 @@ export default function Auth() {
             >
               Continue offline as Guest <ArrowRight className="ml-2 h-4 w-4" />
             </GradientButton>
+          )}
+          {lastKnown && (
+            <Button
+              type="button"
+              variant="outline"
+              onClick={handleResumeLastKnown}
+              className="w-full mb-3"
+            >
+              Continue offline as {lastKnown.email ?? 'last account'}
+            </Button>
           )}
           {!isOnline && hasCachedSessionForOffline() && (
             <Button

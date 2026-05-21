@@ -64,17 +64,20 @@ export function RequireAuth({ children }: RequireAuthProps) {
 
     if (fsmSnapshot.state === "TRANSITIONING") return;
 
-    // UNAUTHENTICATED — but double-check offline fallbacks before redirecting,
-    // because the FSM seed runs before React mounts and a slow first read of
-    // IndexedDB credentials might not have promoted us yet.
+    // UNAUTHENTICATED — but double-check offline fallbacks before redirecting.
+    // Phase 1: do NOT require `!navigator.onLine` here. In captive-portal /
+    // Supabase-outage states `navigator.onLine` lies, and any valid local
+    // identity (cached, synthetic, guest, or last-known-account pointer)
+    // should keep the user in the app for local access. Sync paths still
+    // refuse to transmit on synthetic / guest IDs via their own guards.
     if (
-      !navigator.onLine &&
-      (hasCachedSessionForOffline() || getOfflineUserId() || readGuestSession())
+      hasCachedSessionForOffline() ||
+      getOfflineUserId() ||
+      readGuestSession()
     ) {
-      // Promote the FSM so we don't keep redirecting.
       transition({
         to: "OFFLINE_AUTHENTICATED",
-        reason: "RequireAuth:offline-fallback",
+        reason: "RequireAuth:local-identity-fallback",
         userId: getOfflineUserId(),
       });
       return;
@@ -98,11 +101,11 @@ export function RequireAuth({ children }: RequireAuthProps) {
           return;
         }
 
-        if (!navigator.onLine) {
-          if (hasCachedSessionForOffline() || getOfflineUserId()) {
-            setLegacyStatus("ok");
-            return;
-          }
+        // Phase 1: any local identity is accepted, regardless of
+        // navigator.onLine. Sync transmits are still gated downstream.
+        if (hasCachedSessionForOffline() || getOfflineUserId()) {
+          setLegacyStatus("ok");
+          return;
         }
 
         setLegacyStatus("redirect");
