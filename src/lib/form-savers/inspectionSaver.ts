@@ -543,6 +543,10 @@ export async function pushInspectionToRemote(
 
   // DEFERRED: set synced_at ONLY after all child data committed.
   const syncTimestamp = new Date().toISOString();
+  // Re-mark self-write right before the final synced_at update — it is a
+  // separate server write and emits its own Realtime event ~hundreds of ms
+  // after the first registration, which could expire under load.
+  registerSelfWrite(id);
   const { data: verifyData, error: finalSyncError } = await supabase
     .from("inspections")
     .update({ synced_at: syncTimestamp })
