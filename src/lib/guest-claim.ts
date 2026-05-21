@@ -96,7 +96,7 @@ export async function detectGuestDataForClaim(): Promise<GuestClaimCounts> {
     total: 0,
   };
   try {
-    const db = await getDB();
+    const db = (await getDB()) as unknown as { objectStoreNames: DOMStringList; getAll: (name: string) => Promise<unknown[]>; put: (name: string, value: unknown) => Promise<unknown>; } | null;
     if (!db) return counts;
     for (const store of PARENT_STORES) {
       try {
