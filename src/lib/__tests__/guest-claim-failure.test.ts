@@ -12,8 +12,6 @@ const store: Record<string, Record<string, any>> = {
 };
 const objectStoreNames = { contains: (n: string) => n in store };
 
-const clearGuestSessionMock = vi.fn();
-
 vi.mock("@/lib/offline-storage", () => ({
   getDB: async () => ({
     objectStoreNames,
@@ -28,10 +26,12 @@ vi.mock("@/lib/offline-storage", () => ({
 vi.mock("../guest-session", () => ({
   isGuestUserId: (id: string | null | undefined) =>
     typeof id === "string" && id.startsWith("guest-"),
-  clearGuestSession: clearGuestSessionMock,
+  clearGuestSession: vi.fn(),
 }));
 
 import { claimGuestData } from "../guest-claim";
+import * as guestSession from "../guest-session";
+const clearGuestSessionMock = guestSession.clearGuestSession as ReturnType<typeof vi.fn>;
 
 describe("guest-claim failure handling", () => {
   beforeEach(() => {
