@@ -283,7 +283,8 @@ export default function Profile() {
         </div>
       </header>
 
-      <main className="container mx-auto px-4 py-8 max-w-2xl">
+      <main className="container mx-auto px-4 py-8 max-w-2xl space-y-6">
+        <OfflineReadinessCard />
         <Card>
           <CardHeader>
             <CardTitle>Personal Information</CardTitle>
