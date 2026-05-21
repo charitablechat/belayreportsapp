@@ -62,9 +62,22 @@ export default function Auth() {
   const [isForgotPassword, setIsForgotPassword] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [credentialsDamaged] = useState<boolean>(() => isCredentialsDamaged());
+  const [lastKnown] = useState(() => getLastKnownAccount());
 
   const handleGoToDashboard = () => {
     navigate("/dashboard");
+  };
+
+  const handleResumeLastKnown = async () => {
+    if (!lastKnown) return;
+    triggerHaptic('medium');
+    try {
+      await createOfflineSession(lastKnown.email ?? '', '');
+      toast.success(`Continuing offline as ${lastKnown.email ?? 'your account'}.`);
+      navigate('/dashboard', { replace: true });
+    } catch {
+      toast.error("Could not resume offline. Try guest mode or reconnect to sign in.");
+    }
   };
 
   const handleGuestMode = () => {
