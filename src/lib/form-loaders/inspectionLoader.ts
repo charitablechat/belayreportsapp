@@ -175,6 +175,13 @@ export async function fetchInspectionChildrenFromServer(id: string) {
 
   return {
     systems: (systemsData as DbRow[]) || [],
+  return {
+    systems: filterChildRows(
+      "inspection_operating_system",
+      id,
+      (systemsData as DbRow[]) || [],
+      osBusinessKey,
+    ),
     ziplines: (ziplinesData as DbRow[]) || [],
     equipment: (equipmentData as DbRow[]) || [],
     standards: (standardsData as DbRow[]) || [],
