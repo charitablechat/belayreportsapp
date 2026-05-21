@@ -312,6 +312,33 @@ export default function InspectionForm() {
   const dropDeletedZiplineId = useCallback((rid: string) => { deletedZiplineIdsRef.current.delete(rid); }, []);
   const dropDeletedEquipmentId = useCallback((rid: string) => { deletedEquipmentIdsRef.current.delete(rid); }, []);
 
+  // Forward ref to the immediate-save function (defined below). Lets the
+  // explicit zipline-delete handler trigger a save without a circular dep.
+  const stableTriggerImmediateSaveRef = useRef<(() => void) | null>(null);
+
+  /**
+   * Explicit user-confirmed deletion of a Zipline row.
+   * - Adds a local tombstone so any racing server snapshot can't rehydrate it
+   *   on refresh before the next sync completes.
+   * - Tracks the id in deletedZiplineIdsRef so mergeChildArray rejects it.
+   * - Removes it from local state via the tracked setter and triggers an
+   *   immediate save -- the reconciler runs with expectedNonEmpty=true and
+   *   the tripwire bypass (`bulk: true`) is scoped to that form-save path,
+   *   so the row is deleted from the server even when it's the last one.
+   */
+  const handleDeleteZipline = useCallback((row: { id?: string; zipline_name?: string | null } | null | undefined) => {
+    if (!row?.id || !id) return;
+    const rowId = row.id;
+    const name = (row.zipline_name ?? null) as string | null;
+    if (!rowId.startsWith('temp-')) {
+      addZiplineDeleteTombstone(id, rowId, name);
+    }
+    deletedZiplineIdsRef.current.add(rowId);
+    setZiplinesTracked(prev => prev.filter(z => z.id !== rowId));
+    traceZipline('zipline.delete.userConfirmed', { inspectionId: id, rowId, name });
+    setTimeout(() => { stableTriggerImmediateSaveRef.current?.(); }, 0);
+  }, [id, setZiplinesTracked]);
+
   // Equipment type options per category — pass existing values so custom entries persist in dropdown
   const getExistingTypes = (cat: string) =>
     equipment
