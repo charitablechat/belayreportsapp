@@ -99,12 +99,30 @@ const Index = () => {
 
           // 4. Guest session
           if (readGuestSession()) {
+            recordBootAuthOutcome("guest-session");
             setSession({ guest: true });
             navigate('/dashboard', { replace: true });
             return;
           }
 
+          // 5. Last-known-account — local-only resume after sign-out.
+          //    Mints an offline session for the user we last saw sign in
+          //    on this device. No tokens, no transmission.
+          const lka = getLastKnownAccount();
+          if (lka) {
+            try {
+              await createOfflineSession(lka.email ?? '', '');
+              recordBootAuthOutcome("last-known-account-resume", {
+                userId: lka.userId,
+              });
+              setSession({ offline: true });
+              navigate('/dashboard', { replace: true });
+              return;
+            } catch {/* fall through to Auth screen */}
+          }
+
           // No way in offline — render the Auth screen so the user can pick.
+          recordBootAuthOutcome("guest-offered");
           setLoading(false);
           return;
         }
