@@ -438,7 +438,7 @@ export default function TrainingForm() {
       
       const { data: profile } = await supabase
         .from('profiles')
-        .select('avatar_url')
+        .select('avatar_url, first_name, last_name')
         .eq('id', currentUser.id)
         .maybeSingle();
       
