@@ -1984,7 +1984,7 @@ export default function TrainingForm() {
                 <div className="space-y-6">
                   <div className="border-2 border-foreground/20 bg-background p-6 rounded-md">
                     <h3 className="text-lg font-semibold font-mono tracking-tight mb-4">Training Photos</h3>
-                    {!effectiveReadOnly && (
+                    {canManageTrainingPhotos && (
                       <div className="mb-4">
                         <PhotoCapture
                           inspectionId={id!}
@@ -2000,7 +2000,7 @@ export default function TrainingForm() {
                       key={`training-${photoRefreshKey}`}
                       inspectionId={id!}
                       section="training"
-                      readOnly={effectiveReadOnly}
+                      readOnly={!canManageTrainingPhotos}
                       tableName="training_photos"
                       foreignKeyColumn="training_id"
                       storageBucket="training-photos"
