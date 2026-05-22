@@ -6,7 +6,7 @@ import { cachePhotoFromRemote, batchValidateCachedPhotos } from "@/lib/photo-cac
 import { getPhotoReceipts, removePhotoReceipts } from "@/lib/photo-receipts";
 import { useNetworkStatus } from "@/hooks/useNetworkStatus";
 import { isHeicPath, isHeicBlob, convertHeicBlobToJpeg } from "@/lib/heic-converter";
-import { processBackgroundCacheItem, migrateHeicToJpeg, type MigrateHeicOutcome } from "./photo-gallery-helpers";
+import { processBackgroundCacheItem, migrateHeicToJpeg, dedupeOfflineAgainstDb, type MigrateHeicOutcome } from "./photo-gallery-helpers";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
