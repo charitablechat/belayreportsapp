@@ -747,6 +747,11 @@ export default function TrainingForm() {
               const dirtyNames = Object.keys(dirtyFields);
               setSummary(prev => {
                 if (!prev) return summaryResult as DbRow;
+                // Empty placeholder must never beat a populated server summary.
+                if (isEmptyPlaceholderSummary(prev)) {
+                  summaryRef.current = summaryResult as DbRow;
+                  return summaryResult as DbRow;
+                }
                 let next = mergeRecordFields(
                   prev as DbRow & { field_timestamps?: Record<string, string> | null },
                   summaryResult as DbRow & { field_timestamps?: Record<string, string> | null },
