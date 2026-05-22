@@ -192,3 +192,60 @@ export async function processBackgroundCacheItem(
   await cachePhotoFromRemote(photoId, blob, photoStoragePath, inspectionId, section);
   return { kind: 'cached', converted: false };
 }
+
+/**
+ * Minimal shape needed by {@link dedupeOfflineAgainstDb}. The real
+ * PhotoGallery `Photo & { rawStoragePath?: string }` type is wider; this
+ * lets the helper be unit-tested without dragging the whole UI surface in.
+ */
+export interface OfflineDedupRow {
+  id: string;
+  rawStoragePath?: string;
+  caption?: string | null;
+}
+
+export interface OfflineDedupResult<T extends OfflineDedupRow> {
+  kept: T[];
+  dropped: Array<{ id: string; rawStoragePath: string; caption: string | null; reason: 'db-dup' | 'tombstoned' }>;
+}
+
+/**
+ * Decide which offline rows survive the merge with the canonical DB
+ * result set. Extracted from PhotoGallery.loadPhotos so the contract can
+ * be unit-tested independently of React / IndexedDB / Supabase mocks:
+ *
+ *  - Offline row whose `rawStoragePath` matches a DB row's `photo_url`
+ *    is dropped (the DB row is canonical and will render via the
+ *    Supabase branch).
+ *  - Offline row with an empty / missing `rawStoragePath` is always kept
+ *    (pre-sync row that has not yet acquired a server path).
+ *  - Offline row whose path is locally tombstoned is dropped regardless
+ *    of DB state, so a stale IDB row can't resurrect a just-deleted
+ *    photo.
+ *
+ * The Training-photos duplicate fix relies on the DB being deduplicated
+ * by `idx_training_photos_no_duplicates`; this helper guarantees the UI
+ * layer does not re-introduce a duplicate by double-rendering an offline
+ * row alongside its synced DB row.
+ */
+export function dedupeOfflineAgainstDb<T extends OfflineDedupRow>(
+  offlineRows: T[],
+  dbStoragePaths: ReadonlySet<string>,
+  isTombstoned: (rawPath: string) => boolean,
+): OfflineDedupResult<T> {
+  const kept: T[] = [];
+  const dropped: OfflineDedupResult<T>['dropped'] = [];
+  for (const row of offlineRows) {
+    const rawPath = row.rawStoragePath || '';
+    if (rawPath && isTombstoned(rawPath)) {
+      dropped.push({ id: row.id, rawStoragePath: rawPath, caption: row.caption ?? null, reason: 'tombstoned' });
+      continue;
+    }
+    if (rawPath !== '' && dbStoragePaths.has(rawPath)) {
+      dropped.push({ id: row.id, rawStoragePath: rawPath, caption: row.caption ?? null, reason: 'db-dup' });
+      continue;
+    }
+    kept.push(row);
+  }
+  return { kept, dropped };
+}

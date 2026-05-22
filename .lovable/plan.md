@@ -1,57 +1,71 @@
-# Narrow Autofill Fix — Training Report Submission Fields
+# Narrow Fix — Duplicate Training Photo Uploads
 
-## Scope
-Only the **Training Summary** tab fields:
-- `person_submitting` (Person Submitting Report)
-- `submission_date` (Submission Date)
+## Root cause (verified, not assumed)
 
-No changes to: report-created dates, autosave architecture, generated-report cache, auth/RLS, Inspection / Daily-Assessment forms, service worker, photo/Zipline logic, or any other section.
+The `public.training_photos` table is the only photo table missing the unique-partial-index that `inspection_photos` and `daily_assessment_photos` already have. Live DB verification:
 
-## Root cause of current behavior
-In `src/pages/TrainingForm.tsx` (lines ~479–504) the autofill effect:
-1. Uses **`inspectorProfile`** (the report creator/trainer) instead of the **currently logged-in user**. When an admin or a different user opens a blank report, the field is filled with the creator's name, not the submitter's.
-2. Has no email-prefix fallback when the profile has no first/last name.
-3. Sets `isInternalUpdateRef.current = true` before `setSummary`, which **suppresses the dirty flag** and the autosave debounce. Result: the auto-filled values exist only in local React state and are not persisted to IDB / DB until the user manually edits some other field.
+```text
+inspection_photos        → idx_inspection_photos_no_duplicates
+                           UNIQUE (inspection_id, photo_url, COALESCE(photo_section,'__null__'))
+                           WHERE deleted_at IS NULL
+daily_assessment_photos  → idx_daily_assessment_photos_no_duplicates  (same shape)
+training_photos          → NONE  ← the gap
+```
 
-`submission_date` already uses `format(new Date(), 'yyyy-MM-dd')` (local date) — that part is correct and unchanged.
+Both client paths that can insert a `training_photos` row pre-check for an existing row by `photo_url + training_id` and only insert if none is found:
+
+- `PhotoCapture.uploadPhotoInBackground` (fast path, runs as soon as the file is captured online)
+- `sync-manager` photo loop (background drain — also runs on reconnect / periodic / focus)
+
+When the two paths race (e.g. the photo is captured online but the sync loop also wakes during the same tick, or a retry fires while the foreground insert is still in flight), both `maybeSingle()` SELECTs return empty, both INSERTs succeed, and **two `training_photos` rows are persisted with the same `photo_url`**. `PhotoGallery.loadPhotos` faithfully renders both rows — they fetch the same signed URL, so visually it looks like the same thumbnail twice. The current dedup in `PhotoGallery` (line 542–555) dedupes offline-vs-DB by `photo_url`, but does **not** dedupe DB rows against each other, because the DB layer is supposed to guarantee that.
+
+This is the same pattern the existing memory `Photo Deduplication — unique index on photo_url + photo_section` describes; training was simply missed when that fix shipped for inspection / daily-assessment.
+
+## Layer attribution
+- **Not** UI rendering, blob caching, signed-URL caching, storage-path generation (each `photoId` is `{inspectionId}-{Date.now()}-{rand}` — collision-resistant), `OptimizedImage` cache key, or HEIC migrate logic.
+- **Yes** DB row insertion: the race window between the two insert paths allows two rows for the same logical photo.
+
+## Pre-migration safety
+Live query proves the index can be created without conflict:
+
+```sql
+SELECT COUNT(*) FROM training_photos WHERE deleted_at IS NULL;            -- 40
+SELECT training_id, photo_url, photo_section, COUNT(*)
+  FROM training_photos WHERE deleted_at IS NULL
+  GROUP BY 1,2,3 HAVING COUNT(*) > 1;                                     -- 0 rows
+```
+
+Zero existing duplicates → `CREATE UNIQUE INDEX` will succeed in one shot, no pre-dedup pass needed.
 
 ## Changes
 
-### 1. `src/pages/TrainingForm.tsx`
-Replace the autofill effect at lines 479–504:
+### 1. DB migration (single statement)
+`supabase/migrations/<timestamp>_training_photos_unique.sql`:
 
-- Depend on **`currentUserProfile`** (current logged-in user) instead of `inspectorProfile`. Extend the existing `currentUserProfile` fetch (lines 435–449) to also `select` `first_name, last_name` (currently only `avatar_url`).
-- Compute `fullName` from `currentUserProfile.first_name + last_name`. If empty, fall back to `currentUser.email?.split('@')[0]`. If still empty, skip.
-- Only write each field when the existing value is blank/null (preserves any manual entry, including values typed by an earlier user or restored from server).
-- After computing `updates`, instead of using `isInternalUpdateRef` (which would block autosave), mark the change as a real user-style update so the existing debounced autosave path picks it up and persists to IDB + remote. The simplest approach: call the same `setSummary` setter without `isInternalUpdateRef`, and then schedule `triggerImmediateSave()` via `setTimeout(_, 0)` so the values are written through. Guard with `summaryAutoPopulatedRef` so it only runs once per mount.
-- Skip entirely when `effectiveReadOnly` is true (admin viewing a locked report should not mutate it).
-
-### 2. Tests — `src/lib/__tests__/training-summary-autofill.test.ts` (new)
-Extract the pure decision into a small helper `src/lib/training-summary-autofill.ts`:
-
-```ts
-export function computeSummaryAutofill(opts: {
-  summary: { person_submitting?: string | null; submission_date?: string | null } | null;
-  currentUser: { email?: string | null } | null;
-  currentUserProfile: { first_name?: string | null; last_name?: string | null } | null;
-  today: string; // yyyy-MM-dd in local tz, injected for testability
-}): { person_submitting?: string; submission_date?: string }
+```sql
+CREATE UNIQUE INDEX IF NOT EXISTS idx_training_photos_no_duplicates
+  ON public.training_photos (training_id, photo_url, COALESCE(photo_section, '__null__'))
+  WHERE deleted_at IS NULL;
 ```
 
-Tests cover:
-1. Blank fields → fills both with current user name and today.
-2. Existing `person_submitting` → not overwritten; only date filled if blank.
-3. Existing `submission_date` → not overwritten; only name filled if blank.
-4. Both already set → returns empty updates.
-5. Profile has no name → falls back to email prefix.
-6. No profile + no email → no name written, date still filled.
-7. `today` parameter is used verbatim (not derived from a report-created date).
+Mirrors the existing inspection / daily-assessment indexes exactly. With the index in place, the losing INSERT in a race returns Postgres error code `23505`, which both client paths already treat as success-equivalent:
+- `PhotoCapture.uploadPhotoInBackground` line 84: `if (... && !dbError.code?.includes('23505')) throw` → swallows duplicate.
+- `sync-manager` line 693: `classifyPhotoError` returns `success-equivalent` for unique-violation → proceeds to `markPhotoAsUploaded`.
 
-The TrainingForm effect becomes a thin wrapper that calls this helper with `format(new Date(), 'yyyy-MM-dd')` and applies the result.
+No client code changes required.
 
-## Out of scope (explicitly untouched)
-Inspection form, Daily Assessment form, edge functions, RLS, service worker, Workbox, photo pipeline, Zipline tombstones, training cache invalidation trigger added in the previous fix, autosave debounce internals, validation schemas.
+### 2. Tests
+- `src/components/__tests__/photo-capture-duplicate-insert.test.ts` (new) — mock supabase so the first insert succeeds and the second returns a `23505` duplicate error; assert `uploadPhotoInBackground` does NOT throw and calls `markPhotoAsUploaded`.
+- `src/components/__tests__/photo-gallery-dedup-by-path.test.ts` (new) — extract the offline-vs-DB dedup decision from `PhotoGallery.loadPhotos` into `src/components/photo-gallery-helpers.ts` as a pure `dedupeOfflineAgainstDb(offlineRows, dbStoragePaths, isTombstoned)` and assert: (a) offline row whose `rawStoragePath` matches a DB row is dropped; (b) offline row with empty path is kept; (c) tombstoned path is dropped regardless. Confirms two distinct selected files → two distinct gallery entries.
+- A SQL-shape comment in the migration file documenting the pre-migration zero-duplicates check.
+
+### 3. Memory update
+Extend the existing `Photo Deduplication` memory note to record that `training_photos` now has the same unique partial index as `inspection_photos` and `daily_assessment_photos`.
+
+## Out of scope (untouched)
+Inspection photos, daily-assessment photos, storage bucket privacy, admin storage DELETE, signed-URL cache, HEIC migration, photo receipts, Zipline tombstones, service worker, Workbox, edge functions, training summary logic, generated-report cache trigger added in the previous fix, RLS.
 
 ## Validation
-- Run full vitest suite; expect prior 1041 + ~7 new tests, zero regressions.
-- Manual: (a) trainer opens new training → Observations tab → Summary tab shows their name and today's date pre-filled and persisting across reload; (b) admin opens another trainer's blank report → fields fill with admin's name + today; (c) report created yesterday, opened today with blank submission section → date is today, not yesterday; (d) user types a different name, reloads → typed name preserved; (e) locked/completed report → no mutation.
+- Run full vitest suite; expect ≥1049 + ~3 new tests, zero regressions.
+- Live DB re-query after migration confirms the new index exists.
+- Manual checklist: upload one photo → one tile; upload two different files sequentially → two distinct tiles; offline capture + reconnect → one tile; reload form → same count; Generate Report → matches gallery.

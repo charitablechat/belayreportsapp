@@ -12,7 +12,7 @@ import { compressImage } from "@/lib/image-compression";
 import { acquireCompressionSlot } from "@/lib/photo-upload-pool";
 import { isHeicFile, isHeicBlob } from "@/lib/heic-converter";
 import { extractFileExt } from "@/lib/file-ext";
-import { validateFile } from "@/components/photo-capture-validation";
+import { validateFile, isDuplicateInsertError } from "@/components/photo-capture-validation";
 
 import { toast } from "sonner";
 
@@ -81,7 +81,7 @@ export default function PhotoCapture({
           photo_url: storagePath,
           photo_section: section,
         });
-        if (dbError && !dbError.message?.includes('duplicate') && !dbError.code?.includes('23505')) {
+        if (dbError && !isDuplicateInsertError(dbError as any)) {
           throw dbError;
         }
       }
