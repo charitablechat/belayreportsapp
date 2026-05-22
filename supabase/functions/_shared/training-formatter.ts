@@ -1,4 +1,6 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.38.4";
+import { dedupeTrainingPhotos } from "./dedupe-training-photos.ts";
+export { dedupeTrainingPhotos } from "./dedupe-training-photos.ts";
 
 // Types
 export interface TrainingData {
