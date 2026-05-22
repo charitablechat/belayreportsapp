@@ -482,18 +482,29 @@ serve(async (req) => {
       }
 
       /* Reserve space for content - prevents footer overlap */
+      /* Riverbend-style compact print layout — tighter margins, denser flow */
       @page {
         size: letter portrait;
-        margin: 0.3in 0.3in 0.45in 0.3in;
+        margin: 0.25in 0.25in 0.35in 0.25in;
       }
 
-      /* Each .page = one physical sheet. Flex column pins footer to bottom. */
+      body {
+        font-size: 9.5pt !important;
+        line-height: 1.35 !important;
+      }
+
+      /*
+       * Each .page = one major section. We DROP min-height so short sections
+       * no longer force ~10 inches of whitespace before the footer (which is
+       * what produced the near-blank pages in Test_Training_1.6).
+       * page-break-after stays so each major blue section title still starts
+       * cleanly on a new sheet.
+       */
       .page {
-        display: flex !important;
-        flex-direction: column !important;
+        display: block !important;
         position: relative !important;
-        min-height: 10.5in !important;
         height: auto !important;
+        min-height: 0 !important;
         max-height: none !important;
         overflow: visible !important;
         padding: 0 !important;
@@ -509,38 +520,54 @@ serve(async (req) => {
         margin-bottom: 0 !important;
       }
 
-      /* 
+      /*
+       * Scoped major-section page break.
+       * Each of the 5 hard-coded <div class="page"> wrappers carries one
+       * major blue section title. Forcing a fresh sheet before every wrapper
+       * EXCEPT the first reproduces the "blue H2 on new page" behavior
+       * without a global h2 rule (which would create blank first pages and
+       * fragment minor headings/captions).
+       */
+      .page + .page {
+        break-before: page;
+        page-break-before: always;
+      }
+      .page:first-of-type {
+        break-before: auto;
+        page-break-before: avoid;
+      }
+
+      /*
        * LOGO VISIBILITY FIX - CRITICAL
-       * Ensure BOTH logos (Rope Works AND ACCT) are ALWAYS visible in PDF
-       * This was the fix for the missing ACCT logo in Training Report
+       * Ensure BOTH logos (Rope Works AND ACCT) are ALWAYS visible in PDF.
        */
       .page-header {
         display: flex !important;
         visibility: visible !important;
         height: auto !important;
-        max-height: 70px !important;
-        margin-bottom: 10px !important;
+        max-height: 55px !important;
+        margin-bottom: 6px !important;
+        padding-bottom: 8px !important;
         position: relative !important;
         page-break-inside: avoid !important;
         page-break-after: avoid !important;
       }
-      
+
       .page-header .header-left,
       .page-header .header-right {
         display: flex !important;
         visibility: visible !important;
         flex: 0 0 auto !important;
       }
-      
-      /* LOGO FIX: Force visibility - logos must render in PDF, capped at 35px */
+
       .header-logo-left,
       .header-logo-right {
         display: block !important;
         visibility: visible !important;
         opacity: 1 !important;
-        height: 35px !important;
-        max-height: 35px !important;
-        max-width: 180px !important;
+        height: 32px !important;
+        max-height: 32px !important;
+        max-width: 170px !important;
         width: auto !important;
         object-fit: contain !important;
         -webkit-print-color-adjust: exact !important;
@@ -549,39 +576,62 @@ serve(async (req) => {
 
       .page-content {
         display: block !important;
-        flex: 1 1 auto !important;
         height: auto !important;
         overflow: visible !important;
       }
 
       .page-footer {
         display: block !important;
-        flex: 0 0 auto !important;
-        margin-top: auto !important;
-        padding-top: 10px !important;
+        margin-top: 10px !important;
+        padding-top: 6px !important;
         page-break-inside: avoid !important;
       }
+      .footer-disclaimer { font-size: 7.5pt !important; line-height: 1.3 !important; }
 
-      /* Prevent awkward page breaks within items */
+      .page-title    { font-size: 18pt !important; margin-bottom: 4px !important; }
+      .page-subtitle { font-size: 10pt !important; margin-bottom: 8px !important; }
+
+      /* Compact major section heading — Riverbend density */
       .section {
-        page-break-inside: avoid;
+        margin-bottom: 8px !important;
+        page-break-inside: auto;
         page-break-after: auto;
       }
-
       .section-title {
+        padding: 4px 10px !important;
+        margin: 0 0 6px 0 !important;
+        font-size: 12.5pt !important;
+        line-height: 1.25 !important;
+        letter-spacing: 0.3px;
         page-break-after: avoid;
         page-break-inside: avoid;
       }
 
-      li {
+      /* Compact label/value rows */
+      .info-grid {
+        gap: 4px 16px !important;
+        margin: 6px 0 !important;
         page-break-inside: avoid;
       }
+      .info-label { font-size: 9pt !important; }
+      .info-value { font-size: 9pt !important; min-height: 13px !important; padding-bottom: 1px !important; line-height: 1.3 !important; }
 
-      /* CRITICAL: Preserve summary bullet markers in print/PDF */
+      /* Compact checklist / bullet rows */
+      ul { padding-left: 0 !important; }
+      li {
+        padding: 2px 0 !important;
+        margin-bottom: 2px !important;
+        line-height: 1.35 !important;
+        font-size: 9.5pt !important;
+        page-break-inside: avoid;
+      }
+      li .description { font-size: 8.5pt !important; margin-top: 2px !important; line-height: 1.3 !important; }
+
+      /* Bullet lists keep markers but tighten rhythm */
       .summary-list {
         list-style-type: disc !important;
         list-style-position: outside !important;
-        padding-left: 24px !important;
+        padding-left: 20px !important;
         display: block !important;
       }
       .summary-list li {
@@ -589,25 +639,74 @@ serve(async (req) => {
         list-style-type: disc !important;
         background: none !important;
         border-left: none !important;
-        padding: 4px 0 !important;
-        margin-bottom: 6px !important;
-        line-height: 1.5 !important;
+        padding: 1px 0 !important;
+        margin-bottom: 3px !important;
+        line-height: 1.4 !important;
       }
       .trainee-names-list {
         list-style-type: disc !important;
-        padding-left: 20px !important;
+        padding-left: 18px !important;
+        margin-top: 4px !important;
       }
       .trainee-names-list li {
         display: list-item !important;
         list-style-type: disc !important;
         background: none !important;
         border-left: none !important;
+        padding: 1px 0 !important;
+        margin-bottom: 1px !important;
       }
 
-      .info-grid,
-      .standards-box,
-      .disclaimer {
+      /* Boxed text */
+      .standards-box {
+        padding: 6px 10px !important;
+        line-height: 1.4 !important;
+        margin-bottom: 8px !important;
+        font-size: 9pt !important;
         page-break-inside: avoid;
+      }
+      .text-content {
+        padding: 6px 10px !important;
+        line-height: 1.45 !important;
+        font-size: 9.5pt !important;
+      }
+
+      /* Intro paragraphs inside sections (currently use inline styles) */
+      .section p {
+        margin: 4px 0 6px 0 !important;
+        font-size: 9pt !important;
+        line-height: 1.4 !important;
+      }
+
+      /* Photo grid: tighter gaps, smaller tiles, compact captions */
+      .photo-grid {
+        gap: 6px !important;
+        margin-top: 4px !important;
+      }
+      .photo-grid img {
+        max-height: 165px !important;
+      }
+      .photo-grid > div {
+        page-break-inside: avoid;
+      }
+      .photo-grid > div > div {
+        padding: 3px 6px !important;
+        font-size: 8.5pt !important;
+        line-height: 1.3 !important;
+      }
+
+      /* Disclaimer block */
+      .disclaimer {
+        padding: 4px 0 !important;
+        margin-bottom: 6px !important;
+        page-break-inside: avoid;
+      }
+      .disclaimer-title { font-size: 9pt !important; margin-bottom: 4px !important; }
+      .disclaimer-text  { font-size: 8pt !important; line-height: 1.35 !important; }
+
+      .generated-timestamp {
+        font-size: 8pt !important;
+        margin-top: 6px !important;
       }
       
       /* Color enforcement for PDF */
