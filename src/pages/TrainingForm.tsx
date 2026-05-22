@@ -80,6 +80,24 @@ function summaryFieldTimestampMs(row: DbRow | null | undefined, field: string): 
   return Number.isFinite(ms) ? ms : 0;
 }
 
+/**
+ * True when a local summary row is an empty placeholder created by
+ * `setSummary({ id, training_id })` on first load — i.e. it has no user
+ * content AND no field timestamps. In that case the server row must win
+ * unconditionally; otherwise mergeRecordFields can leave Observations /
+ * Recommendations blank for admin viewers reopening someone else's training.
+ */
+function isEmptyPlaceholderSummary(row: DbRow | null | undefined): boolean {
+  if (!row) return true;
+  const hasObs = typeof row.observations === 'string' && row.observations.trim().length > 0;
+  const hasRec = typeof row.recommendations === 'string' && row.recommendations.trim().length > 0;
+  const hasPerson = typeof row.person_submitting === 'string' && row.person_submitting.trim().length > 0;
+  const hasDate = !!row.submission_date;
+  const ts = (row.field_timestamps as Record<string, string> | null | undefined) ?? null;
+  const hasTimestamps = !!ts && Object.keys(ts).length > 0;
+  return !hasObs && !hasRec && !hasPerson && !hasDate && !hasTimestamps;
+}
+
 function logTrainingSummaryAutosave(event: string, meta: Record<string, unknown> = {}) {
   if (typeof console === 'undefined') return;
   console.info('[TrainingSummaryAutosave]', { event, at: new Date().toISOString(), ...meta });
