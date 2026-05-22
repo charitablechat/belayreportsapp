@@ -90,46 +90,8 @@ export async function fetchTrainingData(
   };
 }
 
-/**
- * Defensive render-layer dedupe for the Training Report photo pipeline.
- *
- * Root cause history: prior to the `idx_training_photos_no_duplicates`
- * unique index, a race between offline-pending and synced inserts could
- * produce two `training_photos` rows pointing at the same storage object
- * (same `photo_url`). The unique index now blocks new duplicates, but:
- *   - legacy rows that pre-date the index can still exist, and
- *   - any future regression in the upstream insert path would otherwise
- *     surface as "same image twice" in the generated PDF/HTML.
- *
- * The single source-of-truth identity for "the same logical photo" in
- * Training is the storage path (`photo_url`). We collapse to that key,
- * keeping the first occurrence under the existing
- * `ORDER BY display_order` so the visual ordering and the chosen
- * caption stay deterministic and match what the user sees in the
- * Training Photos gallery. Filename-only dedupe is intentionally NOT
- * used — two different uploads can share a filename.
- *
- * Rows without a `photo_url` (shouldn't happen post-sync, but guard
- * anyway) are passed through untouched so we never silently drop a
- * genuine photo.
- */
-export function dedupeTrainingPhotos<T extends { photo_url?: string | null }>(
-  photos: T[]
-): T[] {
-  const seen = new Set<string>();
-  const out: T[] = [];
-  for (const p of photos) {
-    const key = p?.photo_url;
-    if (!key) {
-      out.push(p);
-      continue;
-    }
-    if (seen.has(key)) continue;
-    seen.add(key);
-    out.push(p);
-  }
-  return out;
-}
+// dedupeTrainingPhotos: see ./dedupe-training-photos.ts (re-exported above).
+
 
 // Helper function to parse trainee names into an array
 export function parseTraineeNames(traineeNamesStr: string | null): string[] {
