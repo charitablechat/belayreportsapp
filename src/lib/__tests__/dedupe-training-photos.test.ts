@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { dedupeTrainingPhotos } from '../dedupe-training-photos';
+import { dedupeTrainingPhotos } from '../../../supabase/functions/_shared/dedupe-training-photos';
 
 /**
  * Regression coverage for the Training Report photo-duplication audit.
