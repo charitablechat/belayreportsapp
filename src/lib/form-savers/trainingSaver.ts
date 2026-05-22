@@ -363,11 +363,11 @@ export async function pushTrainingToRemote(
     parallelOps.push(dbOp(supabase.from("training_systems_in_place").upsert(preparedSystemsPlace as never, { onConflict: "id" })));
   }
   if (summary) {
-    const preparedSummary = {
+    const preparedSummary = sanitizeTrainingSummaryForRemote({
       ...summary,
       id: summary.id || crypto.randomUUID(),
       training_id: id,
-    };
+    });
     parallelOps.push(dbOp(supabase.from("training_summary").upsert(preparedSummary as never, { onConflict: "training_id" })));
   }
 
