@@ -476,32 +476,29 @@ export default function TrainingForm() {
   // Keyboard shortcut for save (Ctrl/Cmd+S)
   useSaveShortcut(async () => { await saveTraining(); setLastManuallySaved(new Date()); }, hasUnsavedChanges && !isSaving);
 
-  // Auto-populate person submitting (from report creator) and submission date
+  // Auto-populate Person Submitting (current logged-in user, NOT report creator)
+  // and Submission Date (today's local date) on first load when blank. Manual
+  // values are always preserved. Skipped in read-only/locked reports.
   useEffect(() => {
-    if (!summary || isLoading || !inspectorProfile || summaryAutoPopulatedRef.current) return;
+    if (!summary || isLoading || summaryAutoPopulatedRef.current) return;
+    if (effectiveReadOnly) return;
 
-    const updates: Record<string, unknown> = {};
-
-    if (!summary.person_submitting) {
-      const fullName = [inspectorProfile.first_name, inspectorProfile.last_name]
-        .filter(Boolean)
-        .join(' ');
-      if (fullName) {
-        updates.person_submitting = fullName;
-      }
-    }
-
-    if (!summary.submission_date) {
-      updates.submission_date = format(new Date(), 'yyyy-MM-dd');
-    }
+    const updates = computeSummaryAutofill({
+      summary,
+      currentUser,
+      currentUserProfile,
+      today: format(new Date(), 'yyyy-MM-dd'),
+    });
 
     if (Object.keys(updates).length > 0) {
-      isInternalUpdateRef.current = true;
       setSummary({ ...summary, ...updates });
+      // Persist autofill through the normal autosave path so values survive reload.
+      setTimeout(() => { triggerImmediateSave(); }, 0);
     }
 
     summaryAutoPopulatedRef.current = true;
-  }, [summary?.id, isLoading, inspectorProfile]);
+  }, [summary?.id, isLoading, currentUser?.id, currentUserProfile, effectiveReadOnly, triggerImmediateSave]);
+
 
   const loadTraining = useCallback(async () => {
       if (!id) return;
