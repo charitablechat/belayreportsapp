@@ -1383,20 +1383,20 @@ export default function TrainingForm() {
     }, GENERATION_TIMEOUT);
     
     try {
-      // OPTIMIZATION: Client-side cache check — if report was already generated after last update.
-      // Parity with InspectionForm: do NOT trust the cached HTML while local
-      // edits are still pending — those edits (incl. recently-uploaded photos
-      // whose trigger has fired but whose autosave hasn't landed yet) would
-      // otherwise be invisible in the regenerated report.
-      if (!hasUnsavedChanges && training?.latest_report_generated_at && training?.updated_at) {
-        const generatedAt = new Date(training.latest_report_generated_at).getTime();
-        const updatedAt = new Date(training.updated_at).getTime();
-        
-        if (generatedAt >= updatedAt) {
-          console.log('[HTML Generation] Client-side cache HIT — fetching cached report from DB');
-          toast.loading("Loading cached report...", { id: progressToastId });
-          const cachedHtml = await getLatestReport();
-          if (cachedHtml) {
+      // OPTIMIZATION: Client-side cache check — see shouldUseCachedTrainingReport.
+      // Photo writes invalidate the cached row via the
+      // invalidate_training_report_cache_on_photo trigger; pending in-form
+      // edits are caught here so we never serve stale HTML during an
+      // unsaved edit window.
+      if (shouldUseCachedTrainingReport({
+        latestReportGeneratedAt: training?.latest_report_generated_at,
+        trainingUpdatedAt: training?.updated_at,
+        hasUnsavedChanges,
+      })) {
+        console.log('[HTML Generation] Client-side cache HIT — fetching cached report from DB');
+        toast.loading("Loading cached report...", { id: progressToastId });
+        const cachedHtml = await getLatestReport();
+        if (cachedHtml) {
             clearTimeout(safetyTimeoutHandle);
             toast.dismiss(progressToastId);
             setReportHtml(cachedHtml);
