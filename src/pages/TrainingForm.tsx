@@ -1383,8 +1383,12 @@ export default function TrainingForm() {
     }, GENERATION_TIMEOUT);
     
     try {
-      // OPTIMIZATION: Client-side cache check — if report was already generated after last update
-      if (training?.latest_report_generated_at && training?.updated_at) {
+      // OPTIMIZATION: Client-side cache check — if report was already generated after last update.
+      // Parity with InspectionForm: do NOT trust the cached HTML while local
+      // edits are still pending — those edits (incl. recently-uploaded photos
+      // whose trigger has fired but whose autosave hasn't landed yet) would
+      // otherwise be invisible in the regenerated report.
+      if (!hasUnsavedChanges && training?.latest_report_generated_at && training?.updated_at) {
         const generatedAt = new Date(training.latest_report_generated_at).getTime();
         const updatedAt = new Date(training.updated_at).getTime();
         
