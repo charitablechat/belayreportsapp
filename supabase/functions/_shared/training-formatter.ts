@@ -1,4 +1,6 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.38.4";
+import { dedupeTrainingPhotos } from "./dedupe-training-photos.ts";
+export { dedupeTrainingPhotos } from "./dedupe-training-photos.ts";
 
 // Types
 export interface TrainingData {
@@ -84,9 +86,12 @@ export async function fetchTrainingData(
     systemsInPlace: systemsInPlace || [],
     summary: summary || null,
     profile: profile || null,
-    photos: photos || []
+    photos: dedupeTrainingPhotos(photos || [])
   };
 }
+
+// dedupeTrainingPhotos: see ./dedupe-training-photos.ts (re-exported above).
+
 
 // Helper function to parse trainee names into an array
 export function parseTraineeNames(traineeNamesStr: string | null): string[] {
