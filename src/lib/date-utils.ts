@@ -24,3 +24,6 @@ export function parseLocalYmd(value: string | null | undefined): Date | undefine
   }
   return dt;
 }
+
+/** Back-compat alias used across the codebase. */
+export const parseLocalDate = parseLocalYmd;
