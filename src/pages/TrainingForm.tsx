@@ -1199,24 +1199,29 @@ export default function TrainingForm() {
 
   // Auto-save/sync retry is now handled by useAutoSync hook
 
-  // Debounced auto-save on data changes (3-second debounce) - immediate persistence
+  // Debounced auto-save on data changes (1.5s) — runs for owners AND admins
+  // editing another trainer's record. RLS already permits admin writes
+  // (`Admins can manage all training summaries`), so the previous owner-only
+  // gate was a UX bug that left Observations/Recommendations only in React
+  // state until Generate Report forced a save.
   useEffect(() => {
-    if (isLoading || !training || !isOwner) return;
-    
+    if (isLoading || !training) return;
+    if (effectiveReadOnly) return;
+
     // Skip internal/programmatic updates (initial load, server hydration, auto-populate)
     if (isInternalUpdateRef.current) return;
-    
+
     // Mark as having unsaved changes (ref-guarded to avoid redundant re-renders)
     if (!hasUnsavedRef.current) {
       hasUnsavedRef.current = true;
       setHasUnsavedChanges(true);
     }
-    
+
     // Clear existing debounce timer
     if (saveDebounceTimerRef.current) {
       clearTimeout(saveDebounceTimerRef.current);
     }
-    
+
     // Set new debounce timer - 1.5 seconds after last change (optimized for near-instant feel)
     saveDebounceTimerRef.current = setTimeout(() => {
       if (!isSaving) {
@@ -1226,13 +1231,13 @@ export default function TrainingForm() {
         saveTraining(true);
       }
     }, 1500);
-    
+
     return () => {
       if (saveDebounceTimerRef.current) {
         clearTimeout(saveDebounceTimerRef.current);
       }
     };
-  }, [deliveryApproaches, operatingSystems, immediateAttention, verifiableItems, systemsInPlace, summary, isOwner]);
+  }, [deliveryApproaches, operatingSystems, immediateAttention, verifiableItems, systemsInPlace, summary, effectiveReadOnly]);
 
   // Reset internal update ref after the change tracker skips
   useEffect(() => {
