@@ -39,6 +39,7 @@ import { TrainingHeaderSection } from "@/components/training/TrainingHeaderSecti
 import { loadTrainingFromOffline, fetchTrainingParentFromServer, fetchTrainingChildrenFromServer } from "@/lib/form-loaders/trainingLoader";
 import { persistTrainingToOffline, pushTrainingToRemote } from "@/lib/form-savers/trainingSaver";
 import { getMissingTrainingFields, formatMissingDescription, type MissingField } from "@/lib/required-fields";
+import { shouldUseCachedTrainingReport } from "@/lib/training-report-cache-decision";
 import { CollaboratorPresence } from "@/components/CollaboratorPresence";
 import DeliveryApproachSection from "@/components/training/DeliveryApproachSection";
 import OperatingSystemsSection from "@/components/training/OperatingSystemsSection";
