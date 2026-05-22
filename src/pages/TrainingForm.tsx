@@ -216,6 +216,12 @@ export default function TrainingForm() {
   });
 
   const effectiveReadOnly = isReadOnly || isCompletionLocked;
+  // Photo media management is gated on edit authorization only — NOT on the
+  // Completed/locked state. Authorized users (owners and admins) can still
+  // add/delete Training photos after a report is marked Completed. This does
+  // not relax permissions: super admins and unauthorized users are still
+  // blocked because `isReadOnly` already excludes them.
+  const canManageTrainingPhotos = !isReadOnly;
 
   const [missingRequiredFields, setMissingRequiredFields] = useState<MissingField[]>([]);
   useEffect(() => {
