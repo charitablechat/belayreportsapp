@@ -540,19 +540,13 @@ export default function PhotoGallery({
         // offline row whose raw path is tombstoned (locally deleted) so a
         // stale IDB row can't resurrect a just-deleted photo.
         const dbStoragePaths = new Set((data || []).map((p: any) => p.photo_url));
-        const droppedByDedup: Array<{ id: string; rawStoragePath: string; caption: string | null; reason: string }> = [];
-        const dedupedOffline = offlinePhotosList.filter(p => {
-          const rawPath = (p as any).rawStoragePath || '';
-          if (rawPath && isPhotoTombstoned(inspectionId, section, rawPath)) {
-            if (isPhotoTraceEnabled()) droppedByDedup.push({ id: p.id, rawStoragePath: rawPath, caption: p.caption, reason: 'tombstoned' });
-            return false;
-          }
-          const drop = rawPath !== '' && dbStoragePaths.has(rawPath);
-          if (drop && isPhotoTraceEnabled()) {
-            droppedByDedup.push({ id: p.id, rawStoragePath: rawPath, caption: p.caption, reason: 'db-dup' });
-          }
-          return !drop;
-        });
+        const dedupResult = dedupeOfflineAgainstDb(
+          offlinePhotosList as Array<Photo & { rawStoragePath?: string }>,
+          dbStoragePaths,
+          (rawPath) => isPhotoTombstoned(inspectionId, section, rawPath),
+        );
+        const dedupedOffline = dedupResult.kept;
+        const droppedByDedup = dedupResult.dropped;
         const mergedPhotos = [...dedupedOffline, ...supabasePhotos].sort(
           (a, b) => a.display_order - b.display_order
         );
