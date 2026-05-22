@@ -539,7 +539,7 @@ export default function PhotoGallery({
         // (or was missed by a transient query) still renders. Also drop any
         // offline row whose raw path is tombstoned (locally deleted) so a
         // stale IDB row can't resurrect a just-deleted photo.
-        const dbStoragePaths = new Set((data || []).map((p: any) => p.photo_url));
+        const dbStoragePaths = new Set<string>((data || []).map((p: any) => String(p.photo_url)));
         const dedupResult = dedupeOfflineAgainstDb(
           offlinePhotosList as Array<Photo & { rawStoragePath?: string }>,
           dbStoragePaths,
