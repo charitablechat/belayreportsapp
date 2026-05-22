@@ -445,15 +445,23 @@ export default function PhotoCapture({
 
   return (
     <div className="flex gap-2">
+      {/*
+        Camera input: deliberately NOT `multiple`. iOS Safari (and several
+        Android browsers) silently ignore `capture` when `multiple` is also
+        present, falling back to the generic file picker — which is the exact
+        bug this fix addresses. Single-shot capture is the documented contract
+        for the camera path; the Upload button below remains multi-select.
+      */}
       <input
         ref={cameraInputRef}
         type="file"
         accept="image/*"
         capture="environment"
-        multiple
         onChange={handleCameraCapture}
         className="hidden"
+        data-testid="photo-capture-camera-input"
       />
+
       <input
         ref={uploadInputRef}
         type="file"
@@ -461,7 +469,9 @@ export default function PhotoCapture({
         multiple
         onChange={handleFileUpload}
         className="hidden"
+        data-testid="photo-capture-upload-input"
       />
+
       {uploading ? (
         <>
           <Button
