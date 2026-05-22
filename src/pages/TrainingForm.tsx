@@ -485,9 +485,9 @@ export default function TrainingForm() {
     if (effectiveReadOnly) return;
 
     const updates = computeSummaryAutofill({
-      summary,
+      summary: summary as { person_submitting?: string | null; submission_date?: string | null },
       currentUser,
-      currentUserProfile,
+      currentUserProfile: currentUserProfile as { first_name?: string | null; last_name?: string | null } | null,
       today: format(new Date(), 'yyyy-MM-dd'),
     });
 
