@@ -73,12 +73,7 @@ function errorMessage(error: unknown, fallback: string): string {
   return fallback;
 }
 
-function summaryFieldTimestampMs(row: DbRow | null | undefined, field: string): number {
-  const explicit = (row?.field_timestamps as Record<string, string> | null | undefined)?.[field];
-  const raw = explicit || (typeof row?.updated_at === 'string' ? row.updated_at : null);
-  const ms = raw ? new Date(raw).getTime() : 0;
-  return Number.isFinite(ms) ? ms : 0;
-}
+import { summaryFieldTimestampMs, isEmptyPlaceholderSummary } from "@/lib/training-summary-merge";
 
 function logTrainingSummaryAutosave(event: string, meta: Record<string, unknown> = {}) {
   if (typeof console === 'undefined') return;
@@ -558,6 +553,8 @@ export default function TrainingForm() {
             const dirtyFields = pendingSummaryFieldsRef.current;
             const dirtyNames = Object.keys(dirtyFields);
             if (!local || dirtyNames.length === 0) return incoming;
+            // Empty placeholder must never beat a populated server summary.
+            if (isEmptyPlaceholderSummary(local)) return incoming;
             const unresolved = dirtyNames.filter(field => summaryFieldTimestampMs(incoming, field) < new Date(dirtyFields[field]).getTime());
             if (unresolved.length === 0) return incoming;
             recordActiveEditSkip({ form: 'training', table: 'summary', rowId: incoming.id ?? null, field: unresolved.join(','), reason: 'dirty', source: 'load' });
@@ -727,6 +724,11 @@ export default function TrainingForm() {
               const dirtyNames = Object.keys(dirtyFields);
               setSummary(prev => {
                 if (!prev) return summaryResult as DbRow;
+                // Empty placeholder must never beat a populated server summary.
+                if (isEmptyPlaceholderSummary(prev)) {
+                  summaryRef.current = summaryResult as DbRow;
+                  return summaryResult as DbRow;
+                }
                 let next = mergeRecordFields(
                   prev as DbRow & { field_timestamps?: Record<string, string> | null },
                   summaryResult as DbRow & { field_timestamps?: Record<string, string> | null },
@@ -1123,7 +1125,14 @@ export default function TrainingForm() {
           logTrainingSummaryAutosave('remote-save-committed', { pendingFields: Object.keys(pendingSummaryFieldsRef.current), syncTimestamp });
           if (import.meta.env.DEV) console.log('[Training Save] Synced to database (verified)');
         } catch (error) {
-          if (import.meta.env.DEV) console.log('[Training Save] Failed to sync, queuing operation:', error);
+          // Escalated from DEV-only — silent failures here were how empty
+          // Observations/Recommendations slipped past us. The IDB write
+          // already committed the summary row, and we deliberately leave
+          // `synced_at` unset so the background sync loop replays the
+          // training + ALL its child rows (including training_summary) on
+          // the next pass, recovering the text.
+          console.warn('[Training Save] Remote sync failed; relying on IDB+bg-sync replay for summary text:', error);
+          logTrainingSummaryAutosave('remote-save-failed', { pendingFields: Object.keys(pendingSummaryFieldsRef.current), error: (error as Error)?.message });
           try {
             await Promise.race([
               queueTrainingOperation('update', id!, updatedTraining),
@@ -1174,24 +1183,29 @@ export default function TrainingForm() {
 
   // Auto-save/sync retry is now handled by useAutoSync hook
 
-  // Debounced auto-save on data changes (3-second debounce) - immediate persistence
+  // Debounced auto-save on data changes (1.5s) — runs for owners AND admins
+  // editing another trainer's record. RLS already permits admin writes
+  // (`Admins can manage all training summaries`), so the previous owner-only
+  // gate was a UX bug that left Observations/Recommendations only in React
+  // state until Generate Report forced a save.
   useEffect(() => {
-    if (isLoading || !training || !isOwner) return;
-    
+    if (isLoading || !training) return;
+    if (effectiveReadOnly) return;
+
     // Skip internal/programmatic updates (initial load, server hydration, auto-populate)
     if (isInternalUpdateRef.current) return;
-    
+
     // Mark as having unsaved changes (ref-guarded to avoid redundant re-renders)
     if (!hasUnsavedRef.current) {
       hasUnsavedRef.current = true;
       setHasUnsavedChanges(true);
     }
-    
+
     // Clear existing debounce timer
     if (saveDebounceTimerRef.current) {
       clearTimeout(saveDebounceTimerRef.current);
     }
-    
+
     // Set new debounce timer - 1.5 seconds after last change (optimized for near-instant feel)
     saveDebounceTimerRef.current = setTimeout(() => {
       if (!isSaving) {
@@ -1201,13 +1215,13 @@ export default function TrainingForm() {
         saveTraining(true);
       }
     }, 1500);
-    
+
     return () => {
       if (saveDebounceTimerRef.current) {
         clearTimeout(saveDebounceTimerRef.current);
       }
     };
-  }, [deliveryApproaches, operatingSystems, immediateAttention, verifiableItems, systemsInPlace, summary, isOwner]);
+  }, [deliveryApproaches, operatingSystems, immediateAttention, verifiableItems, systemsInPlace, summary, effectiveReadOnly]);
 
   // Reset internal update ref after the change tracker skips
   useEffect(() => {
@@ -1223,7 +1237,7 @@ export default function TrainingForm() {
     }
 
     autoSaveTimer.current = setInterval(() => {
-      if (hasUnsavedChanges && !isSaving && !isLoading && training && isOwner) {
+      if (hasUnsavedChanges && !isSaving && !isLoading && training && !effectiveReadOnly) {
         if (import.meta.env.DEV) console.log('[Training AutoSave] Interval save triggered');
         saveTraining(true);
       }
@@ -1234,7 +1248,7 @@ export default function TrainingForm() {
         clearInterval(autoSaveTimer.current);
       }
     };
-  }, [hasUnsavedChanges, isSaving, isLoading, training, isOwner]);
+  }, [hasUnsavedChanges, isSaving, isLoading, training, effectiveReadOnly]);
 
   const handleGeneratePDF = async () => {
     if (!id) return;
@@ -1551,11 +1565,12 @@ export default function TrainingForm() {
 
           // Summary - use upsert for atomic operation
           if (summary) {
-            const preparedSummary = {
+            const { sanitizeTrainingSummaryForRemote } = await import('@/lib/form-savers/trainingSaver');
+            const preparedSummary = sanitizeTrainingSummaryForRemote({
               ...summary,
               id: summary.id || crypto.randomUUID(),
-              training_id: id
-            };
+              training_id: id,
+            });
             parallelOps.push(
               dbOp(supabase.from('training_summary').upsert(preparedSummary as never, { onConflict: 'training_id' }))
             );

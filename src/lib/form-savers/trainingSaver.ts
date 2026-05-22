@@ -98,6 +98,36 @@ export function sanitizeTrainingForRemote(
 }
 
 /**
+ * Strip client-only fields before sending to `public.training_summary`.
+ *
+ * The DB schema is: id, training_id, observations, recommendations,
+ * person_submitting, submission_date, created_at. Anything else
+ * (`updated_at`, `field_timestamps`, `last_modified_by`, `dirty`,
+ * `synced_at`, …) does not exist on this table and would 400 the upsert,
+ * silently breaking remote persistence of Training Observations /
+ * Recommendations. Allow-list only the columns the DB knows about.
+ */
+const TRAINING_SUMMARY_REMOTE_COLUMNS = [
+  "id",
+  "training_id",
+  "observations",
+  "recommendations",
+  "person_submitting",
+  "submission_date",
+  "created_at",
+] as const;
+
+export function sanitizeTrainingSummaryForRemote(
+  s: Record<string, unknown>,
+): Record<string, unknown> {
+  const out: Record<string, unknown> = {};
+  for (const k of TRAINING_SUMMARY_REMOTE_COLUMNS) {
+    if (k in s) out[k] = s[k];
+  }
+  return out;
+}
+
+/**
  * Replace temp-IDs with real UUIDs and stamp the foreign key.
  * Pure; no IDB or network.
  */
@@ -333,11 +363,11 @@ export async function pushTrainingToRemote(
     parallelOps.push(dbOp(supabase.from("training_systems_in_place").upsert(preparedSystemsPlace as never, { onConflict: "id" })));
   }
   if (summary) {
-    const preparedSummary = {
+    const preparedSummary = sanitizeTrainingSummaryForRemote({
       ...summary,
       id: summary.id || crypto.randomUUID(),
       training_id: id,
-    };
+    });
     parallelOps.push(dbOp(supabase.from("training_summary").upsert(preparedSummary as never, { onConflict: "training_id" })));
   }
 
