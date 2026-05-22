@@ -62,3 +62,30 @@ export function validateFile(
   }
   return { valid: true };
 }
+
+/**
+ * Postgres unique-violation classification for the photo-row INSERT path.
+ *
+ * Both `PhotoCapture.uploadPhotoInBackground` (foreground fast path) and the
+ * sync-manager photo loop pre-check for an existing row by
+ * (photo_url, foreign_key) before INSERT. When the two paths race — or when
+ * a retry fires while the foreground insert is still in flight — both
+ * pre-checks return empty, both INSERTs are attempted, and the loser is
+ * rejected by `idx_<table>_no_duplicates` with Postgres SQLSTATE 23505.
+ *
+ * Treat that specific shape as success-equivalent: the storage object is
+ * already uploaded, the canonical row already exists, and `markPhotoAsUploaded`
+ * should proceed. Any other error must surface.
+ *
+ * Mirrors the inline predicate previously in PhotoCapture so vitest can pin
+ * the contract that the new `idx_training_photos_no_duplicates` migration
+ * depends on.
+ */
+export function isDuplicateInsertError(
+  err: { message?: string | null; code?: string | null } | null | undefined,
+): boolean {
+  if (!err) return false;
+  const msg = err.message ?? '';
+  const code = err.code ?? '';
+  return msg.includes('duplicate') || code.includes('23505');
+}
