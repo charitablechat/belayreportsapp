@@ -12,7 +12,7 @@ import { compressImage } from "@/lib/image-compression";
 import { acquireCompressionSlot } from "@/lib/photo-upload-pool";
 import { isHeicFile, isHeicBlob } from "@/lib/heic-converter";
 import { extractFileExt } from "@/lib/file-ext";
-import { validateFile } from "@/components/photo-capture-validation";
+import { validateFile, isDuplicateInsertError } from "@/components/photo-capture-validation";
 
 import { toast } from "sonner";
 
