@@ -81,7 +81,7 @@ export default function PhotoCapture({
           photo_url: storagePath,
           photo_section: section,
         });
-        if (dbError && !dbError.message?.includes('duplicate') && !dbError.code?.includes('23505')) {
+        if (dbError && !isDuplicateInsertError(dbError as any)) {
           throw dbError;
         }
       }
