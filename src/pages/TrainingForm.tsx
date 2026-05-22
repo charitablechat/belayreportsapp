@@ -576,6 +576,8 @@ export default function TrainingForm() {
             const dirtyFields = pendingSummaryFieldsRef.current;
             const dirtyNames = Object.keys(dirtyFields);
             if (!local || dirtyNames.length === 0) return incoming;
+            // Empty placeholder must never beat a populated server summary.
+            if (isEmptyPlaceholderSummary(local)) return incoming;
             const unresolved = dirtyNames.filter(field => summaryFieldTimestampMs(incoming, field) < new Date(dirtyFields[field]).getTime());
             if (unresolved.length === 0) return incoming;
             recordActiveEditSkip({ form: 'training', table: 'summary', rowId: incoming.id ?? null, field: unresolved.join(','), reason: 'dirty', source: 'load' });
