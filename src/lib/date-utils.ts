@@ -1,30 +1,29 @@
- // Special values that should not be parsed as dates
- const SPECIAL_DATE_VALUES = ["N/A", "Unknown"];
- 
 /**
- * Parse a date string as local time to avoid timezone shifting.
- * 
- * When using `new Date("YYYY-MM-DD")`, JavaScript interprets this as midnight UTC,
- * which can cause the date to appear as the previous day in timezones behind UTC.
- * 
- * This function parses the date components manually and creates a Date object
- * using local time, ensuring the displayed date matches the intended date.
- * 
- * @param dateStr - A date string in ISO format (YYYY-MM-DD or with time component)
- * @returns A Date object in local time, or undefined if input is null/undefined
+ * Timezone-agnostic date helpers.
+ *
+ * `new Date("YYYY-MM-DD")` is spec-defined to parse as UTC midnight, which
+ * shifts to the previous calendar day when rendered in any negative-UTC
+ * timezone (e.g. America/Chicago). Always parse date-only strings through
+ * `parseLocalYmd` so they render as the user typed them.
  */
-export const parseLocalDate = (dateStr: string | null | undefined): Date | undefined => {
-   if (!dateStr) return undefined;
-   
-   // Don't attempt to parse special marker values
-   if (SPECIAL_DATE_VALUES.includes(dateStr)) return undefined;
-   
-  // Handle dates that might already include time component
-  const dateOnly = dateStr.split('T')[0];
-  const [year, month, day] = dateOnly.split('-').map(Number);
-   
-   // Validate parsed components are valid numbers
-   if (isNaN(year) || isNaN(month) || isNaN(day)) return undefined;
-   
-  return new Date(year, month - 1, day);
-};
+
+const YMD_RE = /^(\d{4})-(\d{2})-(\d{2})$/;
+
+export function parseLocalYmd(value: string | null | undefined): Date | undefined {
+  if (typeof value !== 'string') return undefined;
+  const m = YMD_RE.exec(value.trim());
+  if (!m) return undefined;
+  const y = Number(m[1]);
+  const mo = Number(m[2]);
+  const d = Number(m[3]);
+  if (mo < 1 || mo > 12 || d < 1 || d > 31) return undefined;
+  const dt = new Date(y, mo - 1, d);
+  // Reject normalized rollovers (e.g. Feb 30 -> Mar 2)
+  if (dt.getFullYear() !== y || dt.getMonth() !== mo - 1 || dt.getDate() !== d) {
+    return undefined;
+  }
+  return dt;
+}
+
+/** Back-compat alias used across the codebase. */
+export const parseLocalDate = parseLocalYmd;

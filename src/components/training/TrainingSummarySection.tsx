@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { CalendarIcon } from "lucide-react";
 import { format } from "date-fns";
 import { cn } from "@/lib/utils";
+import { parseLocalYmd } from "@/lib/date-utils";
 import { VoiceRichTextEditor } from "@/components/ui/voice-rich-text-editor";
 
 interface TrainingSummarySectionProps {
@@ -76,13 +77,16 @@ const TrainingSummarySection = React.memo(function TrainingSummarySection({ summ
                 )}
               >
                 <CalendarIcon className="mr-2 h-4 w-4" />
-                {summary?.submission_date ? format(new Date(summary.submission_date), "PPP") : "Pick a date"}
+                {(() => {
+                  const parsed = parseLocalYmd(summary?.submission_date);
+                  return parsed ? format(parsed, "PPP") : "Pick a date";
+                })()}
               </Button>
             </PopoverTrigger>
             <PopoverContent className="w-auto p-0">
               <Calendar
                 mode="single"
-                selected={summary?.submission_date ? new Date(summary.submission_date) : undefined}
+                selected={parseLocalYmd(summary?.submission_date)}
                 onSelect={(date) => {
                   onUpdate('submission_date', date ? format(date, 'yyyy-MM-dd') : '');
                   // Defer flush so the onUpdate state write commits first.
