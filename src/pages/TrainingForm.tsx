@@ -1253,7 +1253,7 @@ export default function TrainingForm() {
     }
 
     autoSaveTimer.current = setInterval(() => {
-      if (hasUnsavedChanges && !isSaving && !isLoading && training && isOwner) {
+      if (hasUnsavedChanges && !isSaving && !isLoading && training && !effectiveReadOnly) {
         if (import.meta.env.DEV) console.log('[Training AutoSave] Interval save triggered');
         saveTraining(true);
       }
@@ -1264,7 +1264,7 @@ export default function TrainingForm() {
         clearInterval(autoSaveTimer.current);
       }
     };
-  }, [hasUnsavedChanges, isSaving, isLoading, training, isOwner]);
+  }, [hasUnsavedChanges, isSaving, isLoading, training, effectiveReadOnly]);
 
   const handleGeneratePDF = async () => {
     if (!id) return;
