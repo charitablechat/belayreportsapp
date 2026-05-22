@@ -1148,7 +1148,14 @@ export default function TrainingForm() {
           logTrainingSummaryAutosave('remote-save-committed', { pendingFields: Object.keys(pendingSummaryFieldsRef.current), syncTimestamp });
           if (import.meta.env.DEV) console.log('[Training Save] Synced to database (verified)');
         } catch (error) {
-          if (import.meta.env.DEV) console.log('[Training Save] Failed to sync, queuing operation:', error);
+          // Escalated from DEV-only — silent failures here were how empty
+          // Observations/Recommendations slipped past us. The IDB write
+          // already committed the summary row, and we deliberately leave
+          // `synced_at` unset so the background sync loop replays the
+          // training + ALL its child rows (including training_summary) on
+          // the next pass, recovering the text.
+          console.warn('[Training Save] Remote sync failed; relying on IDB+bg-sync replay for summary text:', error);
+          logTrainingSummaryAutosave('remote-save-failed', { pendingFields: Object.keys(pendingSummaryFieldsRef.current), error: (error as Error)?.message });
           try {
             await Promise.race([
               queueTrainingOperation('update', id!, updatedTraining),
