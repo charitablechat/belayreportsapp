@@ -1397,15 +1397,14 @@ export default function TrainingForm() {
         toast.loading("Loading cached report...", { id: progressToastId });
         const cachedHtml = await getLatestReport();
         if (cachedHtml) {
-            clearTimeout(safetyTimeoutHandle);
-            toast.dismiss(progressToastId);
-            setReportHtml(cachedHtml);
-            setHtmlViewerOpen(true);
-            setIsGeneratingHTML(false);
-            return;
-          }
-          console.log('[HTML Generation] Cache returned empty, falling through to generation');
+          clearTimeout(safetyTimeoutHandle);
+          toast.dismiss(progressToastId);
+          setReportHtml(cachedHtml);
+          setHtmlViewerOpen(true);
+          setIsGeneratingHTML(false);
+          return;
         }
+        console.log('[HTML Generation] Cache returned empty, falling through to generation');
       }
 
       toast.loading("Saving changes first...", { id: progressToastId });
