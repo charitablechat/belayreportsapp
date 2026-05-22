@@ -39,6 +39,7 @@ import { TrainingHeaderSection } from "@/components/training/TrainingHeaderSecti
 import { loadTrainingFromOffline, fetchTrainingParentFromServer, fetchTrainingChildrenFromServer } from "@/lib/form-loaders/trainingLoader";
 import { persistTrainingToOffline, pushTrainingToRemote } from "@/lib/form-savers/trainingSaver";
 import { getMissingTrainingFields, formatMissingDescription, type MissingField } from "@/lib/required-fields";
+import { shouldUseCachedTrainingReport } from "@/lib/training-report-cache-decision";
 import { CollaboratorPresence } from "@/components/CollaboratorPresence";
 import DeliveryApproachSection from "@/components/training/DeliveryApproachSection";
 import OperatingSystemsSection from "@/components/training/OperatingSystemsSection";
@@ -1383,25 +1384,28 @@ export default function TrainingForm() {
     }, GENERATION_TIMEOUT);
     
     try {
-      // OPTIMIZATION: Client-side cache check — if report was already generated after last update
-      if (training?.latest_report_generated_at && training?.updated_at) {
-        const generatedAt = new Date(training.latest_report_generated_at).getTime();
-        const updatedAt = new Date(training.updated_at).getTime();
-        
-        if (generatedAt >= updatedAt) {
-          console.log('[HTML Generation] Client-side cache HIT — fetching cached report from DB');
-          toast.loading("Loading cached report...", { id: progressToastId });
-          const cachedHtml = await getLatestReport();
-          if (cachedHtml) {
-            clearTimeout(safetyTimeoutHandle);
-            toast.dismiss(progressToastId);
-            setReportHtml(cachedHtml);
-            setHtmlViewerOpen(true);
-            setIsGeneratingHTML(false);
-            return;
-          }
-          console.log('[HTML Generation] Cache returned empty, falling through to generation');
+      // OPTIMIZATION: Client-side cache check — see shouldUseCachedTrainingReport.
+      // Photo writes invalidate the cached row via the
+      // invalidate_training_report_cache_on_photo trigger; pending in-form
+      // edits are caught here so we never serve stale HTML during an
+      // unsaved edit window.
+      if (shouldUseCachedTrainingReport({
+        latestReportGeneratedAt: training?.latest_report_generated_at,
+        trainingUpdatedAt: training?.updated_at,
+        hasUnsavedChanges,
+      })) {
+        console.log('[HTML Generation] Client-side cache HIT — fetching cached report from DB');
+        toast.loading("Loading cached report...", { id: progressToastId });
+        const cachedHtml = await getLatestReport();
+        if (cachedHtml) {
+          clearTimeout(safetyTimeoutHandle);
+          toast.dismiss(progressToastId);
+          setReportHtml(cachedHtml);
+          setHtmlViewerOpen(true);
+          setIsGeneratingHTML(false);
+          return;
         }
+        console.log('[HTML Generation] Cache returned empty, falling through to generation');
       }
 
       toast.loading("Saving changes first...", { id: progressToastId });
