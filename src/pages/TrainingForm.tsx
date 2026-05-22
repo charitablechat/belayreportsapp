@@ -1551,11 +1551,12 @@ export default function TrainingForm() {
 
           // Summary - use upsert for atomic operation
           if (summary) {
-            const preparedSummary = {
+            const { sanitizeTrainingSummaryForRemote } = await import('@/lib/form-savers/trainingSaver');
+            const preparedSummary = sanitizeTrainingSummaryForRemote({
               ...summary,
               id: summary.id || crypto.randomUUID(),
-              training_id: id
-            };
+              training_id: id,
+            });
             parallelOps.push(
               dbOp(supabase.from('training_summary').upsert(preparedSummary as never, { onConflict: 'training_id' }))
             );
