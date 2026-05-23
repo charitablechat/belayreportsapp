@@ -21,7 +21,7 @@ const connectorCache = [
   { id: "connectors::CT Quicklink", equipment_category: "connectors", label: "CT Quicklink", display_order: 3, is_active: true, synced: true },
 ];
 
-const bulkPutSpy = vi.fn(async () => {});
+const bulkPutSpy = vi.fn<(entries: unknown) => Promise<void>>(async () => {});
 
 vi.mock("@/lib/offline-storage", () => ({
   getEquipmentTypeOptions: vi.fn(async (category: string) => {
