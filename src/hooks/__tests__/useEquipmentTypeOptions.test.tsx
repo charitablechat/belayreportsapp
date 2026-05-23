@@ -31,7 +31,7 @@ vi.mock("@/lib/offline-storage", () => ({
     return [];
   }),
   putEquipmentTypeOption: vi.fn(async () => {}),
-  bulkPutEquipmentTypeOptions: (...args: unknown[]) => bulkPutSpy(...args),
+  bulkPutEquipmentTypeOptions: (entries: unknown) => bulkPutSpy(entries),
 }));
 
 vi.mock("@/lib/cached-auth", () => ({
