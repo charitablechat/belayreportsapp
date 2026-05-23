@@ -26,6 +26,7 @@ export function useEquipmentTypeOptions(category: string, existingValues: string
     queryFn: async () => {
       // 1. Read from IndexedDB first for instant offline access
       const cached = await getEquipmentTypeOptions(category);
+      const cachedLabels = cached.map((c) => c.label);
 
       // 2. If online, fetch from Supabase and merge
       if (isOnline) {
@@ -37,8 +38,15 @@ export function useEquipmentTypeOptions(category: string, existingValues: string
             .eq("is_active", true)
             .order("display_order", { ascending: true });
 
-          if (!error && data) {
-            // Cache to IndexedDB for offline use
+          // CRITICAL: only adopt the Supabase response when it actually has
+          // rows. An empty array (RLS denial under a synthetic offline JWT,
+          // transient empty response, partial outage, etc.) must NOT wipe
+          // an already-populated IDB cache — that produced the empty
+          // "No entries found" dropdown on Lanyards / Connectors even
+          // though 66+/133+ options exist on the server. Symmetrically,
+          // never overwrite the cache with empty entries for the same
+          // reason.
+          if (!error && data && data.length > 0) {
             const entries = data.map((d: EquipmentTypeOption) => ({
               id: `${d.equipment_category}::${d.label}`,
               equipment_category: d.equipment_category,
@@ -50,38 +58,16 @@ export function useEquipmentTypeOptions(category: string, existingValues: string
             await bulkPutEquipmentTypeOptions(entries);
 
             const labels = data.map((d: EquipmentTypeOption) => d.label);
-            
-            // Merge in any existing values from the current report
-            const lowerSet = new Set(labels.map((l: string) => l.toLowerCase()));
-            for (const val of existingValues) {
-              const trimmed = val.trim();
-              if (trimmed && !lowerSet.has(trimmed.toLowerCase())) {
-                labels.push(trimmed);
-                lowerSet.add(trimmed.toLowerCase());
-              }
-            }
-            
-            return labels;
+            return mergeExisting(labels, existingValues);
           }
         } catch (e) {
           console.warn("[useEquipmentTypeOptions] Fetch failed, using cache:", e);
         }
       }
 
-      // Return cached labels
-      const cachedLabels = cached.map((c) => c.label);
-      
-      // Merge in any existing values from the current report that aren't in the list
-      const lowerSet = new Set(cachedLabels.map((l) => l.toLowerCase()));
-      for (const val of existingValues) {
-        const trimmed = val.trim();
-        if (trimmed && !lowerSet.has(trimmed.toLowerCase())) {
-          cachedLabels.push(trimmed);
-          lowerSet.add(trimmed.toLowerCase());
-        }
-      }
-      
-      return cachedLabels;
+      // Offline, fetch failed, or Supabase returned 0 rows → fall back to
+      // the IDB cache so the dropdown still shows preloaded options.
+      return mergeExisting(cachedLabels, existingValues);
     },
     staleTime: 5 * 60 * 1000, // 5 minutes
   });
@@ -151,4 +137,17 @@ export function useEquipmentTypeOptions(category: string, existingValues: string
   }, []);
 
   return { options, isLoading, addOption };
+}
+
+function mergeExisting(labels: string[], existingValues: string[]): string[] {
+  const merged = [...labels];
+  const lowerSet = new Set(merged.map((l) => l.toLowerCase()));
+  for (const val of existingValues) {
+    const trimmed = val?.trim();
+    if (trimmed && !lowerSet.has(trimmed.toLowerCase())) {
+      merged.push(trimmed);
+      lowerSet.add(trimmed.toLowerCase());
+    }
+  }
+  return merged;
 }
