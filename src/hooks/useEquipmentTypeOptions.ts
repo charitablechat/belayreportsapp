@@ -138,3 +138,16 @@ export function useEquipmentTypeOptions(category: string, existingValues: string
 
   return { options, isLoading, addOption };
 }
+
+function mergeExisting(labels: string[], existingValues: string[]): string[] {
+  const merged = [...labels];
+  const lowerSet = new Set(merged.map((l) => l.toLowerCase()));
+  for (const val of existingValues) {
+    const trimmed = val?.trim();
+    if (trimmed && !lowerSet.has(trimmed.toLowerCase())) {
+      merged.push(trimmed);
+      lowerSet.add(trimmed.toLowerCase());
+    }
+  }
+  return merged;
+}
