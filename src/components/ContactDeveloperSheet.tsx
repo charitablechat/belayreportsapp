@@ -88,7 +88,9 @@ export function ContactDeveloperSheet({ open, onOpenChange }: ContactDeveloperSh
 
       // Upload file if selected
       if (attachedFile) {
-        const fileName = `${Date.now()}_${attachedFile.name}`;
+        const { data: { user } } = await supabase.auth.getUser();
+        if (!user) throw new Error("You must be signed in to attach files.");
+        const fileName = `${user.id}/${Date.now()}_${attachedFile.name}`;
         const { data: uploadData, error: uploadError } = await supabase.storage
           .from("contact-attachments")
           .upload(fileName, attachedFile, {
