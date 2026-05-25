@@ -77,7 +77,9 @@ export default function ContactDeveloper() {
 
       // Upload image if selected
       if (imageFile) {
-        const fileName = `${Date.now()}_${imageFile.name}`;
+        const { data: { user } } = await supabase.auth.getUser();
+        if (!user) throw new Error("You must be signed in to attach files.");
+        const fileName = `${user.id}/${Date.now()}_${imageFile.name}`;
         const { data: uploadData, error: uploadError } = await supabase.storage
           .from("contact-attachments")
           .upload(fileName, imageFile, {
