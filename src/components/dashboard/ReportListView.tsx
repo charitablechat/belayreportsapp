@@ -301,10 +301,21 @@ function ReportRow({
         </TooltipContent>
       </Tooltip>
 
-      {/* Date — hidden <md */}
-      <div className="hidden md:block shrink-0 text-xs text-muted-foreground tabular-nums w-[92px] text-right">
-        {parsed ? format(parsed, "MMM d, yyyy") : "—"}
-      </div>
+      {/* Date — hidden <md. For completed reports, show submission date instead of report date. */}
+      {(() => {
+        const submittedAtRaw =
+          status === "completed"
+            ? (report.attestation_signed_at || report.updated_at)
+            : null;
+        const submittedAt = submittedAtRaw ? new Date(submittedAtRaw) : null;
+        const isSubmitted = status === "completed" && submittedAt && !isNaN(submittedAt.getTime());
+        const displayDate = isSubmitted ? submittedAt : parsed;
+        return (
+          <div className="hidden md:block shrink-0 text-xs text-muted-foreground tabular-nums w-[92px] text-right">
+            {displayDate ? format(displayDate, "MMM d, yyyy") : "—"}
+          </div>
+        );
+      })()}
 
       {/* Kebab */}
       <DropdownMenu>
