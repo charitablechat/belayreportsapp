@@ -599,8 +599,15 @@ function ItemPhotoUpload({
       if (isPhotoTraceEnabled()) photoTrace('handleUpload.onPhotoChange', { newPhotoUrl: placeholderPath, branch: 'placeholder' }, cid);
       onImmediateSave?.();
 
-      // 8. Background upload if online
-      if (isOnline) {
+      // 8. Background upload if online.
+      //    iPad/hotspot handoffs briefly flip navigator.onLine to false even
+      //    while requests succeed; trust the liveness guard (30s grace) as a
+      //    fallback so a newly captured photo still kicks off its background
+      //    upload instead of being stranded as `pending/...` until the next
+      //    online event (which on iPad Safari may never re-fire in the
+      //    current tab). useAutoSync would eventually retry, but starting
+      //    immediately is what the user observed as broken.
+      if (isOnline || isLikelyOnline()) {
         toast.info("Syncing photo...");
         getUserWithCache()
           .then(async (user) => {
