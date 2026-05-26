@@ -5,6 +5,7 @@ import { getOfflinePhotos, updatePhotoDisplayOrder, getDB, putPhotoRecord, isIdb
 import { cachePhotoFromRemote, batchValidateCachedPhotos } from "@/lib/photo-cache";
 import { getPhotoReceipts, removePhotoReceipts } from "@/lib/photo-receipts";
 import { useNetworkStatus } from "@/hooks/useNetworkStatus";
+import { isLikelyOnline } from "@/lib/network-liveness";
 import { isHeicPath, isHeicBlob, convertHeicBlobToJpeg } from "@/lib/heic-converter";
 import { processBackgroundCacheItem, migrateHeicToJpeg, dedupeOfflineAgainstDb, type MigrateHeicOutcome } from "./photo-gallery-helpers";
 import { Card } from "@/components/ui/card";
@@ -332,7 +333,12 @@ export default function PhotoGallery({
       const provisionalEvicted = receipts.filter(r => !r.uploaded && !offlinePhotoIds.has(r.id));
       setEvictedCount(provisionalEvicted.length);
 
-      if (isOnline) {
+      // iPad Safari / mobile-hotspot handoff can flip `navigator.onLine`
+      // to false for short windows. `isLikelyOnline()` honours a recent
+      // successful Supabase fetch as proof the radio is up, so a false-flip
+      // does not skip the DB query and hide already-uploaded photos. Genuine
+      // failures fall through to the existing catch / last-known behavior.
+      if (isOnline || isLikelyOnline()) {
       const { data, error } = await (supabase
           .from(tableName) as any)
           .select('*')
