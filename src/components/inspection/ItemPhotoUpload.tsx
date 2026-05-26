@@ -327,7 +327,7 @@ function ItemPhotoUpload({
       // Network/Supabase failure — surface a placeholder, not blank buttons.
       setIsOfflinePhoto(true);
     }
-  }, [photoUrl, inspectionId]);
+  }, [photoUrl, inspectionId, itemId, onPhotoChange]);
 
   useEffect(() => { loadSignedUrl(); }, [loadSignedUrl]);
 
