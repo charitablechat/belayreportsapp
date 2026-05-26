@@ -251,13 +251,50 @@ function ItemPhotoUpload({
       return;
     }
 
-    // 2. Offline with no cache — mark as offline photo
-    if (!navigator.onLine) {
+    // 2. Stale `pending/...` self-heal: the inspection record may have been
+    //    saved before the background upload settled (common on iPad Safari
+    //    via mobile hotspot when `navigator.onLine` briefly false-flips and
+    //    strands the upload). If the matching IDB photo has since been
+    //    marked uploaded with a real storage path, advance the form value
+    //    so admins / future loads resolve via the real signed URL instead
+    //    of rendering the "Photo will load when back online" placeholder.
+    if (photoUrl.startsWith('pending/')) {
+      try {
+        const { getOfflinePhotos } = await import('@/lib/offline-storage');
+        const offline = await getOfflinePhotos(inspectionId);
+        const idPrefix = `item-${itemId}-`;
+        const healed = offline
+          .filter(p => p.id.startsWith(idPrefix)
+            && Number(p.uploaded) === 1
+            && p.photoUrl
+            && !p.photoUrl.startsWith('pending/'))
+          .sort((a, b) => {
+            const at = (a as { createdAt?: string }).createdAt || '';
+            const bt = (b as { createdAt?: string }).createdAt || '';
+            return bt.localeCompare(at);
+          })[0];
+        if (healed?.photoUrl) {
+          if (isPhotoTraceEnabled()) {
+            photoTrace('loadSignedUrl.pending-self-heal', {
+              itemId, from: photoUrl, to: healed.photoUrl,
+            });
+          }
+          onPhotoChange(healed.photoUrl);
+          // The prop change will re-trigger loadSignedUrl with the real path.
+          return;
+        }
+      } catch { /* non-critical */ }
+    }
+
+    // 3. Offline with no cache — mark as offline photo. Uses the liveness
+    //    guard so an iOS Safari false-offline blip does not force a
+    //    placeholder over a remote photo we could actually fetch.
+    if (!isLikelyOnline()) {
       setIsOfflinePhoto(true);
       return;
     }
 
-    // 2b. Pending placeholder path — no signed URL exists yet on the server.
+    // 3b. Pending placeholder path — no signed URL exists yet on the server.
     // Show the offline-style placeholder thumbnail so the row never falls
     // back to blank upload buttons while the background upload is in flight.
     if (photoUrl.startsWith('pending/')) {
