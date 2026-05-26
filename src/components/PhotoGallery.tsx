@@ -333,7 +333,12 @@ export default function PhotoGallery({
       const provisionalEvicted = receipts.filter(r => !r.uploaded && !offlinePhotoIds.has(r.id));
       setEvictedCount(provisionalEvicted.length);
 
-      if (isOnline) {
+      // iPad Safari / mobile-hotspot handoff can flip `navigator.onLine`
+      // to false for short windows. `isLikelyOnline()` honours a recent
+      // successful Supabase fetch as proof the radio is up, so a false-flip
+      // does not skip the DB query and hide already-uploaded photos. Genuine
+      // failures fall through to the existing catch / last-known behavior.
+      if (isOnline || isLikelyOnline()) {
       const { data, error } = await (supabase
           .from(tableName) as any)
           .select('*')
