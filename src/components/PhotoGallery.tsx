@@ -5,6 +5,7 @@ import { getOfflinePhotos, updatePhotoDisplayOrder, getDB, putPhotoRecord, isIdb
 import { cachePhotoFromRemote, batchValidateCachedPhotos } from "@/lib/photo-cache";
 import { getPhotoReceipts, removePhotoReceipts } from "@/lib/photo-receipts";
 import { useNetworkStatus } from "@/hooks/useNetworkStatus";
+import { isLikelyOnline } from "@/lib/network-liveness";
 import { isHeicPath, isHeicBlob, convertHeicBlobToJpeg } from "@/lib/heic-converter";
 import { processBackgroundCacheItem, migrateHeicToJpeg, dedupeOfflineAgainstDb, type MigrateHeicOutcome } from "./photo-gallery-helpers";
 import { Card } from "@/components/ui/card";
