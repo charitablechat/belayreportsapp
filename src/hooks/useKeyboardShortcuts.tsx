@@ -33,23 +33,23 @@ export function useKeyboardShortcuts({
       ) {
         // Only allow Ctrl/Cmd+S to save even in inputs
         const isSaveShortcut =
-          event.key.toLowerCase() === "s" &&
+          event.key?.toLowerCase() === "s" &&
           (event.ctrlKey || event.metaKey) &&
           !event.shiftKey &&
           !event.altKey;
-        
+
         if (!isSaveShortcut) return;
       }
 
       for (const shortcut of shortcuts) {
-        const keyMatch = event.key.toLowerCase() === shortcut.key.toLowerCase();
+        const keyMatch = event.key?.toLowerCase() === shortcut.key?.toLowerCase();
         const ctrlMatch = shortcut.ctrl ? event.ctrlKey : !event.ctrlKey;
         const metaMatch = shortcut.meta ? event.metaKey : !event.metaKey;
         const shiftMatch = shortcut.shift ? event.shiftKey : !event.shiftKey;
         const altMatch = shortcut.alt ? event.altKey : !event.altKey;
 
         // For Ctrl/Cmd+S, we want to match either ctrl or meta
-        const isSaveShortcut = shortcut.key.toLowerCase() === "s" && (shortcut.ctrl || shortcut.meta);
+        const isSaveShortcut = shortcut.key?.toLowerCase() === "s" && (shortcut.ctrl || shortcut.meta);
         
         if (isSaveShortcut) {
           if (keyMatch && (event.ctrlKey || event.metaKey) && !event.shiftKey && !event.altKey) {
