@@ -30,7 +30,7 @@
  *   bun run build && node scripts/bundle-size-budget.mjs
  */
 
-import { readFileSync, readdirSync, statSync, existsSync } from "node:fs";
+import { readFileSync, statSync, existsSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, resolve, join, extname } from "node:path";
 import { isLovableMainPush, emitLovableGraceWarning } from "./lovable-grace.mjs";
