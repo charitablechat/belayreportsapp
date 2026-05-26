@@ -190,3 +190,57 @@ describe('iPad Safari false-offline guard via isLikelyOnline', () => {
     }
   });
 });
+
+/**
+ * Mirrors the production gate in ItemPhotoUpload.handleUpload step 8:
+ *   if (isOnline || isLikelyOnline()) { uploadInBackground(...) }
+ *
+ * Locks the contract that a false `navigator.onLine` flip (common on iPad
+ * Safari mobile-hotspot handoffs) does NOT prevent a freshly captured
+ * photo from kicking off its background upload, as long as the liveness
+ * guard still considers us online. Without this, the row stays at
+ * `pending/...` until the next online event — which may never fire in
+ * the current tab on iOS Safari.
+ */
+function shouldStartBackgroundUpload(isOnlineFromHook: boolean): boolean {
+  return isOnlineFromHook || isLikelyOnline();
+}
+
+describe('ItemPhotoUpload handleUpload background-start gate', () => {
+  beforeEach(() => {
+    __resetNetworkLivenessForTest();
+  });
+
+  it('starts background upload when useNetworkStatus reports offline but isLikelyOnline() is true', () => {
+    recordNetworkSuccess(Date.now());
+    const orig = Object.getOwnPropertyDescriptor(window.navigator, 'onLine');
+    Object.defineProperty(window.navigator, 'onLine', {
+      configurable: true,
+      get: () => false,
+    });
+    try {
+      // useNetworkStatus mirrors navigator.onLine, so isOnline=false here.
+      expect(shouldStartBackgroundUpload(false)).toBe(true);
+    } finally {
+      if (orig) Object.defineProperty(window.navigator, 'onLine', orig);
+    }
+  });
+
+  it('starts background upload when useNetworkStatus reports online', () => {
+    expect(shouldStartBackgroundUpload(true)).toBe(true);
+  });
+
+  it('does not start background upload when truly offline (no recent success and navigator offline)', () => {
+    const orig = Object.getOwnPropertyDescriptor(window.navigator, 'onLine');
+    Object.defineProperty(window.navigator, 'onLine', {
+      configurable: true,
+      get: () => false,
+    });
+    try {
+      expect(shouldStartBackgroundUpload(false)).toBe(false);
+    } finally {
+      if (orig) Object.defineProperty(window.navigator, 'onLine', orig);
+    }
+  });
+});
+
