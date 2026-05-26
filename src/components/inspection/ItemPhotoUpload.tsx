@@ -221,7 +221,7 @@ function ItemPhotoUpload({
         void photoId;
       } catch { /* non-critical */ }
 
-      if (!navigator.onLine) return;
+      if (!isLikelyOnline()) return;
       try {
         await supabase
           .from(galleryTable as 'inspection_photos')
