@@ -80,7 +80,7 @@ describe("useKeyboardShortcuts", () => {
       useKeyboardShortcuts({ shortcuts: [{ key: "k", action }] })
     );
     const div = document.createElement("div");
-    div.contentEditable = "true";
+    Object.defineProperty(div, "isContentEditable", { value: true });
     document.body.appendChild(div);
     fire({ key: "k", target: div });
     expect(action).not.toHaveBeenCalled();
