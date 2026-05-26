@@ -15,7 +15,7 @@ vi.mock('@/hooks/usePWA', () => ({
 
 vi.mock('@/lib/haptics', () => ({ triggerHaptic: vi.fn() }));
 
-function renderRow(report: any) {
+function renderRow(report: Record<string, unknown>) {
   return render(
     <TooltipProvider>
       <ReportListView
