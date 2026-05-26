@@ -3,21 +3,22 @@
  * Bundle-size budget gate.
  *
  * Mirrors the `lint:any-budget` pattern: a single integer file at
- * `.bundle-size-budget` defines the maximum total bytes of all
- * `dist/assets/*.js` and `dist/assets/*.css` files (after `vite build`).
+ * `.bundle-size-budget` defines the maximum total bytes of the
+ * **eager first-load assets** (after `vite build`).
+ *
+ * Eager vs lazy: we parse `dist/index.html` and only count the JS/CSS
+ * assets it directly references — the main entry chunk, its CSS, and
+ * any modulepreload links. Code-split lazy chunks loaded via dynamic
+ * `import()` (e.g. `pdfjs-dist` / `mammoth.browser` behind "Import
+ * from previous report", per-route chunks, heic2any) are NOT counted.
+ * They don't affect first-load cost and only download when the
+ * relevant feature is used.
  *
  * Why total bytes, not gzipped: vite's deterministic output makes raw
  * size a stable signal; gzipping introduces variance from the gzip
  * implementation and adds a runtime dep. Raw bytes correlate well
  * enough with download size for the use-case (catching silent bloat
- * from a new dep or accidental import).
- *
- * Why not per-file: heic2any alone is ~1.35 MB and is intentional.
- * A per-file gate would either be useless (set above heic2any, no
- * teeth on small chunks) or constantly trip on legitimate growth.
- * The total-bytes gate catches anything material.
- *
- * Why not gzipped + per-file: future work. Start simple; ratchet later.
+ * from a new dep landing in the eager bundle).
  *
  * Behavior:
  *   - Exits 0 if total <= budget.
