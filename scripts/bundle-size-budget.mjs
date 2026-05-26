@@ -72,12 +72,47 @@ if (!existsSync(assetsDir)) {
 const TOLERANCE_BYTES = 4 * 1024;
 
 const TRACKED_EXT = new Set([".js", ".css"]);
-const entries = readdirSync(assetsDir);
+
+// Parse dist/index.html for eager first-load assets only. Anything
+// referenced via <script src>, <link rel="stylesheet" href>, or
+// <link rel="modulepreload" href> is part of the first-paint cost.
+// Dynamic-import chunks (lazy routes, pdfjs, mammoth, heic2any) are
+// not referenced from index.html — they're emitted to dist/assets
+// but only downloaded when the feature is invoked, so they don't
+// count against the eager budget.
+const indexHtmlPath = resolve(repoRoot, "dist/index.html");
+if (!existsSync(indexHtmlPath)) {
+  console.error(
+    `[bundle-size-budget] ${indexHtmlPath} does not exist. Run \`bun run build\` first.`,
+  );
+  process.exit(2);
+}
+const indexHtml = readFileSync(indexHtmlPath, "utf8");
+const eagerNames = new Set();
+const assetRefRe = /\/assets\/([^"'\s>]+\.(?:js|css))/g;
+let m;
+while ((m = assetRefRe.exec(indexHtml)) !== null) {
+  eagerNames.add(m[1]);
+}
+
+if (eagerNames.size === 0) {
+  console.error(
+    `[bundle-size-budget] No eager assets referenced from dist/index.html — refusing to pass a vacuous check.`,
+  );
+  process.exit(2);
+}
+
 let total = 0;
 const top = [];
-for (const name of entries) {
+for (const name of eagerNames) {
   if (!TRACKED_EXT.has(extname(name))) continue;
   const full = join(assetsDir, name);
+  if (!existsSync(full)) {
+    console.error(
+      `[bundle-size-budget] Eager asset ${name} referenced from index.html but missing on disk.`,
+    );
+    process.exit(2);
+  }
   const st = statSync(full);
   if (!st.isFile()) continue;
   total += st.size;
