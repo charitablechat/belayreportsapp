@@ -3,21 +3,22 @@
  * Bundle-size budget gate.
  *
  * Mirrors the `lint:any-budget` pattern: a single integer file at
- * `.bundle-size-budget` defines the maximum total bytes of all
- * `dist/assets/*.js` and `dist/assets/*.css` files (after `vite build`).
+ * `.bundle-size-budget` defines the maximum total bytes of the
+ * **eager first-load assets** (after `vite build`).
+ *
+ * Eager vs lazy: we parse `dist/index.html` and only count the JS/CSS
+ * assets it directly references — the main entry chunk, its CSS, and
+ * any modulepreload links. Code-split lazy chunks loaded via dynamic
+ * `import()` (e.g. `pdfjs-dist` / `mammoth.browser` behind "Import
+ * from previous report", per-route chunks, heic2any) are NOT counted.
+ * They don't affect first-load cost and only download when the
+ * relevant feature is used.
  *
  * Why total bytes, not gzipped: vite's deterministic output makes raw
  * size a stable signal; gzipping introduces variance from the gzip
  * implementation and adds a runtime dep. Raw bytes correlate well
  * enough with download size for the use-case (catching silent bloat
- * from a new dep or accidental import).
- *
- * Why not per-file: heic2any alone is ~1.35 MB and is intentional.
- * A per-file gate would either be useless (set above heic2any, no
- * teeth on small chunks) or constantly trip on legitimate growth.
- * The total-bytes gate catches anything material.
- *
- * Why not gzipped + per-file: future work. Start simple; ratchet later.
+ * from a new dep landing in the eager bundle).
  *
  * Behavior:
  *   - Exits 0 if total <= budget.
@@ -29,7 +30,7 @@
  *   bun run build && node scripts/bundle-size-budget.mjs
  */
 
-import { readFileSync, readdirSync, statSync, existsSync } from "node:fs";
+import { readFileSync, statSync, existsSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, resolve, join, extname } from "node:path";
 import { isLovableMainPush, emitLovableGraceWarning } from "./lovable-grace.mjs";
@@ -71,12 +72,47 @@ if (!existsSync(assetsDir)) {
 const TOLERANCE_BYTES = 4 * 1024;
 
 const TRACKED_EXT = new Set([".js", ".css"]);
-const entries = readdirSync(assetsDir);
+
+// Parse dist/index.html for eager first-load assets only. Anything
+// referenced via <script src>, <link rel="stylesheet" href>, or
+// <link rel="modulepreload" href> is part of the first-paint cost.
+// Dynamic-import chunks (lazy routes, pdfjs, mammoth, heic2any) are
+// not referenced from index.html — they're emitted to dist/assets
+// but only downloaded when the feature is invoked, so they don't
+// count against the eager budget.
+const indexHtmlPath = resolve(repoRoot, "dist/index.html");
+if (!existsSync(indexHtmlPath)) {
+  console.error(
+    `[bundle-size-budget] ${indexHtmlPath} does not exist. Run \`bun run build\` first.`,
+  );
+  process.exit(2);
+}
+const indexHtml = readFileSync(indexHtmlPath, "utf8");
+const eagerNames = new Set();
+const assetRefRe = /\/assets\/([^"'\s>]+\.(?:js|css))/g;
+let m;
+while ((m = assetRefRe.exec(indexHtml)) !== null) {
+  eagerNames.add(m[1]);
+}
+
+if (eagerNames.size === 0) {
+  console.error(
+    `[bundle-size-budget] No eager assets referenced from dist/index.html — refusing to pass a vacuous check.`,
+  );
+  process.exit(2);
+}
+
 let total = 0;
 const top = [];
-for (const name of entries) {
+for (const name of eagerNames) {
   if (!TRACKED_EXT.has(extname(name))) continue;
   const full = join(assetsDir, name);
+  if (!existsSync(full)) {
+    console.error(
+      `[bundle-size-budget] Eager asset ${name} referenced from index.html but missing on disk.`,
+    );
+    process.exit(2);
+  }
   const st = statSync(full);
   if (!st.isFile()) continue;
   total += st.size;
