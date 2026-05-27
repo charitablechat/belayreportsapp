@@ -461,6 +461,23 @@ function ItemPhotoUpload({
       const compressed = await compressImage(file, { maxWidth: 1200, maxHeight: 1200, quality: 0.8 });
       if (isPhotoTraceEnabled()) photoTrace('handleUpload.compressed', { size: compressed.size, type: compressed.type }, cid);
 
+      // Zero-byte guard #1 (post-compression). Mirrors the input-file guard
+      // above. Without this, a Safari canvas-toBlob hiccup that returns an
+      // empty Blob would happily flow through to IDB and then to Storage —
+      // leaving a 0-byte object on the server that renders as a broken
+      // image in the report (the "place marker" bug observed on
+      // Peaceable Kingdom). Bailing here keeps the inspection_photos row
+      // out of existence entirely so a retry/recapture starts clean.
+      if (!compressed || compressed.size === 0) {
+        if (isPhotoTraceEnabled()) photoTrace('handleUpload.zero-byte-compressed', { itemId }, cid);
+        clearTimeout(safetyTimer);
+        setUploading(false);
+        toast.error("Photo capture failed", {
+          description: "The compressed image was empty. Please try again.",
+        });
+        return;
+      }
+
       // 2. Instant local preview
       const previewUrl = URL.createObjectURL(compressed);
       setLocalPreview(previewUrl);
