@@ -356,12 +356,43 @@ function ItemPhotoUpload({
         throw new Error('Inspection still has a temporary ID; deferring item photo sync');
       }
 
+      // Zero-byte guard #2 (pre-upload). Defense in depth: even if a
+      // 0-byte blob somehow reached IDB (legacy row, eviction race), do
+      // not push it to Storage. Throwing leaves the photo with
+      // uploaded=0 so useAutoSync will retry under the (now non-empty)
+      // gate later, instead of silently writing an empty object that
+      // markPhotoAsUploaded would then immortalise.
+      if (!compressed || compressed.size === 0) {
+        if (isPhotoTraceEnabled()) photoTrace('uploadInBackground.zero-byte-skip', { photoId, filePath }, cid);
+        throw new Error('Refusing to upload empty photo blob');
+      }
+
       const { error: uploadError } = await supabase.storage
         .from("inspection-photos")
         .upload(filePath, compressed, { contentType: "image/jpeg", upsert: true });
 
       if (uploadError) throw uploadError;
       if (isPhotoTraceEnabled()) photoTrace('uploadInBackground.storage-uploaded', { filePath }, cid);
+
+      // Zero-byte guard #3 (post-upload integrity check). Even with the
+      // two upstream gates, a HEAD-back is the only way to be certain
+      // the body landed. If the remote object is 0 bytes, throw before
+      // markPhotoAsUploaded so the photo stays queued for retry rather
+      // than getting locked in as "done" with empty contents.
+      try {
+        const headRes = await fetch(
+          (await supabase.storage.from('inspection-photos').createSignedUrl(filePath, 60)).data?.signedUrl || '',
+          { method: 'HEAD' },
+        );
+        const remoteLen = Number(headRes.headers.get('content-length') || '0');
+        if (!headRes.ok || remoteLen === 0) {
+          if (isPhotoTraceEnabled()) photoTrace('uploadInBackground.empty-after-upload', { filePath, remoteLen, status: headRes.status }, cid);
+          throw new Error(`Uploaded object is ${remoteLen} bytes (expected > 0)`);
+        }
+      } catch (verifyErr) {
+        // Bubble up — keep photo unmarked so useAutoSync retries.
+        throw verifyErr;
+      }
 
       // ✅ Mark uploaded FIRST to close race window with syncPhotos
       await markPhotoAsUploaded(photoId, filePath);
