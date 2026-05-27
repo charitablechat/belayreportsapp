@@ -356,12 +356,43 @@ function ItemPhotoUpload({
         throw new Error('Inspection still has a temporary ID; deferring item photo sync');
       }
 
+      // Zero-byte guard #2 (pre-upload). Defense in depth: even if a
+      // 0-byte blob somehow reached IDB (legacy row, eviction race), do
+      // not push it to Storage. Throwing leaves the photo with
+      // uploaded=0 so useAutoSync will retry under the (now non-empty)
+      // gate later, instead of silently writing an empty object that
+      // markPhotoAsUploaded would then immortalise.
+      if (!compressed || compressed.size === 0) {
+        if (isPhotoTraceEnabled()) photoTrace('uploadInBackground.zero-byte-skip', { photoId, filePath }, cid);
+        throw new Error('Refusing to upload empty photo blob');
+      }
+
       const { error: uploadError } = await supabase.storage
         .from("inspection-photos")
         .upload(filePath, compressed, { contentType: "image/jpeg", upsert: true });
 
       if (uploadError) throw uploadError;
       if (isPhotoTraceEnabled()) photoTrace('uploadInBackground.storage-uploaded', { filePath }, cid);
+
+      // Zero-byte guard #3 (post-upload integrity check). Even with the
+      // two upstream gates, a HEAD-back is the only way to be certain
+      // the body landed. If the remote object is 0 bytes, throw before
+      // markPhotoAsUploaded so the photo stays queued for retry rather
+      // than getting locked in as "done" with empty contents.
+      try {
+        const headRes = await fetch(
+          (await supabase.storage.from('inspection-photos').createSignedUrl(filePath, 60)).data?.signedUrl || '',
+          { method: 'HEAD' },
+        );
+        const remoteLen = Number(headRes.headers.get('content-length') || '0');
+        if (!headRes.ok || remoteLen === 0) {
+          if (isPhotoTraceEnabled()) photoTrace('uploadInBackground.empty-after-upload', { filePath, remoteLen, status: headRes.status }, cid);
+          throw new Error(`Uploaded object is ${remoteLen} bytes (expected > 0)`);
+        }
+      } catch (verifyErr) {
+        // Bubble up — keep photo unmarked so useAutoSync retries.
+        throw verifyErr;
+      }
 
       // ✅ Mark uploaded FIRST to close race window with syncPhotos
       await markPhotoAsUploaded(photoId, filePath);
@@ -460,6 +491,23 @@ function ItemPhotoUpload({
       // 1. Compress image
       const compressed = await compressImage(file, { maxWidth: 1200, maxHeight: 1200, quality: 0.8 });
       if (isPhotoTraceEnabled()) photoTrace('handleUpload.compressed', { size: compressed.size, type: compressed.type }, cid);
+
+      // Zero-byte guard #1 (post-compression). Mirrors the input-file guard
+      // above. Without this, a Safari canvas-toBlob hiccup that returns an
+      // empty Blob would happily flow through to IDB and then to Storage —
+      // leaving a 0-byte object on the server that renders as a broken
+      // image in the report (the "place marker" bug observed on
+      // Peaceable Kingdom). Bailing here keeps the inspection_photos row
+      // out of existence entirely so a retry/recapture starts clean.
+      if (!compressed || compressed.size === 0) {
+        if (isPhotoTraceEnabled()) photoTrace('handleUpload.zero-byte-compressed', { itemId }, cid);
+        clearTimeout(safetyTimer);
+        setUploading(false);
+        toast.error("Photo capture failed", {
+          description: "The compressed image was empty. Please try again.",
+        });
+        return;
+      }
 
       // 2. Instant local preview
       const previewUrl = URL.createObjectURL(compressed);

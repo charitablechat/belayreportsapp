@@ -1,58 +1,50 @@
-## Goal
+# Peaceable Kingdom photo placeholders — root cause and fix plan
 
-In the dashboard list/two-column row view, the small right-aligned date pill currently always renders the report's primary date (`inspection_date` / `assessment_date` / training `start_date`). For rows whose status is `completed`, render the **submission (completion) date** instead. All other statuses are unchanged.
+## Root cause (confirmed from the database, not a guess)
 
-## Scope
+The Peaceable Kingdom inspection (`d8bac5de-5e89-4695-871a-3bc815ae1858`) has 6 `inspection_photos` rows pointing at storage paths under `inspection-photos/62ef2a7b…/d8bac5de…/items/*.jpg`. All six storage objects **exist** with `mimetype = image/jpeg` but `size = 0 bytes`. Signed URLs are generated successfully, but the bytes are empty, so the browser renders a broken-image placeholder ("place marker").
 
-Single component, single render site:
+A scan of this inspector's bucket prefix shows **9 zero-byte objects out of 234** — all 6 belong to Peaceable Kingdom, the other 3 belong to one earlier inspection on 2026-05-13. This is rare but reproducible.
 
-- `src/components/dashboard/ReportListView.tsx` — the date pill at lines ~304–307:
-  ```tsx
-  <div className="hidden md:block shrink-0 text-xs text-muted-foreground tabular-nums w-[92px] text-right">
-    {parsed ? format(parsed, "MMM d, yyyy") : "—"}
-  </div>
-  ```
+There is no display bug. The HTML/report generator is correct; the data on disk is empty.
 
-No changes to `ReportCard.tsx` (card view already shows an explicit "Completed:" line), no styles, no layout, no data fetching, no other fields.
+## Why this happened (hypothesis to confirm during fix)
 
-## Logic
+`ItemPhotoUpload.uploadInBackground` (`src/components/inspection/ItemPhotoUpload.tsx`, line ~359) calls `supabase.storage.from('inspection-photos').upload(filePath, compressed, …)` with **no size check on `compressed`** and no post-upload verification. If the `compressed` File argument is 0 bytes for any reason (HEIC→JPEG path returning an empty blob on a Safari quirk, canvas/toBlob returning null-coerced empty, an IndexedDB read returning an empty ArrayBuffer that got re-wrapped, or a race where the input File was already revoked), the upload silently succeeds and `markPhotoAsUploaded` flips the row to "done." From then on, the system believes the photo is uploaded and will never retry.
 
-Mirror the completion-timestamp resolution already used in `ReportCard.tsx`:
+## Scope of this fix
 
-```ts
-const submittedAtRaw =
-  status === "completed"
-    ? (report.attestation_signed_at || report.updated_at)
-    : null;
-const submittedAt = submittedAtRaw ? new Date(submittedAtRaw) : null;
+Narrow, two-part fix. Display logic, RLS, Storage policies, Service Worker, Workbox, offline-sync architecture, Training, Daily Assessment, and PDF layout are explicitly out of scope.
 
-const displayDate =
-  status === "completed" && submittedAt ? submittedAt : parsed;
-```
+### Part A — Prevent new 0-byte uploads (forward fix)
 
-Render `displayDate` in the same pill with the same `MMM d, yyyy` format and same width/classes. Fallback to `parsed` if `attestation_signed_at`/`updated_at` are both missing (defensive — keeps the column from going blank).
+Single file: `src/components/inspection/ItemPhotoUpload.tsx`.
 
-Optional polish (kept inside the same element, no layout change): wrap the pill in the existing `Tooltip` pattern so hovering a completed row's date shows "Submitted {PPpp}", matching the tooltip pattern already used elsewhere in this file. If this expands scope at all, skip it and leave as plain text.
+1. In `handleUpload`, immediately after `compressed` is produced, assert `compressed.size > 0`. If 0, do not save to IDB, do not write a receipt, do not call `onPhotoChange`, surface a toast, and bail. This stops 0-byte rows from ever entering the pipeline.
+2. In `uploadInBackground`, before the `.upload(...)` call, re-check `compressed.size > 0`. If 0, throw — do not write the object, do not call `markPhotoAsUploaded`, do not insert the gallery row. The existing photo stays `pending/` and `useAutoSync` will pick it up from the durable IDB blob (which is non-empty by Part A's gate).
+3. After `.upload(...)` returns success, call `supabase.storage.from('inspection-photos').list(parentDir, { search: filename })` (or a `createSignedUrl` + `HEAD`) and confirm `metadata.size > 0`. If the remote object is 0 bytes, throw before marking uploaded so the photo stays queued for retry. (Single extra round trip per upload; only runs on the optimistic capture path.)
 
-## Tests
+### Part B — Recover the 9 stranded photos already in the database
 
-Add `src/components/dashboard/__tests__/ReportListView.submitted-date.test.tsx`:
+These objects exist with 0 bytes and rows in `inspection_photos`. Two recovery angles, in priority order:
 
-1. `status: "draft"` with `inspection_date: 2026-05-10` and `updated_at: 2026-05-20` → renders **May 10, 2026**.
-2. `status: "completed"` with `inspection_date: 2026-05-10`, `attestation_signed_at: 2026-05-22T15:00:00Z` → renders **May 22, 2026**.
-3. `status: "completed"` with no `attestation_signed_at`, `updated_at: 2026-05-21T15:00:00Z` → renders **May 21, 2026**.
-4. `status: "completed"` with neither field set → falls back to the report's primary date.
+1. **Device-side rescue** (preferred, lossless). The original blob may still live in Luke Benton's iPad IndexedDB under the offline `photos` store keyed by the original photo id. Add a one-shot rescue helper that, for any `inspection_photos.photo_url` whose remote object is 0 bytes AND whose owner has a matching uploaded IDB blob with `size > 0`, re-uploads from the local blob with `upsert: true` and re-marks. Run it opportunistically from the existing `photo-rescue-sweep` module so it triggers next time the user opens the app. No new edge function, no schema change, no Storage policy change.
+2. **Reporting fallback** (only if device blob is gone). The 6 affected rows cannot be reconstructed server-side. Update `renderItemPhotoCell` in `supabase/functions/generate-inspection-html/index.ts` (already returns `—` when no signed URL) to additionally treat a 0-byte signed-URL HEAD as "no photo" so the report does not render a broken image. This is cosmetic only; it does NOT delete the row, because the user may still want to recapture.
 
-## Validation
+If Part B step 1 recovers the bytes, step 2 is a no-op for Peaceable Kingdom. If not, the report stops showing broken markers and the user can recapture the 6 photos.
 
-- Run the new test file + existing `ReportListView`/`ReportCard` tests.
-- Run the full Vitest suite; report pass count.
-- Visual check at `/` against the screenshots: completed rows in list and two-column view show the completion date; draft/in-progress rows are unchanged.
+## Verification
 
-## Out of scope (explicit)
+1. Unit test in `src/components/inspection/__tests__/` covering: `handleUpload` rejects a 0-byte compressed File, `uploadInBackground` rejects a 0-byte compressed File before `.upload(...)`, and the post-upload size verification throws when the remote object is 0 bytes.
+2. Targeted test that the rescue sweep re-uploads when local IDB has bytes and remote is 0.
+3. Manual check: run a SQL count of `storage.objects WHERE bucket_id='inspection-photos' AND (metadata->>'size')::bigint = 0` before and after the rescue sweep runs against Luke's device.
+4. Focused tests for `ItemPhotoUpload.tsx` and `photo-rescue-sweep`.
+5. Full vitest run; report the passing count.
 
-- `ReportCard.tsx` grid view
-- Date column width, font, color, tooltip styling beyond the optional Submitted tooltip
-- `getReportDate`, loaders, savers, schema, RLS, edge functions
-- Any inspection / daily-assessment / training PDF or HTML generation
-- Any sync, photo, or auth code paths
+## Confirmations to include in the completion report
+
+- Files changed (expected: `ItemPhotoUpload.tsx`, `photo-rescue-sweep.ts`, the focused test file, and optionally `generate-inspection-html/index.ts` for the cosmetic fallback).
+- Exact logic added at each gate.
+- Confirmation that no schema, no RLS, no Storage policy, no auth, no Service Worker, no Workbox, no offline-sync architecture, no Training, no Daily Assessment, and no PDF layout changes were made.
+- Before/after count of 0-byte objects in the inspector's prefix.
+- Whether the 6 Peaceable Kingdom photos were recovered from the device or need recapture.
