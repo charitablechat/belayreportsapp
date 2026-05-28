@@ -14,6 +14,7 @@ import { supabase } from '@/integrations/supabase/client';
 import {
   transition,
   getAuthState,
+  subscribeAuthState,
   type AuthState,
 } from '@/lib/auth-state-machine';
 import { runWithAuthMutex } from '@/lib/auth-mutex';
