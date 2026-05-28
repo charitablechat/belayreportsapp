@@ -28,6 +28,7 @@ import {
 } from '@/lib/cached-auth';
 import { isPlaceholderToken } from '@/lib/synthetic-session-guard';
 import { getLastKnownAccount } from '@/lib/last-known-account';
+import { setSentryUser } from '@/lib/sentry';
 
 let initialized = false;
 
