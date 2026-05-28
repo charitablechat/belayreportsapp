@@ -159,6 +159,7 @@ export async function initSentry(): Promise<void> {
     });
     sentryModule = Sentry;
     initialized = true;
+    flushPendingSentryUser();
   } catch {
     // Sentry must never break the app boot.
   }
@@ -212,4 +213,48 @@ export function captureException(
   } catch {
     /* ignore */
   }
+}
+
+/**
+ * Attach the authenticated user identity to Sentry so subsequent events
+ * include `user.id` / `user.email` instead of only the IP fallback.
+ *
+ * Safe to call before `initSentry()` resolves — the desired identity is
+ * cached and applied as soon as the Sentry module finishes loading.
+ *
+ * Only forwards safe identifiers (id, email, optional role). Never pass
+ * tokens, passwords, refresh tokens, or service-role keys.
+ */
+export interface SentryUserContext {
+  id: string;
+  email?: string | null;
+  role?: string | null;
+}
+
+let pendingUser: SentryUserContext | null | undefined = undefined;
+
+export function setSentryUser(user: SentryUserContext | null): void {
+  pendingUser = user;
+  if (!sentryModule) return;
+  try {
+    if (user === null) {
+      sentryModule.setUser(null);
+      return;
+    }
+    sentryModule.setUser({
+      id: user.id,
+      ...(user.email ? { email: user.email } : {}),
+      ...(user.role ? { segment: user.role } : {}),
+    });
+  } catch {
+    /* ignore — Sentry must never break the app */
+  }
+}
+
+/** Exposed for tests; flushes any user set before initSentry resolved. */
+export function flushPendingSentryUser(): void {
+  if (pendingUser === undefined) return;
+  const u = pendingUser;
+  pendingUser = undefined;
+  setSentryUser(u);
 }
