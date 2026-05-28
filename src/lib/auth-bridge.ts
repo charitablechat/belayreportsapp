@@ -92,7 +92,6 @@ function deriveCurrentState(): {
 export function initAuthBridge(): void {
   if (initialized) return;
   initialized = true;
-
   // Seed state from current storage.
   const initial = deriveCurrentState();
   transition({
@@ -100,6 +99,29 @@ export function initAuthBridge(): void {
     reason: 'boot:derive-from-storage',
     userId: initial.userId,
     email: initial.email,
+  });
+
+  // Mirror auth identity to Sentry so future events include user.id/email
+  // instead of only the IP fallback. We attach when authenticated (either
+  // online or offline-with-known-id), and clear on UNAUTHENTICATED.
+  // Safe identifiers only — no tokens, no service-role keys.
+  let lastSentryUserId: string | null = null;
+  const syncSentryUser = (snap: ReturnType<typeof getAuthState>) => {
+    const authed =
+      snap.state === 'ONLINE_AUTHENTICATED' ||
+      snap.state === 'OFFLINE_AUTHENTICATED';
+    if (authed && snap.userId) {
+      if (snap.userId === lastSentryUserId) return;
+      lastSentryUserId = snap.userId;
+      setSentryUser({ id: snap.userId, email: snap.email ?? null });
+    } else if (snap.state === 'UNAUTHENTICATED') {
+      if (lastSentryUserId === null) return;
+      lastSentryUserId = null;
+      setSentryUser(null);
+    }
+  };
+  syncSentryUser(getAuthState());
+  subscribeAuthState(syncSentryUser);
   });
 
   // Subscribe to Supabase auth events.
