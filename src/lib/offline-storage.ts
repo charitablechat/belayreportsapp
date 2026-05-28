@@ -1,5 +1,5 @@
 import { openDB, DBSchema, IDBPDatabase, StoreNames } from 'idb';
-import { isIdbClosingError } from './idb-closing-error';
+import { isIdbClosingError, isIdbDeletedError } from './idb-closing-error';
 import { checkStorageQuota, requestPersistentStorage, isMobile } from './mobile-detection';
 import { isUpdatedAheadOfSync } from './local-data-guards';
 import { safeSetItem } from './safe-local-storage';
@@ -3084,6 +3084,26 @@ export async function getDB() {
         ),
       ]);
     } catch (error) {
+      // Safari/iOS storage-pressure deletion: WebKit evicted the per-origin
+      // IDB store between two calls. Retry the open exactly once — the
+      // second openDB sees no existing version, runs the full v0→DB_VERSION
+      // upgrade chain, and yields a fresh empty schema. The sync layer
+      // repopulates from Supabase on the next tick. Recovery is silent
+      // (no reload) and bounded to this single recoverable condition.
+      if (isIdbDeletedError(error)) {
+        console.warn('[Offline Storage] Detected Safari IDB eviction (Database deleted by request of the user) — recreating schema');
+        try {
+          db = await openDBV8WithTimeout();
+          // Best-effort: kick the sync loop so cleared data refills from
+          // Supabase. Fire-and-forget; never let the recovery path throw.
+          try {
+            window.dispatchEvent(new CustomEvent('idb-recovered-from-eviction'));
+          } catch { /* ignore */ }
+        } catch (retryError) {
+          console.error('[Offline Storage] IDB recovery re-open failed:', retryError);
+          throw retryError;
+        }
+      } else {
       console.error('[Offline Storage] Failed to open IndexedDB:', error);
       // Phase 5 — record the failure so the recovery UI can offer rollback.
       if (upgradeStartTs > 0 && migrationSafety) {
@@ -3108,6 +3128,7 @@ export async function getDB() {
       // parallel caller may have just installed during the microtask gap
       // between this re-throw and the outer catch.
       throw error;
+      }
     }
 
     // Phase 5 — post-upgrade fingerprint validation.

@@ -24,12 +24,49 @@ if (isPhotoTraceEnabled()) {
 // Sentry; the campaign hot paths (sync, IDB, save) all fire in async
 // contexts where a missed `await` would otherwise be lost.
 if (typeof window !== "undefined") {
+  // Recovery hook for Safari/iOS storage-pressure IDB eviction. When
+  // WebKit evicts the per-origin IndexedDB store mid-session, the next
+  // transaction throws `UnknownError: Database deleted by request of
+  // the user`. We catch it at the global `unhandledrejection` boundary,
+  // force-close the stale connection (so the next `getDB()` re-opens
+  // and recreates the schema via the existing upgrade path), and let
+  // the sync loop repopulate from Supabase. Bounded to this single
+  // recoverable condition — all other errors flow to `logError` as
+  // before. Single-flight: guarded by `idbDeletionRecoveryInFlight`.
+  let idbDeletionRecoveryInFlight = false;
+  const maybeRecoverFromIdbDeletion = async (reason: unknown) => {
+    try {
+      const { isIdbDeletedError } = await import("@/lib/idb-closing-error");
+      if (!isIdbDeletedError(reason)) return false;
+      if (idbDeletionRecoveryInFlight) return true;
+      idbDeletionRecoveryInFlight = true;
+      try {
+        const { forceCloseAndReopenDB } = await import("@/lib/offline-storage");
+        await forceCloseAndReopenDB();
+        try {
+          window.dispatchEvent(new CustomEvent("idb-recovered-from-eviction"));
+        } catch { /* ignore */ }
+      } finally {
+        idbDeletionRecoveryInFlight = false;
+      }
+      return true;
+    } catch {
+      return false;
+    }
+  };
+
   window.addEventListener("unhandledrejection", (event) => {
-    logError(event.reason ?? new Error("unhandledrejection (no reason)"), {
+    const reason = event.reason;
+    // Try recovery first; suppress Sentry escalation if we handled it.
+    // The classifier in sentry.ts also downgrades any leftover events
+    // to `warning` so they never page on-call.
+    void maybeRecoverFromIdbDeletion(reason);
+    logError(reason ?? new Error("unhandledrejection (no reason)"), {
       scope: "global.unhandledrejection",
     });
   });
   window.addEventListener("error", (event) => {
+    void maybeRecoverFromIdbDeletion(event.error);
     logError(event.error ?? new Error(event.message || "window.error"), {
       scope: "global.error",
       extra: {
