@@ -160,6 +160,7 @@ export async function initSentry(): Promise<void> {
     sentryModule = Sentry;
     initialized = true;
     flushPendingSentryUser();
+  } catch {
     // Sentry must never break the app boot.
   }
 }
