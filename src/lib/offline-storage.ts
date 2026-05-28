@@ -3084,6 +3084,27 @@ export async function getDB() {
         ),
       ]);
     } catch (error) {
+      // Safari/iOS storage-pressure deletion: WebKit evicted the per-origin
+      // IDB store between two calls. Retry the open exactly once — the
+      // second openDB sees no existing version, runs the full v0→DB_VERSION
+      // upgrade chain, and yields a fresh empty schema. The sync layer
+      // repopulates from Supabase on the next tick. Recovery is silent
+      // (no reload) and bounded to this single recoverable condition.
+      if (isIdbDeletedError(error)) {
+        console.warn('[Offline Storage] Detected Safari IDB eviction (Database deleted by request of the user) — recreating schema');
+        try {
+          db = await openDBV8WithTimeout();
+          // Best-effort: kick the sync loop so cleared data refills from
+          // Supabase. Fire-and-forget; never let the recovery path throw.
+          try {
+            window.dispatchEvent(new CustomEvent('idb-recovered-from-eviction'));
+          } catch { /* ignore */ }
+        } catch (retryError) {
+          console.error('[Offline Storage] IDB recovery re-open failed:', retryError);
+          throw retryError;
+        }
+      } else {
+      console.error('[Offline Storage] Failed to open IndexedDB:', error);
       console.error('[Offline Storage] Failed to open IndexedDB:', error);
       // Phase 5 — record the failure so the recovery UI can offer rollback.
       if (upgradeStartTs > 0 && migrationSafety) {
