@@ -3105,7 +3105,6 @@ export async function getDB() {
         }
       } else {
       console.error('[Offline Storage] Failed to open IndexedDB:', error);
-      console.error('[Offline Storage] Failed to open IndexedDB:', error);
       // Phase 5 — record the failure so the recovery UI can offer rollback.
       if (upgradeStartTs > 0 && migrationSafety) {
         upgradeError = (error as { message?: string } | null | undefined)?.message || String(error);
@@ -3129,6 +3128,7 @@ export async function getDB() {
       // parallel caller may have just installed during the microtask gap
       // between this re-throw and the outer catch.
       throw error;
+      }
     }
 
     // Phase 5 — post-upgrade fingerprint validation.
