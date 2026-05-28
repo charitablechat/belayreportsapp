@@ -1,5 +1,5 @@
 import { openDB, DBSchema, IDBPDatabase, StoreNames } from 'idb';
-import { isIdbClosingError } from './idb-closing-error';
+import { isIdbClosingError, isIdbDeletedError } from './idb-closing-error';
 import { checkStorageQuota, requestPersistentStorage, isMobile } from './mobile-detection';
 import { isUpdatedAheadOfSync } from './local-data-guards';
 import { safeSetItem } from './safe-local-storage';
