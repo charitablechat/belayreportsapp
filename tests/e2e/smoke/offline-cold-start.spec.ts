@@ -71,4 +71,3 @@ test.describe('offline cold-start: PWA must never trap users on offline.html', (
   });
 });
 
-});
