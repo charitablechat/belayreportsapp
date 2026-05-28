@@ -122,7 +122,6 @@ export function initAuthBridge(): void {
   };
   syncSentryUser(getAuthState());
   subscribeAuthState(syncSentryUser);
-  });
 
   // Subscribe to Supabase auth events.
   try {
