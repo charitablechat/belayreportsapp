@@ -98,6 +98,22 @@ export function classifyRecoverableSentryEvent(
     };
   }
 
+  // Safari/iOS storage-pressure IDB eviction. WebKit raises this when
+  // it evicts the per-origin IndexedDB store under storage pressure or
+  // when the user clears site data. Recoverable: `getDB()` retries
+  // once internally (re-opens at v0 → DB_VERSION via the existing
+  // upgrade path) and the sync layer repopulates from Supabase. See
+  // `isIdbDeletedError` + `handleIdbDeletedError` in offline-storage.ts.
+  if (
+    name === 'UnknownError' &&
+    message === 'Database deleted by request of the user'
+  ) {
+    return {
+      level: 'warning',
+      fingerprint: ['UnknownError', 'idb-deleted', '{{default}}'],
+    };
+  }
+
   return null;
 }
 
