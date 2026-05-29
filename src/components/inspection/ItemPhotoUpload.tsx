@@ -1,5 +1,5 @@
 import { useState, useRef, useCallback, useEffect, memo } from "react";
-import { Camera, X, ImagePlus, Loader2, CloudOff } from "lucide-react";
+import { Camera, X, ImagePlus, Loader2, CloudOff, ImageOff } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
