@@ -74,7 +74,7 @@ function errorMessage(error: unknown, fallback: string): string {
   return fallback;
 }
 
-import { summaryFieldTimestampMs, isEmptyPlaceholderSummary } from "@/lib/training-summary-merge";
+import { summaryFieldTimestampMs, isEmptyPlaceholderSummary, mergeSummaryPreservingPopulated } from "@/lib/training-summary-merge";
 import { computeSummaryAutofill } from "@/lib/training-summary-autofill";
 
 function logTrainingSummaryAutosave(event: string, meta: Record<string, unknown> = {}) {
@@ -555,16 +555,26 @@ export default function TrainingForm() {
           setSummary(prev => {
             const incoming = summaryData || { id: crypto.randomUUID(), training_id: id };
             const local = summaryRef.current ?? prev;
-            const dirtyFields = pendingSummaryFieldsRef.current;
-            const dirtyNames = Object.keys(dirtyFields);
-            if (!local || dirtyNames.length === 0) return incoming;
-            // Empty placeholder must never beat a populated server summary.
+            if (!local) return incoming;
+            // Empty placeholder local must never beat a populated incoming
+            // (admin opening someone else's report etc.).
             if (isEmptyPlaceholderSummary(local)) return incoming;
-            const unresolved = dirtyNames.filter(field => summaryFieldTimestampMs(incoming, field) < new Date(dirtyFields[field]).getTime());
-            if (unresolved.length === 0) return incoming;
-            recordActiveEditSkip({ form: 'training', table: 'summary', rowId: incoming.id ?? null, field: unresolved.join(','), reason: 'dirty', source: 'load' });
-            logTrainingSummaryAutosave('offline-summary-local-won', { source: 'load', fields: unresolved, pendingFields: dirtyNames, incomingUpdatedAt: incoming.updated_at ?? null });
-            return mergeRecordFields(local as DbRow & { field_timestamps?: Record<string, string> | null }, incoming as DbRow & { field_timestamps?: Record<string, string> | null }, [...TRAINING_SUMMARY_FIELDS]);
+            // Always field-merge: a stale IDB row with empty siblings (e.g.
+            // recommendations="" because the latest typed text isn't in IDB
+            // yet) must NOT clobber populated React state. The
+            // `mergeSummaryPreservingPopulated` helper layers a
+            // non-empty-wins-over-stale-empty guard on top of LWW.
+            const dirtyNames = Object.keys(pendingSummaryFieldsRef.current);
+            const merged = mergeSummaryPreservingPopulated(
+              local as DbRow & { field_timestamps?: Record<string, string> | null },
+              incoming as DbRow & { field_timestamps?: Record<string, string> | null },
+            ) as DbRow;
+            logTrainingSummaryAutosave('offline-summary-merged', {
+              source: 'load',
+              pendingFields: dirtyNames,
+              incomingUpdatedAt: (incoming as { updated_at?: string | null }).updated_at ?? null,
+            });
+            return merged;
           });
         } else if (!id.startsWith('temp-')) {
           const backup = getReportSnapshot('training', id);
@@ -727,18 +737,24 @@ export default function TrainingForm() {
             if (summaryResult) {
               const dirtyFields = pendingSummaryFieldsRef.current;
               const dirtyNames = Object.keys(dirtyFields);
+              let cacheRow: DbRow = summaryResult as DbRow;
               setSummary(prev => {
-                if (!prev) return summaryResult as DbRow;
+                if (!prev) {
+                  cacheRow = summaryResult as DbRow;
+                  return summaryResult as DbRow;
+                }
                 // Empty placeholder must never beat a populated server summary.
                 if (isEmptyPlaceholderSummary(prev)) {
                   summaryRef.current = summaryResult as DbRow;
+                  cacheRow = summaryResult as DbRow;
                   return summaryResult as DbRow;
                 }
-                let next = mergeRecordFields(
+                let next = mergeSummaryPreservingPopulated(
                   prev as DbRow & { field_timestamps?: Record<string, string> | null },
                   summaryResult as DbRow & { field_timestamps?: Record<string, string> | null },
-                  [...TRAINING_SUMMARY_FIELDS],
                 ) as DbRow;
+                // Pending-edit override: any field the user dirtied locally
+                // whose incoming timestamp is older stays as the local value.
                 const unresolved = dirtyNames.filter(field => {
                   const dirtyMs = new Date(dirtyFields[field]).getTime();
                   const incomingMs = summaryFieldTimestampMs(summaryResult as DbRow, field);
@@ -758,9 +774,16 @@ export default function TrainingForm() {
                   logTrainingSummaryAutosave('incoming-summary-applied', { source: 'load', incomingUpdatedAt: summaryResult.updated_at ?? null });
                 }
                 summaryRef.current = next;
+                cacheRow = next;
                 return next;
               });
-              saveTrainingDataOffline('summary', id, summaryResult).catch(e =>
+              // Cache the MERGED row (with field_timestamps) into IDB, NOT the
+              // raw server payload. Server rows are sanitized before upsert
+              // and never carry field_timestamps; persisting the raw row to
+              // IDB would erase per-field merge metadata and let a later
+              // reload clobber a populated local field with the row-level
+              // updated_at fallback.
+              saveTrainingDataOffline('summary', id, cacheRow as unknown as DbRow[]).catch(e =>
                 console.warn('[TrainingForm] Non-critical: failed to cache summary', e));
             } else if (!summaryData) {
               setSummary({ id: crypto.randomUUID(), training_id: id });
