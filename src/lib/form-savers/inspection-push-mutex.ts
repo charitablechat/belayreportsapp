@@ -8,10 +8,10 @@
  *   - Does NOT wrap local/offline persistence — IDB writes remain unblocked.
  *
  * Why: rapid successive autosaves on the same inspection can each enter
- * the saver while temp-id rows are still in the React snapshot, generating
- * two different real UUIDs for the same logical row. Combined with
- * deterministic temp-id → real-id reuse + upsert(onConflict:"id"), this
- * mutex closes the duplicate-insert race window.
+ * the saver while temp-id rows are still in the React snapshot. With
+ * deterministic temp-id → real-id reuse + upsert(onConflict:"id") this
+ * mutex closes the remaining race window where two pushes overlap and
+ * the second observes pre-microtask state.
  */
 const locks = new Map<string, Promise<unknown>>();
 
@@ -21,23 +21,19 @@ export async function withInspectionPushLock<T>(
 ): Promise<T> {
   const prev = locks.get(inspectionId) ?? Promise.resolve();
   let release!: () => void;
-  const gate = new Promise<void>((resolve) => {
-    release = resolve;
-  });
-  locks.set(inspectionId, prev.then(() => gate));
+  const mine = prev.then(
+    () => new Promise<void>((resolve) => { release = resolve; }),
+  );
+  locks.set(inspectionId, mine);
   try {
-    await prev;
+    await prev.catch(() => { /* don't propagate predecessor failures */ });
     return await fn();
   } finally {
     release();
-    // GC: only delete if we're still the tail of the chain.
-    queueMicrotask(() => {
-      const current = locks.get(inspectionId);
-      // Best-effort cleanup; if a newer waiter chained on, leave it.
-      if (current && current === prev.then(() => gate)) {
-        locks.delete(inspectionId);
-      }
-    });
+    // GC: only delete if no newer waiter chained on top of us.
+    if (locks.get(inspectionId) === mine) {
+      locks.delete(inspectionId);
+    }
   }
 }
 
