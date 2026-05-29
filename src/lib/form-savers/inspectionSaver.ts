@@ -481,7 +481,16 @@ export async function pushInspectionToRemote(
     );
   }
   if (newSystems.length > 0) {
-    parallelOps.push(dbOp(supabase.from("inspection_systems").insert(newSystems as never)));
+    // Idempotent: temp-<uuid> reuses the embedded UUID as the DB id, so a
+    // replay (race / retry) updates the existing row instead of inserting a
+    // sibling. NOT ignoreDuplicates — we want richer replays to win.
+    parallelOps.push(
+      dbOp(
+        supabase
+          .from("inspection_systems")
+          .upsert(newSystems as never, { onConflict: "id" }),
+      ),
+    );
   }
   if (existingZiplines.length > 0) {
     parallelOps.push(
@@ -496,7 +505,13 @@ export async function pushInspectionToRemote(
     );
   }
   if (newZiplines.length > 0) {
-    parallelOps.push(dbOp(supabase.from("inspection_ziplines").insert(newZiplines as never)));
+    parallelOps.push(
+      dbOp(
+        supabase
+          .from("inspection_ziplines")
+          .upsert(newZiplines as never, { onConflict: "id" }),
+      ),
+    );
   }
   if (existingEquipment.length > 0) {
     parallelOps.push(
@@ -511,8 +526,15 @@ export async function pushInspectionToRemote(
     );
   }
   if (newEquipment.length > 0) {
-    parallelOps.push(dbOp(supabase.from("inspection_equipment").insert(newEquipment as never)));
+    parallelOps.push(
+      dbOp(
+        supabase
+          .from("inspection_equipment")
+          .upsert(newEquipment as never, { onConflict: "id" }),
+      ),
+    );
   }
+
 
   // Standards: upsert (atomic; never delete+insert).
   parallelOps.push(
