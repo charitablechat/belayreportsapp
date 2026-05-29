@@ -329,14 +329,78 @@ function ItemPhotoUpload({
     }
   }, [photoUrl, inspectionId, itemId, onPhotoChange]);
 
-  useEffect(() => { loadSignedUrl(); }, [loadSignedUrl]);
+  // ------------------------------------------------------------------
+  // Bounded signed-URL retry
+  // ------------------------------------------------------------------
+  // The placeholder thumbnail (CloudOff / ImageOff) is reached whenever
+  // loadSignedUrl fails to produce a viewable URL: true offline with no
+  // cache, transient createSignedUrl failure, pending/... upload in flight,
+  // or — via the <img onError> handler below — an expired/404 signed URL
+  // that the browser refused to render.
+  //
+  // We bound automatic retries so a flaky storage path cannot loop the
+  // component against Supabase:
+  //   - lastRetryAtRef enforces a 2s gap between any two attempts (covers
+  //     online-event chatter, rapid taps, and onError storms).
+  //   - retryAttemptsRef caps automatic retries (online / imgError sources)
+  //     at 2 per photoUrl lifetime. The initial 'mount' attempt and
+  //     user-initiated 'manual' taps do NOT consume the auto budget; manual
+  //     is still subject to the debounce.
+  //   - retryInFlightRef short-circuits overlapping calls.
+  // Budget + clock are reset whenever photoUrl changes (new row / new
+  // attached photo) and on successful resolution inside loadSignedUrl.
+  const retryAttemptsRef = useRef(0);
+  const lastRetryAtRef = useRef(0);
+  const retryInFlightRef = useRef(false);
 
-  // Retry loading when coming back online
+  // Reset retry budget whenever the source-of-truth path changes so a fresh
+  // photo never inherits a previous photo's exhausted budget.
+  useEffect(() => {
+    retryAttemptsRef.current = 0;
+    lastRetryAtRef.current = 0;
+  }, [photoUrl]);
+
+  const handleRetry = useCallback(
+    async (source: 'mount' | 'online' | 'imgError' | 'manual') => {
+      if (retryInFlightRef.current) return;
+
+      const now = Date.now();
+      // Initial mount (lastRetryAt === 0) is exempt from the debounce so the
+      // first load is never accidentally suppressed.
+      if (lastRetryAtRef.current !== 0 && now - lastRetryAtRef.current < 2000) {
+        return;
+      }
+      if ((source === 'online' || source === 'imgError') && retryAttemptsRef.current >= 2) {
+        return;
+      }
+
+      retryInFlightRef.current = true;
+      lastRetryAtRef.current = now;
+      if (source === 'online' || source === 'imgError') {
+        retryAttemptsRef.current += 1;
+      }
+      try {
+        await loadSignedUrl();
+      } finally {
+        retryInFlightRef.current = false;
+      }
+    },
+    [loadSignedUrl],
+  );
+
+  // Initial load — funneled through handleRetry so it shares the same
+  // in-flight guard. The debounce exempts the very first attempt
+  // (lastRetryAtRef starts at 0), so mount is never suppressed.
+  useEffect(() => { handleRetry('mount'); }, [handleRetry]);
+
+  // Retry once when the browser flips back online and the photo is still
+  // unresolved. Bounded by the retry budget above.
   useEffect(() => {
     if (isOnline && isOfflinePhoto && photoUrl) {
-      loadSignedUrl();
+      handleRetry('online');
     }
-  }, [isOnline, isOfflinePhoto, photoUrl, loadSignedUrl]);
+  }, [isOnline, isOfflinePhoto, photoUrl, handleRetry]);
+
 
   /**
    * Fire-and-forget background upload — does NOT block UI
