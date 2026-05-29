@@ -788,9 +788,6 @@ export default function TrainingForm() {
             } else if (!summaryData) {
               setSummary({ id: crypto.randomUUID(), training_id: id });
             }
-            } else if (!summaryData) {
-              setSummary({ id: crypto.randomUUID(), training_id: id });
-            }
 
             if (import.meta.env.DEV) {
               try {
