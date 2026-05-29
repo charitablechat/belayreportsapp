@@ -737,18 +737,24 @@ export default function TrainingForm() {
             if (summaryResult) {
               const dirtyFields = pendingSummaryFieldsRef.current;
               const dirtyNames = Object.keys(dirtyFields);
+              let cacheRow: DbRow = summaryResult as DbRow;
               setSummary(prev => {
-                if (!prev) return summaryResult as DbRow;
+                if (!prev) {
+                  cacheRow = summaryResult as DbRow;
+                  return summaryResult as DbRow;
+                }
                 // Empty placeholder must never beat a populated server summary.
                 if (isEmptyPlaceholderSummary(prev)) {
                   summaryRef.current = summaryResult as DbRow;
+                  cacheRow = summaryResult as DbRow;
                   return summaryResult as DbRow;
                 }
-                let next = mergeRecordFields(
+                let next = mergeSummaryPreservingPopulated(
                   prev as DbRow & { field_timestamps?: Record<string, string> | null },
                   summaryResult as DbRow & { field_timestamps?: Record<string, string> | null },
-                  [...TRAINING_SUMMARY_FIELDS],
                 ) as DbRow;
+                // Pending-edit override: any field the user dirtied locally
+                // whose incoming timestamp is older stays as the local value.
                 const unresolved = dirtyNames.filter(field => {
                   const dirtyMs = new Date(dirtyFields[field]).getTime();
                   const incomingMs = summaryFieldTimestampMs(summaryResult as DbRow, field);
@@ -768,10 +774,20 @@ export default function TrainingForm() {
                   logTrainingSummaryAutosave('incoming-summary-applied', { source: 'load', incomingUpdatedAt: summaryResult.updated_at ?? null });
                 }
                 summaryRef.current = next;
+                cacheRow = next;
                 return next;
               });
-              saveTrainingDataOffline('summary', id, summaryResult).catch(e =>
+              // Cache the MERGED row (with field_timestamps) into IDB, NOT the
+              // raw server payload. Server rows are sanitized before upsert
+              // and never carry field_timestamps; persisting the raw row to
+              // IDB would erase per-field merge metadata and let a later
+              // reload clobber a populated local field with the row-level
+              // updated_at fallback.
+              saveTrainingDataOffline('summary', id, cacheRow as unknown as DbRow[]).catch(e =>
                 console.warn('[TrainingForm] Non-critical: failed to cache summary', e));
+            } else if (!summaryData) {
+              setSummary({ id: crypto.randomUUID(), training_id: id });
+            }
             } else if (!summaryData) {
               setSummary({ id: crypto.randomUUID(), training_id: id });
             }
