@@ -113,6 +113,7 @@ import { logError } from "@/lib/log-error";
 import { onCloudBackupError } from "@/lib/cloud-backup";
 import { appendVersion } from "@/lib/report-version-manager";
 import { showHardSavedToast } from "@/lib/toast-helpers";
+import { showSaveQueuedToast } from "@/lib/save-queued-toast";
 import { DataIntegrityBadge, type IntegrityStatus } from "@/components/ui/data-integrity-badge";
 import { VersionHistoryPanel } from "@/components/admin/VersionHistoryPanel";
 import { Shield as ShieldIcon, Receipt } from "lucide-react";
@@ -1015,15 +1016,9 @@ export default function TrainingForm() {
       if (!silent) {
         if (hasUnsavedRef.current || hasUnsavedChanges) {
           setHasUnsavedChanges(true);
-          toast.info("Save queued", {
-            description: "Finishing previous sync — your latest changes will save next.",
-            duration: 2500,
-          });
+          showSaveQueuedToast("queued");
         } else {
-          toast.success("Already saved", {
-            description: "Finishing background sync.",
-            duration: 2000,
-          });
+          showSaveQueuedToast("already-saved");
         }
       }
       return;
