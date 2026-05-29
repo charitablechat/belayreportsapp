@@ -1015,15 +1015,9 @@ export default function TrainingForm() {
       if (!silent) {
         if (hasUnsavedRef.current || hasUnsavedChanges) {
           setHasUnsavedChanges(true);
-          toast.info("Save queued", {
-            description: "Finishing previous sync — your latest changes will save next.",
-            duration: 2500,
-          });
+          showSaveQueuedToast("queued");
         } else {
-          toast.success("Already saved", {
-            description: "Finishing background sync.",
-            duration: 2000,
-          });
+          showSaveQueuedToast("already-saved");
         }
       }
       return;
