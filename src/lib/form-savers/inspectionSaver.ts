@@ -95,6 +95,29 @@ export interface RemoteSyncResult {
 // ---- Pure helpers ---------------------------------------------------------
 
 /**
+ * Extract the embedded UUID from a `temp-<uuid>` id so the same logical row
+ * always replays to the same real database id. If the embedded value is not
+ * a valid UUID we fall back to a fresh `crypto.randomUUID()` to avoid
+ * poisoning the row with a malformed primary key.
+ *
+ * This is the linchpin of duplicate-prevention: a second push of the same
+ * unchanged React snapshot must produce the SAME DB id so upsert(onConflict:"id")
+ * updates the existing row instead of inserting a sibling.
+ */
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+export function realIdFromTempId(tempId: string | undefined | null): string {
+  if (typeof tempId === "string" && tempId.startsWith("temp-")) {
+    const candidate = tempId.slice("temp-".length);
+    if (UUID_RE.test(candidate)) return candidate;
+    if (typeof console !== "undefined") {
+      console.warn("[inspectionSaver] temp-id with non-UUID payload, generating fresh id:", tempId);
+    }
+  }
+  return crypto.randomUUID();
+}
+
+
+/**
  * Strip IDB-only and joined fields before sending to Supabase.
  *
  * Keep in sync with `atomic-sync-manager.ts:LOCAL_ONLY_REMOTE_UPSERT_FIELDS`
@@ -354,17 +377,18 @@ export async function pushInspectionToRemote(
   const existingSystems = systemsWithOrder.filter((s) => s.id && !s.id.startsWith("temp-"));
   const newSystems = systemsWithOrder
     .filter((s) => !s.id || s.id.startsWith("temp-"))
-    .map((s) => ({ ...s, id: crypto.randomUUID(), inspection_id: id }));
+    .map((s) => ({ ...s, id: realIdFromTempId(s.id), inspection_id: id }));
 
   const existingZiplines = ziplinesWithOrder.filter((z) => z.id && !z.id.startsWith("temp-"));
   const newZiplines = ziplinesWithOrder
     .filter((z) => !z.id || z.id.startsWith("temp-"))
-    .map((z) => ({ ...z, id: crypto.randomUUID(), inspection_id: id }));
+    .map((z) => ({ ...z, id: realIdFromTempId(z.id), inspection_id: id }));
 
   const existingEquipment = equipmentWithOrder.filter((e) => e.id && !e.id.startsWith("temp-"));
   const newEquipment = equipmentWithOrder
     .filter((e) => !e.id || e.id.startsWith("temp-"))
-    .map((e) => ({ ...e, id: crypto.randomUUID(), inspection_id: id }));
+    .map((e) => ({ ...e, id: realIdFromTempId(e.id), inspection_id: id }));
+
 
   const standardsWithIds = standards.map((s) => ({
     ...s,
@@ -457,7 +481,16 @@ export async function pushInspectionToRemote(
     );
   }
   if (newSystems.length > 0) {
-    parallelOps.push(dbOp(supabase.from("inspection_systems").insert(newSystems as never)));
+    // Idempotent: temp-<uuid> reuses the embedded UUID as the DB id, so a
+    // replay (race / retry) updates the existing row instead of inserting a
+    // sibling. NOT ignoreDuplicates — we want richer replays to win.
+    parallelOps.push(
+      dbOp(
+        supabase
+          .from("inspection_systems")
+          .upsert(newSystems as never, { onConflict: "id" }),
+      ),
+    );
   }
   if (existingZiplines.length > 0) {
     parallelOps.push(
@@ -472,7 +505,13 @@ export async function pushInspectionToRemote(
     );
   }
   if (newZiplines.length > 0) {
-    parallelOps.push(dbOp(supabase.from("inspection_ziplines").insert(newZiplines as never)));
+    parallelOps.push(
+      dbOp(
+        supabase
+          .from("inspection_ziplines")
+          .upsert(newZiplines as never, { onConflict: "id" }),
+      ),
+    );
   }
   if (existingEquipment.length > 0) {
     parallelOps.push(
@@ -487,8 +526,15 @@ export async function pushInspectionToRemote(
     );
   }
   if (newEquipment.length > 0) {
-    parallelOps.push(dbOp(supabase.from("inspection_equipment").insert(newEquipment as never)));
+    parallelOps.push(
+      dbOp(
+        supabase
+          .from("inspection_equipment")
+          .upsert(newEquipment as never, { onConflict: "id" }),
+      ),
+    );
   }
+
 
   // Standards: upsert (atomic; never delete+insert).
   parallelOps.push(
