@@ -248,8 +248,10 @@ function ItemPhotoUpload({
       prevObjectUrlRef.current = url;
       setSignedUrl(url);
       setIsOfflinePhoto(false);
+      retryAttemptsRef.current = 0; // success — refresh auto budget
       return;
     }
+
 
     // 2. Stale `pending/...` self-heal: the inspection record may have been
     //    saved before the background upload settled (common on iPad Safari
