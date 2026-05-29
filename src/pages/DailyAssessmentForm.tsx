@@ -104,6 +104,7 @@ import { logError } from "@/lib/log-error";
 import { onCloudBackupError } from "@/lib/cloud-backup";
 import { appendVersion } from "@/lib/report-version-manager";
 import { showHardSavedToast } from "@/lib/toast-helpers";
+import { showSaveQueuedToast } from "@/lib/save-queued-toast";
 import { DataIntegrityBadge, type IntegrityStatus } from "@/components/ui/data-integrity-badge";
 import { VersionHistoryPanel } from "@/components/admin/VersionHistoryPanel";
 import { Shield as ShieldIcon, Receipt } from "lucide-react";

@@ -93,6 +93,7 @@ import { SaveBeforeLeaveDialog } from "@/components/SaveBeforeLeaveDialog";
 import { Lock } from "lucide-react";
 import { appendVersion, subscribeVersioningHealth, getVersioningHealth, resetVersioningHealth } from "@/lib/report-version-manager";
 import { showHardSavedToast } from "@/lib/toast-helpers";
+import { showSaveQueuedToast } from "@/lib/save-queued-toast";
 import { DataIntegrityBadge, type IntegrityStatus } from "@/components/ui/data-integrity-badge";
 import { VersionHistoryPanel } from "@/components/admin/VersionHistoryPanel";
 import { Shield as ShieldIcon, Receipt } from "lucide-react";
