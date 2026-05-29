@@ -20,9 +20,9 @@
  *    `autoSaveProgress`, `triggerImmediateSave`, or `useAutoSync`.
  *  - It does NOT suppress save errors — error paths still call setSaveError
  *    and surface destructive toasts as before.
-import { toast } from "@/components/ui/sonner";
+ */
 
-import { toast } from "sonner";
+import { toast } from "@/components/ui/sonner";
 
 export type SaveQueuedVariant = "queued" | "already-saved";
 
