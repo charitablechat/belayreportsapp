@@ -2136,18 +2136,21 @@ export default function InspectionForm() {
             // The page owns: retry loop, temp-id queueMicrotask setState, post-sync
             // IDB stamp, markSnapshotSynced.
             const { syncTimestamp, hadFilteredItems, tempIdMappings } =
-              await pushInspectionToRemote(
-                {
-                  id: id!,
-                  inspection: updatedInspection,
-                  systems,
-                  ziplines: ziplinesSnapshot,
-                  equipment,
-                  standards,
-                  summary: currentSummary,
-                },
-                { updatedInspection },
+              await withInspectionPushLock(id!, () =>
+                pushInspectionToRemote(
+                  {
+                    id: id!,
+                    inspection: updatedInspection,
+                    systems,
+                    ziplines: ziplinesSnapshot,
+                    equipment,
+                    standards,
+                    summary: currentSummary,
+                  },
+                  { updatedInspection },
+                ),
               );
+
 
             // Apply temp-id → real-UUID mappings via queueMicrotask. Replace temp
             // items in-place, preserving position (no reordering). CRITICAL: only
