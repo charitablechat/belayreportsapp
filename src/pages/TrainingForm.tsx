@@ -74,7 +74,7 @@ function errorMessage(error: unknown, fallback: string): string {
   return fallback;
 }
 
-import { summaryFieldTimestampMs, isEmptyPlaceholderSummary } from "@/lib/training-summary-merge";
+import { summaryFieldTimestampMs, isEmptyPlaceholderSummary, mergeSummaryPreservingPopulated } from "@/lib/training-summary-merge";
 import { computeSummaryAutofill } from "@/lib/training-summary-autofill";
 
 function logTrainingSummaryAutosave(event: string, meta: Record<string, unknown> = {}) {
