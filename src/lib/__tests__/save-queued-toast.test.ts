@@ -1,13 +1,13 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
 
-vi.mock("sonner", () => ({
+vi.mock("@/components/ui/sonner", () => ({
   toast: {
     info: vi.fn(),
     success: vi.fn(),
   },
 }));
 
-import { toast } from "sonner";
+import { toast } from "@/components/ui/sonner";
 import {
   showSaveQueuedToast,
   __resetSaveQueuedToastForTests,
