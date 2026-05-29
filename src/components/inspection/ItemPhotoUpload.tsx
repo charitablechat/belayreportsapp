@@ -316,6 +316,8 @@ function ItemPhotoUpload({
       }
       setSignedUrl(data.signedUrl);
       setIsOfflinePhoto(false);
+      retryAttemptsRef.current = 0; // success — refresh auto budget
+
 
       // 4. Download blob and cache for offline use
       try {
