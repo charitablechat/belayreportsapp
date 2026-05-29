@@ -555,16 +555,26 @@ export default function TrainingForm() {
           setSummary(prev => {
             const incoming = summaryData || { id: crypto.randomUUID(), training_id: id };
             const local = summaryRef.current ?? prev;
-            const dirtyFields = pendingSummaryFieldsRef.current;
-            const dirtyNames = Object.keys(dirtyFields);
-            if (!local || dirtyNames.length === 0) return incoming;
-            // Empty placeholder must never beat a populated server summary.
+            if (!local) return incoming;
+            // Empty placeholder local must never beat a populated incoming
+            // (admin opening someone else's report etc.).
             if (isEmptyPlaceholderSummary(local)) return incoming;
-            const unresolved = dirtyNames.filter(field => summaryFieldTimestampMs(incoming, field) < new Date(dirtyFields[field]).getTime());
-            if (unresolved.length === 0) return incoming;
-            recordActiveEditSkip({ form: 'training', table: 'summary', rowId: incoming.id ?? null, field: unresolved.join(','), reason: 'dirty', source: 'load' });
-            logTrainingSummaryAutosave('offline-summary-local-won', { source: 'load', fields: unresolved, pendingFields: dirtyNames, incomingUpdatedAt: incoming.updated_at ?? null });
-            return mergeRecordFields(local as DbRow & { field_timestamps?: Record<string, string> | null }, incoming as DbRow & { field_timestamps?: Record<string, string> | null }, [...TRAINING_SUMMARY_FIELDS]);
+            // Always field-merge: a stale IDB row with empty siblings (e.g.
+            // recommendations="" because the latest typed text isn't in IDB
+            // yet) must NOT clobber populated React state. The
+            // `mergeSummaryPreservingPopulated` helper layers a
+            // non-empty-wins-over-stale-empty guard on top of LWW.
+            const dirtyNames = Object.keys(pendingSummaryFieldsRef.current);
+            const merged = mergeSummaryPreservingPopulated(
+              local as DbRow & { field_timestamps?: Record<string, string> | null },
+              incoming as DbRow & { field_timestamps?: Record<string, string> | null },
+            ) as DbRow;
+            logTrainingSummaryAutosave('offline-summary-merged', {
+              source: 'load',
+              pendingFields: dirtyNames,
+              incomingUpdatedAt: (incoming as { updated_at?: string | null }).updated_at ?? null,
+            });
+            return merged;
           });
         } else if (!id.startsWith('temp-')) {
           const backup = getReportSnapshot('training', id);
