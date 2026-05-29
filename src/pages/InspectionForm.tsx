@@ -111,6 +111,8 @@ import {
   pushInspectionToRemote,
 
 } from "@/lib/form-savers/inspectionSaver";
+import { withInspectionPushLock } from "@/lib/form-savers/inspection-push-mutex";
+
 import { InspectionHeaderSection } from "@/components/inspection/InspectionHeaderSection";
 
 // `saveRelatedDataOffline` accepts a small set of well-known child-table keys.
