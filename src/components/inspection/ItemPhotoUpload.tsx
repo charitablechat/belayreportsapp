@@ -918,7 +918,7 @@ function ItemPhotoUpload({
             title="Photo unavailable — tap to retry"
             aria-label="Photo unavailable — tap to retry"
           >
-            {uploading || retryInFlightRef.current ? (
+            {uploading ? (
               <Loader2 className="w-4 h-4 animate-spin text-primary" />
             ) : (
               <ImageOff className="w-5 h-5 text-muted-foreground" />
