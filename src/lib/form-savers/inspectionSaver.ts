@@ -95,6 +95,29 @@ export interface RemoteSyncResult {
 // ---- Pure helpers ---------------------------------------------------------
 
 /**
+ * Extract the embedded UUID from a `temp-<uuid>` id so the same logical row
+ * always replays to the same real database id. If the embedded value is not
+ * a valid UUID we fall back to a fresh `crypto.randomUUID()` to avoid
+ * poisoning the row with a malformed primary key.
+ *
+ * This is the linchpin of duplicate-prevention: a second push of the same
+ * unchanged React snapshot must produce the SAME DB id so upsert(onConflict:"id")
+ * updates the existing row instead of inserting a sibling.
+ */
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+export function realIdFromTempId(tempId: string | undefined | null): string {
+  if (typeof tempId === "string" && tempId.startsWith("temp-")) {
+    const candidate = tempId.slice("temp-".length);
+    if (UUID_RE.test(candidate)) return candidate;
+    if (typeof console !== "undefined") {
+      console.warn("[inspectionSaver] temp-id with non-UUID payload, generating fresh id:", tempId);
+    }
+  }
+  return crypto.randomUUID();
+}
+
+
+/**
  * Strip IDB-only and joined fields before sending to Supabase.
  *
  * Keep in sync with `atomic-sync-manager.ts:LOCAL_ONLY_REMOTE_UPSERT_FIELDS`
