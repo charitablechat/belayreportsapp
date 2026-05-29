@@ -849,7 +849,26 @@ function ItemPhotoUpload({
           className="relative w-12 h-12 rounded-md overflow-hidden border border-border hover:border-primary transition-colors focus:outline-none focus:ring-2 focus:ring-ring"
           disabled={disabled}
         >
-          <img src={displayUrl} alt="Item photo" className="w-full h-full object-cover" />
+          <img
+            src={displayUrl}
+            alt="Item photo"
+            className="w-full h-full object-cover"
+            onError={() => {
+              // Expired or 404 signed URL — fall back to the controlled
+              // placeholder branch instead of the browser broken-image
+              // glyph, then attempt one bounded retry. We deliberately do
+              // NOT setIsOfflinePhoto(true) here: the render decision
+              // below is driven by `isOnline` + `displayUrl`, so an
+              // online-but-broken image surfaces the ImageOff/retry UI,
+              // never the CloudOff/offline copy.
+              if (prevObjectUrlRef.current) {
+                URL.revokeObjectURL(prevObjectUrlRef.current);
+                prevObjectUrlRef.current = null;
+              }
+              setSignedUrl(null);
+              handleRetry('imgError');
+            }}
+          />
           {uploading && (
             <div className="absolute inset-0 bg-background/60 flex items-center justify-center">
               <Loader2 className="w-4 h-4 animate-spin text-primary" />
@@ -863,24 +882,51 @@ function ItemPhotoUpload({
         </button>
       ) : hasPhoto ? (
         // photoUrl exists but neither a signed URL nor a local preview is
-        // ready yet (cache miss + pending upload + transient signed-URL
-        // failure). Render a stable placeholder thumbnail so the row never
-        // collapses back to blank upload buttons while a photo is attached.
-        <button
-          data-lightbox-trigger
-          type="button"
-          onClick={() => setLightboxOpen(true)}
-          className="relative w-12 h-12 rounded-md overflow-hidden border border-border bg-muted flex items-center justify-center"
-          disabled={disabled}
-          title="Photo loading…"
-        >
-          {uploading ? (
-            <Loader2 className="w-4 h-4 animate-spin text-primary" />
-          ) : (
-            <CloudOff className="w-5 h-5 text-muted-foreground" />
-          )}
-        </button>
+        // ready yet. Two visual variants — true offline vs online-unresolved
+        // — both keep the row from collapsing back to blank upload buttons.
+        // The split is driven by `isOnline` (not by `isOfflinePhoto`, which
+        // is also set on transient online failures) so an online broken /
+        // expired thumbnail never gets mislabeled as offline.
+        !isOnline ? (
+          <button
+            data-lightbox-trigger
+            type="button"
+            onClick={() => setLightboxOpen(true)}
+            className="relative w-12 h-12 rounded-md overflow-hidden border border-border bg-muted flex items-center justify-center"
+            disabled={disabled}
+            title="Offline — photo will load when back online"
+            aria-label="Offline — photo will load when back online"
+          >
+            {uploading ? (
+              <Loader2 className="w-4 h-4 animate-spin text-primary" />
+            ) : (
+              <CloudOff className="w-5 h-5 text-muted-foreground" />
+            )}
+          </button>
+        ) : (
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              // Tap retries the signed-URL fetch through the bounded
+              // helper. Never opens the lightbox — an unresolved online
+              // thumbnail has no displayUrl to show.
+              handleRetry('manual');
+            }}
+            className="relative w-12 h-12 rounded-md overflow-hidden border border-border bg-muted flex items-center justify-center hover:border-primary transition-colors focus:outline-none focus:ring-2 focus:ring-ring"
+            disabled={disabled}
+            title="Photo unavailable — tap to retry"
+            aria-label="Photo unavailable — tap to retry"
+          >
+            {uploading || retryInFlightRef.current ? (
+              <Loader2 className="w-4 h-4 animate-spin text-primary" />
+            ) : (
+              <ImageOff className="w-5 h-5 text-muted-foreground" />
+            )}
+          </button>
+        )
       ) : (
+
         <div className="flex gap-1">
           <Button
             type="button"
