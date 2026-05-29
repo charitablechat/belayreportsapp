@@ -377,17 +377,18 @@ export async function pushInspectionToRemote(
   const existingSystems = systemsWithOrder.filter((s) => s.id && !s.id.startsWith("temp-"));
   const newSystems = systemsWithOrder
     .filter((s) => !s.id || s.id.startsWith("temp-"))
-    .map((s) => ({ ...s, id: crypto.randomUUID(), inspection_id: id }));
+    .map((s) => ({ ...s, id: realIdFromTempId(s.id), inspection_id: id }));
 
   const existingZiplines = ziplinesWithOrder.filter((z) => z.id && !z.id.startsWith("temp-"));
   const newZiplines = ziplinesWithOrder
     .filter((z) => !z.id || z.id.startsWith("temp-"))
-    .map((z) => ({ ...z, id: crypto.randomUUID(), inspection_id: id }));
+    .map((z) => ({ ...z, id: realIdFromTempId(z.id), inspection_id: id }));
 
   const existingEquipment = equipmentWithOrder.filter((e) => e.id && !e.id.startsWith("temp-"));
   const newEquipment = equipmentWithOrder
     .filter((e) => !e.id || e.id.startsWith("temp-"))
-    .map((e) => ({ ...e, id: crypto.randomUUID(), inspection_id: id }));
+    .map((e) => ({ ...e, id: realIdFromTempId(e.id), inspection_id: id }));
+
 
   const standardsWithIds = standards.map((s) => ({
     ...s,
