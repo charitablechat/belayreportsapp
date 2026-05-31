@@ -36,6 +36,16 @@ import {
   jitteredBackoffMs,
   isTransientNetworkError,
 } from "./sync-quarantine";
+// Whitelist sanitizer for `public.training_summary` upserts. The atomic
+// sync path used to send the raw IDB row through `stripLocalOnlyFieldsArray`
+// (which only strips `dirty` + `child_count_hint`), so client-only fields
+// like `field_timestamps`, `updated_at`, `synced_at`, `last_modified_by`
+// reached PostgREST and 400'd Step 7 with
+// "Could not find the 'field_timestamps' column of 'training_summary' in
+// the schema cache", triggering a full atomic rollback of the parent.
+// Route the summary step through the same whitelist the form-saver path
+// uses so both paths agree on the outbound shape.
+import { sanitizeTrainingSummaryForRemote } from "./form-savers/trainingSaver";
 
 /**
  * Mode 4 fix: join an error and its `cause` chain into a single string so the
