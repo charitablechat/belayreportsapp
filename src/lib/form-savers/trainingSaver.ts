@@ -91,9 +91,20 @@ export function sanitizeTrainingForRemote(
     created_at: _created_at,
     child_count_hint: _child_count_hint,
     dirty: _dirty,
+    // PostgREST embedded-relation blobs attached by Dashboard / SuperAdmin
+    // selects (e.g. `trainer:profiles!trainings_inspector_id_profiles_fkey(...)`,
+    // `inspector:profiles!...`). These are read-time joins, NOT real columns
+    // on `trainings`. If they survive into `.update()`, PostgREST returns
+    // 400 "Could not find the 'trainer' column of 'trainings' in the schema
+    // cache" and the form save silently falls back to the bg-sync replay
+    // path, which then 400s the same way. Atomic-sync already strips these
+    // via per-call destructure; this keeps the two paths in lockstep.
+    inspector: _inspector,
+    trainer: _trainer,
     ...rest
   } = t;
   void _id; void _created_at; void _child_count_hint; void _dirty;
+  void _inspector; void _trainer;
   return rest;
 }
 
