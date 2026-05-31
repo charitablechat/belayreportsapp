@@ -85,6 +85,27 @@ export function classifyRecoverableSentryEvent(
     };
   }
 
+  // Bare `AbortError` (no message, or message === 'AbortError') flowing
+  // through `window.onunhandledrejection`. Source is almost always an
+  // in-flight `fetch()` cancelled by an `AbortController` (component
+  // unmount during navigation, post-online sync teardown, record-status
+  // RPC race) — handled by design but the rejection isn't caught
+  // explicitly, so Sentry sees it as an unhandled error.
+  //
+  // Downgrade to `warning` + stable fingerprint so it stops generating
+  // high-priority email alerts (this issue currently buries real
+  // training-sync failures), but DO NOT drop the event — it stays
+  // visible in the dashboard for trend review and the full stack/
+  // breadcrumbs survive in case a future real abort lands under this
+  // fingerprint. Distinct from the 'Lock was stolen' clause above,
+  // which is a specific Supabase Auth pattern.
+  if (name === 'AbortError' && (message === '' || message === 'AbortError')) {
+    return {
+      level: 'warning',
+      fingerprint: ['AbortError', 'bare-unhandled-rejection', '{{default}}'],
+    };
+  }
+
   // Supabase Storage upload failure surfaced through Safari's
   // notoriously generic 'Load failed' message (Safari maps most
   // network failures — connection-closed, DNS hiccup, brief

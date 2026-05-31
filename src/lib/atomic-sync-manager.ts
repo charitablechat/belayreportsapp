@@ -36,6 +36,16 @@ import {
   jitteredBackoffMs,
   isTransientNetworkError,
 } from "./sync-quarantine";
+// Whitelist sanitizer for `public.training_summary` upserts. The atomic
+// sync path used to send the raw IDB row through `stripLocalOnlyFieldsArray`
+// (which only strips `dirty` + `child_count_hint`), so client-only fields
+// like `field_timestamps`, `updated_at`, `synced_at`, `last_modified_by`
+// reached PostgREST and 400'd Step 7 with
+// "Could not find the 'field_timestamps' column of 'training_summary' in
+// the schema cache", triggering a full atomic rollback of the parent.
+// Route the summary step through the same whitelist the form-saver path
+// uses so both paths agree on the outbound shape.
+import { sanitizeTrainingSummaryForRemote } from "./form-savers/trainingSaver";
 
 /**
  * Mode 4 fix: join an error and its `cause` chain into a single string so the
@@ -2425,16 +2435,27 @@ export async function syncTrainingAtomic(trainingId: string, preValidatedUser?: 
     }
     
     if (summary) {
-      // Sanitize summary before sync
-      const sanitizedSummary = {
+      // Whitelist sanitize: training_summary has 7 real columns
+      // (id, training_id, observations, recommendations, person_submitting,
+      // submission_date, created_at). Client-only fields the IDB row may
+      // carry — `field_timestamps`, `updated_at`, `synced_at`,
+      // `last_modified_by`, `dirty` — do NOT exist on this table and 400
+      // the PostgREST upsert with a schema-cache error, which then aborts
+      // the whole atomic transaction at Step 7 and rolls the parent back.
+      // Route through the same whitelist sanitizer the form-saver path
+      // uses (see `sanitizeTrainingSummaryForRemote`).
+      const sanitizedSummary = sanitizeTrainingSummaryForRemote({
         ...summary,
-        id: (summary.id && !summary.id.startsWith('temp-')) ? summary.id : crypto.randomUUID(),
-        submission_date: summary.submission_date === "" ? null : summary.submission_date
-      };
-      
+        id: (summary.id && !String(summary.id).startsWith('temp-')) ? summary.id : crypto.randomUUID(),
+        submission_date: summary.submission_date === "" ? null : summary.submission_date,
+      });
+
       steps.push({
         table: 'training_summary',
         operation: 'upsert',
+        // stripLocalOnlyFieldsArray is a no-op on the whitelisted output
+        // (dirty / child_count_hint already absent) but kept for symmetry
+        // with the other child-table steps in this transaction.
         data: stripLocalOnlyFieldsArray([sanitizedSummary]),
         rollbackData: existingSummary,
       });
