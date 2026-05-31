@@ -2435,16 +2435,27 @@ export async function syncTrainingAtomic(trainingId: string, preValidatedUser?: 
     }
     
     if (summary) {
-      // Sanitize summary before sync
-      const sanitizedSummary = {
+      // Whitelist sanitize: training_summary has 7 real columns
+      // (id, training_id, observations, recommendations, person_submitting,
+      // submission_date, created_at). Client-only fields the IDB row may
+      // carry — `field_timestamps`, `updated_at`, `synced_at`,
+      // `last_modified_by`, `dirty` — do NOT exist on this table and 400
+      // the PostgREST upsert with a schema-cache error, which then aborts
+      // the whole atomic transaction at Step 7 and rolls the parent back.
+      // Route through the same whitelist sanitizer the form-saver path
+      // uses (see `sanitizeTrainingSummaryForRemote`).
+      const sanitizedSummary = sanitizeTrainingSummaryForRemote({
         ...summary,
-        id: (summary.id && !summary.id.startsWith('temp-')) ? summary.id : crypto.randomUUID(),
-        submission_date: summary.submission_date === "" ? null : summary.submission_date
-      };
-      
+        id: (summary.id && !String(summary.id).startsWith('temp-')) ? summary.id : crypto.randomUUID(),
+        submission_date: summary.submission_date === "" ? null : summary.submission_date,
+      });
+
       steps.push({
         table: 'training_summary',
         operation: 'upsert',
+        // stripLocalOnlyFieldsArray is a no-op on the whitelisted output
+        // (dirty / child_count_hint already absent) but kept for symmetry
+        // with the other child-table steps in this transaction.
         data: stripLocalOnlyFieldsArray([sanitizedSummary]),
         rollbackData: existingSummary,
       });
