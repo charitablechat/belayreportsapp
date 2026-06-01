@@ -424,23 +424,22 @@ export default function RecoveryAndSyncHealth() {
         const { data } = await supabase
           .from('trainings')
           .select(
-            'id, organization, location, start_date, status, updated_at, inspector_id, trainer_id, trainer_of_record',
+            'id, organization, location, start_date, status, updated_at, inspector_id, trainer_of_record',
           )
           .order('updated_at', { ascending: false })
           .limit(200);
-        return Array.isArray(data) ? data : [];
+        return Array.isArray(data) ? (data as Array<Record<string, unknown>>) : [];
       } catch {
-        return [];
+        return [] as Array<Record<string, unknown>>;
       }
     },
     staleTime: 30_000,
   });
 
-  // Optional profile enrichment — batched lookup for trainer/inspector names.
+  // Optional profile enrichment — batched lookup for inspector display names.
   const profileIds = useMemo(() => {
     const ids = new Set<string>();
     for (const s of serverTrainings) {
-      if (typeof s.trainer_id === 'string' && s.trainer_id) ids.add(s.trainer_id);
       if (typeof s.inspector_id === 'string' && s.inspector_id) ids.add(s.inspector_id);
     }
     return Array.from(ids).sort();
@@ -450,15 +449,15 @@ export default function RecoveryAndSyncHealth() {
     queryKey: ['recovery-profile-names', profileIds.join('|')],
     enabled: online && profileIds.length > 0,
     queryFn: async () => {
+      const map = new Map<string, string>();
       try {
         const { data } = await supabase
           .from('profiles')
-          .select('user_id, first_name, last_name')
-          .in('user_id', profileIds);
-        const map = new Map<string, string>();
+          .select('id, first_name, last_name')
+          .in('id', profileIds);
         if (Array.isArray(data)) {
           for (const p of data as Array<Record<string, unknown>>) {
-            const uid = typeof p.user_id === 'string' ? p.user_id : null;
+            const uid = typeof p.id === 'string' ? p.id : null;
             if (!uid) continue;
             const name = `${typeof p.first_name === 'string' ? p.first_name : ''} ${
               typeof p.last_name === 'string' ? p.last_name : ''
@@ -466,10 +465,10 @@ export default function RecoveryAndSyncHealth() {
             if (name) map.set(uid, name);
           }
         }
-        return map;
       } catch {
-        return new Map<string, string>();
+        // soft-fail — map stays empty
       }
+      return map;
     },
     staleTime: 5 * 60_000,
   });
@@ -488,9 +487,7 @@ export default function RecoveryAndSyncHealth() {
       if (!id) continue;
       if (userId && typeof s.inspector_id === 'string' && s.inspector_id !== userId) continue;
       const trainerFromProfile =
-        (typeof s.trainer_id === 'string' && profileMap?.get(s.trainer_id)) ||
-        (typeof s.inspector_id === 'string' && profileMap?.get(s.inspector_id)) ||
-        null;
+        (typeof s.inspector_id === 'string' && profileMap?.get(s.inspector_id)) || null;
       const trainerFromColumn =
         typeof s.trainer_of_record === 'string' && s.trainer_of_record.trim()
           ? s.trainer_of_record.trim()
