@@ -74,7 +74,7 @@ function errorMessage(error: unknown, fallback: string): string {
   return fallback;
 }
 
-import { summaryFieldTimestampMs, isEmptyPlaceholderSummary, mergeSummaryPreservingPopulated, applyIncomingSummary } from "@/lib/training-summary-merge";
+import { summaryFieldTimestampMs, isEmptyPlaceholderSummary, mergeSummaryPreservingPopulated, applyIncomingSummary, summaryTypedAfter, shouldKeepDirtyAfterSave } from "@/lib/training-summary-merge";
 import { computeSummaryAutofill } from "@/lib/training-summary-autofill";
 
 function logTrainingSummaryAutosave(event: string, meta: Record<string, unknown> = {}) {
@@ -789,9 +789,9 @@ export default function TrainingForm() {
                 // timestamp >= the local dirty stamp. This is the save-seq
                 // guard against an older save's Realtime echo prematurely
                 // declaring the field "confirmed".
-                const typedAfterSaveStart = dirtyNames.some(f => {
-                  const dirtyMs = new Date(dirtyFields[f]).getTime();
-                  return Number.isFinite(dirtyMs) && dirtyMs > saveStartedAt;
+                const typedAfterSaveStart = summaryTypedAfter({
+                  pendingFieldTimestamps: dirtyFields,
+                  sinceMs: saveStartedAt,
                 });
                 if (preservedFields.length > 0) {
                   recordActiveEditSkip({ form: 'training', table: 'summary', rowId: (summaryResult as DbRow).id ?? null, field: preservedFields.join(','), reason: childGuard.reason ?? 'dirty', source: 'load' });
@@ -1265,23 +1265,17 @@ export default function TrainingForm() {
       // hasUnsavedRef set so the active-edit guard keeps blocking refetches
       // and the next autosave round-trip can replay the newer text.
       const pending = pendingSummaryFieldsRef.current;
-      const typedAfterStart = Object.values(pending).some(ts => {
-        const ms = new Date(ts).getTime();
-        return Number.isFinite(ms) && ms > mySaveStartedAt;
+      const keepDirty = shouldKeepDirtyAfterSave({
+        pendingFieldTimestamps: pending,
+        summaryUpdatedAt: summaryRef.current?.updated_at ?? null,
+        saveStartedAtMs: mySaveStartedAt,
       });
-      const summaryUpdatedAfterStart = (() => {
-        const ua = summaryRef.current?.updated_at;
-        if (typeof ua !== 'string') return false;
-        const ms = new Date(ua).getTime();
-        return Number.isFinite(ms) && ms > mySaveStartedAt;
-      })();
-      if (!typedAfterStart && !summaryUpdatedAfterStart) {
+      if (!keepDirty) {
         hasUnsavedRef.current = false;
         setHasUnsavedChanges(false);
       } else {
         logTrainingSummaryAutosave('finally-guard-keep-dirty', {
           pendingFields: Object.keys(pending),
-          summaryUpdatedAfterStart,
           mySaveStartedAt,
         });
       }
