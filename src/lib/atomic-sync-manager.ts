@@ -3921,13 +3921,43 @@ export async function refetchTrainingPackage(trainingId: string): Promise<void> 
       getOfflineTraining,
       saveTrainingOffline,
     );
+    // Training Summary preservation: merge server summary with local IDB row
+    // before caching so a blank/missing/stale server summary cannot wipe
+    // non-empty local Observations / Recommendations / Person / Date that
+    // haven't yet been replayed up. See `mergeTrainingSummaryAtBoundary` for
+    // the exact rule (populated wins unless explicit field-level clear).
+    const localSummaryRows = await getTrainingDataOffline('summary', trainingId).catch(() => []);
+    const localSummaryRow = (localSummaryRows[0] ?? null) as Record<string, unknown> | null;
+    const serverSummaryRow = (summary[0] ?? null) as Record<string, unknown> | null;
+    let summaryToCache: Record<string, unknown> | null = null;
+    if (localSummaryRow && serverSummaryRow) {
+      const { mergeTrainingSummaryAtBoundary, logTrainingSummaryPreservation } =
+        await import('./training-summary-merge');
+      const { merged, preservations } = mergeTrainingSummaryAtBoundary(
+        localSummaryRow,
+        serverSummaryRow,
+      );
+      summaryToCache = merged;
+      logTrainingSummaryPreservation('refetchTrainingPackage', trainingId, preservations);
+    } else if (serverSummaryRow) {
+      summaryToCache = serverSummaryRow;
+    } else if (localSummaryRow) {
+      // Server returned NO summary row but local has one — never clear.
+      const { isEmptyPlaceholderSummary } = await import('./training-summary-merge');
+      if (!isEmptyPlaceholderSummary(localSummaryRow)) {
+        summaryToCache = localSummaryRow;
+      }
+    }
+
     await Promise.all([
       clearTrainingDataOffline('delivery_approaches', trainingId).then(() => da.length > 0 ? saveTrainingDataOffline('delivery_approaches', trainingId, da) : null),
       clearTrainingDataOffline('operating_systems', trainingId).then(() => os.length > 0 ? saveTrainingDataOffline('operating_systems', trainingId, os) : null),
       clearTrainingDataOffline('immediate_attention', trainingId).then(() => ia.length > 0 ? saveTrainingDataOffline('immediate_attention', trainingId, ia) : null),
       clearTrainingDataOffline('verifiable_items', trainingId).then(() => vi.length > 0 ? saveTrainingDataOffline('verifiable_items', trainingId, vi) : null),
       clearTrainingDataOffline('systems_in_place', trainingId).then(() => sip.length > 0 ? saveTrainingDataOffline('systems_in_place', trainingId, sip) : null),
-      clearTrainingDataOffline('summary', trainingId).then(() => summary.length > 0 ? saveTrainingDataOffline('summary', trainingId, summary) : null),
+      summaryToCache
+        ? saveTrainingDataOffline('summary', trainingId, [summaryToCache])
+        : Promise.resolve(),
     ]);
     syncLog.log('[Atomic Sync] Refetched training package:', trainingId);
   } catch (e) {
