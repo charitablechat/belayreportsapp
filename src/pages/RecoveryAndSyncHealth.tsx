@@ -244,15 +244,34 @@ function ReportRow({
   entry,
   online,
   highlighted,
+  appVersion,
 }: {
   entry: LocalReportEntry;
   online: boolean;
   highlighted?: boolean;
+  appVersion?: string;
 }) {
   const [state, setState] = useState<ScanState>({ status: 'idle', findings: [] });
+  const [scanSeenUpdatedAt, setScanSeenUpdatedAt] = useState<string | null>(null);
 
   const handleCheck = async () => {
     setState({ status: 'scanning', findings: [] });
+    // Capture the parent training's server updated_at AT scan time so the
+    // atomic DB function can detect concurrent edits between scan and fill.
+    let serverUpdatedAt: string | null = null;
+    if (typeof navigator === 'undefined' || navigator.onLine) {
+      try {
+        const { data } = await supabase
+          .from('trainings')
+          .select('updated_at')
+          .eq('id', entry.id)
+          .maybeSingle();
+        serverUpdatedAt = (data?.updated_at as string | null) ?? null;
+      } catch {
+        serverUpdatedAt = null;
+      }
+    }
+    setScanSeenUpdatedAt(serverUpdatedAt);
     try {
       const findings = await scanTrainingForRecoverableText(entry.id);
       setState({ status: 'done', findings });
@@ -328,7 +347,12 @@ function ReportRow({
               <FindingCard
                 key={`${f.field}-${i}`}
                 reportName={entry.displayName}
+                trainingId={entry.id}
+                scanSeenUpdatedAt={scanSeenUpdatedAt}
                 finding={f}
+                appVersion={appVersion}
+                onRescanRequested={handleCheck}
+                onFilled={handleCheck}
               />
             ))}
           </div>
