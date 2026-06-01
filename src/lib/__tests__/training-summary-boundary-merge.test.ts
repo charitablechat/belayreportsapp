@@ -135,9 +135,12 @@ describe('mergeTrainingSummaryAtBoundary — protected field preservation', () =
     };
     const { merged, preservations } = mergeTrainingSummaryAtBoundary(populated, null);
     expect(merged.observations).toBe('<p>obs</p>');
-    expect(preservations.find((p) => p.field === 'observations')).toBeFalsy(); // b had undefined, not missing-with-explicit
+    // b is null → b.observations is undefined (missing); preservation should be recorded
+    // because the populated side has text and the blank side carries no explicit per-field clear.
+    expect(preservations.find((p) => p.field === 'observations')).toBeTruthy();
     const result2 = mergeTrainingSummaryAtBoundary(undefined, populated);
     expect(result2.merged.observations).toBe('<p>obs</p>');
+    expect(result2.preservations.find((p) => p.field === 'observations')).toBeTruthy();
   });
 
   it('breadcrumb metadata never contains the preserved text', () => {
