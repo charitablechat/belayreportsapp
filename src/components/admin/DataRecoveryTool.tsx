@@ -1001,7 +1001,8 @@ export function CloudSnapshotsPanel({ allowDelete = true }: CloudSnapshotsPanelP
                       <span className="text-right min-w-0 break-words" style={{ overflowWrap: 'anywhere' }}>{s.device}</span>
                     </div>
                     <div className="flex justify-between gap-2 text-xs">
-                      <span className="text-muted-foreground shrink-0">Saved</span>
+                      <span className="text-muted-foreground shrink-0">Snapshot Saved</span>
+
                       <span className="text-right text-muted-foreground break-words" style={{ overflowWrap: 'anywhere' }}>{formatDate(s.snapshot_ts)}</span>
                     </div>
                   </div>
