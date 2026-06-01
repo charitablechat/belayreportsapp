@@ -848,13 +848,32 @@ async function syncTrainingsAtomic() {
         
         await verifyResponseRows(response, 'Training parent upsert');
         
+        // Training Summary preservation: if local summary is partial/blank,
+        // merge with the server-side row before upsert. Mirrors the rule in
+        // src/lib/training-summary-merge.ts (mergeTrainingSummaryAtBoundary).
+        let summaryForUpsertSW = summaryArray.length > 0 ? summaryArray[0] : null;
+        if (summaryForUpsertSW) {
+          const _hasMissingProtected = TRAINING_SUMMARY_PROTECTED_FIELDS.some(function (f) {
+            return isTrainingSummaryFieldMissingSW(summaryForUpsertSW[f]);
+          });
+          if (_hasMissingProtected) {
+            const srvSummary = await fetchServerTrainingSummarySW(authHeaders, training.id);
+            if (srvSummary) {
+              const _mergeRes = mergeTrainingSummaryAtBoundarySW(summaryForUpsertSW, srvSummary);
+              summaryForUpsertSW = _mergeRes.merged;
+              logTrainingSummaryPreservationSW('sw-sync.syncTrainingsAtomic', training.id, _mergeRes.preservations);
+            }
+          }
+        }
+        const summaryUpsertArray = summaryForUpsertSW ? [summaryForUpsertSW] : [];
+
         await Promise.all([
           upsertRelatedData(SUPABASE_URL, authHeaders, 'training_delivery_approaches', deliveryApproaches),
           upsertRelatedData(SUPABASE_URL, authHeaders, 'training_operating_systems', operatingSystems),
           upsertRelatedData(SUPABASE_URL, authHeaders, 'training_immediate_attention', immediateAttention),
           upsertRelatedData(SUPABASE_URL, authHeaders, 'training_verifiable_items', verifiableItems),
           upsertRelatedData(SUPABASE_URL, authHeaders, 'training_systems_in_place', systemsInPlace),
-          summaryArray.length > 0 ? upsertRelatedData(SUPABASE_URL, authHeaders, 'training_summary', summaryArray) : Promise.resolve(true),
+          summaryUpsertArray.length > 0 ? upsertRelatedData(SUPABASE_URL, authHeaders, 'training_summary', summaryUpsertArray) : Promise.resolve(true),
         ]);
         
         const now = new Date().toISOString();
