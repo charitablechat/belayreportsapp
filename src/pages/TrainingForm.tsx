@@ -1265,23 +1265,17 @@ export default function TrainingForm() {
       // hasUnsavedRef set so the active-edit guard keeps blocking refetches
       // and the next autosave round-trip can replay the newer text.
       const pending = pendingSummaryFieldsRef.current;
-      const typedAfterStart = Object.values(pending).some(ts => {
-        const ms = new Date(ts).getTime();
-        return Number.isFinite(ms) && ms > mySaveStartedAt;
+      const keepDirty = shouldKeepDirtyAfterSave({
+        pendingFieldTimestamps: pending,
+        summaryUpdatedAt: summaryRef.current?.updated_at ?? null,
+        saveStartedAtMs: mySaveStartedAt,
       });
-      const summaryUpdatedAfterStart = (() => {
-        const ua = summaryRef.current?.updated_at;
-        if (typeof ua !== 'string') return false;
-        const ms = new Date(ua).getTime();
-        return Number.isFinite(ms) && ms > mySaveStartedAt;
-      })();
-      if (!typedAfterStart && !summaryUpdatedAfterStart) {
+      if (!keepDirty) {
         hasUnsavedRef.current = false;
         setHasUnsavedChanges(false);
       } else {
         logTrainingSummaryAutosave('finally-guard-keep-dirty', {
           pendingFields: Object.keys(pending),
-          summaryUpdatedAfterStart,
           mySaveStartedAt,
         });
       }
