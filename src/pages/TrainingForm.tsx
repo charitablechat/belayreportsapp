@@ -789,9 +789,9 @@ export default function TrainingForm() {
                 // timestamp >= the local dirty stamp. This is the save-seq
                 // guard against an older save's Realtime echo prematurely
                 // declaring the field "confirmed".
-                const typedAfterSaveStart = dirtyNames.some(f => {
-                  const dirtyMs = new Date(dirtyFields[f]).getTime();
-                  return Number.isFinite(dirtyMs) && dirtyMs > saveStartedAt;
+                const typedAfterSaveStart = summaryTypedAfter({
+                  pendingFieldTimestamps: dirtyFields,
+                  sinceMs: saveStartedAt,
                 });
                 if (preservedFields.length > 0) {
                   recordActiveEditSkip({ form: 'training', table: 'summary', rowId: (summaryResult as DbRow).id ?? null, field: preservedFields.join(','), reason: childGuard.reason ?? 'dirty', source: 'load' });
