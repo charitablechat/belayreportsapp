@@ -682,27 +682,73 @@ export default function RecoveryAndSyncHealth() {
             />
           </div>
         )}
-        {localLoading ? (
+        {serverEnrichmentFailed && online && (
+          <div className="border border-foreground/20 p-3 text-sm text-muted-foreground">
+            We could not check server status right now, but local reports from this device are still shown.
+          </div>
+        )}
+        {idbUnavailable && !localLoading && (
+          <Card>
+            <CardContent className="pt-6 text-sm space-y-2">
+              <p className="font-semibold">We could not read reports stored on this device.</p>
+              <p>Do not clear browser data or reinstall the app. Contact an admin.</p>
+              {reports.length > 0 && (
+                <p className="text-muted-foreground">
+                  We found {reports.length} report{reports.length === 1 ? '' : 's'} in local
+                  backups and have listed {reports.length === 1 ? 'it' : 'them'} below.
+                </p>
+              )}
+            </CardContent>
+          </Card>
+        )}
+        {localPartial && !idbUnavailable && !localLoading && reports.length > 0 && (
+          <div className="border border-foreground/20 p-3 text-sm text-muted-foreground">
+            Some records on this device could not be read and were skipped. The rest are shown below.
+          </div>
+        )}
+        {localLoading && !uiFallback ? (
           <div className="flex items-center gap-2 text-sm text-muted-foreground">
             <Loader2 className="w-4 h-4 animate-spin" /> Loading from this device…
           </div>
-        ) : reports.length === 0 ? (
+        ) : localLoading && uiFallback ? (
+          <Card>
+            <CardContent className="pt-6 text-sm space-y-2">
+              <p className="font-semibold">
+                This device is taking longer than expected to read stored reports.
+              </p>
+              <p>
+                We are showing anything we can find. Do not clear browser data or reinstall the app.
+              </p>
+              {reports.length > 0 ? (
+                <p className="text-muted-foreground">
+                  {reports.length} report{reports.length === 1 ? '' : 's'} found so far and listed
+                  below.
+                </p>
+              ) : (
+                <p className="text-muted-foreground">
+                  Nothing has surfaced from this device yet. You can wait, or come back later.
+                </p>
+              )}
+            </CardContent>
+          </Card>
+        ) : null}
+        {!localLoading && reports.length === 0 && !idbUnavailable ? (
           <Card>
             <CardContent className="pt-6 text-sm">
-              <p>No trainings found on this device.</p>
+              <p>No training reports were found on this device for this signed-in user.</p>
               <p className="text-muted-foreground mt-1">
                 If you were expecting to see a report here, open Ropeworks on the device where you
                 originally typed it.
               </p>
             </CardContent>
           </Card>
-        ) : filteredReports.length === 0 ? (
+        ) : !localLoading && reports.length > 0 && filteredReports.length === 0 ? (
           <Card>
             <CardContent className="pt-6 text-sm text-muted-foreground">
               No trainings match “{query}”. Clear the search to see all your reports.
             </CardContent>
           </Card>
-        ) : (
+        ) : reports.length > 0 ? (
           filteredReports.map((r) => (
             <ReportRow
               key={r.id}
@@ -712,7 +758,7 @@ export default function RecoveryAndSyncHealth() {
               appVersion={installed ?? undefined}
             />
           ))
-        )}
+        ) : null}
       </div>
 
 
