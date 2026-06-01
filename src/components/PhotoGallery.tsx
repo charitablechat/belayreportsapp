@@ -324,6 +324,11 @@ export default function PhotoGallery({
               caption: (p as any).caption ?? null,
               display_order: p.display_order ?? index,
               staleUpload: isStale,
+              // Pass through status fields used by derivePhotoStatus.
+              lastError: (p as any).lastError ?? null,
+              lastErrorAt: (p as any).lastErrorAt ?? null,
+              nextRetryAt: (p as any).nextRetryAt ?? null,
+              retryCount: (p as any).retryCount ?? null,
             };
           } catch (e) {
             console.warn('[PhotoGallery] Skipping photo with invalid blob:', p.id, e);
