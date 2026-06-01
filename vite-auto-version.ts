@@ -2,7 +2,33 @@ import fs from 'fs';
 import path from 'path';
 import { execSync } from 'child_process';
 import type { Plugin } from 'vite';
-import { bumpVersion } from './scripts/bump-version.mjs';
+
+/**
+ * Inlined twin of `scripts/bump-version.mjs#bumpVersion` so the Vite config
+ * has zero cross-format import surface. Both copies are covered by the same
+ * unit-test suite (`src/lib/__tests__/version-rollover.test.ts`) which
+ * exercises the .mjs export; if you change rules here, change them there too.
+ */
+function bumpVersion(current: string, kind: 'patch' | 'minor' | 'major'): string {
+  const parts = String(current).split('.').map((p) => parseInt(p, 10));
+  if (parts.length !== 3 || parts.some((p) => !Number.isFinite(p) || p < 0)) {
+    throw new Error(`Unparseable version: "${current}" (expected MAJOR.MINOR.PATCH)`);
+  }
+  let [maj, min, pat] = parts;
+  if (kind === 'patch') {
+    pat += 1;
+    if (pat > 9) { pat = 0; min += 1; }
+    if (min > 9) { min = 0; maj += 1; }
+  } else if (kind === 'minor') {
+    min += 1; pat = 0;
+    if (min > 9) { min = 0; maj += 1; }
+  } else if (kind === 'major') {
+    maj += 1; min = 0; pat = 0;
+  } else {
+    throw new Error(`Unknown bump kind: "${kind}" (use patch|minor|major)`);
+  }
+  return `${maj}.${min}.${pat}`;
+}
 
 /**
  * Version strategy (rewritten 2026-06):
