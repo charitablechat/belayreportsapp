@@ -30,6 +30,7 @@ import { addSyncNotification as addSyncNotificationStatic } from './notification
 import { isQuarantined as isSessionQuarantined, jitteredPhotoBackoffMs } from './sync-quarantine';
 import { syncLog } from './sync-logger';
 import { addTombstone, clearTombstone, isTombstoned, type TombstonedTable } from './local-record-tombstones';
+import { normalizeResultFieldsOnRows } from './inspection-result-normalizer';
 
 /** Opaque DB row — fields vary across tables and are read/written structurally.
  *  Uses an `any` index signature so callers can structurally read/write
@@ -4859,11 +4860,21 @@ export async function getRelatedDataOffline(
       const index = db.transaction(storeName).store.index('by-inspection');
       const results = await index.getAll(inspectionId);
       // Sort by display_order to maintain consistent ordering
-      return results.sort(
+      const sorted = results.sort(
         (a, b) =>
           ((a as { display_order?: number }).display_order ?? 0) -
           ((b as { display_order?: number }).display_order ?? 0),
       );
+      // Cross-platform legacy heal: coerce stored result wording into the
+      // canonical Zod enum so the form UI displays the right dropdown
+      // selection. Read-only — does not write back to IDB; the sync push
+      // pipeline (atomic-sync-manager) re-normalizes on the wire and the
+      // post-sync writeback persists the canonical form.
+      if (type === 'systems' || type === 'ziplines' || type === 'equipment') {
+        const { rows } = normalizeResultFieldsOnRows(sorted as Array<Record<string, unknown>>);
+        return rows as DbRow[];
+      }
+      return sorted;
     },
     [],
     `getRelatedDataOffline:${type}`
