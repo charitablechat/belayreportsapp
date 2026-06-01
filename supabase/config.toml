@@ -25,6 +25,8 @@ project_id = "ssgzcgvygnsrqalisshx"
     verify_jwt = true
   [functions.generate-training-pdf]
     verify_jwt = true
+  [functions.get-deployed-version]
+    verify_jwt = false
   [functions.get-logo-base64]
     verify_jwt = false
   [functions.get-vapid-public-key]
