@@ -553,3 +553,67 @@ export function applyIncomingSummary<T extends MergeableSummaryRow>(
 // when convenient. The trace ring itself lives in `training-summary-trace.ts`.
 export type { SummaryTraceEntry } from './training-summary-trace';
 
+// ─── Save-sequence / save-finally race guards ──────────────────────────────
+//
+// Tiny pure predicates extracted from `TrainingForm` so the save-finally
+// dirty-state guard and the refetch "pending-confirmed" guard can be
+// unit-tested without rendering the form. They MUST stay behaviorally
+// identical to the inline checks in `TrainingForm.tsx` — callers and tests
+// rely on the same wall-clock semantics.
+
+export interface TypedAfterInput {
+  /** `pendingSummaryFieldsRef.current` — field → ISO timestamp string. */
+  pendingFieldTimestamps: Record<string, string> | null | undefined;
+  /** Reference time (e.g. `saveStartedAtRef.current`) in ms since epoch. */
+  sinceMs: number;
+}
+
+/**
+ * Returns true when ANY pending Training summary field carries an ISO
+ * timestamp strictly newer than `sinceMs`. Used by the refetch /
+ * Realtime-echo branch to refuse to clear `pendingSummaryFieldsRef` when an
+ * OLDER save's response arrives after the user kept typing.
+ */
+export function summaryTypedAfter({ pendingFieldTimestamps, sinceMs }: TypedAfterInput): boolean {
+  const pending = pendingFieldTimestamps ?? {};
+  if (!Number.isFinite(sinceMs)) return false;
+  for (const v of Object.values(pending)) {
+    if (typeof v !== 'string' || !v) continue;
+    const ms = new Date(v).getTime();
+    if (Number.isFinite(ms) && ms > sinceMs) return true;
+  }
+  return false;
+}
+
+export interface ShouldKeepDirtyInput {
+  /** `pendingSummaryFieldsRef.current` at the end of the save. */
+  pendingFieldTimestamps: Record<string, string> | null | undefined;
+  /** `summaryRef.current?.updated_at` at the end of the save. */
+  summaryUpdatedAt: string | null | undefined;
+  /** Wall-clock ms captured when THIS save invocation started. */
+  saveStartedAtMs: number;
+}
+
+/**
+ * Save-finally dirty-state guard. Returns true when `hasUnsavedRef` and
+ * `hasUnsavedChanges` MUST stay set after a successful save — because the
+ * user typed a protected summary field after this save started, or because
+ * the live summary row was updated in-place after save start.
+ *
+ * Returning false means it is safe to mark the form clean.
+ */
+export function shouldKeepDirtyAfterSave({
+  pendingFieldTimestamps,
+  summaryUpdatedAt,
+  saveStartedAtMs,
+}: ShouldKeepDirtyInput): boolean {
+  if (!Number.isFinite(saveStartedAtMs)) return false;
+  if (summaryTypedAfter({ pendingFieldTimestamps, sinceMs: saveStartedAtMs })) return true;
+  if (typeof summaryUpdatedAt === 'string' && summaryUpdatedAt) {
+    const ms = new Date(summaryUpdatedAt).getTime();
+    if (Number.isFinite(ms) && ms > saveStartedAtMs) return true;
+  }
+  return false;
+}
+
+
