@@ -1007,7 +1007,26 @@ export default function TrainingForm() {
         setImmediateAttention(ia); childDataLoadedRef.current.immediate_attention = true;
         setVerifiableItems(vi); childDataLoadedRef.current.verifiable_items = true;
         setSystemsInPlace(sp); childDataLoadedRef.current.systems_in_place = true;
-        if (sm) { setSummary(sm); }
+        if (sm) {
+          // JSON import is an explicit user action, but it should still not
+          // wipe a populated field the user just typed without an explicit
+          // per-field clear. Run through the same live-state guard.
+          setSummary(prev => {
+            const local = summaryRef.current ?? prev;
+            const { next } = applyIncomingSummary(
+              local as (DbRow & { field_timestamps?: Record<string, string> | null }) | null,
+              sm as (DbRow & { field_timestamps?: Record<string, string> | null }),
+              {
+                source: 'json-import',
+                trainingId: id ?? null,
+                currentSaveSeq: saveSeqRef.current,
+                hasUnsaved: hasUnsavedRef.current,
+                focusInEditor: typeof document !== 'undefined' && !!document.activeElement?.closest?.('[data-form-section="training-summary"]'),
+              },
+            );
+            return (next ?? sm) as DbRow;
+          });
+        }
         childDataLoadedRef.current.summary = true;
 
         // Refresh photo galleries to pick up any imported photo metadata
