@@ -84,7 +84,6 @@ describe('scanTrainingForRecoverableText', () => {
     vi.mocked(getDB).mockResolvedValue(makeDb({ training_summary: [] }));
     vi.mocked(getVersionHistory).mockResolvedValue([
       {
-        // @ts-expect-error -- minimal shape
         versionNumber: 7,
         timestamp: Date.now() - 3_600_000,
         childrenData: {
@@ -97,7 +96,7 @@ describe('scanTrainingForRecoverableText', () => {
         },
         parentData: {},
       },
-    ]);
+    ] as unknown as Awaited<ReturnType<typeof getVersionHistory>>);
 
     const findings = await scanTrainingForRecoverableText(T_ID);
     expect(findings).toHaveLength(2);
@@ -160,13 +159,12 @@ describe('scanTrainingForRecoverableText', () => {
     );
     vi.mocked(getVersionHistory).mockResolvedValue([
       {
-        // @ts-expect-error -- minimal shape
         versionNumber: 3,
         timestamp: Date.now() - 7_200_000,
         childrenData: { summary: [{ observations: sharedText }] },
         parentData: {},
       },
-    ]);
+    ] as unknown as Awaited<ReturnType<typeof getVersionHistory>>);
 
     const findings = await scanTrainingForRecoverableText(T_ID, ['observations']);
     expect(findings).toHaveLength(1);
