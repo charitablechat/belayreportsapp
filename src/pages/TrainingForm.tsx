@@ -560,28 +560,34 @@ export default function TrainingForm() {
           setVerifiableItems(verifiable_items || []);
           setSystemsInPlace(systems_in_place || []);
           setSummary(prev => {
-            const incoming = summaryData || { id: crypto.randomUUID(), training_id: id };
+            const incoming = summaryData ?? null;
             const local = summaryRef.current ?? prev;
-            if (!local) return incoming;
-            // Empty placeholder local must never beat a populated incoming
-            // (admin opening someone else's report etc.).
-            if (isEmptyPlaceholderSummary(local)) return incoming;
-            // Always field-merge: a stale IDB row with empty siblings (e.g.
-            // recommendations="" because the latest typed text isn't in IDB
-            // yet) must NOT clobber populated React state. The
-            // `mergeSummaryPreservingPopulated` helper layers a
-            // non-empty-wins-over-stale-empty guard on top of LWW.
+            // No IDB summary and no local React state — seed an empty
+            // placeholder so the controlled editor can mount. NEVER blow
+            // away populated local React state with a fresh placeholder.
+            if (!local && !incoming) {
+              return { id: crypto.randomUUID(), training_id: id } as DbRow;
+            }
             const dirtyNames = Object.keys(pendingSummaryFieldsRef.current);
-            const merged = mergeSummaryPreservingPopulated(
-              local as DbRow & { field_timestamps?: Record<string, string> | null },
-              incoming as DbRow & { field_timestamps?: Record<string, string> | null },
-            ) as DbRow;
+            const { next, guarded, preservedFields } = applyIncomingSummary(
+              local as DbRow & { field_timestamps?: Record<string, string> | null } | null,
+              incoming as (DbRow & { field_timestamps?: Record<string, string> | null }) | null,
+              {
+                source: 'idb-load',
+                trainingId: id,
+                currentSaveSeq: saveSeqRef.current,
+                hasUnsaved: hasUnsavedRef.current,
+                focusInEditor: typeof document !== 'undefined' && !!document.activeElement?.closest?.('[data-form-section="training-summary"]'),
+              },
+            );
             logTrainingSummaryAutosave('offline-summary-merged', {
               source: 'load',
               pendingFields: dirtyNames,
-              incomingUpdatedAt: (incoming as { updated_at?: string | null }).updated_at ?? null,
+              guarded,
+              preservedFields,
+              incomingUpdatedAt: (incoming as { updated_at?: string | null } | null)?.updated_at ?? null,
             });
-            return merged;
+            return (next ?? local ?? { id: crypto.randomUUID(), training_id: id }) as DbRow;
           });
         } else if (!id.startsWith('temp-')) {
           const backup = getReportSnapshot('training', id);
