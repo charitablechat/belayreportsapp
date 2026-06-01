@@ -1096,8 +1096,10 @@ export function CloudSnapshotsPanel({ allowDelete = true }: CloudSnapshotsPanelP
       onExport={handlePreviewExport}
     />
     </>
+    </TooltipProvider>
   );
 }
+
 
 // ── All User Snapshots (Super Admin only) ──────────────────────────
 
