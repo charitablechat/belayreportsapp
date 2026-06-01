@@ -90,12 +90,45 @@ function useOnlineStatus(): boolean {
 
 function FindingCard({
   reportName,
+  trainingId,
+  scanSeenUpdatedAt,
   finding,
+  appVersion,
+  onRescanRequested,
+  onFilled,
 }: {
   reportName: string;
+  trainingId: string;
+  scanSeenUpdatedAt: string | null;
   finding: RecoveryFinding;
+  appVersion?: string;
+  onRescanRequested: () => void;
+  onFilled: () => void;
 }) {
   const plain = useMemo(() => htmlToPlainText(finding.text), [finding.text]);
+  const [eligibility, setEligibility] = useState<Eligibility | null>(null);
+  const [eligLoading, setEligLoading] = useState<boolean>(false);
+  const [dialogOpen, setDialogOpen] = useState<boolean>(false);
+  const [hidden, setHidden] = useState<boolean>(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    setEligLoading(true);
+    checkEligibility({
+      trainingId,
+      field: finding.field,
+      recoveredText: finding.text,
+    })
+      .then((r) => {
+        if (!cancelled) setEligibility(r);
+      })
+      .finally(() => {
+        if (!cancelled) setEligLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [trainingId, finding.field, finding.text]);
 
   const handleCopy = async () => {
     try {
@@ -130,6 +163,10 @@ function FindingCard({
     URL.revokeObjectURL(url);
   };
 
+  if (hidden) return null;
+
+  const canFill = eligibility?.eligible === true;
+
   return (
     <div className="border border-foreground/20 p-4 space-y-3">
       <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
@@ -144,7 +181,16 @@ function FindingCard({
         {plain || '(no readable text)'}
       </div>
       <div className="flex flex-wrap gap-2">
-        <Button size="sm" variant="default" onClick={handleCopy}>
+        {canFill && (
+          <Button
+            size="sm"
+            variant="default"
+            onClick={() => setDialogOpen(true)}
+          >
+            <Wand2 className="w-4 h-4 mr-1.5" /> Fill Missing Text
+          </Button>
+        )}
+        <Button size="sm" variant={canFill ? 'outline' : 'default'} onClick={handleCopy}>
           <Copy className="w-4 h-4 mr-1.5" /> Copy text
         </Button>
         <Button size="sm" variant="outline" onClick={handleEmail}>
@@ -154,6 +200,42 @@ function FindingCard({
           <Download className="w-4 h-4 mr-1.5" /> Download as .txt
         </Button>
       </div>
+      {!canFill && !eligLoading && eligibility && (
+        <p className="text-xs text-muted-foreground">
+          {eligibility.reason === 'offline'
+            ? "You're offline. Reconnect to fill this field directly. Your recovered text is still here."
+            : eligibility.reason === 'field_populated'
+            ? 'This field already has saved text — direct fill is disabled to protect it.'
+            : eligibility.reason === 'not_owner'
+            ? 'Direct fill is only available on your own reports. Use Copy or Send to admin.'
+            : null}
+        </p>
+      )}
+      {canFill && (
+        <FillMissingTextDialog
+          open={dialogOpen}
+          onOpenChange={setDialogOpen}
+          reportName={reportName}
+          trainingId={trainingId}
+          field={finding.field}
+          recoveredPlainText={plain}
+          scanSeenUpdatedAt={scanSeenUpdatedAt}
+          appVersion={appVersion}
+          onSuccess={() => {
+            toast.success(
+              `${FIELD_LABEL[finding.field]} were filled in. Open the report to confirm.`,
+            );
+            setHidden(true);
+            onFilled();
+          }}
+          onNeedsRescan={() => {
+            toast.message(
+              'This report changed since the last check. Please tap Check this report again.',
+            );
+            onRescanRequested();
+          }}
+        />
+      )}
     </div>
   );
 }
