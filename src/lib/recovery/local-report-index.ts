@@ -202,35 +202,128 @@ function listLocalBackupTrainings(
 }
 
 /**
- * List trainings present in local IndexedDB (and local backup envelopes),
- * optionally filtered to a specific user_id (shared-device safety). Returns
- * [] on any failure.
+ * Status-bearing result for the Recovery & Sync Health page.
+ *
+ *  - `entries` — discovered trainings (IDB + backup envelopes, deduped).
+ *  - `idbUnavailable` — true when the IDB read could not be completed
+ *    (timed out, threw, or returned an unusable handle). Used by the page
+ *    to render a safe error card instead of a misleading "no trainings"
+ *    empty state.
+ *  - `partial` — true when at least one IDB row threw inside row-shape
+ *    parsing and was skipped; the rest of the list is still returned.
+ *
+ * Backup-envelope discovery ALWAYS runs, even when IDB is unavailable, so
+ * locally recoverable backup data is still surfaced.
+ */
+export interface LocalTrainingsResult {
+  entries: LocalReportEntry[];
+  idbUnavailable: boolean;
+  partial: boolean;
+}
+
+/** Wall-clock budget for the IDB phase. Healthy opens are < 100 ms. */
+const IDB_PHASE_BUDGET_MS = 3000;
+
+async function readIdbTrainings(
+  userId: string | null,
+): Promise<{ entries: LocalReportEntry[]; idbUnavailable: boolean; partial: boolean }> {
+  const idbEntries: LocalReportEntry[] = [];
+  let idbUnavailable = false;
+  let partial = false;
+
+  let timeoutHandle: ReturnType<typeof setTimeout> | undefined;
+  const timeoutPromise = new Promise<'__timeout__'>((resolve) => {
+    timeoutHandle = setTimeout(() => resolve('__timeout__'), IDB_PHASE_BUDGET_MS);
+  });
+
+  try {
+    const raced = await Promise.race([getDB(), timeoutPromise]);
+    if (raced === '__timeout__') {
+      idbUnavailable = true;
+    } else {
+      const db = raced as Awaited<ReturnType<typeof getDB>>;
+      try {
+        if (db && db.objectStoreNames && db.objectStoreNames.contains('trainings')) {
+          const rows = (await db.getAll('trainings')) as Array<Record<string, unknown>>;
+          for (const row of rows) {
+            try {
+              if (!row || typeof row.id !== 'string') continue;
+              if (row._remote_deleted_at || row.deleted_at) continue;
+              const rowOwner = ownerOf(row);
+              if (userId && rowOwner && rowOwner !== userId) continue;
+              const entry = buildEntryFromIdbRow(row);
+              if (entry) idbEntries.push(entry);
+            } catch {
+              // Per-row fault isolation — one malformed record must not
+              // drop every other training. Mark the result as partial.
+              partial = true;
+            }
+          }
+        }
+        // Store missing → treat as readable-but-empty (legacy behavior
+        // covered by existing tests). idbUnavailable stays false.
+      } catch {
+        idbUnavailable = true;
+      }
+    }
+  } catch {
+    idbUnavailable = true;
+  } finally {
+    if (timeoutHandle) clearTimeout(timeoutHandle);
+  }
+
+  return { entries: idbEntries, idbUnavailable, partial };
+}
+
+/**
+ * Status-bearing variant used by Recovery & Sync Health to render safe
+ * loading / error / partial / empty states. Backup-envelope discovery runs
+ * regardless of IDB health.
+ *
+ * Never rejects.
+ */
+export async function listLocalTrainingsWithStatus(
+  userId: string | null,
+): Promise<LocalTrainingsResult> {
+  let idbPhase: { entries: LocalReportEntry[]; idbUnavailable: boolean; partial: boolean } = {
+    entries: [],
+    idbUnavailable: false,
+    partial: false,
+  };
+  try {
+    idbPhase = await readIdbTrainings(userId);
+  } catch {
+    idbPhase = { entries: [], idbUnavailable: true, partial: false };
+  }
+
+  let backupEntries: LocalReportEntry[] = [];
+  try {
+    const existingIds = new Set(idbPhase.entries.map((e) => e.id));
+    backupEntries = listLocalBackupTrainings(userId, existingIds);
+  } catch {
+    backupEntries = [];
+  }
+
+  const all = [...idbPhase.entries, ...backupEntries];
+  all.sort((a, b) => (b.updatedAt ?? 0) - (a.updatedAt ?? 0));
+  return {
+    entries: all,
+    idbUnavailable: idbPhase.idbUnavailable,
+    partial: idbPhase.partial,
+  };
+}
+
+/**
+ * Backward-compatible array form. Returns [] on any failure.
  */
 export async function listLocalTrainings(
   userId: string | null,
 ): Promise<LocalReportEntry[]> {
-  const idbEntries: LocalReportEntry[] = [];
   try {
-    const db = await getDB();
-    if (db.objectStoreNames.contains('trainings')) {
-      const rows = (await db.getAll('trainings')) as Array<Record<string, unknown>>;
-      for (const row of rows) {
-        if (!row || typeof row.id !== 'string') continue;
-        if (row._remote_deleted_at || row.deleted_at) continue;
-        const rowOwner = ownerOf(row);
-        if (userId && rowOwner && rowOwner !== userId) continue;
-        const entry = buildEntryFromIdbRow(row);
-        if (entry) idbEntries.push(entry);
-      }
-    }
+    const r = await listLocalTrainingsWithStatus(userId);
+    return r.entries;
   } catch {
-    // fall through — backup pass can still produce entries
+    return [];
   }
-
-  const existingIds = new Set(idbEntries.map((e) => e.id));
-  const backupEntries = listLocalBackupTrainings(userId, existingIds);
-
-  const all = [...idbEntries, ...backupEntries];
-  all.sort((a, b) => (b.updatedAt ?? 0) - (a.updatedAt ?? 0));
-  return all;
 }
+
