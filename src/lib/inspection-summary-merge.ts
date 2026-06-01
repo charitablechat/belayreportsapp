@@ -63,7 +63,13 @@ export function isEmptyPlaceholderInspectionSummary(row: Row): boolean {
 
 /** TipTap emits `<p></p>` and `<br />` shells when a rich-text editor is cleared. */
 function isRichTextMissing(value: string): boolean {
-  const stripped = value.replace(/<p><\/p>/g, '').replace(/<br\s*\/?>/g, '').trim();
+  // Strip <br> first, then any empty <p>…</p> shells, then any remaining tags,
+  // so `<p><br/></p>` collapses to `` rather than `<p></p>`.
+  const stripped = value
+    .replace(/<br\s*\/?>/gi, '')
+    .replace(/<p>\s*<\/p>/gi, '')
+    .replace(/<[^>]+>/g, '')
+    .trim();
   return stripped.length === 0;
 }
 
