@@ -533,7 +533,9 @@ export default function RecoveryAndSyncHealth() {
               entry={r}
               online={online}
               highlighted={pinnedIds.has(r.id)}
+              appVersion={installed ?? undefined}
             />
+
           ))
         )}
       </div>
