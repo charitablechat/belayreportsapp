@@ -410,31 +410,78 @@ export default function RecoveryAndSyncHealth() {
     staleTime: 5 * 60_000,
   });
 
-  // Local trainings — always shown, works offline.
-  const { data: localTrainings = [], isLoading: localLoading } = useQuery({
-    queryKey: ['recovery-local-trainings', userId],
-    queryFn: () => listLocalTrainings(userId ?? null),
+  // Local trainings — always shown, works offline. Status-bearing so the
+  // page can distinguish "really empty" from "IDB unreadable" from "partial
+  // (one bad row skipped)". Backup-envelope discovery runs even when IDB
+  // times out, so locally recoverable backups still appear.
+  const {
+    data: localResult,
+    isLoading: localLoading,
+  } = useQuery<LocalTrainingsResult>({
+    queryKey: ['recovery-local-trainings-v2', userId],
+    queryFn: () => listLocalTrainingsWithStatus(userId ?? null),
+    retry: 1,
+    staleTime: 30_000,
   });
+  const localTrainings: LocalReportEntry[] = localResult?.entries ?? [];
+  const idbUnavailable = !!localResult?.idbUnavailable;
+  const localPartial = !!localResult?.partial;
+
+  // UI-side wall-clock fallback so a stuck loader cannot leave the user on
+  // an indefinite spinner. After 4s we render whatever has been discovered
+  // so far (or a degraded "taking longer than expected" notice).
+  const [uiFallback, setUiFallback] = useState<boolean>(false);
+  useEffect(() => {
+    if (!localLoading) {
+      setUiFallback(false);
+      return;
+    }
+    const t = setTimeout(() => setUiFallback(true), 4000);
+    return () => clearTimeout(t);
+  }, [localLoading]);
 
   // Optional server enrichment — only when online. Server rows enrich, never replace.
+  // Hard time-cap so a hanging request cannot bottleneck the page.
+  const [serverEnrichmentFailed, setServerEnrichmentFailed] = useState<boolean>(false);
   const { data: serverTrainings = [] } = useQuery({
     queryKey: ['recovery-server-trainings', userId],
     enabled: !!userId && online,
     queryFn: async () => {
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 5000);
       try {
-        const { data } = await supabase
+        const call = supabase
           .from('trainings')
           .select(
             'id, organization, location, start_date, status, updated_at, inspector_id, trainer_of_record',
           )
           .order('updated_at', { ascending: false })
-          .limit(200);
+          .limit(200)
+          .abortSignal(controller.signal);
+        const timeoutPromise = new Promise<'__timeout__'>((resolve) => {
+          setTimeout(() => resolve('__timeout__'), 5000);
+        });
+        const raced = await Promise.race([call, timeoutPromise]);
+        if (raced === '__timeout__') {
+          setServerEnrichmentFailed(true);
+          return [] as Array<Record<string, unknown>>;
+        }
+        const { data, error } = raced as Awaited<typeof call>;
+        if (error) {
+          setServerEnrichmentFailed(true);
+          return [] as Array<Record<string, unknown>>;
+        }
+        setServerEnrichmentFailed(false);
         return Array.isArray(data) ? (data as Array<Record<string, unknown>>) : [];
       } catch {
+        setServerEnrichmentFailed(true);
         return [] as Array<Record<string, unknown>>;
+      } finally {
+        clearTimeout(timeoutId);
       }
     },
     staleTime: 30_000,
+    retry: 0,
   });
 
   // Optional profile enrichment — batched lookup for inspector display names.
