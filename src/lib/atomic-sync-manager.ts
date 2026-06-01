@@ -2472,6 +2472,44 @@ export async function syncTrainingAtomic(trainingId: string, preValidatedUser?: 
     }
     
     if (summary) {
+      // Training Summary preservation: if the local summary row is partial
+      // or blank, merge it with the server-side row before upsert so a stale
+      // local blank cannot wipe populated server Observations / Recommendations
+      // / Person / Date. The preservation rule is symmetric: it only blocks
+      // a blank → populated transition that is NOT backed by an explicit
+      // per-field clear timestamp. See `mergeTrainingSummaryAtBoundary`.
+      const { mergeTrainingSummaryAtBoundary, logTrainingSummaryPreservation, isTrainingSummaryFieldMissing } =
+        await import('./training-summary-merge');
+      const PROTECTED = ['observations', 'recommendations', 'person_submitting', 'submission_date'] as const;
+      const localHasMissingProtected = PROTECTED.some((f) =>
+        isTrainingSummaryFieldMissing((summary as Record<string, unknown>)[f]),
+      );
+      let serverSummaryForMerge: Record<string, unknown> | null =
+        (existingSummary && existingSummary[0]) ? existingSummary[0] as Record<string, unknown> : null;
+      if (!serverSummaryForMerge && localHasMissingProtected) {
+        // We skipped the rollback prefetch (baseline unchanged) but local
+        // has a blank — defensively fetch the current server row.
+        try {
+          const { data: srvSummary } = await supabase
+            .from('training_summary')
+            .select('*')
+            .eq('training_id', trainingId)
+            .maybeSingle();
+          serverSummaryForMerge = (srvSummary ?? null) as Record<string, unknown> | null;
+        } catch (e) {
+          console.warn('[Atomic Sync] Pre-upsert summary fetch failed (non-fatal):', e);
+        }
+      }
+      let summaryForUpsert: Record<string, unknown> = summary as Record<string, unknown>;
+      if (serverSummaryForMerge) {
+        const { merged, preservations } = mergeTrainingSummaryAtBoundary(
+          summary as Record<string, unknown>,
+          serverSummaryForMerge,
+        );
+        summaryForUpsert = merged;
+        logTrainingSummaryPreservation('syncTrainingAtomic.upsert', trainingId, preservations);
+      }
+
       // Whitelist sanitize: training_summary has 7 real columns
       // (id, training_id, observations, recommendations, person_submitting,
       // submission_date, created_at). Client-only fields the IDB row may
@@ -2482,9 +2520,10 @@ export async function syncTrainingAtomic(trainingId: string, preValidatedUser?: 
       // Route through the same whitelist sanitizer the form-saver path
       // uses (see `sanitizeTrainingSummaryForRemote`).
       const sanitizedSummary = sanitizeTrainingSummaryForRemote({
-        ...summary,
-        id: (summary.id && !String(summary.id).startsWith('temp-')) ? summary.id : crypto.randomUUID(),
-        submission_date: summary.submission_date === "" ? null : summary.submission_date,
+        ...summaryForUpsert,
+        id: ((summaryForUpsert.id && !String(summaryForUpsert.id).startsWith('temp-')) ? summaryForUpsert.id : crypto.randomUUID()) as string,
+        training_id: trainingId,
+        submission_date: summaryForUpsert.submission_date === "" ? null : summaryForUpsert.submission_date,
       });
 
       steps.push({
