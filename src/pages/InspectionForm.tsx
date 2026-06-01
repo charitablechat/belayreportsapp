@@ -14,6 +14,11 @@ import { useNavigate, useParams } from "react-router-dom";
 import { goBack } from "@/lib/navigation";
 import { isLocalDataNewer } from "@/lib/local-data-guards";
 import { applyTrackedFieldWrite, mergeChildArray, mergeRecordFields, TRACKED_FIELDS } from "@/lib/field-merge";
+import {
+  INSPECTION_SUMMARY_FIELDS,
+  isEmptyPlaceholderInspectionSummary,
+  mergeInspectionSummaryPreservingPopulated,
+} from "@/lib/inspection-summary-merge";
 import { trackChildDeletions } from "@/lib/track-child-deletions";
 import { isFieldActivelyEdited, recordActiveEditSkip } from "@/lib/active-edit-guard";
 import { checkRequiredHeaderFields, formatMissingFieldLabels } from "@/lib/header-required-fields";
@@ -430,6 +435,42 @@ export default function InspectionForm() {
   // `cleared` = true when the field was emptied (resume auto-tracking on next inspection_date change).
   const handleNextDateUserEdit = useCallback((cleared: boolean) => {
     userTouchedNextDateRef.current = !cleared;
+  }, []);
+
+  /**
+   * SummarySection.onUpdate wrapper. Detects which tracked summary field
+   * the user just edited (by diffing against the previous summary state)
+   * and stamps `field_timestamps[field] = now()` so the load-merge guard
+   * (`mergeInspectionSummaryPreservingPopulated`) can distinguish a real
+   * user edit / explicit clear from a stale background payload.
+   *
+   * Falls back to a plain `setSummary(next)` for non-tracked fields
+   * (e.g. `id`, `inspection_id` housekeeping) so existing behavior is
+   * preserved.
+   */
+  const handleSummaryUpdate = useCallback((next: any) => {
+    setSummary(prev => {
+      if (!prev) return next;
+      const nowIso = new Date().toISOString();
+      const stamps: Record<string, string> = {
+        ...((prev as { field_timestamps?: Record<string, string> | null }).field_timestamps ?? {}),
+      };
+      let stamped = false;
+      for (const field of INSPECTION_SUMMARY_FIELDS) {
+        const before = (prev as Record<string, unknown>)[field];
+        const after = (next as Record<string, unknown>)[field];
+        if (before !== after) {
+          stamps[field] = nowIso;
+          stamped = true;
+        }
+      }
+      if (!stamped) return next;
+      return {
+        ...next,
+        updated_at: nowIso,
+        field_timestamps: stamps,
+      };
+    });
   }, []);
 
   /**
@@ -1732,8 +1773,23 @@ export default function InspectionForm() {
 
           const { data: summaryData } = summaryResult;
           if (summaryData) {
-            setSummary(summaryData as typeof summary);
-            saveRelatedDataOffline('summary', id!, [summaryData]).catch(e =>
+            // Field-level merge against current local state — preserves any
+            // non-empty user-typed text that the server row is missing.
+            // The MERGED row (not the raw server row) is what gets cached
+            // to IDB, so we never reintroduce the loss path.
+            const localBefore = summaryRef.current as Record<string, unknown> | null;
+            let toPersist: Record<string, unknown> = summaryData as Record<string, unknown>;
+            if (!localBefore || isEmptyPlaceholderInspectionSummary(localBefore)) {
+              setSummary(summaryData as typeof summary);
+            } else {
+              const { merged } = mergeInspectionSummaryPreservingPopulated(
+                localBefore as Record<string, unknown> & { updated_at?: string | null; field_timestamps?: Record<string, string> | null },
+                summaryData as Record<string, unknown> & { updated_at?: string | null; field_timestamps?: Record<string, string> | null },
+              );
+              toPersist = merged;
+              setSummary(merged as typeof summary);
+            }
+            saveRelatedDataOffline('summary', id!, [toPersist]).catch(e =>
               console.warn('[InspectionForm] Non-critical: failed to cache summary', e)
             );
           } else if (offlineSummary.length > 0) {
@@ -3463,7 +3519,7 @@ export default function InspectionForm() {
               <TabsContent value="summary" className="space-y-4">
                 <SummarySection 
                   summary={summary} 
-                  onUpdate={setSummary} 
+                  onUpdate={handleSummaryUpdate} 
                   onImmediateSave={stableTriggerImmediateSave}
                   onRegenerate={handleManualRegenerateSummary}
                   onNextDateUserEdit={handleNextDateUserEdit}
