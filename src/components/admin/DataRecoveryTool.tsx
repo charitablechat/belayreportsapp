@@ -1072,10 +1072,9 @@ export function CloudSnapshotsPanel({ allowDelete = true }: CloudSnapshotsPanelP
                       <TableCell className="py-2.5 px-3 text-xs font-mono">{s.user_name || 'Unknown'}</TableCell>
                       <TableCell className="py-2.5 px-3 text-xs font-mono">{s.device}</TableCell>
                       <TableCell className="py-2.5 px-3">
-                        <Badge variant={s.synced ? "default" : "destructive"} className="text-xs">
-                          {s.synced ? "Synced" : "Unsynced"}
-                        </Badge>
+                        {renderCloudStatusBadge(getStatusFor(s), { className: "text-xs" })}
                       </TableCell>
+
                       <TableCell className="py-2.5 px-3 text-xs text-muted-foreground font-mono">{formatDate(s.snapshot_ts)}</TableCell>
                       <TableCell className="py-2.5 px-3 text-right">
                         <div className="flex justify-end gap-1">
