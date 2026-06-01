@@ -321,3 +321,235 @@ export function logTrainingSummaryPreservation(
     // ignore logging errors
   }
 }
+
+// ─── Live-form state guard ──────────────────────────────────────────────────
+//
+// `applyIncomingSummary` is the centralised entry point that every
+// background-driven Training summary state change (IDB load, server refetch,
+// "no server row" fallback, local-backup restore, JSON import) MUST flow
+// through. It is intentionally STRICTER than the sync/cache boundary helper
+// above:
+//
+//   - It NEVER replaces a populated local field with a blank/null/missing
+//     incoming value unless the incoming row carries an explicit
+//     `field_timestamps[field]` STRICTLY newer than the local explicit
+//     per-field timestamp. Row-level `updated_at` alone is NOT proof of an
+//     intentional cross-device clear.
+//   - For both-populated fields it KEEPS the local value unless the incoming
+//     row carries an explicit per-field timestamp strictly newer than the
+//     local effective timestamp. Server upserts strip `field_timestamps`
+//     (see `sanitizeTrainingSummaryForRemote`), so a server echo with a
+//     freshly-stamped row-level `updated_at` can NEVER shorten or replace
+//     live editor text. This is the live-state fix for the
+//     "text disappears during hard save" race.
+//   - It NEVER replaces a populated local row with `null`/`undefined` or
+//     with an empty `{ id, training_id }` placeholder.
+//
+// Intentional in-form clears keep working: they flow through
+// `updateSummaryField` (NOT through this helper), which stamps the local
+// value + local field_timestamps and updates IDB on the next autosave.
+// `applyIncomingSummary` only governs what BACKGROUND data can do to the
+// React state the user is currently editing.
+
+import { recordSummaryTrace, fieldValueLength, type SummaryTraceSource, type SummaryTraceEntry } from './training-summary-trace';
+
+export interface ApplyIncomingSummaryOptions {
+  source: SummaryTraceSource;
+  trainingId?: string | null;
+  /** Save sequence the incoming data was produced under (for stale-skip telemetry). */
+  incomingSaveSeq?: number | null;
+  /** Current save sequence at apply time. */
+  currentSaveSeq?: number | null;
+  /** Form dirty flag at apply time. */
+  hasUnsaved?: boolean;
+  /** Was focus inside the Summary card. */
+  focusInEditor?: boolean;
+}
+
+export interface ApplyIncomingSummaryResult<T> {
+  /** The row to commit via `setSummary`. May be `prev` when nothing should change. */
+  next: T | null;
+  /** True when at least one field decision deviated from a naive replace. */
+  guarded: boolean;
+  /** Fields that were preserved (incoming wanted to blank/shorten them). */
+  preservedFields: string[];
+  /** Fields whose explicit incoming clear was honoured (a real cross-device clear). */
+  acceptedClears: string[];
+}
+
+export function applyIncomingSummary<T extends MergeableSummaryRow>(
+  prev: T | null | undefined,
+  incoming: T | null | undefined,
+  opts: ApplyIncomingSummaryOptions,
+): ApplyIncomingSummaryResult<T> {
+  const traceBase = {
+    trainingId: opts.trainingId ?? null,
+    hasUnsaved: !!opts.hasUnsaved,
+    focusInEditor: !!opts.focusInEditor,
+    incomingSaveSeq: opts.incomingSaveSeq ?? null,
+    currentSaveSeq: opts.currentSaveSeq ?? null,
+  } as const;
+
+  // Case A: no incoming at all. NEVER blank prev. Includes the
+  // "no server row + IDB empty" branch that previously replaced React state
+  // with a fresh placeholder.
+  if (incoming === null || incoming === undefined) {
+    if (prev) {
+      recordSummaryTrace({
+        ...traceBase,
+        field: 'row',
+        source: 'placeholder-clobber-blocked',
+        prevLen: 1,
+        nextLen: 0,
+        hadExplicitClear: false,
+        blocked: true,
+      });
+    }
+    return { next: (prev ?? null) as T | null, guarded: !!prev, preservedFields: [], acceptedClears: [] };
+  }
+
+  // Case B: prev is missing or a fresh placeholder. Accept incoming wholesale
+  // (this is the admin-opens-foreign-report path).
+  if (!prev || isEmptyPlaceholderSummary(prev)) {
+    recordSummaryTrace({
+      ...traceBase,
+      field: 'row',
+      source: opts.source,
+      prevLen: 0,
+      nextLen: 1,
+      hadExplicitClear: false,
+      blocked: false,
+    });
+    return { next: incoming as T, guarded: false, preservedFields: [], acceptedClears: [] };
+  }
+
+  // Case C: per-field guarded merge.
+  const merged: T = { ...incoming, ...prev } as T;
+  const mergedTimestamps: Record<string, string> = {
+    ...((incoming.field_timestamps as Record<string, string> | null) ?? {}),
+    ...((prev.field_timestamps as Record<string, string> | null) ?? {}),
+  };
+  const preservedFields: string[] = [];
+  const acceptedClears: string[] = [];
+  let guarded = false;
+
+  for (const field of TRAINING_SUMMARY_FIELDS) {
+    const prevVal = (prev as Record<string, unknown>)[field];
+    const incomingVal = (incoming as Record<string, unknown>)[field];
+    const prevMissing = isTrainingSummaryFieldMissing(prevVal);
+    const incomingMissing = isTrainingSummaryFieldMissing(incomingVal);
+
+    const prevExplicitMs = explicitFieldTimestampMs(prev, field);
+    const incomingExplicitMs = explicitFieldTimestampMs(incoming, field);
+    const incomingHasExplicitNewerClear =
+      Number.isFinite(incomingExplicitMs) &&
+      (!Number.isFinite(prevExplicitMs) || incomingExplicitMs > prevExplicitMs);
+
+    // Both missing — nothing to decide.
+    if (prevMissing && incomingMissing) {
+      (merged as Record<string, unknown>)[field] = prevVal ?? incomingVal;
+      continue;
+    }
+
+    // Prev missing, incoming populated — accept.
+    if (prevMissing && !incomingMissing) {
+      (merged as Record<string, unknown>)[field] = incomingVal;
+      const ts = (incoming.field_timestamps as Record<string, string> | null)?.[field];
+      if (ts) mergedTimestamps[field] = ts;
+      continue;
+    }
+
+    // Prev populated, incoming missing — preserve UNLESS explicit cross-device clear.
+    if (!prevMissing && incomingMissing) {
+      if (incomingHasExplicitNewerClear) {
+        (merged as Record<string, unknown>)[field] = incomingVal;
+        const ts = (incoming.field_timestamps as Record<string, string> | null)?.[field];
+        if (ts) mergedTimestamps[field] = ts;
+        acceptedClears.push(field);
+        recordSummaryTrace({
+          ...traceBase,
+          field: field as SummaryTraceEntry['field'],
+          source: opts.source,
+          prevLen: fieldValueLength(prevVal),
+          nextLen: 0,
+          hadExplicitClear: true,
+          blocked: false,
+        });
+      } else {
+        (merged as Record<string, unknown>)[field] = prevVal;
+        const ts = (prev.field_timestamps as Record<string, string> | null)?.[field];
+        if (ts) mergedTimestamps[field] = ts;
+        preservedFields.push(field);
+        guarded = true;
+        recordSummaryTrace({
+          ...traceBase,
+          field: field as SummaryTraceEntry['field'],
+          source: opts.source,
+          prevLen: fieldValueLength(prevVal),
+          nextLen: 0,
+          hadExplicitClear: false,
+          blocked: true,
+        });
+      }
+      continue;
+    }
+
+    // Both populated — keep prev unless incoming has explicit newer per-field stamp.
+    const prevEffectiveMs = summaryFieldTimestampMs(prev, field);
+    if (
+      Number.isFinite(incomingExplicitMs) &&
+      incomingExplicitMs > prevEffectiveMs
+    ) {
+      (merged as Record<string, unknown>)[field] = incomingVal;
+      const ts = (incoming.field_timestamps as Record<string, string> | null)?.[field];
+      if (ts) mergedTimestamps[field] = ts;
+      // This is a legitimate cross-device update — not a "clear" — so don't
+      // record it as acceptedClears. Still emit a trace for forensics.
+      recordSummaryTrace({
+        ...traceBase,
+        field: field as SummaryTraceEntry['field'],
+        source: opts.source,
+        prevLen: fieldValueLength(prevVal),
+        nextLen: fieldValueLength(incomingVal),
+        hadExplicitClear: false,
+        blocked: false,
+      });
+    } else {
+      (merged as Record<string, unknown>)[field] = prevVal;
+      const ts = (prev.field_timestamps as Record<string, string> | null)?.[field];
+      if (ts) mergedTimestamps[field] = ts;
+      // Only count as "guarded" when incoming wanted a different value.
+      if (prevVal !== incomingVal) {
+        preservedFields.push(field);
+        guarded = true;
+        recordSummaryTrace({
+          ...traceBase,
+          field: field as SummaryTraceEntry['field'],
+          source: opts.source,
+          prevLen: fieldValueLength(prevVal),
+          nextLen: fieldValueLength(incomingVal),
+          hadExplicitClear: false,
+          blocked: true,
+        });
+      }
+    }
+  }
+
+  if (Object.keys(mergedTimestamps).length > 0) {
+    (merged as MergeableSummaryRow).field_timestamps = mergedTimestamps;
+  }
+
+  // Preserve the local `updated_at` whenever ANY field was preserved — the
+  // local row is authoritative for those fields, so the row-level timestamp
+  // must not regress to the incoming row's stamp.
+  if (guarded && typeof (prev as MergeableSummaryRow).updated_at === 'string') {
+    (merged as MergeableSummaryRow).updated_at = (prev as MergeableSummaryRow).updated_at;
+  }
+
+  return { next: merged, guarded, preservedFields, acceptedClears };
+}
+
+// Re-export the trace types so callers can import everything from one module
+// when convenient. The trace ring itself lives in `training-summary-trace.ts`.
+export type { SummaryTraceEntry } from './training-summary-trace';
+
