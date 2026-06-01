@@ -300,9 +300,24 @@ function ReportRow({
           )}
         </CardTitle>
         <div className="flex flex-wrap items-center gap-2 pt-1 text-xs text-muted-foreground">
+          {entry.trainerName && (
+            <Badge variant="outline" className="font-normal">
+              Trainer: {entry.trainerName}
+            </Badge>
+          )}
           {entry.localOnly && (
             <Badge variant="outline" className="font-normal">
               On this device only
+            </Badge>
+          )}
+          {entry.fromBackupOnly && (
+            <Badge variant="outline" className="font-normal">
+              Local backup only
+            </Badge>
+          )}
+          {!entry.localOnly && !entry.fromBackupOnly && (
+            <Badge variant="outline" className="font-normal">
+              On server
             </Badge>
           )}
           {highlighted && (
