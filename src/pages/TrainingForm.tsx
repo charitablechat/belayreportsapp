@@ -1589,12 +1589,41 @@ export default function TrainingForm() {
             );
           }
 
-          // Summary - use upsert for atomic operation
+          // Summary - use upsert for atomic operation, with preservation merge
           if (summary) {
             const { sanitizeTrainingSummaryForRemote } = await import('@/lib/form-savers/trainingSaver');
+            const {
+              mergeTrainingSummaryAtBoundary,
+              logTrainingSummaryPreservation,
+              isTrainingSummaryFieldMissing,
+            } = await import('@/lib/training-summary-merge');
+            const PROTECTED = ['observations', 'recommendations', 'person_submitting', 'submission_date'] as const;
+            const localHasMissingProtected = PROTECTED.some((f) =>
+              isTrainingSummaryFieldMissing((summary as Record<string, unknown>)[f]),
+            );
+            let summaryForUpsert: Record<string, unknown> = summary as Record<string, unknown>;
+            if (localHasMissingProtected) {
+              try {
+                const { data: srvSummary } = await supabase
+                  .from('training_summary')
+                  .select('*')
+                  .eq('training_id', id)
+                  .maybeSingle();
+                if (srvSummary) {
+                  const { merged, preservations } = mergeTrainingSummaryAtBoundary(
+                    summary as Record<string, unknown>,
+                    srvSummary as Record<string, unknown>,
+                  );
+                  summaryForUpsert = merged;
+                  logTrainingSummaryPreservation('TrainingForm.completeTraining', id, preservations);
+                }
+              } catch (e) {
+                console.warn('[Training Complete] Pre-upsert summary fetch failed (non-fatal):', e);
+              }
+            }
             const preparedSummary = sanitizeTrainingSummaryForRemote({
-              ...summary,
-              id: summary.id || crypto.randomUUID(),
+              ...summaryForUpsert,
+              id: (summaryForUpsert.id as string | undefined) || crypto.randomUUID(),
               training_id: id,
             });
             parallelOps.push(
