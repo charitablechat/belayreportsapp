@@ -40,13 +40,17 @@ describe('useSaveRaceGuard', () => {
 
   it('beginSave bumps seq monotonically and captures wall-clock', () => {
     const { result } = renderHook(() => useSaveRaceGuard());
-    const first = act(() => result.current.beginSave());
+    let first!: { seq: number; startedAtMs: number };
+    act(() => { first = result.current.beginSave(); });
+    expect(first.seq).toBe(1);
     expect(result.current.saveSeqRef.current).toBe(1);
     expect(result.current.saveStartedAtMsRef.current).toBe(Date.parse('2026-06-01T12:00:00.000Z'));
     vi.advanceTimersByTime(5_000);
-    const second = act(() => result.current.beginSave());
+    let second!: { seq: number; startedAtMs: number };
+    act(() => { second = result.current.beginSave(); });
+    expect(second.seq).toBe(2);
     expect(result.current.saveSeqRef.current).toBe(2);
-    expect(result.current.saveStartedAtMsRef.current).toBeGreaterThan(0);
+    expect(result.current.saveStartedAtMsRef.current).toBeGreaterThan(first.startedAtMs);
   });
 
   it('markFieldTyped stamps pending with the current time by default', () => {
@@ -65,7 +69,8 @@ describe('useSaveRaceGuard', () => {
 
   it('typedAfter reflects newer stamps and ignores older ones', () => {
     const { result } = renderHook(() => useSaveRaceGuard());
-    const start = act(() => result.current.beginSave()).startedAtMs;
+    let start = 0;
+    act(() => { start = result.current.beginSave().startedAtMs; });
     // No stamps yet → false.
     expect(result.current.typedAfter(start)).toBe(false);
     // Advance clock; stamp a field → true.
@@ -78,7 +83,8 @@ describe('useSaveRaceGuard', () => {
 
   it('shouldKeepDirty respects both pending stamps and row updated_at', () => {
     const { result } = renderHook(() => useSaveRaceGuard());
-    const { startedAtMs } = act(() => result.current.beginSave());
+    let startedAtMs = 0;
+    act(() => { startedAtMs = result.current.beginSave().startedAtMs; });
     // Nothing pending, no advance → false.
     expect(result.current.shouldKeepDirty(null)).toBe(false);
     // Pending stamped AFTER save start → true.
