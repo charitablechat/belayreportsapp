@@ -374,9 +374,44 @@ export async function pushTrainingToRemote(
     parallelOps.push(dbOp(supabase.from("training_systems_in_place").upsert(preparedSystemsPlace as never, { onConflict: "id" })));
   }
   if (summary) {
+    // Training Summary preservation: if the outbound summary is partial or
+    // blank for any of the 4 protected fields, fetch the current server row
+    // and merge so a blank local cannot wipe populated server text. The
+    // preservation rule is symmetric: blank → populated transitions are
+    // only accepted with an explicit per-field clear timestamp. See
+    // `mergeTrainingSummaryAtBoundary`.
+    const {
+      mergeTrainingSummaryAtBoundary,
+      logTrainingSummaryPreservation,
+      isTrainingSummaryFieldMissing,
+    } = await import("@/lib/training-summary-merge");
+    const PROTECTED = ["observations", "recommendations", "person_submitting", "submission_date"] as const;
+    const localHasMissingProtected = PROTECTED.some((f) =>
+      isTrainingSummaryFieldMissing((summary as Record<string, unknown>)[f]),
+    );
+    let summaryForUpsert: Record<string, unknown> = summary as Record<string, unknown>;
+    if (localHasMissingProtected) {
+      try {
+        const { data: srvSummary } = await supabase
+          .from("training_summary")
+          .select("*")
+          .eq("training_id", id)
+          .maybeSingle();
+        if (srvSummary) {
+          const { merged, preservations } = mergeTrainingSummaryAtBoundary(
+            summary as Record<string, unknown>,
+            srvSummary as Record<string, unknown>,
+          );
+          summaryForUpsert = merged;
+          logTrainingSummaryPreservation("pushTrainingToRemote", id, preservations);
+        }
+      } catch (e) {
+        console.warn("[Training Save] Pre-upsert summary fetch failed (non-fatal):", e);
+      }
+    }
     const preparedSummary = sanitizeTrainingSummaryForRemote({
-      ...summary,
-      id: summary.id || crypto.randomUUID(),
+      ...summaryForUpsert,
+      id: (summaryForUpsert.id as string | undefined) || crypto.randomUUID(),
       training_id: id,
     });
     parallelOps.push(dbOp(supabase.from("training_summary").upsert(preparedSummary as never, { onConflict: "training_id" })));
