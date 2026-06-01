@@ -22,8 +22,9 @@ import { useVersionStatus } from '@/hooks/useVersionStatus';
 import { getUserWithCache } from '@/lib/cached-auth';
 import { supabase } from '@/integrations/supabase/client';
 import {
-  listLocalTrainings,
+  listLocalTrainingsWithStatus,
   type LocalReportEntry,
+  type LocalTrainingsResult,
 } from '@/lib/recovery/local-report-index';
 import {
   scanTrainingForRecoverableText,
@@ -409,31 +410,78 @@ export default function RecoveryAndSyncHealth() {
     staleTime: 5 * 60_000,
   });
 
-  // Local trainings — always shown, works offline.
-  const { data: localTrainings = [], isLoading: localLoading } = useQuery({
-    queryKey: ['recovery-local-trainings', userId],
-    queryFn: () => listLocalTrainings(userId ?? null),
+  // Local trainings — always shown, works offline. Status-bearing so the
+  // page can distinguish "really empty" from "IDB unreadable" from "partial
+  // (one bad row skipped)". Backup-envelope discovery runs even when IDB
+  // times out, so locally recoverable backups still appear.
+  const {
+    data: localResult,
+    isLoading: localLoading,
+  } = useQuery<LocalTrainingsResult>({
+    queryKey: ['recovery-local-trainings-v2', userId],
+    queryFn: () => listLocalTrainingsWithStatus(userId ?? null),
+    retry: 1,
+    staleTime: 30_000,
   });
+  const localTrainings: LocalReportEntry[] = localResult?.entries ?? [];
+  const idbUnavailable = !!localResult?.idbUnavailable;
+  const localPartial = !!localResult?.partial;
+
+  // UI-side wall-clock fallback so a stuck loader cannot leave the user on
+  // an indefinite spinner. After 4s we render whatever has been discovered
+  // so far (or a degraded "taking longer than expected" notice).
+  const [uiFallback, setUiFallback] = useState<boolean>(false);
+  useEffect(() => {
+    if (!localLoading) {
+      setUiFallback(false);
+      return;
+    }
+    const t = setTimeout(() => setUiFallback(true), 4000);
+    return () => clearTimeout(t);
+  }, [localLoading]);
 
   // Optional server enrichment — only when online. Server rows enrich, never replace.
+  // Hard time-cap so a hanging request cannot bottleneck the page.
+  const [serverEnrichmentFailed, setServerEnrichmentFailed] = useState<boolean>(false);
   const { data: serverTrainings = [] } = useQuery({
     queryKey: ['recovery-server-trainings', userId],
     enabled: !!userId && online,
     queryFn: async () => {
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 5000);
       try {
-        const { data } = await supabase
+        const call = supabase
           .from('trainings')
           .select(
             'id, organization, location, start_date, status, updated_at, inspector_id, trainer_of_record',
           )
           .order('updated_at', { ascending: false })
-          .limit(200);
+          .limit(200)
+          .abortSignal(controller.signal);
+        const timeoutPromise = new Promise<'__timeout__'>((resolve) => {
+          setTimeout(() => resolve('__timeout__'), 5000);
+        });
+        const raced = await Promise.race([call, timeoutPromise]);
+        if (raced === '__timeout__') {
+          setServerEnrichmentFailed(true);
+          return [] as Array<Record<string, unknown>>;
+        }
+        const { data, error } = raced as Awaited<typeof call>;
+        if (error) {
+          setServerEnrichmentFailed(true);
+          return [] as Array<Record<string, unknown>>;
+        }
+        setServerEnrichmentFailed(false);
         return Array.isArray(data) ? (data as Array<Record<string, unknown>>) : [];
       } catch {
+        setServerEnrichmentFailed(true);
         return [] as Array<Record<string, unknown>>;
+      } finally {
+        clearTimeout(timeoutId);
       }
     },
     staleTime: 30_000,
+    retry: 0,
   });
 
   // Optional profile enrichment — batched lookup for inspector display names.
@@ -634,27 +682,73 @@ export default function RecoveryAndSyncHealth() {
             />
           </div>
         )}
-        {localLoading ? (
+        {serverEnrichmentFailed && online && (
+          <div className="border border-foreground/20 p-3 text-sm text-muted-foreground">
+            We could not check server status right now, but local reports from this device are still shown.
+          </div>
+        )}
+        {idbUnavailable && !localLoading && (
+          <Card>
+            <CardContent className="pt-6 text-sm space-y-2">
+              <p className="font-semibold">We could not read reports stored on this device.</p>
+              <p>Do not clear browser data or reinstall the app. Contact an admin.</p>
+              {reports.length > 0 && (
+                <p className="text-muted-foreground">
+                  We found {reports.length} report{reports.length === 1 ? '' : 's'} in local
+                  backups and have listed {reports.length === 1 ? 'it' : 'them'} below.
+                </p>
+              )}
+            </CardContent>
+          </Card>
+        )}
+        {localPartial && !idbUnavailable && !localLoading && reports.length > 0 && (
+          <div className="border border-foreground/20 p-3 text-sm text-muted-foreground">
+            Some records on this device could not be read and were skipped. The rest are shown below.
+          </div>
+        )}
+        {localLoading && !uiFallback ? (
           <div className="flex items-center gap-2 text-sm text-muted-foreground">
             <Loader2 className="w-4 h-4 animate-spin" /> Loading from this device…
           </div>
-        ) : reports.length === 0 ? (
+        ) : localLoading && uiFallback ? (
+          <Card>
+            <CardContent className="pt-6 text-sm space-y-2">
+              <p className="font-semibold">
+                This device is taking longer than expected to read stored reports.
+              </p>
+              <p>
+                We are showing anything we can find. Do not clear browser data or reinstall the app.
+              </p>
+              {reports.length > 0 ? (
+                <p className="text-muted-foreground">
+                  {reports.length} report{reports.length === 1 ? '' : 's'} found so far and listed
+                  below.
+                </p>
+              ) : (
+                <p className="text-muted-foreground">
+                  Nothing has surfaced from this device yet. You can wait, or come back later.
+                </p>
+              )}
+            </CardContent>
+          </Card>
+        ) : null}
+        {!localLoading && reports.length === 0 && !idbUnavailable ? (
           <Card>
             <CardContent className="pt-6 text-sm">
-              <p>No trainings found on this device.</p>
+              <p>No training reports were found on this device for this signed-in user.</p>
               <p className="text-muted-foreground mt-1">
                 If you were expecting to see a report here, open Ropeworks on the device where you
                 originally typed it.
               </p>
             </CardContent>
           </Card>
-        ) : filteredReports.length === 0 ? (
+        ) : !localLoading && reports.length > 0 && filteredReports.length === 0 ? (
           <Card>
             <CardContent className="pt-6 text-sm text-muted-foreground">
               No trainings match “{query}”. Clear the search to see all your reports.
             </CardContent>
           </Card>
-        ) : (
+        ) : reports.length > 0 ? (
           filteredReports.map((r) => (
             <ReportRow
               key={r.id}
@@ -664,7 +758,7 @@ export default function RecoveryAndSyncHealth() {
               appVersion={installed ?? undefined}
             />
           ))
-        )}
+        ) : null}
       </div>
 
 
