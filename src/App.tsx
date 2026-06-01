@@ -35,6 +35,7 @@ const UploadLogosToStorage = lazy(() => import("./pages/UploadLogosToStorage"));
 const AdminLogoManagement = lazy(() => import("./pages/AdminLogoManagement"));
 const Unsubscribe = lazy(() => import("./pages/Unsubscribe"));
 const TrainingRecovery = lazy(() => import("./pages/TrainingRecovery"));
+const RecoveryAndSyncHealth = lazy(() => import("./pages/RecoveryAndSyncHealth"));
 
 import { RequireAuth } from "@/components/auth/RequireAuth";
 
@@ -277,6 +278,7 @@ const router = createBrowserRouter([
       { path: "/upload-logos-storage", element: <RequireAuth><UploadLogosToStorage /></RequireAuth> },
       { path: "/admin/logos", element: <RequireAuth><AdminLogoManagement /></RequireAuth> },
       { path: "/admin/training-recovery", element: <RequireAuth><TrainingRecovery /></RequireAuth> },
+      { path: "/recovery", element: <RequireAuth><RecoveryAndSyncHealth /></RequireAuth> },
       { path: "/unsubscribe", element: <Unsubscribe /> },
       { path: "*", element: <NotFound /> },
     ],

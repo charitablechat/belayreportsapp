@@ -10,7 +10,7 @@
    DropdownMenuSeparator,
    DropdownMenuTrigger,
  } from "@/components/ui/dropdown-menu";
-import { LogOut, User, Bell, Settings, FileText, Download, MessageCircle, Loader2, Shield, Monitor, MoreVertical, Database, Sun, Moon, BookOpen, RefreshCw } from "lucide-react";
+import { LogOut, User, Bell, Settings, FileText, Download, MessageCircle, Loader2, Shield, Monitor, MoreVertical, Database, Sun, Moon, BookOpen, RefreshCw, LifeBuoy } from "lucide-react";
 import { useTheme } from "next-themes";
  import { UserAvatar } from "@/components/ui/user-avatar";
 import { usePWAInstall } from "@/hooks/usePWAInstall";
@@ -178,10 +178,16 @@ function VersionStatusLine() {
                 <ForceSyncButton variant="menu-item" unsyncedCount={unsyncedCount} />
               </DropdownMenuItem>
               
-              {/* Data Recovery */}
+              {/* Recovery & Sync Health — permanent, read-only, for all users */}
+              <DropdownMenuItem onClick={() => navigate('/recovery')}>
+                <LifeBuoy className="w-4 h-4 mr-2" />
+                Recovery & Sync Health
+              </DropdownMenuItem>
+
+              {/* Backups & Restore — restore-capable tool */}
               <DropdownMenuItem onClick={() => setDataRecoveryOpen(true)}>
                 <Database className="w-4 h-4 mr-2" />
-                Data Recovery
+                Backups & Restore
               </DropdownMenuItem>
              
               <DropdownMenuSeparator />
