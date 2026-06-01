@@ -84,7 +84,7 @@ describe('scanTrainingForRecoverableText', () => {
     vi.mocked(getDB).mockResolvedValue(makeDb({ training_summary: [] }));
     vi.mocked(getVersionHistory).mockResolvedValue([
       {
-        // @ts-expect-error — minimal shape for the scanner
+        // @ts-expect-error -- minimal shape
         versionNumber: 7,
         timestamp: Date.now() - 3_600_000,
         childrenData: {
@@ -160,7 +160,7 @@ describe('scanTrainingForRecoverableText', () => {
     );
     vi.mocked(getVersionHistory).mockResolvedValue([
       {
-        // @ts-expect-error — minimal shape
+        // @ts-expect-error -- minimal shape
         versionNumber: 3,
         timestamp: Date.now() - 7_200_000,
         childrenData: { summary: [{ observations: sharedText }] },
