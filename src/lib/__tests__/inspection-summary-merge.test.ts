@@ -180,11 +180,12 @@ describe('mergeInspectionSummaryPreservingPopulated', () => {
 
   it('does NOT honour a clear when incoming lacks an explicit per-field timestamp', () => {
     // Background save bumped updated_at but did not stamp the field.
+    // Local also has no per-field stamp — LWW would pick incoming empty,
+    // but the guard restores local.
     const local: Row = {
       id: 's',
       repairs_performed: 'Fixed brake',
       updated_at: T1,
-      field_timestamps: { repairs_performed: T1 },
     };
     const incoming: Row = {
       id: 's',
