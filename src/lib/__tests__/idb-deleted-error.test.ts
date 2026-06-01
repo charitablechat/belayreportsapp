@@ -57,13 +57,10 @@ describe('Sentry classifier — IDB eviction downgrade', () => {
       'UnknownError',
       'Database deleted by request of the user',
     );
-    expect(result).not.toBeNull();
-    expect(result?.level).toBe('warning');
-    expect(result?.fingerprint).toEqual([
-      'UnknownError',
-      'idb-deleted',
-      '{{default}}',
-    ]);
+    expect(result).toEqual({
+      level: 'warning',
+      fingerprint: ['UnknownError', 'idb-deleted', '{{default}}'],
+    });
   });
 
   it('does not downgrade other UnknownError messages', () => {

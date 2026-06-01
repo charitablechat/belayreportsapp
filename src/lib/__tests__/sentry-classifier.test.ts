@@ -86,6 +86,45 @@ describe("classifyRecoverableSentryEvent", () => {
     expect(classifyRecoverableSentryEvent("TypeError", "x is null")).toBeNull();
     expect(classifyRecoverableSentryEvent("", "")).toBeNull();
   });
+
+  it("drops bare AbortError (empty message) with a recoverable breadcrumb", () => {
+    // ROPEWORKS-68: Safari/navigation/Web-Locks/Realtime cancellations
+    // surface as bare AbortError. After ~9 months of trend review they
+    // are all benign and have no actionable signal — drop entirely
+    // rather than emit one Sentry email per occurrence.
+    expect(classifyRecoverableSentryEvent("AbortError", "")).toEqual({
+      drop: true,
+      breadcrumb: {
+        category: "recoverable",
+        message: "bare-abort-suppressed",
+      },
+    });
+  });
+
+  it("drops bare AbortError (message === 'AbortError') with a recoverable breadcrumb", () => {
+    // Safari renders DOMException(code=20) as `AbortError: AbortError`
+    // (name + message both literally "AbortError"). Same noise class as
+    // the empty-message variant above.
+    expect(classifyRecoverableSentryEvent("AbortError", "AbortError")).toEqual({
+      drop: true,
+      breadcrumb: {
+        category: "recoverable",
+        message: "bare-abort-suppressed",
+      },
+    });
+  });
+
+  it("does NOT drop AbortError variants with distinctive messages", () => {
+    // `Step aborted: <op>:<table>` from useAutoSync and any future
+    // bespoke AbortError with a real message must still surface — only
+    // the bare variants are recognised noise.
+    expect(
+      classifyRecoverableSentryEvent("AbortError", "Step aborted: upsert:inspections"),
+    ).toBeNull();
+    expect(
+      classifyRecoverableSentryEvent("AbortError", "The user aborted a request."),
+    ).toBeNull();
+  });
 });
 
 describe("runBeforeSend", () => {
@@ -188,6 +227,70 @@ describe("runBeforeSend", () => {
     const exotic = { name: 42, message: { weird: true } };
     expect(() => runBeforeSend(event, { originalException: exotic })).not.toThrow();
     const result = runBeforeSend(event, { originalException: exotic });
-    expect(result.level).toBe("error");
+    expect(result?.level).toBe("error");
+  });
+
+  it("drops bare AbortError (empty message) by returning null", () => {
+    const event = { level: "error" as const } as { level: string; fingerprint?: string[] };
+    const err = Object.assign(new Error(""), { name: "AbortError" });
+    const result = runBeforeSend(event, { originalException: err });
+    expect(result).toBeNull();
+  });
+
+  it("drops bare AbortError (message === 'AbortError') by returning null", () => {
+    const event = { level: "error" as const } as { level: string; fingerprint?: string[] };
+    const err = Object.assign(new Error("AbortError"), { name: "AbortError" });
+    const result = runBeforeSend(event, { originalException: err });
+    expect(result).toBeNull();
+  });
+
+  it("does NOT drop bare AbortError when caller already set a non-error level", () => {
+    // Caller-wins contract: if log-error.ts (or anything else) already
+    // classified the event, beforeSend must not override it. This
+    // guards against accidentally dropping an event that the call-site
+    // explicitly wanted reported under its own fingerprint.
+    const event = {
+      level: "warning" as const,
+      fingerprint: ["caller-supplied"],
+    };
+    const err = Object.assign(new Error(""), { name: "AbortError" });
+    const result = runBeforeSend(event, { originalException: err });
+    expect(result).toBe(event);
+    expect(result?.level).toBe("warning");
+    expect(result?.fingerprint).toEqual(["caller-supplied"]);
+  });
+
+  it("still downgrades (not drops) Lock-was-stolen, Load-failed, and idb-deleted", () => {
+    // Regression guard: only bare AbortError gets dropped. The other
+    // three recoverable classifications must remain `warning`-level
+    // events so we keep dashboard trend visibility for each class.
+    const cases: Array<{ name: string; message: string; fingerprint: string[] }> = [
+      {
+        name: "AbortError",
+        message: "Lock was stolen by another request",
+        fingerprint: ["AbortError", "lock-stolen", "{{default}}"],
+      },
+      {
+        name: "StorageUnknownError",
+        message: "Load failed",
+        fingerprint: ["StorageUnknownError", "load-failed", "{{default}}"],
+      },
+      {
+        name: "UnknownError",
+        message: "Database deleted by request of the user",
+        fingerprint: ["UnknownError", "idb-deleted", "{{default}}"],
+      },
+    ];
+    for (const c of cases) {
+      const event = { level: "error" as const } as {
+        level: string;
+        fingerprint?: string[];
+      };
+      const err = Object.assign(new Error(c.message), { name: c.name });
+      const result = runBeforeSend(event, { originalException: err });
+      expect(result).not.toBeNull();
+      expect(result?.level).toBe("warning");
+      expect(result?.fingerprint).toEqual(c.fingerprint);
+    }
   });
 });

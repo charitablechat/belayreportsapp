@@ -37,18 +37,25 @@ function deriveEnvironment(): string {
 }
 
 /**
- * Result of `classifyRecoverableSentryEvent`. `null` means "don't
- * touch the event"; a non-null result means "downgrade severity and
- * apply this fingerprint for grouping".
+ * Result of `classifyRecoverableSentryEvent`.
+ *
+ * - `null` — no match; leave the event alone.
+ * - `{ level, fingerprint }` — downgrade severity + apply fingerprint.
+ *   Event still ships to Sentry so we keep trend visibility.
+ * - `{ drop: true, breadcrumb? }` — recognised noise that has no
+ *   actionable signal. The event is dropped entirely (`beforeSend`
+ *   returns `null`). When `breadcrumb` is provided, it is added to
+ *   the Sentry session first so adjacent *real* errors retain
+ *   context that the suppressed event occurred nearby.
  */
-export type SentryEventClassification = {
-  level: 'warning';
-  fingerprint: string[];
-} | null;
+export type SentryEventClassification =
+  | { level: 'warning'; fingerprint: string[] }
+  | { drop: true; breadcrumb?: { category: string; message: string } }
+  | null;
 
 /**
  * Pure classifier for Sentry's `beforeSend` hook. Returns a downgrade
- * directive when `(name, message)` matches a known recoverable /
+ * or drop directive when `(name, message)` matches a known recoverable /
  * browser-designed error, otherwise `null`.
  *
  * Adding a new pattern here is the canonical way to silence Sentry
@@ -89,20 +96,30 @@ export function classifyRecoverableSentryEvent(
   // through `window.onunhandledrejection`. Source is almost always an
   // in-flight `fetch()` cancelled by an `AbortController` (component
   // unmount during navigation, post-online sync teardown, record-status
-  // RPC race) — handled by design but the rejection isn't caught
+  // RPC race, Supabase Auth Web Locks coordination, Realtime channel
+  // close) — handled by design but the rejection isn't caught
   // explicitly, so Sentry sees it as an unhandled error.
   //
-  // Downgrade to `warning` + stable fingerprint so it stops generating
-  // high-priority email alerts (this issue currently buries real
-  // training-sync failures), but DO NOT drop the event — it stays
-  // visible in the dashboard for trend review and the full stack/
-  // breadcrumbs survive in case a future real abort lands under this
-  // fingerprint. Distinct from the 'Lock was stolen' clause above,
-  // which is a specific Supabase Auth pattern.
+  // After ~9 months of trend data (ROPEWORKS-68 review): every bare
+  // AbortError we have inspected has been a benign Safari/Web-Locks/
+  // Realtime cancellation with `handled = yes` and no user impact.
+  // Keeping them at `warning` still triggers the project's alert rule
+  // (level >= warning) and emits one email per occurrence with no
+  // actionable content, burying real issues.
+  //
+  // Drop the event entirely. Add an info breadcrumb so the next real
+  // error in the same session retains nearby context. The matcher
+  // stays narrow (`message === '' || message === 'AbortError'`) so
+  // distinctive AbortError variants like `Step aborted: ...` and
+  // `Lock was stolen by another request` are unaffected and continue
+  // to surface normally.
   if (name === 'AbortError' && (message === '' || message === 'AbortError')) {
     return {
-      level: 'warning',
-      fingerprint: ['AbortError', 'bare-unhandled-rejection', '{{default}}'],
+      drop: true,
+      breadcrumb: {
+        category: 'recoverable',
+        message: 'bare-abort-suppressed',
+      },
     };
   }
 
@@ -141,14 +158,20 @@ export function classifyRecoverableSentryEvent(
 /**
  * Apply `classifyRecoverableSentryEvent` to a Sentry event. Exported
  * for unit testing; called from inside the `beforeSend` closure in
- * `initSentry`. Mutates and returns the event so the SDK keeps
- * delivering it (returning `null` would drop it silently, which is
- * NOT what we want — we still want trend visibility in the dashboard,
- * just not an email).
+ * `initSentry`.
+ *
+ * Returns:
+ * - `event` (possibly mutated with `level`/`fingerprint`) for downgrade
+ *   classifications and unrecognised events.
+ * - `null` for drop classifications — instructs Sentry's SDK to discard
+ *   the event entirely (no email, no dashboard entry). When a drop
+ *   classification includes a `breadcrumb`, it is recorded on the
+ *   Sentry session first so adjacent real errors retain context.
  *
  * Caller-supplied `event.level` (e.g. via `logError`'s call-site
  * classifier in `log-error.ts`) wins: we never override an explicit
- * non-`error` level. The SDK's default for `captureException` is
+ * non-`error` level and we never drop an event whose level the caller
+ * explicitly set. The SDK's default for `captureException` is
  * `error`, so 'error' here = 'no caller classification'.
  */
 export function runBeforeSend<
@@ -156,7 +179,7 @@ export function runBeforeSend<
     level?: string;
     fingerprint?: string[];
   },
->(event: E, hint?: { originalException?: unknown }): E {
+>(event: E, hint?: { originalException?: unknown }): E | null {
   try {
     if (event.level && event.level !== 'error') return event;
     const ex = hint?.originalException;
@@ -166,6 +189,20 @@ export function runBeforeSend<
     const message = typeof e.message === 'string' ? e.message : '';
     const classification = classifyRecoverableSentryEvent(name, message);
     if (!classification) return event;
+    if ('drop' in classification) {
+      if (classification.breadcrumb && sentryModule) {
+        try {
+          sentryModule.addBreadcrumb({
+            category: classification.breadcrumb.category,
+            level: 'info',
+            message: classification.breadcrumb.message,
+          });
+        } catch {
+          // Breadcrumb is best-effort; never block the drop on it.
+        }
+      }
+      return null;
+    }
     event.level = classification.level;
     event.fingerprint = classification.fingerprint;
   } catch {
