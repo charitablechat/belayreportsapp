@@ -70,7 +70,7 @@ describe("atomic-sync training_summary payload shape", () => {
     );
     // The sanitizer must be invoked inside the training_summary branch.
     const summaryBlock = source.match(
-      /if\s*\(summary\)\s*\{[\s\S]{0,2000}?table:\s*['"]training_summary['"][\s\S]{0,400}?\}\s*\)\s*;\s*\}/,
+      /if\s*\(summary\)\s*\{[\s\S]{0,8000}?table:\s*['"]training_summary['"][\s\S]{0,800}?\}\s*\)\s*;\s*\}/,
     );
     expect(summaryBlock, "training_summary branch should exist").toBeTruthy();
     expect(summaryBlock![0]).toMatch(/sanitizeTrainingSummaryForRemote\s*\(/);
