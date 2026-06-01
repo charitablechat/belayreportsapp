@@ -52,6 +52,129 @@ function dbConfigGuard(label) {
 var SUPABASE_URL = 'https://ssgzcgvygnsrqalisshx.supabase.co';
 var SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InNzZ3pjZ3Z5Z25zcnFhbGlzc2h4Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjIyMzM5NjksImV4cCI6MjA3NzgwOTk2OX0.buTFy44tZdRIlRSFIm5BqeOGb4nX3ARuHawWA9hZN54';
 
+// ─── Training Summary preservation (mirrors src/lib/training-summary-merge.ts) ─
+// Source of truth: `mergeTrainingSummaryAtBoundary` in
+// src/lib/training-summary-merge.ts. The SW runs in a separate global and
+// cannot import TS modules, so the same small pure rule is mirrored here.
+// Keep both copies in sync — a structural test guards drift.
+var TRAINING_SUMMARY_PROTECTED_FIELDS = ['observations', 'recommendations', 'person_submitting', 'submission_date'];
+
+function isTrainingSummaryFieldMissingSW(value) {
+  if (value === null || value === undefined) return true;
+  if (typeof value === 'string') {
+    var stripped = value.replace(/<p><\/p>/g, '').replace(/<br\s*\/?>/g, '').trim();
+    return stripped.length === 0;
+  }
+  return false;
+}
+
+function summaryEffectiveTsSW(row, field) {
+  if (!row) return 0;
+  var ft = row.field_timestamps && row.field_timestamps[field];
+  var ts = ft || row.updated_at;
+  if (!ts) return 0;
+  var ms = new Date(ts).getTime();
+  return isFinite(ms) ? ms : 0;
+}
+
+function summaryExplicitTsSW(row, field) {
+  if (!row || !row.field_timestamps) return NaN;
+  var v = row.field_timestamps[field];
+  if (typeof v !== 'string' || !v) return NaN;
+  var ms = new Date(v).getTime();
+  return isFinite(ms) ? ms : NaN;
+}
+
+/**
+ * Bidirectional preservation merge for the 4 protected training_summary
+ * fields. See `mergeTrainingSummaryAtBoundary` JSDoc for the full rule.
+ * Returns { merged, preservations } where preservations is metadata only
+ * (no text content).
+ */
+function mergeTrainingSummaryAtBoundarySW(a, b) {
+  a = a || {};
+  b = b || {};
+  var merged = Object.assign({}, b, a);
+  var mergedTs = Object.assign({},
+    (b.field_timestamps || {}),
+    (a.field_timestamps || {}));
+  var preservations = [];
+  for (var i = 0; i < TRAINING_SUMMARY_PROTECTED_FIELDS.length; i++) {
+    var field = TRAINING_SUMMARY_PROTECTED_FIELDS[i];
+    var aVal = a[field], bVal = b[field];
+    var aMissing = isTrainingSummaryFieldMissingSW(aVal);
+    var bMissing = isTrainingSummaryFieldMissingSW(bVal);
+    if (aMissing && bMissing) {
+      merged[field] = (aVal === undefined) ? bVal : aVal;
+      continue;
+    }
+    if (!aMissing && !bMissing) {
+      var aMs = summaryEffectiveTsSW(a, field);
+      var bMs = summaryEffectiveTsSW(b, field);
+      var useA = aMs >= bMs;
+      merged[field] = useA ? aVal : bVal;
+      var winnerExplicit = useA ? (a.field_timestamps && a.field_timestamps[field]) : (b.field_timestamps && b.field_timestamps[field]);
+      if (winnerExplicit) mergedTs[field] = winnerExplicit;
+      continue;
+    }
+    var blankRow = aMissing ? a : b;
+    var populatedRow = aMissing ? b : a;
+    var populatedVal = aMissing ? bVal : aVal;
+    var blankExplicit = summaryExplicitTsSW(blankRow, field);
+    var populatedEffective = summaryEffectiveTsSW(populatedRow, field);
+    if (isFinite(blankExplicit) && blankExplicit > populatedEffective) {
+      merged[field] = aMissing ? aVal : bVal;
+      var blankExp = blankRow.field_timestamps && blankRow.field_timestamps[field];
+      if (blankExp) mergedTs[field] = blankExp;
+      continue;
+    }
+    merged[field] = populatedVal;
+    var popExp = populatedRow.field_timestamps && populatedRow.field_timestamps[field];
+    if (popExp) mergedTs[field] = popExp;
+    preservations.push({
+      field: field,
+      blankSide: aMissing ? 'a' : 'b',
+      populatedSide: aMissing ? 'b' : 'a',
+      preservedLength: typeof populatedVal === 'string' ? populatedVal.length : 0,
+      reason: isFinite(blankExplicit) ? 'explicit_clear_older_than_populated' : 'no_explicit_field_clear',
+    });
+  }
+  if (Object.keys(mergedTs).length > 0) merged.field_timestamps = mergedTs;
+  return { merged: merged, preservations: preservations };
+}
+
+function logTrainingSummaryPreservationSW(context, trainingId, preservations) {
+  if (!preservations || preservations.length === 0) return;
+  try {
+    console.info('[TrainingSummaryPreservation:SW]', {
+      context: context,
+      trainingId: typeof trainingId === 'string' ? trainingId.substring(0, 8) : null,
+      at: new Date().toISOString(),
+      preservations: preservations,
+    });
+  } catch (e) {}
+}
+
+/**
+ * Fetch the current server `training_summary` row for a training, returning
+ * null on any failure. SW-only convenience used by the preservation merge.
+ */
+async function fetchServerTrainingSummarySW(authHeaders, trainingId) {
+  try {
+    var resp = await fetch(
+      SUPABASE_URL + '/rest/v1/training_summary?training_id=eq.' + encodeURIComponent(trainingId) + '&select=*',
+      { method: 'GET', headers: authHeaders }
+    );
+    if (!resp.ok) return null;
+    var rows = await resp.json();
+    if (!Array.isArray(rows) || rows.length === 0) return null;
+    return rows[0];
+  } catch (e) {
+    return null;
+  }
+}
+
+
 /**
  * Extract the user's JWT access token from the Supabase auth session in localStorage.
  * Returns the access_token if valid (not expired), otherwise null.
@@ -725,13 +848,32 @@ async function syncTrainingsAtomic() {
         
         await verifyResponseRows(response, 'Training parent upsert');
         
+        // Training Summary preservation: if local summary is partial/blank,
+        // merge with the server-side row before upsert. Mirrors the rule in
+        // src/lib/training-summary-merge.ts (mergeTrainingSummaryAtBoundary).
+        let summaryForUpsertSW = summaryArray.length > 0 ? summaryArray[0] : null;
+        if (summaryForUpsertSW) {
+          const _hasMissingProtected = TRAINING_SUMMARY_PROTECTED_FIELDS.some(function (f) {
+            return isTrainingSummaryFieldMissingSW(summaryForUpsertSW[f]);
+          });
+          if (_hasMissingProtected) {
+            const srvSummary = await fetchServerTrainingSummarySW(authHeaders, training.id);
+            if (srvSummary) {
+              const _mergeRes = mergeTrainingSummaryAtBoundarySW(summaryForUpsertSW, srvSummary);
+              summaryForUpsertSW = _mergeRes.merged;
+              logTrainingSummaryPreservationSW('sw-sync.syncTrainingsAtomic', training.id, _mergeRes.preservations);
+            }
+          }
+        }
+        const summaryUpsertArray = summaryForUpsertSW ? [summaryForUpsertSW] : [];
+
         await Promise.all([
           upsertRelatedData(SUPABASE_URL, authHeaders, 'training_delivery_approaches', deliveryApproaches),
           upsertRelatedData(SUPABASE_URL, authHeaders, 'training_operating_systems', operatingSystems),
           upsertRelatedData(SUPABASE_URL, authHeaders, 'training_immediate_attention', immediateAttention),
           upsertRelatedData(SUPABASE_URL, authHeaders, 'training_verifiable_items', verifiableItems),
           upsertRelatedData(SUPABASE_URL, authHeaders, 'training_systems_in_place', systemsInPlace),
-          summaryArray.length > 0 ? upsertRelatedData(SUPABASE_URL, authHeaders, 'training_summary', summaryArray) : Promise.resolve(true),
+          summaryUpsertArray.length > 0 ? upsertRelatedData(SUPABASE_URL, authHeaders, 'training_summary', summaryUpsertArray) : Promise.resolve(true),
         ]);
         
         const now = new Date().toISOString();
