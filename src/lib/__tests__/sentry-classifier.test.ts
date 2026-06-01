@@ -86,7 +86,45 @@ describe("classifyRecoverableSentryEvent", () => {
     expect(classifyRecoverableSentryEvent("TypeError", "x is null")).toBeNull();
     expect(classifyRecoverableSentryEvent("", "")).toBeNull();
   });
-});
+
+  it("drops bare AbortError (empty message) with a recoverable breadcrumb", () => {
+    // ROPEWORKS-68: Safari/navigation/Web-Locks/Realtime cancellations
+    // surface as bare AbortError. After ~9 months of trend review they
+    // are all benign and have no actionable signal — drop entirely
+    // rather than emit one Sentry email per occurrence.
+    expect(classifyRecoverableSentryEvent("AbortError", "")).toEqual({
+      drop: true,
+      breadcrumb: {
+        category: "recoverable",
+        message: "bare-abort-suppressed",
+      },
+    });
+  });
+
+  it("drops bare AbortError (message === 'AbortError') with a recoverable breadcrumb", () => {
+    // Safari renders DOMException(code=20) as `AbortError: AbortError`
+    // (name + message both literally "AbortError"). Same noise class as
+    // the empty-message variant above.
+    expect(classifyRecoverableSentryEvent("AbortError", "AbortError")).toEqual({
+      drop: true,
+      breadcrumb: {
+        category: "recoverable",
+        message: "bare-abort-suppressed",
+      },
+    });
+  });
+
+  it("does NOT drop AbortError variants with distinctive messages", () => {
+    // `Step aborted: <op>:<table>` from useAutoSync and any future
+    // bespoke AbortError with a real message must still surface — only
+    // the bare variants are recognised noise.
+    expect(
+      classifyRecoverableSentryEvent("AbortError", "Step aborted: upsert:inspections"),
+    ).toBeNull();
+    expect(
+      classifyRecoverableSentryEvent("AbortError", "The user aborted a request."),
+    ).toBeNull();
+  });
 
 describe("runBeforeSend", () => {
   it("downgrades a matching default-level event", () => {
