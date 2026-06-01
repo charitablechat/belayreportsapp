@@ -1,7 +1,16 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
-import { ArrowLeft, Copy, Download, Loader2, Mail, Wifi, WifiOff } from 'lucide-react';
+import {
+  ArrowLeft,
+  Copy,
+  Download,
+  Loader2,
+  Mail,
+  Wand2,
+  Wifi,
+  WifiOff,
+} from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -22,6 +31,11 @@ import {
   PINNED_TRAINING_RECOVERIES,
   FIELD_LABEL,
 } from '@/lib/recovery/pinned-training-recoveries';
+import { FillMissingTextDialog } from '@/components/recovery/FillMissingTextDialog';
+import {
+  checkEligibility,
+  type Eligibility,
+} from '@/lib/recovery/self-service-restore';
 
 /**
  * Recovery & Sync Health — permanent, read-only, per-user feature.
