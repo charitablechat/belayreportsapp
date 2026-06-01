@@ -18,6 +18,13 @@
  *     empty/null value (the Android "field disappears on reload" bug). It
  *     is used by BOTH the IDB-load branch and the server-refetch branch in
  *     `TrainingForm.loadTraining` so they cannot drift apart again.
+ *   - `mergeTrainingSummaryAtBoundary` is the SYNC/CACHE-boundary variant
+ *     used by `refetchTrainingPackage`, `syncTrainingAtomic`,
+ *     `pushTrainingToRemote`, `completeTraining`, and the service-worker
+ *     replay. It enforces the same "populated wins over blank without
+ *     explicit field-level clear evidence" rule on both directions
+ *     (server → local cache, local → server upsert) so a stale blank
+ *     payload from EITHER side cannot wipe non-empty text.
  */
 import { mergeRecordFields, TRAINING_SUMMARY_FIELDS } from '@/lib/field-merge';
 
@@ -29,6 +36,20 @@ export function summaryFieldTimestampMs(row: Row, field: string): number {
   const raw = explicit || updated;
   const ms = raw ? new Date(raw).getTime() : 0;
   return Number.isFinite(ms) ? ms : 0;
+}
+
+/**
+ * Returns the strictly-explicit per-field timestamp (from `field_timestamps`)
+ * if present, else NaN. Unlike `summaryFieldTimestampMs`, this NEVER falls
+ * back to row-level `updated_at` — which is the whole point of the boundary
+ * preservation guard: a fresh row-level updated_at on a blank summary row
+ * is NOT proof that the user cleared that specific field.
+ */
+function explicitFieldTimestampMs(row: Row, field: string): number {
+  const explicit = (row?.field_timestamps as Record<string, string> | null | undefined)?.[field];
+  if (typeof explicit !== 'string' || !explicit) return Number.NaN;
+  const ms = new Date(explicit).getTime();
+  return Number.isFinite(ms) ? ms : Number.NaN;
 }
 
 export function isEmptyPlaceholderSummary(row: Row): boolean {
@@ -48,7 +69,7 @@ export function isEmptyPlaceholderSummary(row: Row): boolean {
  * TipTap emits when a rich-text editor is cleared. Used by the per-field
  * "non-empty wins over empty" guard below.
  */
-function isFieldMissing(value: unknown): boolean {
+export function isTrainingSummaryFieldMissing(value: unknown): boolean {
   if (value === null || value === undefined) return true;
   if (typeof value === 'string') {
     const stripped = value.replace(/<p><\/p>/g, '').replace(/<br\s*\/?>/g, '').trim();
@@ -56,6 +77,9 @@ function isFieldMissing(value: unknown): boolean {
   }
   return false;
 }
+
+// Internal alias used by the existing merge below.
+const isFieldMissing = isTrainingSummaryFieldMissing;
 
 type MergeableSummaryRow = Record<string, unknown> & {
   updated_at?: string | null;
@@ -134,4 +158,166 @@ export function mergeSummaryPreservingPopulated<T extends MergeableSummaryRow>(
     merged.field_timestamps = mergedTimestamps;
   }
   return merged;
+}
+
+// ─── Sync / cache boundary preservation ────────────────────────────────────
+
+export interface SummaryPreservationBreadcrumb {
+  field: (typeof TRAINING_SUMMARY_FIELDS)[number];
+  /** Which side was empty (the one whose blank was vetoed). */
+  blankSide: 'a' | 'b';
+  /** Which side was populated (the one whose value was preserved). */
+  populatedSide: 'a' | 'b';
+  /** Length of the preserved value (chars). Never the value itself. */
+  preservedLength: number;
+  /** Reason the blank was not accepted. */
+  reason: 'no_explicit_field_clear' | 'explicit_clear_older_than_populated';
+}
+
+export interface BoundaryMergeResult<T> {
+  /** Merged row containing the 4 protected fields + merged field_timestamps. */
+  merged: T;
+  /** Per-field decisions where a blank was blocked. Empty when no preservation fired. */
+  preservations: SummaryPreservationBreadcrumb[];
+}
+
+/**
+ * Bidirectional preservation merge for the FOUR protected `training_summary`
+ * fields, designed for sync / cache / save boundaries (NOT form hydration).
+ *
+ * Per-field rule, applied independently to `observations`,
+ * `recommendations`, `person_submitting`, `submission_date`:
+ *
+ *   1. Both sides empty (null / undefined / whitespace / TipTap "<p></p>") →
+ *      keep empty.
+ *   2. Both sides populated → pick the side with the greater EFFECTIVE
+ *      per-field timestamp. Effective timestamp is the explicit
+ *      `field_timestamps[field]` when present, else row-level `updated_at`.
+ *      Tie → keep `a`.
+ *   3. One side populated, the other empty → keep the populated side
+ *      UNLESS the empty side carries an explicit
+ *      `field_timestamps[field]` that is strictly newer than the
+ *      populated side's effective timestamp. Row-level `updated_at` alone
+ *      is NOT proof of an explicit user clear.
+ *
+ * The merged row's `field_timestamps[field]` is set to the explicit
+ * timestamp of whichever side won (when available), so the next merge
+ * cycle still has accurate per-field metadata.
+ *
+ * Callers SHOULD pass the IDB-shaped row for the local side and the
+ * server-shaped row for the remote side; the function does not care which
+ * is "a" vs "b" — preservation is symmetric.
+ */
+export function mergeTrainingSummaryAtBoundary<T extends MergeableSummaryRow>(
+  a: T | null | undefined,
+  b: T | null | undefined,
+): BoundaryMergeResult<T> {
+  const aSafe = (a ?? {}) as T;
+  const bSafe = (b ?? {}) as T;
+
+  // Seed merged: prefer b (incoming/server) for non-protected metadata,
+  // overlay a so any local IDs / FKs survive.
+  const merged = { ...bSafe, ...aSafe } as T;
+  const mergedTimestamps: Record<string, string> = {
+    ...((bSafe.field_timestamps as Record<string, string> | null) ?? {}),
+    ...((aSafe.field_timestamps as Record<string, string> | null) ?? {}),
+  };
+  const preservations: SummaryPreservationBreadcrumb[] = [];
+
+  for (const field of TRAINING_SUMMARY_FIELDS) {
+    const aVal = (aSafe as Record<string, unknown>)[field];
+    const bVal = (bSafe as Record<string, unknown>)[field];
+    const aMissing = isFieldMissing(aVal);
+    const bMissing = isFieldMissing(bVal);
+
+    // Case 1: both missing.
+    if (aMissing && bMissing) {
+      (merged as Record<string, unknown>)[field] = aMissing && aVal === undefined ? bVal : aVal;
+      continue;
+    }
+
+    // Case 2: both populated — LWW on effective timestamp.
+    if (!aMissing && !bMissing) {
+      const aMs = summaryFieldTimestampMs(aSafe, field);
+      const bMs = summaryFieldTimestampMs(bSafe, field);
+      const useA = aMs >= bMs; // tie → a
+      (merged as Record<string, unknown>)[field] = useA ? aVal : bVal;
+      const winnerExplicit = useA
+        ? aSafe.field_timestamps?.[field]
+        : bSafe.field_timestamps?.[field];
+      if (winnerExplicit) mergedTimestamps[field] = winnerExplicit;
+      continue;
+    }
+
+    // Case 3: exactly one side populated.
+    const populatedSide: 'a' | 'b' = aMissing ? 'b' : 'a';
+    const blankSide: 'a' | 'b' = aMissing ? 'a' : 'b';
+    const populatedVal = aMissing ? bVal : aVal;
+    const populatedRow = aMissing ? bSafe : aSafe;
+    const blankRow = aMissing ? aSafe : bSafe;
+
+    const blankExplicitMs = explicitFieldTimestampMs(blankRow, field);
+    const populatedEffectiveMs = summaryFieldTimestampMs(populatedRow, field);
+
+    const explicitClearWins =
+      Number.isFinite(blankExplicitMs) && blankExplicitMs > populatedEffectiveMs;
+
+    if (explicitClearWins) {
+      // Genuine explicit clear from the other device — honour it.
+      (merged as Record<string, unknown>)[field] = aMissing ? aVal : bVal;
+      const blankExplicit = blankRow.field_timestamps?.[field];
+      if (blankExplicit) mergedTimestamps[field] = blankExplicit;
+      continue;
+    }
+
+    // Preserve the populated value.
+    (merged as Record<string, unknown>)[field] = populatedVal;
+    const populatedExplicit = populatedRow.field_timestamps?.[field];
+    if (populatedExplicit) mergedTimestamps[field] = populatedExplicit;
+    preservations.push({
+      field,
+      blankSide,
+      populatedSide,
+      preservedLength: typeof populatedVal === 'string' ? populatedVal.length : 0,
+      reason: Number.isFinite(blankExplicitMs)
+        ? 'explicit_clear_older_than_populated'
+        : 'no_explicit_field_clear',
+    });
+  }
+
+  // Only attach field_timestamps when we have at least one entry.
+  if (Object.keys(mergedTimestamps).length > 0) {
+    (merged as MergeableSummaryRow).field_timestamps = mergedTimestamps;
+  }
+
+  return { merged, preservations };
+}
+
+/**
+ * Metadata-only breadcrumb. Logs field names, lengths, and a context label.
+ * NEVER logs actual summary text.
+ */
+export function logTrainingSummaryPreservation(
+  context: string,
+  trainingId: string | null | undefined,
+  preservations: SummaryPreservationBreadcrumb[],
+): void {
+  if (preservations.length === 0) return;
+  if (typeof console === 'undefined') return;
+  try {
+    console.info('[TrainingSummaryPreservation]', {
+      context,
+      trainingId: typeof trainingId === 'string' ? trainingId.substring(0, 8) : null,
+      at: new Date().toISOString(),
+      preservations: preservations.map((p) => ({
+        field: p.field,
+        blankSide: p.blankSide,
+        populatedSide: p.populatedSide,
+        preservedLength: p.preservedLength,
+        reason: p.reason,
+      })),
+    });
+  } catch {
+    // ignore logging errors
+  }
 }
