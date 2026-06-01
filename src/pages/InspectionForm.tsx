@@ -14,6 +14,11 @@ import { useNavigate, useParams } from "react-router-dom";
 import { goBack } from "@/lib/navigation";
 import { isLocalDataNewer } from "@/lib/local-data-guards";
 import { applyTrackedFieldWrite, mergeChildArray, mergeRecordFields, TRACKED_FIELDS } from "@/lib/field-merge";
+import {
+  INSPECTION_SUMMARY_FIELDS,
+  isEmptyPlaceholderInspectionSummary,
+  mergeInspectionSummaryPreservingPopulated,
+} from "@/lib/inspection-summary-merge";
 import { trackChildDeletions } from "@/lib/track-child-deletions";
 import { isFieldActivelyEdited, recordActiveEditSkip } from "@/lib/active-edit-guard";
 import { checkRequiredHeaderFields, formatMissingFieldLabels } from "@/lib/header-required-fields";
