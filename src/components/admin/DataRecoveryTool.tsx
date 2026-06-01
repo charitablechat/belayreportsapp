@@ -984,10 +984,9 @@ export function CloudSnapshotsPanel({ allowDelete = true }: CloudSnapshotsPanelP
                 <div key={s.id} className="rounded-lg border border-white/10 bg-white/5 dark:bg-white/[0.02] p-3 space-y-2.5 min-w-0 overflow-hidden font-mono">
                   <div className="flex items-center justify-between gap-2 flex-wrap">
                     <Badge variant="outline" className="text-xs">{(s.report_type || '').replace('_', ' ')}</Badge>
-                    <Badge variant={s.synced ? "default" : "destructive"} className="text-xs">
-                      {s.synced ? "Synced" : "Unsynced"}
-                    </Badge>
+                    {renderCloudStatusBadge(getStatusFor(s), { className: "text-xs" })}
                   </div>
+
                   <div className="space-y-1.5 min-w-0">
                     <div className="flex justify-between gap-2 text-xs">
                       <span className="text-muted-foreground shrink-0">Facility</span>
