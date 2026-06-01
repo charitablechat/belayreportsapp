@@ -1,7 +1,8 @@
 import { useEffect, useState, useRef, useCallback } from "react";
 import { OptimizedImage } from "@/components/ui/optimized-image";
 import { supabase } from "@/integrations/supabase/client";
-import { getOfflinePhotos, updatePhotoDisplayOrder, getDB, putPhotoRecord, isIdbLayerBreakerOpen, getCircuitBreakerStatus } from "@/lib/offline-storage";
+import { getOfflinePhotos, updatePhotoDisplayOrder, getDB, putPhotoRecord, isIdbLayerBreakerOpen, getCircuitBreakerStatus, resetPhotoForRetry } from "@/lib/offline-storage";
+import { derivePhotoStatus } from "@/lib/photo-status";
 import { cachePhotoFromRemote, batchValidateCachedPhotos } from "@/lib/photo-cache";
 import { getPhotoReceipts, removePhotoReceipts } from "@/lib/photo-receipts";
 import { useNetworkStatus } from "@/hooks/useNetworkStatus";
@@ -12,7 +13,7 @@ import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
-import { X, Cloud, CloudOff, Loader2, AlertTriangle, CheckSquare, Trash2, ChevronLeft, ChevronRight } from "lucide-react";
+import { X, Cloud, CloudOff, Loader2, AlertTriangle, CheckSquare, Trash2, ChevronLeft, ChevronRight, RefreshCw } from "lucide-react";
 import { triggerHaptic } from "@/lib/haptics";
 import { setOverlayActive } from "@/lib/navigation";
 import { toast } from "sonner";
@@ -75,6 +76,14 @@ interface Photo {
   blobEvicted?: boolean;
   /** True if the original file is HEIC/HEIF and needs client-side conversion for display */
   isHeic?: boolean;
+  // --- Cross-platform shared-path status fields. Sourced from the IDB
+  //     `photos` row maintained by sync-manager + ItemPhotoUpload +
+  //     PhotoCapture. Pure-derived through `derivePhotoStatus` so web,
+  //     PWA, and iPad render identical plain-English labels.
+  lastError?: string | null;
+  lastErrorAt?: number | null;
+  nextRetryAt?: number | null;
+  retryCount?: number | null;
 }
 
 export default function PhotoGallery({ 
