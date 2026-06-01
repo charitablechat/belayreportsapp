@@ -286,7 +286,7 @@ export default function RecoveryAndSyncHealth() {
       try {
         const { data } = await supabase
           .from('trainings')
-          .select('id, organization_name, site_name, training_date, status, updated_at, user_id')
+          .select('id, organization, location, start_date, status, updated_at, inspector_id')
           .order('updated_at', { ascending: false })
           .limit(200);
         return Array.isArray(data) ? data : [];
@@ -296,6 +296,37 @@ export default function RecoveryAndSyncHealth() {
     },
     staleTime: 30_000,
   });
+
+  // Merge: local first; append server rows that aren't already represented locally.
+  const reports = useMemo<LocalReportEntry[]>(() => {
+    const byId = new Map<string, LocalReportEntry>();
+    for (const r of localTrainings) byId.set(r.id, r);
+    for (const s of serverTrainings) {
+      const id = typeof s.id === 'string' ? s.id : null;
+      if (!id || byId.has(id)) continue;
+      // Shared-device safety: if inspector_id is present, require it to match.
+      if (userId && typeof s.inspector_id === 'string' && s.inspector_id !== userId) continue;
+      const displayName =
+        (typeof s.organization === 'string' && s.organization) ||
+        (typeof s.location === 'string' && s.location) ||
+        'Untitled training';
+      const date = typeof s.start_date === 'string' ? s.start_date : null;
+      const status = typeof s.status === 'string' ? s.status : null;
+      const updatedAt =
+        typeof s.updated_at === 'string' ? Date.parse(s.updated_at) : null;
+      byId.set(id, {
+        kind: 'training',
+        id,
+        displayName,
+        subLabel: [date, status].filter(Boolean).join(' · ') || 'On server',
+        localOnly: false,
+        updatedAt: Number.isFinite(updatedAt as number) ? (updatedAt as number) : null,
+      });
+    }
+    return Array.from(byId.values()).sort(
+      (a, b) => (b.updatedAt ?? 0) - (a.updatedAt ?? 0),
+    );
+  }, [localTrainings, serverTrainings, userId]);
 
   // Merge: local first; append server rows that aren't already represented locally.
   const reports = useMemo<LocalReportEntry[]>(() => {
