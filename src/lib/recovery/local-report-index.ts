@@ -1,10 +1,15 @@
 /**
  * Read-only local report index for Recovery & Sync Health.
  *
- * Lists the signed-in user's reports from device-local IndexedDB FIRST so the
- * page works offline and surfaces reports that exist only on the device. The
- * caller may optionally enrich the result with RLS-scoped server reads when
- * online — server rows must never *replace* local rows.
+ * Lists the signed-in user's trainings from device-local storage FIRST so the
+ * page works offline and surfaces reports that exist only on the device. Two
+ * sources are consulted:
+ *   1. IndexedDB `trainings` store (primary)
+ *   2. `localStorage` `rw_backup_*` envelopes (secondary — surfaces reports
+ *      that were rescued into a local backup but no longer exist in IDB).
+ *
+ * The caller may optionally enrich the result with RLS-scoped server reads
+ * when online — server rows must never *replace* local rows.
  *
  * Structurally read-only: imports only from @/lib/offline-storage. A static
  * guardrail test asserts the absence of write tokens.
@@ -25,6 +30,14 @@ export interface LocalReportEntry {
   localOnly: boolean;
   /** ms epoch — best-effort. */
   updatedAt: number | null;
+  /** Optional trainer/inspector display name when known locally. */
+  trainerName?: string | null;
+  /** Optional start date (YYYY-MM-DD) when known. */
+  startDate?: string | null;
+  /** Optional report status when known. */
+  status?: string | null;
+  /** True when the row was discovered only via an rw_backup_* envelope. */
+  fromBackupOnly?: boolean;
 }
 
 function pickString(row: Record<string, unknown>, ...keys: string[]): string | null {
@@ -52,50 +65,172 @@ function isLocalOnly(row: Record<string, unknown>): boolean {
   return !synced;
 }
 
+function ownerOf(row: Record<string, unknown>): string | null {
+  return (
+    (typeof row.inspector_id === 'string' && row.inspector_id) ||
+    (typeof row.user_id === 'string' && (row.user_id as string)) ||
+    (typeof row.trainer_id === 'string' && (row.trainer_id as string)) ||
+    null
+  );
+}
+
+function buildEntryFromIdbRow(row: Record<string, unknown>): LocalReportEntry | null {
+  if (!row || typeof row.id !== 'string') return null;
+  if (row._remote_deleted_at || row.deleted_at) return null;
+  const displayName =
+    pickString(row, 'organization', 'organization_name', 'location', 'site_name', 'title') ??
+    'Untitled training';
+  const startDate = pickString(row, 'start_date', 'training_date', 'date');
+  const status = pickString(row, 'status');
+  const trainerName =
+    pickString(row, 'trainer_of_record', 'trainer_name', 'inspector_name') ?? null;
+  const subParts = [startDate, status].filter(Boolean) as string[];
+  return {
+    kind: 'training',
+    id: row.id,
+    displayName,
+    subLabel: subParts.join(' · ') || 'Saved on this device',
+    localOnly: isLocalOnly(row),
+    updatedAt: parseTs(row.updated_at) ?? parseTs(row.created_at),
+    trainerName,
+    startDate,
+    status,
+    fromBackupOnly: false,
+  };
+}
+
 /**
- * List trainings present in local IndexedDB, optionally filtered to a
- * specific user_id (shared-device safety). Returns [] on any failure.
+ * Walk `localStorage` for `rw_backup_*` envelopes and yield extra training
+ * entries for ids not already present in `existingIds`. Always returns; never
+ * throws. Each envelope is parsed defensively.
+ */
+function listLocalBackupTrainings(
+  userId: string | null,
+  existingIds: ReadonlySet<string>,
+): LocalReportEntry[] {
+  const out: LocalReportEntry[] = [];
+  try {
+    if (typeof localStorage === 'undefined') return out;
+    const seen = new Set<string>(existingIds);
+    for (let i = 0; i < localStorage.length; i++) {
+      let key: string | null = null;
+      try {
+        key = localStorage.key(i);
+      } catch {
+        continue;
+      }
+      if (!key || !key.startsWith('rw_backup_')) continue;
+      let raw: string | null = null;
+      try {
+        raw = localStorage.getItem(key);
+      } catch {
+        continue;
+      }
+      if (!raw) continue;
+      let parsed: unknown;
+      try {
+        parsed = JSON.parse(raw);
+      } catch {
+        continue;
+      }
+      if (!parsed || typeof parsed !== 'object') continue;
+      const envelope = parsed as Record<string, unknown>;
+      const ts =
+        typeof envelope.timestamp === 'number' ? envelope.timestamp : null;
+      const inner =
+        (envelope.data && typeof envelope.data === 'object'
+          ? (envelope.data as Record<string, unknown>)
+          : null) ?? envelope;
+
+      // Candidate training id locations.
+      const idCandidates: Array<unknown> = [
+        inner?.id,
+        inner?.training_id,
+        envelope.id,
+        envelope.training_id,
+      ];
+      const children = inner?.children as Record<string, unknown> | undefined;
+      const childSummary =
+        (children?.summary as Array<Record<string, unknown>> | undefined) ??
+        (inner?.summary as Array<Record<string, unknown>> | undefined);
+      if (Array.isArray(childSummary)) {
+        for (const s of childSummary) {
+          if (s && typeof s === 'object') idCandidates.push(s.training_id);
+        }
+      }
+
+      for (const c of idCandidates) {
+        if (typeof c !== 'string' || !c) continue;
+        if (seen.has(c)) continue;
+
+        // Owner scoping: when an owner is present and known, skip if mismatched.
+        const envOwner = ownerOf(inner) ?? ownerOf(envelope);
+        if (userId && envOwner && envOwner !== userId) continue;
+
+        seen.add(c);
+        const displayName =
+          pickString(inner, 'organization', 'organization_name', 'location', 'site_name', 'title') ??
+          pickString(envelope, 'organization', 'organization_name', 'location', 'site_name', 'title') ??
+          'Training (local backup)';
+        const startDate =
+          pickString(inner, 'start_date', 'training_date', 'date') ??
+          pickString(envelope, 'start_date', 'training_date', 'date');
+        const status =
+          pickString(inner, 'status') ?? pickString(envelope, 'status');
+        const trainerName =
+          pickString(inner, 'trainer_of_record', 'trainer_name', 'inspector_name') ??
+          pickString(envelope, 'trainer_of_record', 'trainer_name', 'inspector_name');
+        const subParts = [startDate, status, 'local backup only'].filter(Boolean) as string[];
+        out.push({
+          kind: 'training',
+          id: c,
+          displayName,
+          subLabel: subParts.join(' · '),
+          localOnly: true,
+          updatedAt: ts,
+          trainerName,
+          startDate,
+          status,
+          fromBackupOnly: true,
+        });
+      }
+    }
+  } catch {
+    // silent — never throw
+  }
+  return out;
+}
+
+/**
+ * List trainings present in local IndexedDB (and local backup envelopes),
+ * optionally filtered to a specific user_id (shared-device safety). Returns
+ * [] on any failure.
  */
 export async function listLocalTrainings(
   userId: string | null,
 ): Promise<LocalReportEntry[]> {
+  const idbEntries: LocalReportEntry[] = [];
   try {
     const db = await getDB();
-    if (!db.objectStoreNames.contains('trainings')) return [];
-    const rows = (await db.getAll('trainings')) as Array<Record<string, unknown>>;
-    const out: LocalReportEntry[] = [];
-    for (const row of rows) {
-      if (!row || typeof row.id !== 'string') continue;
-      // Skip soft-deleted / quarantined rows.
-      if (row._remote_deleted_at || row.deleted_at) continue;
-      // Shared-device filter: only show rows that belong to the signed-in user
-      // when ownership is known. Rows missing the owner field are shown (best
-      // effort — predate ownership tagging and the device user is the only viewer).
-      const rowOwner =
-        (typeof row.inspector_id === 'string' && row.inspector_id) ||
-        (typeof row.user_id === 'string' && (row.user_id as string)) ||
-        null;
-      if (userId && rowOwner && rowOwner !== userId) {
-        continue;
+    if (db.objectStoreNames.contains('trainings')) {
+      const rows = (await db.getAll('trainings')) as Array<Record<string, unknown>>;
+      for (const row of rows) {
+        if (!row || typeof row.id !== 'string') continue;
+        if (row._remote_deleted_at || row.deleted_at) continue;
+        const rowOwner = ownerOf(row);
+        if (userId && rowOwner && rowOwner !== userId) continue;
+        const entry = buildEntryFromIdbRow(row);
+        if (entry) idbEntries.push(entry);
       }
-      const displayName =
-        pickString(row, 'organization', 'organization_name', 'location', 'site_name', 'title') ??
-        'Untitled training';
-      const date = pickString(row, 'start_date', 'training_date', 'date', 'created_at');
-      const status = pickString(row, 'status');
-      const subLabelParts = [date, status].filter(Boolean) as string[];
-      out.push({
-        kind: 'training',
-        id: row.id,
-        displayName,
-        subLabel: subLabelParts.join(' · ') || 'Saved on this device',
-        localOnly: isLocalOnly(row),
-        updatedAt: parseTs(row.updated_at) ?? parseTs(row.created_at),
-      });
     }
-    out.sort((a, b) => (b.updatedAt ?? 0) - (a.updatedAt ?? 0));
-    return out;
   } catch {
-    return [];
+    // fall through — backup pass can still produce entries
   }
+
+  const existingIds = new Set(idbEntries.map((e) => e.id));
+  const backupEntries = listLocalBackupTrainings(userId, existingIds);
+
+  const all = [...idbEntries, ...backupEntries];
+  all.sort((a, b) => (b.updatedAt ?? 0) - (a.updatedAt ?? 0));
+  return all;
 }

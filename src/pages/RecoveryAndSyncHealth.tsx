@@ -7,11 +7,13 @@ import {
   Download,
   Loader2,
   Mail,
+  Search,
   Wand2,
   Wifi,
   WifiOff,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { toast } from 'sonner';
@@ -298,9 +300,24 @@ function ReportRow({
           )}
         </CardTitle>
         <div className="flex flex-wrap items-center gap-2 pt-1 text-xs text-muted-foreground">
+          {entry.trainerName && (
+            <Badge variant="outline" className="font-normal">
+              Trainer: {entry.trainerName}
+            </Badge>
+          )}
           {entry.localOnly && (
             <Badge variant="outline" className="font-normal">
               On this device only
+            </Badge>
+          )}
+          {entry.fromBackupOnly && (
+            <Badge variant="outline" className="font-normal">
+              Local backup only
+            </Badge>
+          )}
+          {!entry.localOnly && !entry.fromBackupOnly && (
+            <Badge variant="outline" className="font-normal">
+              On server
             </Badge>
           )}
           {highlighted && (
@@ -406,26 +423,87 @@ export default function RecoveryAndSyncHealth() {
       try {
         const { data } = await supabase
           .from('trainings')
-          .select('id, organization, location, start_date, status, updated_at, inspector_id')
+          .select(
+            'id, organization, location, start_date, status, updated_at, inspector_id, trainer_of_record',
+          )
           .order('updated_at', { ascending: false })
           .limit(200);
-        return Array.isArray(data) ? data : [];
+        return Array.isArray(data) ? (data as Array<Record<string, unknown>>) : [];
       } catch {
-        return [];
+        return [] as Array<Record<string, unknown>>;
       }
     },
     staleTime: 30_000,
   });
 
+  // Optional profile enrichment — batched lookup for inspector display names.
+  const profileIds = useMemo(() => {
+    const ids = new Set<string>();
+    for (const s of serverTrainings) {
+      if (typeof s.inspector_id === 'string' && s.inspector_id) ids.add(s.inspector_id);
+    }
+    return Array.from(ids).sort();
+  }, [serverTrainings]);
+
+  const { data: profileMap } = useQuery({
+    queryKey: ['recovery-profile-names', profileIds.join('|')],
+    enabled: online && profileIds.length > 0,
+    queryFn: async () => {
+      const map = new Map<string, string>();
+      try {
+        const { data } = await supabase
+          .from('profiles')
+          .select('id, first_name, last_name')
+          .in('id', profileIds);
+        if (Array.isArray(data)) {
+          for (const p of data as Array<Record<string, unknown>>) {
+            const uid = typeof p.id === 'string' ? p.id : null;
+            if (!uid) continue;
+            const name = `${typeof p.first_name === 'string' ? p.first_name : ''} ${
+              typeof p.last_name === 'string' ? p.last_name : ''
+            }`.trim();
+            if (name) map.set(uid, name);
+          }
+        }
+      } catch {
+        // soft-fail — map stays empty
+      }
+      return map;
+    },
+    staleTime: 5 * 60_000,
+  });
+
+  const pinnedIds = useMemo(
+    () => new Set(PINNED_TRAINING_RECOVERIES.map((p) => p.trainingId)),
+    [],
+  );
+
   // Merge: local first; append server rows that aren't already represented locally.
   const reports = useMemo<LocalReportEntry[]>(() => {
     const byId = new Map<string, LocalReportEntry>();
-    for (const r of localTrainings) byId.set(r.id, r);
+    for (const r of localTrainings) byId.set(r.id, { ...r });
     for (const s of serverTrainings) {
       const id = typeof s.id === 'string' ? s.id : null;
-      if (!id || byId.has(id)) continue;
-      // Shared-device safety: if inspector_id is present, require it to match.
+      if (!id) continue;
       if (userId && typeof s.inspector_id === 'string' && s.inspector_id !== userId) continue;
+      const trainerFromProfile =
+        (typeof s.inspector_id === 'string' && profileMap?.get(s.inspector_id)) || null;
+      const trainerFromColumn =
+        typeof s.trainer_of_record === 'string' && s.trainer_of_record.trim()
+          ? s.trainer_of_record.trim()
+          : null;
+      const trainerName = trainerFromProfile || trainerFromColumn || null;
+
+      const existing = byId.get(id);
+      if (existing) {
+        if (!existing.trainerName && trainerName) existing.trainerName = trainerName;
+        if (existing.fromBackupOnly) {
+          existing.fromBackupOnly = false;
+          existing.localOnly = false;
+        }
+        continue;
+      }
+
       const displayName =
         (typeof s.organization === 'string' && s.organization) ||
         (typeof s.location === 'string' && s.location) ||
@@ -441,17 +519,39 @@ export default function RecoveryAndSyncHealth() {
         subLabel: [date, status].filter(Boolean).join(' · ') || 'On server',
         localOnly: false,
         updatedAt: Number.isFinite(updatedAt as number) ? (updatedAt as number) : null,
+        trainerName,
+        startDate: date,
+        status,
+        fromBackupOnly: false,
       });
     }
-    return Array.from(byId.values()).sort(
-      (a, b) => (b.updatedAt ?? 0) - (a.updatedAt ?? 0),
-    );
-  }, [localTrainings, serverTrainings, userId]);
 
-  const pinnedIds = useMemo(
-    () => new Set(PINNED_TRAINING_RECOVERIES.map((p) => p.trainingId)),
-    [],
-  );
+    // Sort: pinned first, then newest updated_at.
+    return Array.from(byId.values()).sort((a, b) => {
+      const ap = pinnedIds.has(a.id) ? 1 : 0;
+      const bp = pinnedIds.has(b.id) ? 1 : 0;
+      if (ap !== bp) return bp - ap;
+      return (b.updatedAt ?? 0) - (a.updatedAt ?? 0);
+    });
+  }, [localTrainings, serverTrainings, userId, profileMap, pinnedIds]);
+
+  const [query, setQuery] = useState('');
+  const filteredReports = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    if (!q) return reports;
+    return reports.filter((r) => {
+      const hay = [
+        r.displayName,
+        r.subLabel,
+        r.trainerName ?? '',
+        r.startDate ?? '',
+        r.status ?? '',
+      ]
+        .join(' ')
+        .toLowerCase();
+      return hay.includes(q);
+    });
+  }, [reports, query]);
 
   return (
     <div className="min-h-screen p-4 sm:p-6 max-w-3xl mx-auto space-y-6">
@@ -511,7 +611,29 @@ export default function RecoveryAndSyncHealth() {
       </Card>
 
       <div className="space-y-3">
-        <h2 className="text-lg font-semibold">Your trainings</h2>
+        <div className="flex flex-wrap items-baseline justify-between gap-2">
+          <h2 className="text-lg font-semibold">Your trainings</h2>
+          {reports.length > 0 && (
+            <span className="text-xs text-muted-foreground">
+              {filteredReports.length} of {reports.length} shown
+            </span>
+          )}
+        </div>
+        {reports.length > 0 && (
+          <div className="relative">
+            <Search
+              className="absolute left-2.5 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground"
+              aria-hidden
+            />
+            <Input
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              placeholder="Search by camp, trainer, or date"
+              className="pl-8"
+              aria-label="Search your trainings"
+            />
+          </div>
+        )}
         {localLoading ? (
           <div className="flex items-center gap-2 text-sm text-muted-foreground">
             <Loader2 className="w-4 h-4 animate-spin" /> Loading from this device…
@@ -526,8 +648,14 @@ export default function RecoveryAndSyncHealth() {
               </p>
             </CardContent>
           </Card>
+        ) : filteredReports.length === 0 ? (
+          <Card>
+            <CardContent className="pt-6 text-sm text-muted-foreground">
+              No trainings match “{query}”. Clear the search to see all your reports.
+            </CardContent>
+          </Card>
         ) : (
-          reports.map((r) => (
+          filteredReports.map((r) => (
             <ReportRow
               key={r.id}
               entry={r}
@@ -535,10 +663,10 @@ export default function RecoveryAndSyncHealth() {
               highlighted={pinnedIds.has(r.id)}
               appVersion={installed ?? undefined}
             />
-
           ))
         )}
       </div>
+
 
       {isAdmin && (
         <div className="space-y-3 pt-4 border-t border-foreground/10">
