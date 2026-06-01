@@ -1102,6 +1102,12 @@ export default function TrainingForm() {
     saveInProgressRef.current = true;
     setIsSaving(true);
     if (!silent) setSaveError(null);
+    // Bump the monotonic save sequence + wall-clock so refetch/realtime
+    // echoes that complete after this save started can be detected as
+    // "older save" by the loadTraining merge branches.
+    saveSeqRef.current += 1;
+    saveStartedAtRef.current = Date.now();
+    const mySaveStartedAt = saveStartedAtRef.current;
 
     // Safety timeout - ensure saving state is cleared after max 8 seconds (reduced from 30).
     //
