@@ -69,15 +69,19 @@ export async function listLocalTrainings(
       // Skip soft-deleted / quarantined rows.
       if (row._remote_deleted_at || row.deleted_at) continue;
       // Shared-device filter: only show rows that belong to the signed-in user
-      // when ownership is known. Rows missing user_id are shown (best-effort —
-      // they predate ownership tagging and the device user is the only viewer).
-      if (userId && typeof row.user_id === 'string' && row.user_id !== userId) {
+      // when ownership is known. Rows missing the owner field are shown (best
+      // effort — predate ownership tagging and the device user is the only viewer).
+      const rowOwner =
+        (typeof row.inspector_id === 'string' && row.inspector_id) ||
+        (typeof row.user_id === 'string' && (row.user_id as string)) ||
+        null;
+      if (userId && rowOwner && rowOwner !== userId) {
         continue;
       }
       const displayName =
-        pickString(row, 'organization_name', 'site_name', 'location', 'title') ??
+        pickString(row, 'organization', 'organization_name', 'location', 'site_name', 'title') ??
         'Untitled training';
-      const date = pickString(row, 'training_date', 'date', 'created_at');
+      const date = pickString(row, 'start_date', 'training_date', 'date', 'created_at');
       const status = pickString(row, 'status');
       const subLabelParts = [date, status].filter(Boolean) as string[];
       out.push({
