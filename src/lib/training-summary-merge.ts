@@ -351,7 +351,7 @@ export function logTrainingSummaryPreservation(
 // `applyIncomingSummary` only governs what BACKGROUND data can do to the
 // React state the user is currently editing.
 
-import { recordSummaryTrace, fieldValueLength, type SummaryTraceSource } from './training-summary-trace';
+import { recordSummaryTrace, fieldValueLength, type SummaryTraceSource, type SummaryTraceEntry } from './training-summary-trace';
 
 export interface ApplyIncomingSummaryOptions {
   source: SummaryTraceSource;
