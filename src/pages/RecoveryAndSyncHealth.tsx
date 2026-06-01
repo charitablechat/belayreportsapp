@@ -611,7 +611,29 @@ export default function RecoveryAndSyncHealth() {
       </Card>
 
       <div className="space-y-3">
-        <h2 className="text-lg font-semibold">Your trainings</h2>
+        <div className="flex flex-wrap items-baseline justify-between gap-2">
+          <h2 className="text-lg font-semibold">Your trainings</h2>
+          {reports.length > 0 && (
+            <span className="text-xs text-muted-foreground">
+              {filteredReports.length} of {reports.length} shown
+            </span>
+          )}
+        </div>
+        {reports.length > 0 && (
+          <div className="relative">
+            <Search
+              className="absolute left-2.5 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground"
+              aria-hidden
+            />
+            <Input
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              placeholder="Search by camp, trainer, or date"
+              className="pl-8"
+              aria-label="Search your trainings"
+            />
+          </div>
+        )}
         {localLoading ? (
           <div className="flex items-center gap-2 text-sm text-muted-foreground">
             <Loader2 className="w-4 h-4 animate-spin" /> Loading from this device…
@@ -626,8 +648,14 @@ export default function RecoveryAndSyncHealth() {
               </p>
             </CardContent>
           </Card>
+        ) : filteredReports.length === 0 ? (
+          <Card>
+            <CardContent className="pt-6 text-sm text-muted-foreground">
+              No trainings match “{query}”. Clear the search to see all your reports.
+            </CardContent>
+          </Card>
         ) : (
-          reports.map((r) => (
+          filteredReports.map((r) => (
             <ReportRow
               key={r.id}
               entry={r}
@@ -635,10 +663,10 @@ export default function RecoveryAndSyncHealth() {
               highlighted={pinnedIds.has(r.id)}
               appVersion={installed ?? undefined}
             />
-
           ))
         )}
       </div>
+
 
       {isAdmin && (
         <div className="space-y-3 pt-4 border-t border-foreground/10">
