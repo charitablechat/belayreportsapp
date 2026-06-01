@@ -170,6 +170,8 @@ import {
 import { 
   validateInspectionPackage,
 } from "./validation-schemas";
+import { normalizeResultFieldsOnRows } from "./inspection-result-normalizer";
+import * as Sentry from "@sentry/react";
 import {
   validateTrainingPackage,
 } from "./training-validation-schemas";
