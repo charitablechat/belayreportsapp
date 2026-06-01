@@ -1773,8 +1773,23 @@ export default function InspectionForm() {
 
           const { data: summaryData } = summaryResult;
           if (summaryData) {
-            setSummary(summaryData as typeof summary);
-            saveRelatedDataOffline('summary', id!, [summaryData]).catch(e =>
+            // Field-level merge against current local state — preserves any
+            // non-empty user-typed text that the server row is missing.
+            // The MERGED row (not the raw server row) is what gets cached
+            // to IDB, so we never reintroduce the loss path.
+            const localBefore = summaryRef.current as Record<string, unknown> | null;
+            let toPersist: Record<string, unknown> = summaryData as Record<string, unknown>;
+            if (!localBefore || isEmptyPlaceholderInspectionSummary(localBefore)) {
+              setSummary(summaryData as typeof summary);
+            } else {
+              const { merged } = mergeInspectionSummaryPreservingPopulated(
+                localBefore as Record<string, unknown> & { updated_at?: string | null; field_timestamps?: Record<string, string> | null },
+                summaryData as Record<string, unknown> & { updated_at?: string | null; field_timestamps?: Record<string, string> | null },
+              );
+              toPersist = merged;
+              setSummary(merged as typeof summary);
+            }
+            saveRelatedDataOffline('summary', id!, [toPersist]).catch(e =>
               console.warn('[InspectionForm] Non-critical: failed to cache summary', e)
             );
           } else if (offlineSummary.length > 0) {
