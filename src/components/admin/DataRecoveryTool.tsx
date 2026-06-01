@@ -673,6 +673,22 @@ interface CloudSnapshotsPanelProps {
   allowDelete?: boolean;
 }
 
+// Display metadata for the Cloud Snapshots panel. Mirrors the local panel's
+// STATUS_META wording, but uses "Cloud backup" for the `local_only` bucket
+// (the row's presence in `report_cloud_backups` already proves a cloud copy
+// exists; the local IDB just couldn't be consulted to refine the status).
+// Exported for unit tests.
+export const CLOUD_STATUS_META: Record<ResolvedSnapshotStatus, {
+  label: string;
+  variant: "default" | "secondary" | "outline";
+  tooltip: string;
+}> = {
+  synced:     { label: "Report synced",        variant: "default",   tooltip: "Latest local edit was uploaded to the server." },
+  pending:    { label: "Pending report sync",  variant: "secondary", tooltip: "Local changes exist that have not yet been uploaded. Sync will retry." },
+  local_only: { label: "Cloud backup",         variant: "outline",   tooltip: "Cloud recovery snapshot exists. Local report record wasn't found on this device, so sync status couldn't be confirmed here." },
+  unknown:    { label: "Status unknown",       variant: "outline",   tooltip: "Couldn't read the report record on this device to confirm sync status." },
+};
+
 export function CloudSnapshotsPanel({ allowDelete = true }: CloudSnapshotsPanelProps) {
   const [snapshots, setSnapshots] = useState<CloudBackupEntry[]>([]);
   const [loading, setLoading] = useState(true);
@@ -685,6 +701,48 @@ export function CloudSnapshotsPanel({ allowDelete = true }: CloudSnapshotsPanelP
   type CloudSnapshotData = CloudBackupFull['snapshot_data'];
   const [previewState, setPreviewState] = useState<{ open: boolean; snapshot: CloudSnapshotData | null; loading: boolean; row: CloudBackupEntry | null }>({ open: false, snapshot: null, loading: false, row: null });
   const previewCache = useRef<Map<string, CloudSnapshotData>>(new Map());
+
+  // Read-only status resolution. Replaces the misleading envelope `synced`
+  // flag (originating from `report_cloud_backups.synced`) with the actual
+  // report's current local sync state from IndexedDB. No writes, no
+  // restores, no `markCloudBackupSynced`. See
+  // `src/lib/local-backup-status.ts`.
+  const [statusMap, setStatusMap] = useState<Map<string, ResolvedSnapshotStatus>>(
+    () => new Map(),
+  );
+  useEffect(() => {
+    let cancelled = false;
+    void (async () => {
+      try {
+        const next = await resolveSnapshotStatuses(
+          snapshots.map((s) => ({
+            reportType: s.report_type as ReportType,
+            reportId: s.report_id,
+          })),
+        );
+        if (!cancelled) setStatusMap(next);
+      } catch {
+        // Resolver never throws, but defensively swallow.
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [snapshots]);
+
+  const getStatusFor = (s: CloudBackupEntry): ResolvedSnapshotStatus =>
+    statusMap.get(snapshotStatusKey({ reportType: s.report_type as ReportType, reportId: s.report_id })) ?? "unknown";
+
+  const renderCloudStatusBadge = (status: ResolvedSnapshotStatus, opts?: { className?: string }) => {
+    const meta = CLOUD_STATUS_META[status];
+    return (
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <Badge variant={meta.variant} className={opts?.className}>{meta.label}</Badge>
+        </TooltipTrigger>
+        <TooltipContent>{meta.tooltip}</TooltipContent>
+      </Tooltip>
+    );
+  };
+
 
   const handlePreview = useCallback(async (s: CloudBackupEntry) => {
     if (previewCache.current.has(s.id)) {
@@ -852,8 +910,10 @@ export function CloudSnapshotsPanel({ allowDelete = true }: CloudSnapshotsPanelP
   });
 
   return (
+    <TooltipProvider delayDuration={150}>
     <>
     <Card className="backdrop-blur-md bg-white/5 dark:bg-white/[0.03] border border-white/10 rounded-xl shadow-lg shadow-black/5 overflow-hidden">
+
       <CardHeader className="px-3 md:px-6 py-4 md:p-6">
         <div className="flex items-center justify-between">
           <div className="min-w-0">
@@ -924,10 +984,9 @@ export function CloudSnapshotsPanel({ allowDelete = true }: CloudSnapshotsPanelP
                 <div key={s.id} className="rounded-lg border border-white/10 bg-white/5 dark:bg-white/[0.02] p-3 space-y-2.5 min-w-0 overflow-hidden font-mono">
                   <div className="flex items-center justify-between gap-2 flex-wrap">
                     <Badge variant="outline" className="text-xs">{(s.report_type || '').replace('_', ' ')}</Badge>
-                    <Badge variant={s.synced ? "default" : "destructive"} className="text-xs">
-                      {s.synced ? "Synced" : "Unsynced"}
-                    </Badge>
+                    {renderCloudStatusBadge(getStatusFor(s), { className: "text-xs" })}
                   </div>
+
                   <div className="space-y-1.5 min-w-0">
                     <div className="flex justify-between gap-2 text-xs">
                       <span className="text-muted-foreground shrink-0">Facility</span>
@@ -942,7 +1001,8 @@ export function CloudSnapshotsPanel({ allowDelete = true }: CloudSnapshotsPanelP
                       <span className="text-right min-w-0 break-words" style={{ overflowWrap: 'anywhere' }}>{s.device}</span>
                     </div>
                     <div className="flex justify-between gap-2 text-xs">
-                      <span className="text-muted-foreground shrink-0">Saved</span>
+                      <span className="text-muted-foreground shrink-0">Snapshot Saved</span>
+
                       <span className="text-right text-muted-foreground break-words" style={{ overflowWrap: 'anywhere' }}>{formatDate(s.snapshot_ts)}</span>
                     </div>
                   </div>
@@ -972,8 +1032,33 @@ export function CloudSnapshotsPanel({ allowDelete = true }: CloudSnapshotsPanelP
                     <TableHead className="text-xs font-semibold uppercase tracking-wider text-muted-foreground/70 py-2.5 px-3">Facility</TableHead>
                     <TableHead className="text-xs font-semibold uppercase tracking-wider text-muted-foreground/70 py-2.5 px-3">User</TableHead>
                     <TableHead className="text-xs font-semibold uppercase tracking-wider text-muted-foreground/70 py-2.5 px-3">Device</TableHead>
-                    <TableHead className="text-xs font-semibold uppercase tracking-wider text-muted-foreground/70 py-2.5 px-3">Sync</TableHead>
-                    <TableHead className="text-xs font-semibold uppercase tracking-wider text-muted-foreground/70 py-2.5 px-3">Last Saved</TableHead>
+                    <TableHead className="text-xs font-semibold uppercase tracking-wider text-muted-foreground/70 py-2.5 px-3">
+                      <span className="inline-flex items-center gap-1">
+                        Sync status
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <Info className="h-3.5 w-3.5 text-muted-foreground/70 cursor-help" />
+                          </TooltipTrigger>
+                          <TooltipContent className="max-w-xs">
+                            Status reflects the report's local sync state on this device when it can be verified. It is not a live server check. The row's presence already confirms a cloud recovery snapshot exists.
+                          </TooltipContent>
+                        </Tooltip>
+                      </span>
+                    </TableHead>
+                    <TableHead className="text-xs font-semibold uppercase tracking-wider text-muted-foreground/70 py-2.5 px-3">
+                      <span className="inline-flex items-center gap-1">
+                        Snapshot Saved
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <Info className="h-3.5 w-3.5 text-muted-foreground/70 cursor-help" />
+                          </TooltipTrigger>
+                          <TooltipContent className="max-w-xs">
+                            Time the recovery snapshot envelope was written, not the report's last edit time.
+                          </TooltipContent>
+                        </Tooltip>
+                      </span>
+                    </TableHead>
+
                     <TableHead className="text-xs font-semibold uppercase tracking-wider text-muted-foreground/70 py-2.5 px-3 text-right">Actions</TableHead>
                   </TableRow>
                 </TableHeader>
@@ -987,10 +1072,9 @@ export function CloudSnapshotsPanel({ allowDelete = true }: CloudSnapshotsPanelP
                       <TableCell className="py-2.5 px-3 text-xs font-mono">{s.user_name || 'Unknown'}</TableCell>
                       <TableCell className="py-2.5 px-3 text-xs font-mono">{s.device}</TableCell>
                       <TableCell className="py-2.5 px-3">
-                        <Badge variant={s.synced ? "default" : "destructive"} className="text-xs">
-                          {s.synced ? "Synced" : "Unsynced"}
-                        </Badge>
+                        {renderCloudStatusBadge(getStatusFor(s), { className: "text-xs" })}
                       </TableCell>
+
                       <TableCell className="py-2.5 px-3 text-xs text-muted-foreground font-mono">{formatDate(s.snapshot_ts)}</TableCell>
                       <TableCell className="py-2.5 px-3 text-right">
                         <div className="flex justify-end gap-1">
@@ -1036,8 +1120,10 @@ export function CloudSnapshotsPanel({ allowDelete = true }: CloudSnapshotsPanelP
       onExport={handlePreviewExport}
     />
     </>
+    </TooltipProvider>
   );
 }
+
 
 // ── All User Snapshots (Super Admin only) ──────────────────────────
 
