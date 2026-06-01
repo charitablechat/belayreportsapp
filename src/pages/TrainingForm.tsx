@@ -766,45 +766,49 @@ export default function TrainingForm() {
             if (summaryResult) {
               const dirtyFields = pendingSummaryFieldsRef.current;
               const dirtyNames = Object.keys(dirtyFields);
+              const mySaveSeq = saveSeqRef.current;
+              const saveStartedAt = saveStartedAtRef.current;
               let cacheRow: DbRow = summaryResult as DbRow;
               setSummary(prev => {
-                if (!prev) {
-                  cacheRow = summaryResult as DbRow;
-                  return summaryResult as DbRow;
-                }
-                // Empty placeholder must never beat a populated server summary.
-                if (isEmptyPlaceholderSummary(prev)) {
-                  summaryRef.current = summaryResult as DbRow;
-                  cacheRow = summaryResult as DbRow;
-                  return summaryResult as DbRow;
-                }
-                let next = mergeSummaryPreservingPopulated(
-                  prev as DbRow & { field_timestamps?: Record<string, string> | null },
+                const focusInEditor = typeof document !== 'undefined' && !!document.activeElement?.closest?.('[data-form-section="training-summary"]');
+                const { next, guarded, preservedFields } = applyIncomingSummary(
+                  (prev ?? null) as (DbRow & { field_timestamps?: Record<string, string> | null }) | null,
                   summaryResult as DbRow & { field_timestamps?: Record<string, string> | null },
-                ) as DbRow;
-                // Pending-edit override: any field the user dirtied locally
-                // whose incoming timestamp is older stays as the local value.
-                const unresolved = dirtyNames.filter(field => {
-                  const dirtyMs = new Date(dirtyFields[field]).getTime();
-                  const incomingMs = summaryFieldTimestampMs(summaryResult as DbRow, field);
-                  return !Number.isFinite(dirtyMs) || incomingMs < dirtyMs;
+                  {
+                    source: 'server-refetch',
+                    trainingId: id,
+                    currentSaveSeq: mySaveSeq,
+                    hasUnsaved: hasUnsavedRef.current,
+                    focusInEditor,
+                  },
+                );
+                const merged = (next ?? prev ?? summaryResult) as DbRow;
+                // Pending-edit cleanup: ONLY clear pending fields when the
+                // user has NOT typed after the most recent save started and
+                // every dirty field's incoming carries an explicit-or-effective
+                // timestamp >= the local dirty stamp. This is the save-seq
+                // guard against an older save's Realtime echo prematurely
+                // declaring the field "confirmed".
+                const typedAfterSaveStart = dirtyNames.some(f => {
+                  const dirtyMs = new Date(dirtyFields[f]).getTime();
+                  return Number.isFinite(dirtyMs) && dirtyMs > saveStartedAt;
                 });
-                if (unresolved.length > 0) {
-                  next = { ...next, ...Object.fromEntries(unresolved.map(field => [field, prev[field]])) } as DbRow;
-                  next.field_timestamps = { ...((next.field_timestamps as Record<string, string> | null) ?? {}), ...Object.fromEntries(unresolved.map(field => [field, dirtyFields[field]])) };
-                  next.updated_at = prev.updated_at || next.updated_at;
-                  recordActiveEditSkip({ form: 'training', table: 'summary', rowId: (summaryResult as DbRow).id ?? null, field: unresolved.join(','), reason: childGuard.reason ?? 'dirty', source: 'load' });
-                  logTrainingSummaryAutosave('incoming-summary-merged-local-won', { source: 'load', fields: unresolved, pendingFields: dirtyNames, incomingUpdatedAt: summaryResult.updated_at ?? null });
-                } else if (dirtyNames.length > 0) {
+                if (preservedFields.length > 0) {
+                  recordActiveEditSkip({ form: 'training', table: 'summary', rowId: (summaryResult as DbRow).id ?? null, field: preservedFields.join(','), reason: childGuard.reason ?? 'dirty', source: 'load' });
+                  logTrainingSummaryAutosave('incoming-summary-merged-local-won', { source: 'load', fields: preservedFields, pendingFields: dirtyNames, guarded, incomingUpdatedAt: summaryResult.updated_at ?? null });
+                } else if (dirtyNames.length > 0 && !typedAfterSaveStart) {
                   pendingSummaryFieldsRef.current = {};
                   summaryLocalSnapshotRef.current = null;
                   logTrainingSummaryAutosave('incoming-summary-confirmed', { source: 'load', fields: dirtyNames, incomingUpdatedAt: summaryResult.updated_at ?? null });
+                } else if (dirtyNames.length > 0 && typedAfterSaveStart) {
+                  // Keep pending fields; older save echo cannot confirm newer typed text.
+                  logTrainingSummaryAutosave('incoming-summary-stale-save-skip', { source: 'load', fields: dirtyNames, saveStartedAt, incomingUpdatedAt: summaryResult.updated_at ?? null });
                 } else {
                   logTrainingSummaryAutosave('incoming-summary-applied', { source: 'load', incomingUpdatedAt: summaryResult.updated_at ?? null });
                 }
-                summaryRef.current = next;
-                cacheRow = next;
-                return next;
+                summaryRef.current = merged;
+                cacheRow = merged;
+                return merged;
               });
               // Cache the MERGED row (with field_timestamps) into IDB, NOT the
               // raw server payload. Server rows are sanitized before upsert
@@ -815,7 +819,30 @@ export default function TrainingForm() {
               saveTrainingDataOffline('summary', id, cacheRow as unknown as DbRow[]).catch(e =>
                 console.warn('[TrainingForm] Non-critical: failed to cache summary', e));
             } else if (!summaryData) {
-              setSummary({ id: crypto.randomUUID(), training_id: id });
+              // No-server-row branch. NEVER replace populated React state with
+              // a fresh placeholder. Only seed a placeholder when there is no
+              // local state to preserve.
+              setSummary(prev => {
+                const local = summaryRef.current ?? prev;
+                if (local) {
+                  // Trace-only: a real server-says-blank response on a
+                  // populated local row is treated as "no incoming" and
+                  // therefore never blanks the editor.
+                  const { next } = applyIncomingSummary(
+                    local as (DbRow & { field_timestamps?: Record<string, string> | null }),
+                    null,
+                    {
+                      source: 'no-server-row',
+                      trainingId: id,
+                      currentSaveSeq: saveSeqRef.current,
+                      hasUnsaved: hasUnsavedRef.current,
+                      focusInEditor: typeof document !== 'undefined' && !!document.activeElement?.closest?.('[data-form-section="training-summary"]'),
+                    },
+                  );
+                  return (next ?? local) as DbRow;
+                }
+                return { id: crypto.randomUUID(), training_id: id } as DbRow;
+              });
             }
 
             if (import.meta.env.DEV) {
