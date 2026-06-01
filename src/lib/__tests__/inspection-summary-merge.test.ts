@@ -109,19 +109,20 @@ describe('inspectionSummaryFieldTimestampMs', () => {
 });
 
 describe('mergeInspectionSummaryPreservingPopulated', () => {
-  it('THE BUG: stale empty server row does NOT wipe locally-typed text', () => {
+  it('THE BUG: stale empty server row does NOT wipe locally-typed text (no per-field stamps)', () => {
+    // Reproduces the in-the-wild race: local React state has typed text
+    // but no per-field timestamps were stamped (older code path), and the
+    // server returns an empty row with a newer row-level updated_at from
+    // an unrelated background write. Without the guard, LWW falls back
+    // to updated_at and picks the empty incoming.
     const local: Row = {
       id: 's', inspection_id: 'i',
       repairs_performed: 'Fixed the cable brake on Zip 3',
       critical_actions: '<p>Replace harness #7</p>',
       future_considerations: '',
       next_inspection_date: null,
-      updated_at: T3,
-      field_timestamps: { repairs_performed: T3, critical_actions: T3 },
+      updated_at: T1,
     };
-    // Server returns a stale row from before the user typed; its
-    // updated_at is "newer" than the locally-typed timestamp because the
-    // server bumped updated_at on an unrelated background write.
     const incoming: Row = {
       id: 's', inspection_id: 'i',
       repairs_performed: '',
@@ -136,6 +137,27 @@ describe('mergeInspectionSummaryPreservingPopulated', () => {
     expect(merged.repairs_performed).toBe('Fixed the cable brake on Zip 3');
     expect(merged.critical_actions).toBe('<p>Replace harness #7</p>');
     expect(preserved.map(p => p.field).sort()).toEqual(['critical_actions', 'repairs_performed']);
+  });
+
+  it('local explicit per-field stamps already protect via plain LWW (guard is silent)', () => {
+    // When local stamped its edits explicitly, mergeRecordFields itself
+    // keeps the local text — our extra guard does not need to intervene
+    // and reports no preserved entries.
+    const local: Row = {
+      id: 's',
+      repairs_performed: 'kept by LWW',
+      updated_at: T3,
+      field_timestamps: { repairs_performed: T3 },
+    };
+    const incoming: Row = {
+      id: 's',
+      repairs_performed: '',
+      updated_at: '2026-06-01T00:00:00.000Z',
+      field_timestamps: {},
+    };
+    const { merged, preserved } = mergeInspectionSummaryPreservingPopulated(local, incoming);
+    expect(merged.repairs_performed).toBe('kept by LWW');
+    expect(preserved).toEqual([]);
   });
 
   it('honours an EXPLICIT cross-device clear (newer per-field timestamp + empty value)', () => {
