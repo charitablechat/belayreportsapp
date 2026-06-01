@@ -1078,25 +1078,83 @@ export default function PhotoGallery({
                     className="w-full h-48 object-cover"
                     containerClassName="h-48"
                   />
-                  <div className="absolute top-2 right-2 flex gap-2">
-                  {!photo.uploaded && photo.staleUpload && (
-                      <Badge variant="destructive" className="gap-1">
-                        <AlertTriangle className="w-3 h-3" />
-                        Stuck
-                      </Badge>
-                    )}
-                    {!photo.uploaded && !photo.staleUpload && (
-                      <Badge variant="secondary" className="gap-1">
-                        <CloudOff className="w-3 h-3" />
-                        Pending
-                      </Badge>
-                    )}
-                    {photo.uploaded && (
-                      <Badge variant="default" className="gap-1">
-                        <Cloud className="w-3 h-3" />
-                        Synced
-                      </Badge>
-                    )}
+                  <div className="absolute top-2 right-2 flex flex-col items-end gap-1">
+                    {(() => {
+                      // Cross-platform shared-path status — same derivation
+                      // on web, PWA, and iPad. See src/lib/photo-status.ts.
+                      const status = derivePhotoStatus(
+                        {
+                          uploaded: photo.uploaded ? 1 : 0,
+                          lastError: photo.lastError ?? null,
+                          lastErrorAt: photo.lastErrorAt ?? null,
+                          nextRetryAt: photo.nextRetryAt ?? null,
+                          retryCount: photo.retryCount ?? null,
+                        },
+                        { isOnline },
+                      );
+                      const variant =
+                        status.kind === 'uploaded' ? 'default'
+                        : status.kind === 'failed' ? 'destructive'
+                        : 'secondary';
+                      const Icon =
+                        status.kind === 'uploaded' ? Cloud
+                        : status.kind === 'failed' ? AlertTriangle
+                        : status.kind === 'uploading' ? Loader2
+                        : CloudOff;
+                      const iconClass =
+                        status.kind === 'uploading'
+                          ? 'w-3 h-3 animate-spin'
+                          : 'w-3 h-3';
+                      return (
+                        <>
+                          <Badge variant={variant} className="gap-1 whitespace-nowrap">
+                            <Icon className={iconClass} />
+                            {status.label}
+                          </Badge>
+                          {status.canRetry && !readOnly && !batchMode && (
+                            <Button
+                              variant="secondary"
+                              size="sm"
+                              className="h-7 px-2 gap-1 text-xs"
+                              onClick={async (e) => {
+                                e.stopPropagation();
+                                triggerHaptic('light');
+                                try {
+                                  const ok = await resetPhotoForRetry(photo.id);
+                                  if (!ok) {
+                                    toast.error('Could not queue retry', {
+                                      description: 'Photo not found locally.',
+                                    });
+                                    return;
+                                  }
+                                  toast.success('Retrying upload…');
+                                  // Kick the shared sync pipeline so the
+                                  // retry runs immediately rather than
+                                  // waiting for the next autosync tick.
+                                  const { syncPhotos } = await import('@/lib/sync-manager');
+                                  syncPhotos().catch(() => {});
+                                  // Refresh gallery shortly so the badge
+                                  // re-derives from updated IDB state.
+                                  setTimeout(() => { loadPhotos(true); }, 1500);
+                                } catch (err) {
+                                  console.warn('[PhotoGallery] Retry failed:', err);
+                                  toast.error('Could not queue retry');
+                                }
+                              }}
+                            >
+                              <RefreshCw className="w-3 h-3" />
+                              Retry
+                            </Button>
+                          )}
+                          {photo.staleUpload && status.kind !== 'failed' && (
+                            <Badge variant="destructive" className="gap-1 whitespace-nowrap">
+                              <AlertTriangle className="w-3 h-3" />
+                              Stuck
+                            </Badge>
+                          )}
+                        </>
+                      );
+                    })()}
                   </div>
                   {!readOnly && !batchMode && (
                     <Button
