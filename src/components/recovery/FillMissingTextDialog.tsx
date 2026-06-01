@@ -64,19 +64,20 @@ export function FillMissingTextDialog({
         clientMetadata: { app_version: appVersion },
       });
 
-      if (result.ok) {
+      if (result.ok === true) {
         onSuccess(result);
         onOpenChange(false);
         return;
       }
 
-      if (result.reason === 'needs_rescan') {
+      const failed = result as Extract<RestoreResult, { ok: false }>;
+      if (failed.reason === 'needs_rescan') {
         onNeedsRescan();
         onOpenChange(false);
         return;
       }
 
-      setFailure(plainEnglishFailure(result.reason));
+      setFailure(plainEnglishFailure(failed.reason));
     } finally {
       setSubmitting(false);
     }
