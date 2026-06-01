@@ -673,6 +673,22 @@ interface CloudSnapshotsPanelProps {
   allowDelete?: boolean;
 }
 
+// Display metadata for the Cloud Snapshots panel. Mirrors the local panel's
+// STATUS_META wording, but uses "Cloud backup" for the `local_only` bucket
+// (the row's presence in `report_cloud_backups` already proves a cloud copy
+// exists; the local IDB just couldn't be consulted to refine the status).
+// Exported for unit tests.
+export const CLOUD_STATUS_META: Record<ResolvedSnapshotStatus, {
+  label: string;
+  variant: "default" | "secondary" | "outline";
+  tooltip: string;
+}> = {
+  synced:     { label: "Report synced",        variant: "default",   tooltip: "Latest local edit was uploaded to the server." },
+  pending:    { label: "Pending report sync",  variant: "secondary", tooltip: "Local changes exist that have not yet been uploaded. Sync will retry." },
+  local_only: { label: "Cloud backup",         variant: "outline",   tooltip: "Cloud recovery snapshot exists. Local report record wasn't found on this device, so sync status couldn't be confirmed here." },
+  unknown:    { label: "Status unknown",       variant: "outline",   tooltip: "Couldn't read the report record on this device to confirm sync status." },
+};
+
 export function CloudSnapshotsPanel({ allowDelete = true }: CloudSnapshotsPanelProps) {
   const [snapshots, setSnapshots] = useState<CloudBackupEntry[]>([]);
   const [loading, setLoading] = useState(true);
@@ -685,6 +701,48 @@ export function CloudSnapshotsPanel({ allowDelete = true }: CloudSnapshotsPanelP
   type CloudSnapshotData = CloudBackupFull['snapshot_data'];
   const [previewState, setPreviewState] = useState<{ open: boolean; snapshot: CloudSnapshotData | null; loading: boolean; row: CloudBackupEntry | null }>({ open: false, snapshot: null, loading: false, row: null });
   const previewCache = useRef<Map<string, CloudSnapshotData>>(new Map());
+
+  // Read-only status resolution. Replaces the misleading envelope `synced`
+  // flag (originating from `report_cloud_backups.synced`) with the actual
+  // report's current local sync state from IndexedDB. No writes, no
+  // restores, no `markCloudBackupSynced`. See
+  // `src/lib/local-backup-status.ts`.
+  const [statusMap, setStatusMap] = useState<Map<string, ResolvedSnapshotStatus>>(
+    () => new Map(),
+  );
+  useEffect(() => {
+    let cancelled = false;
+    void (async () => {
+      try {
+        const next = await resolveSnapshotStatuses(
+          snapshots.map((s) => ({
+            reportType: s.report_type as ReportType,
+            reportId: s.report_id,
+          })),
+        );
+        if (!cancelled) setStatusMap(next);
+      } catch {
+        // Resolver never throws, but defensively swallow.
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [snapshots]);
+
+  const getStatusFor = (s: CloudBackupEntry): ResolvedSnapshotStatus =>
+    statusMap.get(snapshotStatusKey({ reportType: s.report_type as ReportType, reportId: s.report_id })) ?? "unknown";
+
+  const renderCloudStatusBadge = (status: ResolvedSnapshotStatus, opts?: { className?: string }) => {
+    const meta = CLOUD_STATUS_META[status];
+    return (
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <Badge variant={meta.variant} className={opts?.className}>{meta.label}</Badge>
+        </TooltipTrigger>
+        <TooltipContent>{meta.tooltip}</TooltipContent>
+      </Tooltip>
+    );
+  };
+
 
   const handlePreview = useCallback(async (s: CloudBackupEntry) => {
     if (previewCache.current.has(s.id)) {
