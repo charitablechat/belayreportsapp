@@ -50,7 +50,12 @@ const FORBIDDEN_IMPORT_PATTERNS: ReadonlyArray<{ name: string; re: RegExp }> = [
 ];
 
 describe('training-recovery-scan is structurally read-only', () => {
-  const source = readFileSync(SCANNER_PATH, 'utf8');
+  const rawSource = readFileSync(SCANNER_PATH, 'utf8');
+  // Strip block and line comments — the file's own header documents the
+  // forbidden tokens, which would otherwise trigger false positives.
+  const source = rawSource
+    .replace(/\/\*[\s\S]*?\*\//g, '')
+    .replace(/^\s*\/\/.*$/gm, '');
 
   for (const { name, re } of FORBIDDEN_PATTERNS) {
     it(`does not contain write token: ${name}`, () => {
