@@ -328,37 +328,6 @@ export default function RecoveryAndSyncHealth() {
     );
   }, [localTrainings, serverTrainings, userId]);
 
-  // Merge: local first; append server rows that aren't already represented locally.
-  const reports = useMemo<LocalReportEntry[]>(() => {
-    const byId = new Map<string, LocalReportEntry>();
-    for (const r of localTrainings) byId.set(r.id, r);
-    for (const s of serverTrainings as Array<Record<string, unknown>>) {
-      const id = typeof s.id === 'string' ? s.id : null;
-      if (!id || byId.has(id)) continue;
-      // Shared-device safety: if user_id is present on the server row, require it to match.
-      if (userId && typeof s.user_id === 'string' && s.user_id !== userId) continue;
-      const displayName =
-        (typeof s.organization_name === 'string' && s.organization_name) ||
-        (typeof s.site_name === 'string' && s.site_name) ||
-        'Untitled training';
-      const date = typeof s.training_date === 'string' ? s.training_date : null;
-      const status = typeof s.status === 'string' ? s.status : null;
-      const updatedAt =
-        typeof s.updated_at === 'string' ? Date.parse(s.updated_at) : null;
-      byId.set(id, {
-        kind: 'training',
-        id,
-        displayName,
-        subLabel: [date, status].filter(Boolean).join(' · ') || 'On server',
-        localOnly: false,
-        updatedAt: Number.isFinite(updatedAt as number) ? (updatedAt as number) : null,
-      });
-    }
-    return Array.from(byId.values()).sort(
-      (a, b) => (b.updatedAt ?? 0) - (a.updatedAt ?? 0),
-    );
-  }, [localTrainings, serverTrainings, userId]);
-
   const pinnedIds = useMemo(
     () => new Set(PINNED_TRAINING_RECOVERIES.map((p) => p.trainingId)),
     [],
