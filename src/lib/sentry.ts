@@ -189,7 +189,7 @@ export function runBeforeSend<
     const message = typeof e.message === 'string' ? e.message : '';
     const classification = classifyRecoverableSentryEvent(name, message);
     if (!classification) return event;
-    if ('drop' in classification && classification.drop) {
+    if ('drop' in classification) {
       if (classification.breadcrumb && sentryModule) {
         try {
           sentryModule.addBreadcrumb({
