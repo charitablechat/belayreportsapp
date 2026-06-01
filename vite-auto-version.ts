@@ -4,20 +4,53 @@ import { execSync } from 'child_process';
 import type { Plugin } from 'vite';
 
 /**
- * Version strategy: read base "X.Y" from version.json, append the FULL git
- * commit count as the patch (monotonic, never wraps). The short commit hash
- * is exposed as a separate `build` field in /version.json so /version.json
- * stays a clean SemVer string while still being uniquely identifiable per
- * deploy.
+ * Inlined twin of `scripts/bump-version.mjs#bumpVersion` so the Vite config
+ * has zero cross-format import surface. Both copies are covered by the same
+ * unit-test suite (`src/lib/__tests__/version-rollover.test.ts`) which
+ * exercises the .mjs export; if you change rules here, change them there too.
+ */
+function bumpVersion(current: string, kind: 'patch' | 'minor' | 'major'): string {
+  const parts = String(current).split('.').map((p) => parseInt(p, 10));
+  if (parts.length !== 3 || parts.some((p) => !Number.isFinite(p) || p < 0)) {
+    throw new Error(`Unparseable version: "${current}" (expected MAJOR.MINOR.PATCH)`);
+  }
+  let [maj, min, pat] = parts;
+  if (kind === 'patch') {
+    pat += 1;
+    if (pat > 9) { pat = 0; min += 1; }
+    if (min > 9) { min = 0; maj += 1; }
+  } else if (kind === 'minor') {
+    min += 1; pat = 0;
+    if (min > 9) { min = 0; maj += 1; }
+  } else if (kind === 'major') {
+    maj += 1; min = 0; pat = 0;
+  } else {
+    throw new Error(`Unknown bump kind: "${kind}" (use patch|minor|major)`);
+  }
+  return `${maj}.${min}.${pat}`;
+}
+
+/**
+ * Version strategy (rewritten 2026-06):
  *
- * Format: {major}.{minor}.{commitCount}   e.g. 4.7.142
- * Build:  short commit hash                e.g. a3f29c1
+ *   - `version.json` is the single source of truth: { "version": "MAJOR.MINOR.PATCH" }.
+ *   - On a PRODUCTION build (`mode === 'production'`), the plugin auto-increments
+ *     the patch with a single-digit 9-rollover (4.8.0 → 4.8.1 … → 4.8.9 → 4.9.0,
+ *     then 4.9.9 → 5.0.0) and writes the new value back to version.json so the
+ *     committed file always reflects the most recently shipped version.
+ *   - On dev / preview / non-prod builds, the version is read as-is (no bump),
+ *     so running `vite dev` does not churn the file.
+ *   - The short git commit hash is still exposed as `BUILD_COMMIT` for Sentry
+ *     release tagging and audit-row traceability, but it is no longer part of
+ *     the user-visible version string.
  *
- * Why monotonic: the previous `(commits % 9) + 1` scheme caused version
- * collisions every 9 commits — different builds produced identical version
- * strings, so `isVersionNewer()` returned false and stale clients never
- * received update prompts. Monotonic patch + dist-only emission of
- * /version.json (no public/ mutation) eliminates this entire class of bug.
+ * Why this replaced the old "patch = git rev-list count" scheme: that produced
+ * 6-digit patches like `4.7.743127` because Lovable's commit count includes
+ * internal commits. The numbers were monotonic and collision-free but visually
+ * impossible to scan. Manual short SemVer + 9-rollover keeps every deploy
+ * unique while staying human-readable; the comparator in `version-check.ts`
+ * already handles SemVer correctly so the stale-build banner and min-version
+ * policy continue to work unchanged.
  */
 const VERSION_FILE = path.resolve(__dirname, 'version.json');
 
@@ -43,28 +76,6 @@ function generateTimestamp(): { buildDate: string; buildTimestamp: string } {
   return { buildDate, buildTimestamp };
 }
 
-let warnedAboutGitFallback = false;
-
-function getCommitCount(): number {
-  try {
-    const out = execSync('git rev-list --count HEAD', { encoding: 'utf-8' }).trim();
-    const n = parseInt(out, 10);
-    if (Number.isFinite(n) && n > 0) return n;
-    throw new Error('git returned non-positive count');
-  } catch {
-    if (!warnedAboutGitFallback) {
-      warnedAboutGitFallback = true;
-      console.warn(
-        '[vite-auto-version] WARNING: git unavailable, using time-based fallback. ' +
-          'Version numbers across builds may diverge unpredictably.'
-      );
-    }
-    // Minutes since 2025-01-01 — guarantees uniqueness even without git.
-    const epoch = new Date('2025-01-01T00:00:00Z').getTime();
-    return Math.floor((Date.now() - epoch) / 60000);
-  }
-}
-
 function getCommitHash(): string {
   try {
     return execSync('git rev-parse --short HEAD', { encoding: 'utf-8' }).trim();
@@ -73,14 +84,16 @@ function getCommitHash(): string {
   }
 }
 
-function computeVersion(): string {
+function readVersion(): string {
   const raw = JSON.parse(fs.readFileSync(VERSION_FILE, 'utf-8'));
-  const base: string = raw.version || '1.0.0';
-  const parts = base.split('.').map((p: string) => parseInt(p, 10));
-  const major = Number.isFinite(parts[0]) ? parts[0] : 1;
-  const minor = Number.isFinite(parts[1]) ? parts[1] : 0;
-  const patch = getCommitCount(); // monotonic, no modulo
-  return `${major}.${minor}.${patch}`;
+  const v = typeof raw?.version === 'string' ? raw.version : '0.0.0';
+  // Sanity-check shape; fall back to "0.0.0" rather than crash the build.
+  if (!/^\d+\.\d+\.\d+$/.test(v)) return '0.0.0';
+  return v;
+}
+
+function writeVersion(next: string): void {
+  fs.writeFileSync(VERSION_FILE, JSON.stringify({ version: next }, null, 2) + '\n');
 }
 
 export function viteAutoVersion(): Plugin {
@@ -89,18 +102,27 @@ export function viteAutoVersion(): Plugin {
 
   return {
     name: 'vite-auto-version',
-    config() {
-      resolvedVersion = computeVersion();
+    config(_userConfig, env) {
+      const current = readVersion();
+
+      // Auto-bump patch on production builds only. Dev / preview reads as-is.
+      if (env.command === 'build' && env.mode === 'production') {
+        try {
+          resolvedVersion = bumpVersion(current, 'patch');
+          writeVersion(resolvedVersion);
+        } catch (err) {
+          // If the bump fails for any reason, fall back to the current value
+          // rather than blocking the build. The build will still produce a
+          // working bundle; the version just won't tick up this deploy.
+          console.warn('[vite-auto-version] bump failed, using current version:', err);
+          resolvedVersion = current;
+        }
+      } else {
+        resolvedVersion = current;
+      }
+
       resolvedHash = getCommitHash();
       const { buildDate, buildTimestamp } = generateTimestamp();
-
-      // NOTE: We intentionally do NOT write public/version.json anymore.
-      // The dist-emitted /version.json (see generateBundle) is the only
-      // canonical copy at runtime. Mutating the source file caused builds
-      // to clobber the committed value and produced confusing diffs.
-      // In `vite dev`, Vite serves /version.json from the in-memory plugin
-      // emit; if you run `vite preview` without a prior build, the route
-      // 404s — that is expected.
 
       return {
         define: {
@@ -121,10 +143,9 @@ export function viteAutoVersion(): Plugin {
         );
       });
     },
-    // Emit /version.json into the build output. Includes both the SemVer
-    // string and the short commit hash so clients can disambiguate two
-    // builds that happen to share major.minor.patch (shouldn't happen with
-    // monotonic patch, but the hash is a belt-and-suspenders guarantee).
+    // Emit /version.json into the build output. Build hash stays as a
+    // secondary tiebreaker for diagnostics; the visible version is the
+    // short SemVer string.
     generateBundle() {
       this.emitFile({
         type: 'asset',
