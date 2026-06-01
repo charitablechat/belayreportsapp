@@ -271,6 +271,12 @@ export default function TrainingForm() {
   const summaryRef = useRef<DbRow | null>(null);
   const pendingSummaryFieldsRef = useRef<Record<string, string>>({});
   const summaryLocalSnapshotRef = useRef<DbRow | null>(null);
+  // Monotonic save sequence + wall-clock — used to detect when a refetch
+  // belongs to an older save and to keep the form's dirty flag honest when
+  // the user keeps typing after a save started. See `saveTraining.finally`
+  // and the loadTraining merge branches.
+  const saveSeqRef = useRef(0);
+  const saveStartedAtRef = useRef<number>(0);
 
   // Track which child data types loaded successfully (not from timeout fallback)
   const childDataLoadedRef = useRef<Record<string, boolean>>({
