@@ -11,7 +11,8 @@ import { compressImage } from "@/lib/image-compression";
 import { toast } from "@/components/ui/sonner";
 import { getUserWithCache } from "@/lib/cached-auth";
 import { getCachedPhotoBlob, cachePhotoFromRemote } from "@/lib/photo-cache";
-import { savePhotoOffline, markPhotoAsUploaded, updatePhotoPath, getCircuitBreakerStatus, updateOfflinePhotoCaption } from "@/lib/offline-storage";
+import { savePhotoOffline, markPhotoAsUploaded, updatePhotoPath, getCircuitBreakerStatus, updateOfflinePhotoCaption, setPhotoLastError } from "@/lib/offline-storage";
+import { LOVABLE_PREVIEW_UPLOAD_MESSAGE } from "@/lib/photo-status";
 import { savePhotoReceipt } from "@/lib/photo-receipts";
 import { saveToDevice } from "@/lib/save-to-device";
 import { useNetworkStatus } from "@/hooks/useNetworkStatus";
@@ -513,7 +514,14 @@ function ItemPhotoUpload({
       if (isPhotoTraceEnabled()) photoTrace('uploadInBackground.failed', { err: String((error as any)?.message ?? error) }, cid);
       // Photo remains in IndexedDB with uploaded=false — useAutoSync will retry
       console.warn('[ItemPhotoUpload] Background upload failed, queued for later:', error);
-
+      // Surface the failure to the UI (PhotoGallery reads lastError to render
+      // "Upload failed — tap to retry"). Without this stamp the failure was
+      // console-only and the row badge stayed on "Pending" forever.
+      try {
+        const message = (error as { message?: string } | null)?.message
+          ?? String(error ?? 'Upload failed');
+        await setPhotoLastError(photoId, message);
+      } catch { /* non-critical */ }
     }
   }, [inspectionId, photoSection, itemName, onGalleryRefresh]);
 
@@ -539,6 +547,18 @@ function ItemPhotoUpload({
       });
       return;
     }
+
+    // Lovable preview is read-only by design. Surface a friendly,
+    // unambiguous message instead of silently failing the upload chain
+    // downstream. Mirrors the PhotoCapture gate so all entry points
+    // behave identically across web, PWA, and iPad.
+    try {
+      const { isLovablePreview } = await import('@/lib/environment');
+      if (isLovablePreview()) {
+        toast.info("Preview mode", { description: LOVABLE_PREVIEW_UPLOAD_MESSAGE });
+        return;
+      }
+    } catch { /* environment probe is best-effort */ }
 
 
     setUploading(true);
