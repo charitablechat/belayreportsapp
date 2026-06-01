@@ -428,6 +428,32 @@ export function LocalSnapshotsPanel({ allowDelete = true }: SnapshotsPanelProps)
     try { return format(new Date(ts), "MMM d, yyyy h:mm a"); } catch { return "N/A"; }
   };
 
+  // Display metadata for the resolved sync status. Wording approved by
+  // product: "Pending report sync" (not "Pending sync") makes clear the
+  // status refers to the underlying report, not the snapshot envelope.
+  const STATUS_META: Record<ResolvedSnapshotStatus, {
+    label: string;
+    variant: "default" | "secondary" | "outline";
+    tooltip: string;
+  }> = {
+    synced:     { label: "Report synced",      variant: "default",   tooltip: "Latest local edit was uploaded to the server." },
+    pending:    { label: "Pending report sync", variant: "secondary", tooltip: "Local changes exist that have not yet been uploaded. Sync will retry." },
+    local_only: { label: "Local backup",        variant: "outline",   tooltip: "On-device recovery snapshot. Server sync status couldn't be confirmed." },
+    unknown:    { label: "Status unknown",      variant: "outline",   tooltip: "Couldn't read the report record on this device to confirm sync status." },
+  };
+
+  const renderStatusBadge = (status: ResolvedSnapshotStatus, opts?: { className?: string }) => {
+    const meta = STATUS_META[status];
+    return (
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <Badge variant={meta.variant} className={opts?.className}>{meta.label}</Badge>
+        </TooltipTrigger>
+        <TooltipContent>{meta.tooltip}</TooltipContent>
+      </Tooltip>
+    );
+  };
+
   const filteredSnapshots = snapshots.filter(s => {
     if (!searchQuery) return true;
     const q = searchQuery.toLowerCase();
