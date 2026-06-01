@@ -665,6 +665,7 @@ export function LocalSnapshotsPanel({ allowDelete = true }: SnapshotsPanelProps)
         : undefined}
     />
     </>
+    </TooltipProvider>
   );
 }
 
