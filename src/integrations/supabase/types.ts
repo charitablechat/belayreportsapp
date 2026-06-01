@@ -2634,6 +2634,16 @@ export type Database = {
         Returns: number
       }
       run_retention_cleanup: { Args: never; Returns: Json }
+      self_service_fill_missing_training_field: {
+        Args: {
+          p_client_metadata?: Json
+          p_field: string
+          p_recovered_text: string
+          p_scan_seen_updated_at?: string
+          p_training_id: string
+        }
+        Returns: Json
+      }
       set_bulk_delete_opt_in: { Args: never; Returns: undefined }
       soft_delete_record: {
         Args: {
