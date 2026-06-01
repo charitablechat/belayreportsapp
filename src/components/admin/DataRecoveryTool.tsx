@@ -261,6 +261,31 @@ export function LocalSnapshotsPanel({ allowDelete = true }: SnapshotsPanelProps)
     setStorageInfo(getBackupStorageInfo());
   }, []);
 
+  // Read-only status resolution. Replaces the misleading envelope `synced`
+  // flag with the actual report's current local sync state from IndexedDB.
+  // No writes, no restores, no `markSnapshotSynced`. See
+  // `src/lib/local-backup-status.ts`.
+  const [statusMap, setStatusMap] = useState<Map<string, ResolvedSnapshotStatus>>(
+    () => new Map(),
+  );
+  useEffect(() => {
+    let cancelled = false;
+    void (async () => {
+      try {
+        const next = await resolveSnapshotStatuses(
+          snapshots.map((s) => ({ reportType: s.reportType, reportId: s.reportId })),
+        );
+        if (!cancelled) setStatusMap(next);
+      } catch {
+        // Resolver itself never throws, but defensively swallow.
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [snapshots]);
+
+  const getStatusFor = (s: SnapshotMeta): ResolvedSnapshotStatus =>
+    statusMap.get(snapshotStatusKey({ reportType: s.reportType, reportId: s.reportId })) ?? "unknown";
+
   const handlePreview = useCallback((s: SnapshotMeta) => {
     const snap = getReportSnapshot(s.reportType, s.reportId);
     setPreviewState({
