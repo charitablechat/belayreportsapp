@@ -239,13 +239,13 @@ describe('performRestore', () => {
       recoveredText: 'hi',
       scanSeenUpdatedAt: null,
     });
-    expect(r).toMatchObject({ ok: false, reason: 'rpc_failed' });
-    if (!r.ok) {
-      expect(r.detail).toBe('network down');
-      // Plain-English message must NOT include the raw detail.
-      const msg = plainEnglishFailure(r.reason);
-      expect(msg).not.toContain('network down');
-    }
+    expect(r.ok).toBe(false);
+    const failure = r as Extract<typeof r, { ok: false }>;
+    expect(failure.reason).toBe('rpc_failed');
+    expect(failure.detail).toBe('network down');
+    // Plain-English message must NOT include the raw detail.
+    const msg = plainEnglishFailure(failure.reason);
+    expect(msg).not.toContain('network down');
   });
 
   it('silent-null (data=null, error=null) → internal_error', async () => {
