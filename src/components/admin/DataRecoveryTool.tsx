@@ -6,8 +6,14 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { RefreshCw, Upload, Trash2, AlertTriangle, Database, HardDrive, CheckCircle2, XCircle, Clock, Loader2, Download, RotateCcw, Shield, Cloud, Search, X, Eye } from "lucide-react";
+import { RefreshCw, Upload, Trash2, AlertTriangle, Database, HardDrive, CheckCircle2, XCircle, Clock, Loader2, Download, RotateCcw, Shield, Cloud, Search, X, Eye, Info } from "lucide-react";
 import { SnapshotPreviewDialog } from "./SnapshotPreviewDialog";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
+import {
+  resolveSnapshotStatuses,
+  snapshotStatusKey,
+  type ResolvedSnapshotStatus,
+} from "@/lib/local-backup-status";
 import { Input } from "@/components/ui/input";
 import { toast } from "sonner";
 import { format, formatDistanceToNow } from "date-fns";
