@@ -125,6 +125,7 @@ describe("classifyRecoverableSentryEvent", () => {
       classifyRecoverableSentryEvent("AbortError", "The user aborted a request."),
     ).toBeNull();
   });
+});
 
 describe("runBeforeSend", () => {
   it("downgrades a matching default-level event", () => {
