@@ -170,6 +170,8 @@ import {
 import { 
   validateInspectionPackage,
 } from "./validation-schemas";
+import { normalizeResultFieldsOnRows } from "./inspection-result-normalizer";
+import * as Sentry from "@sentry/react";
 import {
   validateTrainingPackage,
 } from "./training-validation-schemas";
@@ -991,14 +993,49 @@ export async function syncInspectionAtomic(inspectionId: string, preValidatedUse
       }));
     };
     
-    const systems = transformTempIds(rawSystems);
-    const ziplines = transformTempIds(rawZiplines);
-    const equipment = transformTempIds(rawEquipment);
+    const systemsRaw = transformTempIds(rawSystems);
+    const ziplinesRaw = transformTempIds(rawZiplines);
+    const equipmentRaw = transformTempIds(rawEquipment);
     const standards = transformTempIds(rawStandards);
     const summary = rawSummary?.id?.startsWith('temp-') 
       ? { ...rawSummary, id: crypto.randomUUID() } 
       : rawSummary;
-    
+
+    // Heal legacy result wording (e.g. 'pass/\nrec' → 'pass w/provisions')
+    // immediately before Zod validation. Shared cross-platform pipeline —
+    // see src/lib/inspection-result-normalizer.ts. Only the in-flight
+    // payload is mutated; IDB is updated by the existing post-sync
+    // write-back path.
+    const systemsNorm = normalizeResultFieldsOnRows(systemsRaw as Array<Record<string, unknown>>);
+    const ziplinesNorm = normalizeResultFieldsOnRows(ziplinesRaw as Array<Record<string, unknown>>);
+    const equipmentNorm = normalizeResultFieldsOnRows(equipmentRaw as Array<Record<string, unknown>>);
+    const systems = systemsNorm.rows as typeof systemsRaw;
+    const ziplines = ziplinesNorm.rows as typeof ziplinesRaw;
+    const equipment = equipmentNorm.rows as typeof equipmentRaw;
+    if (systemsNorm.changed || ziplinesNorm.changed || equipmentNorm.changed) {
+      console.warn('[Atomic Sync] result-normalizer healed legacy values', {
+        inspectionId,
+        systems: systemsNorm.changed,
+        ziplines: ziplinesNorm.changed,
+        equipment: equipmentNorm.changed,
+      });
+    }
+    const allUnknowns = [
+      ...systemsNorm.unknowns.map(u => ({ table: 'systems', ...u })),
+      ...ziplinesNorm.unknowns.map(u => ({ table: 'ziplines', ...u })),
+      ...equipmentNorm.unknowns.map(u => ({ table: 'equipment', ...u })),
+    ];
+    if (allUnknowns.length > 0) {
+      try {
+        Sentry.addBreadcrumb({
+          category: 'recoverable',
+          level: 'warning',
+          message: 'result-normalizer-unknown',
+          data: { inspectionId, unknowns: allUnknowns.slice(0, 5) },
+        });
+      } catch { /* breadcrumb best-effort */ }
+    }
+
     // 2. Validate the complete package
     const validation = validateInspectionPackage({
       inspection,
