@@ -239,9 +239,42 @@ async function getAllRelatedData(db, storeName, parentId, indexName) {
   });
 }
 
+// Mirror of src/lib/inspection-result-normalizer.ts. Service-worker context
+// cannot import TS modules, so the same rules are duplicated here. Keep
+// these two implementations in lockstep.
+function swNormalizeInspectionResult(raw) {
+  if (raw === null || raw === undefined || typeof raw !== 'string') return null;
+  const collapsed = raw.replace(/[\s/]+/g, ' ').trim().toLowerCase();
+  if (collapsed === '') return null;
+  if (collapsed === 'fail' || collapsed.startsWith('fail ') || collapsed.startsWith('failed')) return 'fail';
+  if (collapsed === 'na' || collapsed === 'n a' || collapsed === 'not applicable') return 'na';
+  if (collapsed === 'pass w provisions' || collapsed === 'pass with provisions') return 'pass w/provisions';
+  if (collapsed.startsWith('pass w ') || collapsed.startsWith('pass with ')) return 'pass w/provisions';
+  if (collapsed === 'pass rec' || collapsed === 'pass recs' || collapsed === 'pass recommendation' || collapsed === 'pass recommendations') return 'pass w/provisions';
+  if (collapsed === 'conditional pass' || collapsed === 'pass conditional') return 'pass w/provisions';
+  if (collapsed === 'pass' || collapsed === 'passed') return 'pass';
+  return null;
+}
+function swNormalizeResultFields(rows) {
+  const fields = ['result', 'cable_result', 'braking_result', 'ead_result'];
+  for (const row of rows) {
+    for (const f of fields) {
+      if (row && typeof row[f] === 'string' && row[f] !== '') {
+        const n = swNormalizeInspectionResult(row[f]);
+        if (n !== null && n !== row[f]) row[f] = n;
+      }
+    }
+  }
+}
+
 // Validate inspection package before sync
 function validateInspectionData(inspection, systems, ziplines, equipment, standards, summary) {
   const errors = [];
+  
+  // Heal legacy result wording in-place before the presence check below.
+  swNormalizeResultFields(systems);
+  swNormalizeResultFields(ziplines);
+  swNormalizeResultFields(equipment);
   
   // Validate inspection
   if (!inspection.id || !inspection.organization || !inspection.location) {
