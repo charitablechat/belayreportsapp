@@ -3504,7 +3504,7 @@ export default function InspectionForm() {
               <TabsContent value="summary" className="space-y-4">
                 <SummarySection 
                   summary={summary} 
-                  onUpdate={setSummary} 
+                  onUpdate={handleSummaryUpdate} 
                   onImmediateSave={stableTriggerImmediateSave}
                   onRegenerate={handleManualRegenerateSummary}
                   onNextDateUserEdit={handleNextDateUserEdit}
