@@ -613,7 +613,23 @@ export default function TrainingForm() {
               setVerifiableItems(backup.children.verifiable_items || []);
               setSystemsInPlace(backup.children.systems_in_place || []);
               const summaryArr = backup.children.summary;
-              setSummary(summaryArr?.[0] || { id: crypto.randomUUID(), training_id: id });
+              setSummary(prev => {
+                const incoming = (summaryArr?.[0] ?? null) as (DbRow & { field_timestamps?: Record<string, string> | null }) | null;
+                const local = summaryRef.current ?? prev;
+                if (!local && !incoming) return { id: crypto.randomUUID(), training_id: id } as DbRow;
+                const { next } = applyIncomingSummary(
+                  local as (DbRow & { field_timestamps?: Record<string, string> | null }) | null,
+                  incoming,
+                  {
+                    source: 'backup-restore',
+                    trainingId: id,
+                    currentSaveSeq: saveSeqRef.current,
+                    hasUnsaved: hasUnsavedRef.current,
+                    focusInEditor: typeof document !== 'undefined' && !!document.activeElement?.closest?.('[data-form-section="training-summary"]'),
+                  },
+                );
+                return (next ?? local ?? { id: crypto.randomUUID(), training_id: id }) as DbRow;
+              });
             }
             toast.info("Restored from local backup", {
               description: backup.photoMetadata?.some(p => !p.uploaded)
