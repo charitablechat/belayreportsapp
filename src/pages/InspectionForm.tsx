@@ -438,6 +438,42 @@ export default function InspectionForm() {
   }, []);
 
   /**
+   * SummarySection.onUpdate wrapper. Detects which tracked summary field
+   * the user just edited (by diffing against the previous summary state)
+   * and stamps `field_timestamps[field] = now()` so the load-merge guard
+   * (`mergeInspectionSummaryPreservingPopulated`) can distinguish a real
+   * user edit / explicit clear from a stale background payload.
+   *
+   * Falls back to a plain `setSummary(next)` for non-tracked fields
+   * (e.g. `id`, `inspection_id` housekeeping) so existing behavior is
+   * preserved.
+   */
+  const handleSummaryUpdate = useCallback((next: any) => {
+    setSummary(prev => {
+      if (!prev) return next;
+      const nowIso = new Date().toISOString();
+      const stamps: Record<string, string> = {
+        ...((prev as { field_timestamps?: Record<string, string> | null }).field_timestamps ?? {}),
+      };
+      let stamped = false;
+      for (const field of INSPECTION_SUMMARY_FIELDS) {
+        const before = (prev as Record<string, unknown>)[field];
+        const after = (next as Record<string, unknown>)[field];
+        if (before !== after) {
+          stamps[field] = nowIso;
+          stamped = true;
+        }
+      }
+      if (!stamped) return next;
+      return {
+        ...next,
+        updated_at: nowIso,
+        field_timestamps: stamps,
+      };
+    });
+  }, []);
+
+  /**
    * Phase 2 perf: stable callback identity so memoized child tables
    * (EquipmentTable, OperatingSystemsTable, ZiplinesTable) don't
    * re-render on every InspectionForm render just because a fresh
