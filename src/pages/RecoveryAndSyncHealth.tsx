@@ -423,7 +423,9 @@ export default function RecoveryAndSyncHealth() {
       try {
         const { data } = await supabase
           .from('trainings')
-          .select('id, organization, location, start_date, status, updated_at, inspector_id')
+          .select(
+            'id, organization, location, start_date, status, updated_at, inspector_id, trainer_id, trainer_of_record',
+          )
           .order('updated_at', { ascending: false })
           .limit(200);
         return Array.isArray(data) ? data : [];
@@ -434,15 +436,77 @@ export default function RecoveryAndSyncHealth() {
     staleTime: 30_000,
   });
 
+  // Optional profile enrichment — batched lookup for trainer/inspector names.
+  const profileIds = useMemo(() => {
+    const ids = new Set<string>();
+    for (const s of serverTrainings) {
+      if (typeof s.trainer_id === 'string' && s.trainer_id) ids.add(s.trainer_id);
+      if (typeof s.inspector_id === 'string' && s.inspector_id) ids.add(s.inspector_id);
+    }
+    return Array.from(ids).sort();
+  }, [serverTrainings]);
+
+  const { data: profileMap } = useQuery({
+    queryKey: ['recovery-profile-names', profileIds.join('|')],
+    enabled: online && profileIds.length > 0,
+    queryFn: async () => {
+      try {
+        const { data } = await supabase
+          .from('profiles')
+          .select('user_id, first_name, last_name')
+          .in('user_id', profileIds);
+        const map = new Map<string, string>();
+        if (Array.isArray(data)) {
+          for (const p of data as Array<Record<string, unknown>>) {
+            const uid = typeof p.user_id === 'string' ? p.user_id : null;
+            if (!uid) continue;
+            const name = `${typeof p.first_name === 'string' ? p.first_name : ''} ${
+              typeof p.last_name === 'string' ? p.last_name : ''
+            }`.trim();
+            if (name) map.set(uid, name);
+          }
+        }
+        return map;
+      } catch {
+        return new Map<string, string>();
+      }
+    },
+    staleTime: 5 * 60_000,
+  });
+
+  const pinnedIds = useMemo(
+    () => new Set(PINNED_TRAINING_RECOVERIES.map((p) => p.trainingId)),
+    [],
+  );
+
   // Merge: local first; append server rows that aren't already represented locally.
   const reports = useMemo<LocalReportEntry[]>(() => {
     const byId = new Map<string, LocalReportEntry>();
-    for (const r of localTrainings) byId.set(r.id, r);
+    for (const r of localTrainings) byId.set(r.id, { ...r });
     for (const s of serverTrainings) {
       const id = typeof s.id === 'string' ? s.id : null;
-      if (!id || byId.has(id)) continue;
-      // Shared-device safety: if inspector_id is present, require it to match.
+      if (!id) continue;
       if (userId && typeof s.inspector_id === 'string' && s.inspector_id !== userId) continue;
+      const trainerFromProfile =
+        (typeof s.trainer_id === 'string' && profileMap?.get(s.trainer_id)) ||
+        (typeof s.inspector_id === 'string' && profileMap?.get(s.inspector_id)) ||
+        null;
+      const trainerFromColumn =
+        typeof s.trainer_of_record === 'string' && s.trainer_of_record.trim()
+          ? s.trainer_of_record.trim()
+          : null;
+      const trainerName = trainerFromProfile || trainerFromColumn || null;
+
+      const existing = byId.get(id);
+      if (existing) {
+        if (!existing.trainerName && trainerName) existing.trainerName = trainerName;
+        if (existing.fromBackupOnly) {
+          existing.fromBackupOnly = false;
+          existing.localOnly = false;
+        }
+        continue;
+      }
+
       const displayName =
         (typeof s.organization === 'string' && s.organization) ||
         (typeof s.location === 'string' && s.location) ||
@@ -458,17 +522,39 @@ export default function RecoveryAndSyncHealth() {
         subLabel: [date, status].filter(Boolean).join(' · ') || 'On server',
         localOnly: false,
         updatedAt: Number.isFinite(updatedAt as number) ? (updatedAt as number) : null,
+        trainerName,
+        startDate: date,
+        status,
+        fromBackupOnly: false,
       });
     }
-    return Array.from(byId.values()).sort(
-      (a, b) => (b.updatedAt ?? 0) - (a.updatedAt ?? 0),
-    );
-  }, [localTrainings, serverTrainings, userId]);
 
-  const pinnedIds = useMemo(
-    () => new Set(PINNED_TRAINING_RECOVERIES.map((p) => p.trainingId)),
-    [],
-  );
+    // Sort: pinned first, then newest updated_at.
+    return Array.from(byId.values()).sort((a, b) => {
+      const ap = pinnedIds.has(a.id) ? 1 : 0;
+      const bp = pinnedIds.has(b.id) ? 1 : 0;
+      if (ap !== bp) return bp - ap;
+      return (b.updatedAt ?? 0) - (a.updatedAt ?? 0);
+    });
+  }, [localTrainings, serverTrainings, userId, profileMap, pinnedIds]);
+
+  const [query, setQuery] = useState('');
+  const filteredReports = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    if (!q) return reports;
+    return reports.filter((r) => {
+      const hay = [
+        r.displayName,
+        r.subLabel,
+        r.trainerName ?? '',
+        r.startDate ?? '',
+        r.status ?? '',
+      ]
+        .join(' ')
+        .toLowerCase();
+      return hay.includes(q);
+    });
+  }, [reports, query]);
 
   return (
     <div className="min-h-screen p-4 sm:p-6 max-w-3xl mx-auto space-y-6">
