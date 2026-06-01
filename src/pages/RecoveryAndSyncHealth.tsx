@@ -22,8 +22,9 @@ import { useVersionStatus } from '@/hooks/useVersionStatus';
 import { getUserWithCache } from '@/lib/cached-auth';
 import { supabase } from '@/integrations/supabase/client';
 import {
-  listLocalTrainings,
+  listLocalTrainingsWithStatus,
   type LocalReportEntry,
+  type LocalTrainingsResult,
 } from '@/lib/recovery/local-report-index';
 import {
   scanTrainingForRecoverableText,
