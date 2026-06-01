@@ -6,8 +6,14 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { RefreshCw, Upload, Trash2, AlertTriangle, Database, HardDrive, CheckCircle2, XCircle, Clock, Loader2, Download, RotateCcw, Shield, Cloud, Search, X, Eye } from "lucide-react";
+import { RefreshCw, Upload, Trash2, AlertTriangle, Database, HardDrive, CheckCircle2, XCircle, Clock, Loader2, Download, RotateCcw, Shield, Cloud, Search, X, Eye, Info } from "lucide-react";
 import { SnapshotPreviewDialog } from "./SnapshotPreviewDialog";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
+import {
+  resolveSnapshotStatuses,
+  snapshotStatusKey,
+  type ResolvedSnapshotStatus,
+} from "@/lib/local-backup-status";
 import { Input } from "@/components/ui/input";
 import { toast } from "sonner";
 import { format, formatDistanceToNow } from "date-fns";
@@ -255,6 +261,31 @@ export function LocalSnapshotsPanel({ allowDelete = true }: SnapshotsPanelProps)
     setStorageInfo(getBackupStorageInfo());
   }, []);
 
+  // Read-only status resolution. Replaces the misleading envelope `synced`
+  // flag with the actual report's current local sync state from IndexedDB.
+  // No writes, no restores, no `markSnapshotSynced`. See
+  // `src/lib/local-backup-status.ts`.
+  const [statusMap, setStatusMap] = useState<Map<string, ResolvedSnapshotStatus>>(
+    () => new Map(),
+  );
+  useEffect(() => {
+    let cancelled = false;
+    void (async () => {
+      try {
+        const next = await resolveSnapshotStatuses(
+          snapshots.map((s) => ({ reportType: s.reportType, reportId: s.reportId })),
+        );
+        if (!cancelled) setStatusMap(next);
+      } catch {
+        // Resolver itself never throws, but defensively swallow.
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [snapshots]);
+
+  const getStatusFor = (s: SnapshotMeta): ResolvedSnapshotStatus =>
+    statusMap.get(snapshotStatusKey({ reportType: s.reportType, reportId: s.reportId })) ?? "unknown";
+
   const handlePreview = useCallback((s: SnapshotMeta) => {
     const snap = getReportSnapshot(s.reportType, s.reportId);
     setPreviewState({
@@ -397,6 +428,32 @@ export function LocalSnapshotsPanel({ allowDelete = true }: SnapshotsPanelProps)
     try { return format(new Date(ts), "MMM d, yyyy h:mm a"); } catch { return "N/A"; }
   };
 
+  // Display metadata for the resolved sync status. Wording approved by
+  // product: "Pending report sync" (not "Pending sync") makes clear the
+  // status refers to the underlying report, not the snapshot envelope.
+  const STATUS_META: Record<ResolvedSnapshotStatus, {
+    label: string;
+    variant: "default" | "secondary" | "outline";
+    tooltip: string;
+  }> = {
+    synced:     { label: "Report synced",      variant: "default",   tooltip: "Latest local edit was uploaded to the server." },
+    pending:    { label: "Pending report sync", variant: "secondary", tooltip: "Local changes exist that have not yet been uploaded. Sync will retry." },
+    local_only: { label: "Local backup",        variant: "outline",   tooltip: "On-device recovery snapshot. Server sync status couldn't be confirmed." },
+    unknown:    { label: "Status unknown",      variant: "outline",   tooltip: "Couldn't read the report record on this device to confirm sync status." },
+  };
+
+  const renderStatusBadge = (status: ResolvedSnapshotStatus, opts?: { className?: string }) => {
+    const meta = STATUS_META[status];
+    return (
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <Badge variant={meta.variant} className={opts?.className}>{meta.label}</Badge>
+        </TooltipTrigger>
+        <TooltipContent>{meta.tooltip}</TooltipContent>
+      </Tooltip>
+    );
+  };
+
   const filteredSnapshots = snapshots.filter(s => {
     if (!searchQuery) return true;
     const q = searchQuery.toLowerCase();
@@ -407,8 +464,10 @@ export function LocalSnapshotsPanel({ allowDelete = true }: SnapshotsPanelProps)
   });
 
   return (
+    <TooltipProvider delayDuration={150}>
     <>
     <Card className="backdrop-blur-md bg-white/5 dark:bg-white/[0.03] border border-white/10 rounded-xl shadow-lg shadow-black/5 overflow-hidden">
+
       <CardHeader className="px-3 md:px-6 py-4 md:p-6">
         <div className="flex items-center justify-between">
           <div className="min-w-0">
@@ -466,9 +525,7 @@ export function LocalSnapshotsPanel({ allowDelete = true }: SnapshotsPanelProps)
                     <div key={s.key} className={`rounded-lg border border-white/10 bg-white/5 dark:bg-white/[0.02] p-3 space-y-2.5 min-w-0 overflow-hidden font-mono ${s.reportId === highlightedId ? 'import-flash' : ''}`}>
                       <div className="flex items-center justify-between gap-2 flex-wrap">
                         <Badge variant="outline" className="text-xs">{s.reportType.replace('_', ' ')}</Badge>
-                        <Badge variant={s.synced ? "default" : "destructive"} className="text-xs">
-                          {s.synced ? "Synced" : "Unsynced"}
-                        </Badge>
+                        {renderStatusBadge(getStatusFor(s), { className: "text-xs" })}
                       </div>
                       <div className="space-y-1.5 min-w-0">
                         <div className="flex justify-between gap-2 text-xs">
@@ -518,8 +575,32 @@ export function LocalSnapshotsPanel({ allowDelete = true }: SnapshotsPanelProps)
                         <TableHead>Type</TableHead>
                         <TableHead>Organization</TableHead>
                         <TableHead>Device</TableHead>
-                        <TableHead>Sync</TableHead>
-                        <TableHead>Last Saved</TableHead>
+                        <TableHead>
+                          <span className="inline-flex items-center gap-1">
+                            Sync status
+                            <Tooltip>
+                              <TooltipTrigger asChild>
+                                <Info className="h-3.5 w-3.5 text-muted-foreground/70 cursor-help" />
+                              </TooltipTrigger>
+                              <TooltipContent className="max-w-xs">
+                                These are on-device recovery snapshots. Status reflects the report's local sync state when it can be verified — it is not a live server check.
+                              </TooltipContent>
+                            </Tooltip>
+                          </span>
+                        </TableHead>
+                        <TableHead>
+                          <span className="inline-flex items-center gap-1">
+                            Snapshot Saved
+                            <Tooltip>
+                              <TooltipTrigger asChild>
+                                <Info className="h-3.5 w-3.5 text-muted-foreground/70 cursor-help" />
+                              </TooltipTrigger>
+                              <TooltipContent className="max-w-xs">
+                                When this on-device backup envelope was last written. Not the report's authored time.
+                              </TooltipContent>
+                            </Tooltip>
+                          </span>
+                        </TableHead>
                         <TableHead>Size</TableHead>
                         <TableHead className="text-right">Actions</TableHead>
                       </TableRow>
@@ -533,9 +614,7 @@ export function LocalSnapshotsPanel({ allowDelete = true }: SnapshotsPanelProps)
                           <TableCell className="font-medium">{s.organization || "N/A"}</TableCell>
                           <TableCell>{s.device}</TableCell>
                           <TableCell>
-                            <Badge variant={s.synced ? "default" : "destructive"}>
-                              {s.synced ? "Synced" : "Unsynced"}
-                            </Badge>
+                            {renderStatusBadge(getStatusFor(s))}
                           </TableCell>
                           <TableCell className="text-sm text-muted-foreground">{formatDate(s.timestamp)}</TableCell>
                           <TableCell className="text-sm">{(s.sizeBytes / 1024).toFixed(1)} KB</TableCell>
@@ -586,6 +665,7 @@ export function LocalSnapshotsPanel({ allowDelete = true }: SnapshotsPanelProps)
         : undefined}
     />
     </>
+    </TooltipProvider>
   );
 }
 
