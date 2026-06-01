@@ -1032,8 +1032,33 @@ export function CloudSnapshotsPanel({ allowDelete = true }: CloudSnapshotsPanelP
                     <TableHead className="text-xs font-semibold uppercase tracking-wider text-muted-foreground/70 py-2.5 px-3">Facility</TableHead>
                     <TableHead className="text-xs font-semibold uppercase tracking-wider text-muted-foreground/70 py-2.5 px-3">User</TableHead>
                     <TableHead className="text-xs font-semibold uppercase tracking-wider text-muted-foreground/70 py-2.5 px-3">Device</TableHead>
-                    <TableHead className="text-xs font-semibold uppercase tracking-wider text-muted-foreground/70 py-2.5 px-3">Sync</TableHead>
-                    <TableHead className="text-xs font-semibold uppercase tracking-wider text-muted-foreground/70 py-2.5 px-3">Last Saved</TableHead>
+                    <TableHead className="text-xs font-semibold uppercase tracking-wider text-muted-foreground/70 py-2.5 px-3">
+                      <span className="inline-flex items-center gap-1">
+                        Sync status
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <Info className="h-3.5 w-3.5 text-muted-foreground/70 cursor-help" />
+                          </TooltipTrigger>
+                          <TooltipContent className="max-w-xs">
+                            Status reflects the report's local sync state on this device when it can be verified. It is not a live server check. The row's presence already confirms a cloud recovery snapshot exists.
+                          </TooltipContent>
+                        </Tooltip>
+                      </span>
+                    </TableHead>
+                    <TableHead className="text-xs font-semibold uppercase tracking-wider text-muted-foreground/70 py-2.5 px-3">
+                      <span className="inline-flex items-center gap-1">
+                        Snapshot Saved
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <Info className="h-3.5 w-3.5 text-muted-foreground/70 cursor-help" />
+                          </TooltipTrigger>
+                          <TooltipContent className="max-w-xs">
+                            Time the recovery snapshot envelope was written, not the report's last edit time.
+                          </TooltipContent>
+                        </Tooltip>
+                      </span>
+                    </TableHead>
+
                     <TableHead className="text-xs font-semibold uppercase tracking-wider text-muted-foreground/70 py-2.5 px-3 text-right">Actions</TableHead>
                   </TableRow>
                 </TableHeader>
