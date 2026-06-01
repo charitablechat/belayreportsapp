@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { subscribeVersionCheck, forceVersionCheck, getLastVersionResult, isVersionNewer, type VersionCheckResult } from '@/lib/version-check';
 import { isPreviewOrIframeEnvironment } from '@/lib/environment';
+import { supabase } from '@/integrations/supabase/client';
 
 export type Environment = 'preview' | 'published' | 'local';
 
@@ -13,32 +14,22 @@ export function getEnvironment(): Environment {
 }
 
 /**
- * Pinned production origin for resolving the deployed version when running
- * inside the Lovable preview. Preview is served from a different origin, so
- * a same-origin /version.json fetch returns the preview bundle's own version
- * (always one bump behind production). Polling the production custom domain
- * lets the preview badge show the same number users actually see live.
+ * In the Lovable preview we can't fetch rwreports.com/version.json directly
+ * because the production origin doesn't send CORS headers. Route through a
+ * tiny edge-function proxy (get-deployed-version) which fetches server-side
+ * and re-emits with permissive CORS. Soft-fails to null on any error so the
+ * badge silently falls back to showing the local APP_VERSION.
  */
-const PREVIEW_DEPLOYED_PROBE_URL = 'https://rwreports.com/version.json';
 const PREVIEW_POLL_INTERVAL_MS = 60 * 1000;
-const PREVIEW_FETCH_TIMEOUT_MS = 5000;
 
 async function fetchPreviewDeployedVersion(): Promise<string | null> {
-  if (typeof fetch === 'undefined') return null;
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), PREVIEW_FETCH_TIMEOUT_MS);
   try {
-    const res = await fetch(`${PREVIEW_DEPLOYED_PROBE_URL}?t=${Date.now()}`, {
-      cache: 'no-store',
-      signal: controller.signal,
-    });
-    if (!res.ok) return null;
-    const data = await res.json();
-    return typeof data?.version === 'string' ? data.version : null;
+    const { data, error } = await supabase.functions.invoke('get-deployed-version');
+    if (error) return null;
+    const v = (data as { version?: unknown } | null)?.version;
+    return typeof v === 'string' ? v : null;
   } catch {
     return null;
-  } finally {
-    clearTimeout(timer);
   }
 }
 
