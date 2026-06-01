@@ -464,8 +464,10 @@ export function LocalSnapshotsPanel({ allowDelete = true }: SnapshotsPanelProps)
   });
 
   return (
+    <TooltipProvider delayDuration={150}>
     <>
     <Card className="backdrop-blur-md bg-white/5 dark:bg-white/[0.03] border border-white/10 rounded-xl shadow-lg shadow-black/5 overflow-hidden">
+
       <CardHeader className="px-3 md:px-6 py-4 md:p-6">
         <div className="flex items-center justify-between">
           <div className="min-w-0">
@@ -523,9 +525,7 @@ export function LocalSnapshotsPanel({ allowDelete = true }: SnapshotsPanelProps)
                     <div key={s.key} className={`rounded-lg border border-white/10 bg-white/5 dark:bg-white/[0.02] p-3 space-y-2.5 min-w-0 overflow-hidden font-mono ${s.reportId === highlightedId ? 'import-flash' : ''}`}>
                       <div className="flex items-center justify-between gap-2 flex-wrap">
                         <Badge variant="outline" className="text-xs">{s.reportType.replace('_', ' ')}</Badge>
-                        <Badge variant={s.synced ? "default" : "destructive"} className="text-xs">
-                          {s.synced ? "Synced" : "Unsynced"}
-                        </Badge>
+                        {renderStatusBadge(getStatusFor(s), { className: "text-xs" })}
                       </div>
                       <div className="space-y-1.5 min-w-0">
                         <div className="flex justify-between gap-2 text-xs">
@@ -575,8 +575,32 @@ export function LocalSnapshotsPanel({ allowDelete = true }: SnapshotsPanelProps)
                         <TableHead>Type</TableHead>
                         <TableHead>Organization</TableHead>
                         <TableHead>Device</TableHead>
-                        <TableHead>Sync</TableHead>
-                        <TableHead>Last Saved</TableHead>
+                        <TableHead>
+                          <span className="inline-flex items-center gap-1">
+                            Sync status
+                            <Tooltip>
+                              <TooltipTrigger asChild>
+                                <Info className="h-3.5 w-3.5 text-muted-foreground/70 cursor-help" />
+                              </TooltipTrigger>
+                              <TooltipContent className="max-w-xs">
+                                These are on-device recovery snapshots. Status reflects the report's local sync state when it can be verified — it is not a live server check.
+                              </TooltipContent>
+                            </Tooltip>
+                          </span>
+                        </TableHead>
+                        <TableHead>
+                          <span className="inline-flex items-center gap-1">
+                            Snapshot Saved
+                            <Tooltip>
+                              <TooltipTrigger asChild>
+                                <Info className="h-3.5 w-3.5 text-muted-foreground/70 cursor-help" />
+                              </TooltipTrigger>
+                              <TooltipContent className="max-w-xs">
+                                When this on-device backup envelope was last written. Not the report's authored time.
+                              </TooltipContent>
+                            </Tooltip>
+                          </span>
+                        </TableHead>
                         <TableHead>Size</TableHead>
                         <TableHead className="text-right">Actions</TableHead>
                       </TableRow>
@@ -590,9 +614,7 @@ export function LocalSnapshotsPanel({ allowDelete = true }: SnapshotsPanelProps)
                           <TableCell className="font-medium">{s.organization || "N/A"}</TableCell>
                           <TableCell>{s.device}</TableCell>
                           <TableCell>
-                            <Badge variant={s.synced ? "default" : "destructive"}>
-                              {s.synced ? "Synced" : "Unsynced"}
-                            </Badge>
+                            {renderStatusBadge(getStatusFor(s))}
                           </TableCell>
                           <TableCell className="text-sm text-muted-foreground">{formatDate(s.timestamp)}</TableCell>
                           <TableCell className="text-sm">{(s.sizeBytes / 1024).toFixed(1)} KB</TableCell>
