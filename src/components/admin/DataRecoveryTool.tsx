@@ -23,6 +23,7 @@ import { withRestoreLock } from "@/lib/restore-lock";
 import { verifyRestoreIntegrity } from "@/lib/restore-integrity";
 import { fetchAdminEditSnapshots, restoreAdminEditSnapshot, type AdminEditSnapshotEntry } from "@/lib/admin-edit-snapshot";
 import { formatReportFilename } from "@/lib/report-naming";
+import { sanitizeRecoveryLogMetadata, sanitizeRecoveryErrorForLog } from "@/lib/recovery/restore-decision";
 import {
   getOfflineTrainings,
   getOfflineDailyAssessments,
@@ -412,7 +413,12 @@ export function LocalSnapshotsPanel({ allowDelete = true }: SnapshotsPanelProps)
           );
         }
       } catch (error) {
-        console.error('[Data Recovery] Restore failed:', error);
+        // Slice 5A: sanitized metadata + safe error summary only.
+        console.error(
+          '[Data Recovery] Restore failed:',
+          sanitizeRecoveryLogMetadata({ reportType, reportId, snapshot }),
+          sanitizeRecoveryErrorForLog(error),
+        );
         toast.error("Failed to restore snapshot");
       }
     });
@@ -813,9 +819,12 @@ export function CloudSnapshotsPanel({ allowDelete = true }: CloudSnapshotsPanelP
     // overwrite over the freshly-restored rows. Lock is released on completion
     // (success or failure); useAutoSync triggers a fresh sync on release.
     await withRestoreLock(async () => {
+      // Hoisted so the outer catch's sanitizer can include report metadata
+      // when the failure happens after fetch but before/during write.
+      let full: Awaited<ReturnType<typeof import('@/lib/cloud-backup').fetchCloudSnapshot>> | null = null;
       try {
         const { fetchCloudSnapshot } = await import('@/lib/cloud-backup');
-        const full = await fetchCloudSnapshot(snapshotId);
+        full = await fetchCloudSnapshot(snapshotId);
         if (!full) { toast.error("Failed to fetch snapshot data"); return; }
 
         const offline = await import('@/lib/offline-storage');
@@ -874,7 +883,17 @@ export function CloudSnapshotsPanel({ allowDelete = true }: CloudSnapshotsPanelP
           toast.error('Cloud restore finished but verification failed. Please refresh and confirm the report looks correct.');
         }
       } catch (error) {
-        console.error('[Cloud Recovery] Restore failed:', error);
+        // Slice 5A: sanitized metadata + safe error summary only. `full` may be
+        // undefined if the error occurred before the snapshot was fetched.
+        console.error(
+          '[Cloud Recovery] Restore failed:',
+          sanitizeRecoveryLogMetadata({
+            reportType: full?.report_type,
+            reportId: full?.report_id,
+            snapshot: full?.snapshot_data,
+          }),
+          sanitizeRecoveryErrorForLog(error),
+        );
         toast.error("Failed to restore cloud backup");
       }
     });
@@ -1171,7 +1190,13 @@ function AllUserSnapshotsPanel() {
         toast.error("Failed to restore snapshot to database");
       }
     } catch (error) {
-      console.error('[All User Snapshots] Restore failed:', error);
+      // Slice 5A: snapshot body is not in scope here (server-side restore);
+      // log only opaque snapshotId and sanitized error summary.
+      console.error(
+        '[All User Snapshots] Restore failed:',
+        { snapshotId },
+        sanitizeRecoveryErrorForLog(error),
+      );
       toast.error("Restore failed");
     } finally {
       setRestoring(null);
@@ -1373,7 +1398,13 @@ function AdminEditHistoryPanel() {
           toast.error("Failed to restore original data");
         }
       } catch (error) {
-        console.error('[Admin Edit History] Restore failed:', error);
+        // Slice 5A: snapshot body is not in scope here; log only opaque
+        // snapshotId and sanitized error summary.
+        console.error(
+          '[Admin Edit History] Restore failed:',
+          { snapshotId },
+          sanitizeRecoveryErrorForLog(error),
+        );
         toast.error("Restore failed");
       } finally {
         setRestoring(null);
