@@ -62,11 +62,14 @@ export function normalizeInspectionResult(raw: unknown): CanonicalResult | null 
     return 'fail';
   }
 
-  // N/A family.
+  // N/A family. Includes the legacy/imported wording "not inspected" — the
+  // inspector did not give a pass/fail verdict, semantically identical to N/A.
+  // Liability note: never map "not inspected" to pass/pass w/provisions/fail.
   if (
     collapsed === 'na' ||
     collapsed === 'n a' ||
     collapsed === 'not applicable' ||
+    collapsed === 'not inspected' ||
     collapsed === 'n/a'.replace(/[\s/]+/g, ' ').trim()
   ) {
     return 'na';
