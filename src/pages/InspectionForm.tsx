@@ -2461,11 +2461,15 @@ export default function InspectionForm() {
       setAutoSaving(false);
     };
 
+    const { startedAtMs } = saveRaceGuard.beginSave();
     try {
       await performSave(true, releaseAutoUiAfterLocalCommit); // Silent immediate save
       setLastSaved(new Date());
-      hasUnsavedRef.current = false;
-      setHasUnsavedChanges(false);
+      const liveUpdatedAt = (summaryRef.current as { updated_at?: string | null } | null)?.updated_at ?? null;
+      if (!saveRaceGuard.shouldKeepDirty(liveUpdatedAt, startedAtMs)) {
+        hasUnsavedRef.current = false;
+        setHasUnsavedChanges(false);
+      }
       // Non-intrusive success feedback (routes to notification center on mobile)
       toast.success("Changes saved");
       if (import.meta.env.DEV) {
