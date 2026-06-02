@@ -2613,12 +2613,16 @@ export default function InspectionForm() {
       saveInProgressRef.current = false;
     }, 8000);
 
+    const { startedAtMs } = saveRaceGuard.beginSave();
     try {
       await performSave(false, releaseUiAfterLocalCommit); // Show warnings on manual save
       setLastSaved(new Date());
       setLastManuallySaved(new Date());
-      hasUnsavedRef.current = false;
-      setHasUnsavedChanges(false);
+      const liveUpdatedAt = (summaryRef.current as { updated_at?: string | null } | null)?.updated_at ?? null;
+      if (!saveRaceGuard.shouldKeepDirty(liveUpdatedAt, startedAtMs)) {
+        hasUnsavedRef.current = false;
+        setHasUnsavedChanges(false);
+      }
       if (import.meta.env.DEV) {
         console.log('[InspectionForm] Progress saved:', isOnline ? 'online' : 'offline');
       }
