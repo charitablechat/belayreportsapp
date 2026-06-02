@@ -336,15 +336,20 @@ export default function DailyAssessmentForm() {
       clearTimeout(autoSaveTimerRef.current);
       autoSaveTimerRef.current = null;
     }
+    const { startedAtMs } = saveRaceGuard.beginSave();
     try {
       await handleSaveProgressRef.current?.();
-      hasUnsavedRef.current = false;
-      setHasUnsavedChanges(false);
+      // Race-guard gate: don't mark clean if a protected comment was
+      // typed after this save started.
+      if (!saveRaceGuard.typedAfter(startedAtMs)) {
+        hasUnsavedRef.current = false;
+        setHasUnsavedChanges(false);
+      }
       console.log('[DailyAssessmentForm] Save-before-leave completed');
     } catch (e) {
       console.warn('[DailyAssessmentForm] Save-before-leave failed:', e);
     }
-  }, []);
+  }, [saveRaceGuard]);
   saveBeforeLeaveRef.current = handleSaveAndLeave;
 
   // Stable immediate-save trigger for child fields (e.g. notes onBlur).
