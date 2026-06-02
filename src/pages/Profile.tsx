@@ -19,6 +19,12 @@ import { usePWA } from "@/hooks/usePWA";
 import { format } from "date-fns";
 import { VersionBadge } from "@/components/VersionBadge";
 import { OfflineReadinessCard } from "@/components/diagnostics/OfflineReadinessCard";
+import {
+  atomicReplaceAvatar,
+  safeDeleteOldAvatar,
+  type AvatarSupabaseLike,
+} from "@/lib/avatar-replace";
+import { updateCachedProfileAvatar } from "@/lib/profile-cache";
 
 export default function Profile() {
   const navigate = useNavigate();
