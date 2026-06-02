@@ -1,134 +1,103 @@
-# Legacy Inspection Result Wording Normalization
 
-## Problem
-Sentry surfaced (separate from ROPEWORKS-68 AbortError noise):
-```
-Validation failed: [{"path":"systems.0.result","message":"Invalid enum value. Expected 'pass' | 'pass w/provisions' | 'fail' | 'na', received 'pass/\nrec'"}]
-```
+## 1. Root cause hypothesis (high confidence)
 
-The Zod schemas (`systemSchema`, `ziplineSchema`, `equipmentSchema`, all four `*_result` fields) enforce a strict enum of `'pass' | 'pass w/provisions' | 'fail' | 'na'`. A row reached the sync validator with the literal value `pass/\nrec` (almost certainly the historical wording "pass/rec" = "pass with recommendations", the predecessor label of "pass w/provisions", with an embedded newline from some earlier copy-paste / import path).
+**There is no version-system bug. Production has not been re-published since the P1 Sentry enum-normalization fix landed.** The displayed `4.8.1` is the true current production version. `4.8.2` does not exist yet anywhere — not in `version.json`, not in any built bundle, not on the CDN.
 
-Until that row's `result` is normalized, **every** sync attempt for that inspection fails the same way forever. The current UI cannot fix it (the `<ResultSelect>` dropdown only emits the four canonical values, so re-opening the form will not overwrite the bad value unless the user touches that exact row).
+Evidence:
+- `curl https://rwreports.com/version.json` → `{"version":"4.8.1","build":"dev"}` (live production)
+- Repo `version.json` → `{"version":"4.8.0"}` (committed source of truth; the Vite plugin auto-bumps to the next patch *only on `mode === 'production'` builds*, which is what the Lovable Publish action runs — see `vite-auto-version.ts` lines ~80–95)
+- The preview panel screenshot correctly says `preview build v4.8.0` / `installed v4.8.1` / `deployed v4.8.1 — update available`. That "update available" is the preview comparing its own dev build (4.8.0) to the last published prod build (4.8.1). It is *not* claiming a 4.8.2 exists.
+- The "current" label on rwreports.com is correct: published `4.8.1` == deployed `4.8.1`.
 
-This is purely a **legacy data compatibility** issue — no current write path produces these values. Fix is sanitization at the boundaries, not a schema or UI change.
+So the P1 `"not inspected" → "na"` fix is in the workspace but has **not** shipped to end users. The next production Publish will bump `version.json` `4.8.0 → 4.8.1`… wait — see §3.
 
-## Goals
-1. Stop the perpetual sync failure for any inspection containing a legacy / malformed result value.
-2. Quietly upgrade legacy values to the closest canonical enum value at the boundary, so they pass validation and are written back to IDB + Supabase in canonical form.
-3. Preserve liability semantics: never silently upgrade something destructive (e.g. `fail` → `pass`).
-4. Stay cross-platform and shared-path per project rule: one shared normalizer used by every code path that reads inspection results.
-5. No schema migration, no UI change, no behavioral change for already-canonical values.
+## 2. Current version sources (audit complete)
 
-## Non-goals
-- No edit to the Zod enum itself. The canonical four values stay the contract.
-- No edit to `<ResultSelect>` or any form UI.
-- No new dropdown options. No new database columns.
-- No edits to Recovery & Sync Health, training restore, photos, RLS, storage, Playwright, or the Sentry pipeline.
-- No bulk server-side data fix in this slice — the in-app normalizer will heal each affected row the next time it syncs. (If, after monitoring, we still see stuck rows, we can open a separate one-off data-repair migration as a follow-up.)
-
-## Design — shared normalizer
-
-New module `src/lib/inspection-result-normalizer.ts`:
-
-```ts
-export const CANONICAL_RESULTS = ['pass', 'pass w/provisions', 'fail', 'na'] as const;
-export type CanonicalResult = typeof CANONICAL_RESULTS[number];
-
-/**
- * Coerce any legacy / malformed inspection result string into the
- * canonical Zod enum. Returns null for genuinely unknown values so
- * the caller can decide between "leave as-is" (sync still fails loud)
- * or "default to na" (sync succeeds, conservative). Never throws.
- *
- * Conservative mapping rules (liability-preserving):
- *   - empty / nullish / whitespace-only          → null   (unset; never invent a pass)
- *   - canonical value (case-insensitive)         → canonical
- *   - any "fail"-prefixed variant                → 'fail'
- *   - any "n/a", "na", "not applicable" variant  → 'na'
- *   - any "pass w/...", "pass with provisions",
- *     "pass/rec", "pass with recommendations",
- *     "conditional pass", etc.                   → 'pass w/provisions'
- *   - bare "pass" (no suffix, no slash, no
- *     embedded newline)                          → 'pass'
- *   - anything else                              → null
- *
- * Whitespace (including embedded \n \r \t) is collapsed before
- * matching. Slash → space. Lowercased. This is how `pass/\nrec`
- * collapses to `pass rec` → `pass w/provisions`.
- */
-export function normalizeInspectionResult(raw: unknown): CanonicalResult | null;
-```
-
-Unit-tested cases (pinned in `src/lib/__tests__/inspection-result-normalizer.test.ts`):
-- `'pass'`, `'PASS'`, `'Pass '` → `'pass'`
-- `'pass w/provisions'`, `'Pass w/Provisions'` → `'pass w/provisions'`
-- `'pass/rec'`, `'pass/\nrec'`, `'pass with recommendations'`, `'conditional pass'` → `'pass w/provisions'`
-- `'fail'`, `'FAIL'`, `'failed'`, `'fail (severe)'` → `'fail'`
-- `'na'`, `'n/a'`, `'N / A'`, `'not applicable'` → `'na'`
-- `''`, `null`, `undefined`, `'   '`, `'something weird'` → `null`
-- Liability guard: `'fail/rec'` → `'fail'` (NOT `'pass w/provisions'`); the `'fail'` prefix wins.
-
-## Where to apply the normalizer (shared boundary, not per-platform)
-
-The fix lives at the **persistence / sync boundary** so it heals every inspection regardless of which surface created the row (web, PWA, iPad, desktop, mobile, recovery restore, training restore that crosses into inspections, etc.).
-
-Apply in **two** layers — both are shared modules:
-
-1. **IDB read normalization (passive heal on next save):** in the inspection load path used by `InspectionForm.tsx` (already shared across all platforms via `getInspectionById` etc. in `src/lib/offline-storage.ts`). On load, run each `*_result` field through `normalizeInspectionResult`. If the normalized value differs from the stored value (and is non-null), mark the field as dirty so the next auto-save persists the canonical form. If normalization returns `null` for a non-empty stored value, leave it as-is so the user sees the field unset in the dropdown and can pick deliberately — never silently drop liability data.
-
-2. **Sync push sanitization (last line of defense):** in `src/lib/atomic-sync-manager.ts` (and the parallel `public/sw-sync.js` service-worker path mirrored by `src/lib/sw-sync-validators.ts`), normalize each `*_result` field on the in-memory record copy **immediately before** Zod validation. Same shared normalizer. This guarantees that even if (1) was skipped because the inspection was never re-opened locally, the pending push gets the canonical value.
-
-   Important: this layer must NOT mutate IDB unconditionally. It mutates the in-flight payload only. Once the upsert succeeds, the existing post-sync write-back path (which already persists `synced_at`) will also overwrite the result with the canonical value, so the next read sees the normalized form.
-
-Other consumers of `result` (HTML report renderer, PDF generator, dashboard counts, comment-aggregation in `InspectionForm.tsx` lines 643-1086) keep their existing equality checks because once layer (1) or layer (2) runs, the stored value will be canonical. As a defensive belt-and-braces, the comment-aggregation `result === 'pass w/provisions'` comparisons can route through the normalizer too — single-line change per call site, no behavior change for canonical values.
-
-## Telemetry (read-only, no Sentry email)
-
-When the normalizer changes a value, emit a single `console.warn('[result-normalizer] healed:', { id, field, from, to })` line. No Sentry capture for the heal itself — by definition it is the fix, not the bug. If normalizer returns `null` for a non-empty input (genuinely unrecognized), emit a one-time per-session Sentry breadcrumb (NOT an event) with category `recoverable`, message `result-normalizer-unknown` and the offending string truncated to 32 chars, so we get aggregate visibility on any other legacy wording variants without alert noise.
-
-## Files to add / change
-
-- **New:** `src/lib/inspection-result-normalizer.ts` (~60 lines)
-- **New:** `src/lib/__tests__/inspection-result-normalizer.test.ts` (~25 cases, including liability guard, embedded newlines, whitespace, casing, unknown → null)
-- **Edit:** `src/lib/offline-storage.ts` — inspection load helper applies the normalizer to `result`, `cable_result`, `braking_result`, `ead_result` on `systems`/`ziplines`/`equipment` arrays before returning. Marks dirty when changed. (~15-line addition, no rename or restructure.)
-- **Edit:** `src/lib/atomic-sync-manager.ts` — normalize result fields on the in-memory payload immediately before the existing `validateInspectionPackage` call. (~10 lines.)
-- **Edit:** `public/sw-sync.js` + `src/lib/sw-sync-validators.ts` — mirror the same normalization in the service-worker sync path so background sync benefits identically. (~10 lines each; the validator test file already exists.)
-- **Optional defensive:** `src/pages/InspectionForm.tsx` comment-aggregation comparisons routed through `normalizeInspectionResult` for symmetry. Skip if the load-path heal is judged sufficient — discuss in code review.
-
-**Not touched:** `src/lib/validation-schemas.ts` (Zod enum stays), `<ResultSelect>` (already canonical), DB schema, RLS, storage, Playwright config, recovery feature, training restore, Sentry pipeline (separate slice already shipped), photo pipeline.
-
-## Cross-platform shared-path confirmation
-
-| User flow / platform | Shared path it goes through | Covered? |
+| Source | Value | Notes |
 |---|---|---|
-| Web browser inspection edit + save | `getInspectionById` → IDB load heal; `atomic-sync-manager` validation heal | Yes |
-| Installed PWA inspection edit + save | Same shared modules | Yes |
-| iPad Safari inspection edit + save | Same shared modules | Yes |
-| Background sync (service worker) | `sw-sync.js` + `sw-sync-validators.ts` heal | Yes |
-| Desktop / mobile browser | Same shared modules | Yes |
-| Training reports | Not affected — training schemas don't have a result enum | N/A |
+| `version.json` (repo) | `4.8.0` | SoT consumed by `vite-auto-version.ts` |
+| `vite-auto-version.ts` | bumps patch on `build && mode==='production'` only | Single-digit rollover, writes back to `version.json` |
+| `import.meta.env.APP_VERSION` | injected at build time | Read by `attestation.ts`, `version-check.ts`, `useVersionStatus`, `VersionInfoModal` |
+| `/version.json` (build output) | emitted by plugin's `generateBundle` | What `rwreports.com/version.json` serves |
+| `get-deployed-version` edge fn | proxies `rwreports.com/version.json` | Used by preview to show real prod version |
+| `useVersionStatus` | compares `APP_VERSION` (installed) vs proxy/`/version.json` (deployed) | Correct semantics |
+| SW (`vite-pwa-config`, `sw-sync.js`) | Workbox + custom SW | Cache versioning handled by Workbox revision hashes; `version.json` is excluded from precache (served `no-store` by Lovable proxy per PWA docs) |
+| PWA manifest | `display: standalone` etc. | Manifest fields don't carry version |
 
-No platform-specific branch. The normalizer is one pure function consumed everywhere.
+The system is actually correctly designed: one source (`version.json`), one build-time bump, one runtime comparator. **The user's mental model ("4.8.2 should be live") is what's off, not the plumbing.**
 
-## Acceptance criteria
+## 3. The one real subtlety to flag
 
-1. A stub IDB inspection with `systems[0].result = 'pass/\nrec'` loads into the form showing `'Pass w/Provisions'` selected, auto-saves with the canonical value, and the next sync upserts cleanly with no validation error.
-2. The same stub forced through `atomic-sync-manager` without re-opening the form still syncs cleanly (layer-2 heal proves itself).
-3. A row with `systems[0].result = 'fail/rec'` heals to `'fail'`, not `'pass w/provisions'` — liability test.
-4. A row with `systems[0].result = ''` or `null` stays empty (no invented pass).
-5. A row with `systems[0].result = 'pass'` is unchanged — no dirty flag, no extra write.
-6. A row with `systems[0].result = 'something weird'` does NOT heal, the inspection still fails Zod validation on push, BUT a `result-normalizer-unknown` breadcrumb is recorded so we see it in aggregate. (We want to learn about new variants, not silently swallow.)
-7. All existing inspection sync tests in `src/lib/__tests__/` continue to pass unchanged.
-8. New unit tests cover all mapping rules and edge cases.
-9. No change to Sentry pipeline, no change to UI, no change to schema/RLS, no change to recovery / training / photos / dashboard fetches.
+`version.json` in the repo is `4.8.0`, but production is serving `4.8.1`. That means the last production build bumped in-memory and wrote `4.8.1` to the build output, but the `4.8.1` value was **not committed back to the repo**. The plugin does `fs.writeFileSync(VERSION_FILE, ...)` at build time, but Lovable's publish pipeline doesn't commit that change back to git. So:
 
-## Risks and mitigations
+- Next production publish: plugin reads repo `4.8.0`, bumps to `4.8.1`, writes that to the bundle and to `/version.json`. **Result: production stays at `4.8.1`. No version bump visible to users.** The P1 fix would ship, but under the same version number — `useVersionStatus` would not flag "update available" for installed-PWA users still on the prior `4.8.1` build, because SemVer comparison returns equal.
+- That is the only latent bug here, and it explains why "publish should bump to 4.8.2" feels intuitive but won't actually happen without intervention.
 
-- **Risk:** mis-mapping a legacy wording to the wrong canonical value (e.g. interpreting `'rec'` as anything other than provisions). **Mitigation:** unit tests pin the mapping; ambiguous strings return `null` rather than guessing.
-- **Risk:** silently overwriting an inspector's deliberate non-canonical entry. **Mitigation:** the current `<ResultSelect>` cannot produce non-canonical entries, so any non-canonical value in IDB is legacy by construction; the only way to reach IDB with a non-canonical value today is via legacy import / restore. The unknown → `null` rule + breadcrumb keeps us honest.
-- **Risk:** healing a row updates `updated_at` and could collide with an in-flight Realtime edit on another device. **Mitigation:** apply the heal only when the field actually differs (already in the design), and rely on existing LWW conflict resolution (already in place) for the rare overlap.
+Fix options (pick one before publishing):
+- **(A) Bump `version.json` to `4.8.1` in the repo** so the next prod build bumps to `4.8.2`. Minimal, matches user expectation, no code change.
+- **(B) Bump `version.json` to `4.8.2` directly** and let the plugin push it to `4.8.3` on next publish. Same shape, one step ahead.
+- **(C) Leave the plugin's auto-bump behaviour and accept that re-publishing without a repo commit will reuse the same patch. Document it.** Lowest churn but doesn't solve the "PWA update prompt won't fire" problem for already-installed users.
 
-## Follow-up (not bundled in this slice)
+Recommended: **(A)**. It restores the invariant `repo version == last published version`, the next publish naturally produces `4.8.2` (which contains the P1 fix), and installed PWAs will correctly see "update available".
 
-- After 1 week of breadcrumbs, if `result-normalizer-unknown` shows new repeating variants, extend the mapping table in a small follow-up PR.
-- If breadcrumbs reveal a meaningful number of legacy rows that never re-open in the app (truly archived inspections), open a separate one-off SQL data-repair migration to normalize them server-side. Out of scope here because the in-app heal is sufficient for live use.
+## 4. Proposed action (narrow)
+
+1. Edit `version.json`: `"4.8.0"` → `"4.8.1"` (single-line change, matches the last actually-published version).
+2. User clicks **Publish** in Lovable. Plugin bumps to `4.8.2`, writes new `/version.json` and `APP_VERSION`, emits to CDN.
+3. Verify (see §8).
+
+No code changes to the version-check pipeline, SW, manifest, or update UI. The pipeline is sound.
+
+## 5. Files expected to change
+
+- `version.json` — one line, `4.8.0` → `4.8.1`.
+
+## 6. Files / areas explicitly NOT changing
+
+- `vite-auto-version.ts`, `vite-pwa-config.ts`, `src/lib/version-check.ts`, `src/hooks/useVersionStatus.tsx`, `src/components/VersionInfoModal.tsx`, `src/components/pwa/*`, `src/lib/attestation.ts`, `supabase/functions/get-deployed-version/`, `public/sw-*.js`, `package.json`, PWA manifest, `.eslint-any-budget`, `.bundle-size-budget`, any report/sync/auth/IDB code.
+
+## 7. Offline / PWA safety
+
+- No SW cache-name change → no orphaned caches, no app-shell purge.
+- No IndexedDB schema touch → reports, pending sync queue, photos, attestation, autocomplete history all preserved.
+- Workbox `autoUpdate` + the existing `UpdateNotification`/`UpdateBadge`/`StaleVersionBanner` trio will surface the new build with the existing one-tap "INSTALL UPDATE" flow. iOS-standalone fallback hint already implemented.
+- "Check for Updates" button (`forceVersionCheck`) already bypasses throttles and triggers `reg.update()`.
+
+## 8. Verification plan
+
+**Pre-publish (read-only):**
+- Confirm `cat version.json` shows `4.8.1` after edit.
+- Confirm grep finds no other version literal that needs syncing: `rg -n '"4\.8\.[0-9]"' --glob '!node_modules'`.
+
+**Post-publish:**
+1. `curl -s https://rwreports.com/version.json` → expect `{"version":"4.8.2","build":"<new sha>"}`.
+2. `curl -s https://rwreports.com/version.json | jq -r .build` → diff against current `dev`/prior hash to prove a new bundle shipped.
+3. Hard-reload `rwreports.com` in desktop Chrome → Version Info modal shows Installed `v4.8.2`, Deployed `v4.8.2`, "Current".
+4. Installed PWA (desktop + iPad/Safari + Android): on next foreground, `StaleVersionBanner` or `UpdateNotification` appears with `v4.8.1 → v4.8.2`. Tap "INSTALL UPDATE" / "REFRESH" → reloads to `v4.8.2`. Verify reports, pending queue, photos still present.
+5. P1 fix presence check (no PII): in DevTools console on the live `4.8.2` build, run `(await import('/src/lib/inspection-result-normalizer.ts')).normalizeInspectionResult('not inspected')` — expect `'na'`. (If the module is tree-shaken/minified, alternative: inspect Sentry over the next 24–72 h for zero new `systems[].result = "not inspected"` events tagged release `4.8.2`.)
+6. Preview panel: should now show `installed v4.8.0` (preview's own) / `deployed v4.8.2 — update available`. The "update available" pill on the preview is expected and correct.
+
+**Focused tests to run before publish:**
+- `bunx vitest run src/lib/__tests__/version-rollover.test.ts src/lib/__tests__/inspection-result-normalizer.test.ts src/lib/__tests__/sw-sync-result-normalizer-mirror.test.ts`
+- Expect all green; no code under test changed.
+
+## 9. Cross-platform verification
+
+Shared path — `version.json` is the single source consumed identically by desktop browser, installed PWA (Workbox + custom SW), iPad/Safari (with the existing iOS-standalone fallback hint in `StaleVersionBanner`), and mobile web. Admin vs regular-user: no role-gated code in the version pipeline, behaviour is identical. No per-platform branch added.
+
+## 10. Should this block Slice 5?
+
+**Yes, briefly.** Until production is republished:
+- The P1 Sentry enum fix is not actually live.
+- Slice 5 verification cannot meaningfully use "production confirms the fix" as a gate.
+
+But the unblock is ~30 seconds of work (one-line `version.json` edit + Publish). After that, Slice 5 can proceed in parallel with the 24–72 h Sentry observation window.
+
+## 11. Approval checkpoints
+
+Before I touch anything, please confirm:
+1. Approve option **(A)** — set `version.json` to `4.8.1` so next publish produces `4.8.2`.
+2. Confirm you will click **Publish** after the edit (I can't trigger publish from here).
+3. Confirm no other in-flight workspace changes should be held back from this publish (the publish will ship whatever else is in `main`).
+
+On approval I will make the single-line edit and stop, then wait for your post-publish confirmation before continuing to Slice 5.
