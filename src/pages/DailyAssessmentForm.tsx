@@ -1380,8 +1380,14 @@ export default function DailyAssessmentForm() {
         }
       }
 
-      hasUnsavedRef.current = false;
-      setHasUnsavedChanges(false);
+      // Race-guard gate: keep dirty if a protected comment was typed
+      // after this save started, OR if the assessment row's updated_at
+      // advanced past the save start (live mid-save mutation).
+      const liveUpdatedAt = (updatedAssessment as { updated_at?: string | null } | null)?.updated_at ?? null;
+      if (!saveRaceGuard.shouldKeepDirty(liveUpdatedAt, saveStartedAtMs)) {
+        hasUnsavedRef.current = false;
+        setHasUnsavedChanges(false);
+      }
       setLastSaved(new Date());
       setAssessment(updatedAssessment);
       setSaveError(null);
