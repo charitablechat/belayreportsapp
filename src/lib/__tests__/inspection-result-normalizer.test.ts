@@ -70,7 +70,48 @@ describe('normalizeInspectionResult — n/a family', () => {
   it('heals not applicable', () => {
     expect(normalizeInspectionResult('not applicable')).toBe('na');
   });
+  // P1 Sentry fix — legacy/imported wording reaching production sync.
+  it('heals "not inspected" → na (NEVER pass/fail)', () => {
+    expect(normalizeInspectionResult('not inspected')).toBe('na');
+  });
+  it('heals "Not Inspected" (case-insensitive)', () => {
+    expect(normalizeInspectionResult('Not Inspected')).toBe('na');
+  });
+  it('heals " NOT  INSPECTED " (whitespace)', () => {
+    expect(normalizeInspectionResult(' NOT  INSPECTED ')).toBe('na');
+  });
+  it('row normalizer heals systems result "not inspected"', () => {
+    const out = normalizeResultFieldsOnRow({ id: '1', result: 'not inspected' });
+    expect(out.changed).toBe(true);
+    expect(out.row.result).toBe('na');
+    expect(out.unknowns).toEqual([]);
+  });
+  it('row normalizer heals all four zipline result fields', () => {
+    const out = normalizeResultFieldsOnRow({
+      id: 'z1',
+      result: 'not inspected',
+      cable_result: 'not inspected',
+      braking_result: 'not inspected',
+      ead_result: 'not inspected',
+    });
+    expect(out.changed).toBe(true);
+    expect(out.row.result).toBe('na');
+    expect(out.row.cable_result).toBe('na');
+    expect(out.row.braking_result).toBe('na');
+    expect(out.row.ead_result).toBe('na');
+  });
+  it('array normalizer heals equipment row with "not inspected"', () => {
+    const rows = [
+      { id: 'e1', result: 'pass' },
+      { id: 'e2', result: 'not inspected' },
+    ];
+    const out = normalizeResultFieldsOnRows(rows);
+    expect(out.changed).toBe(true);
+    expect(out.rows[1].result).toBe('na');
+    expect(out.unknowns).toEqual([]);
+  });
 });
+
 
 describe('normalizeInspectionResult — empty / unknown → null', () => {
   it('returns null for empty string', () => {

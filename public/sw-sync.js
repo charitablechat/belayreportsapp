@@ -370,7 +370,7 @@ function swNormalizeInspectionResult(raw) {
   const collapsed = raw.replace(/[\s/]+/g, ' ').trim().toLowerCase();
   if (collapsed === '') return null;
   if (collapsed === 'fail' || collapsed.startsWith('fail ') || collapsed.startsWith('failed')) return 'fail';
-  if (collapsed === 'na' || collapsed === 'n a' || collapsed === 'not applicable') return 'na';
+  if (collapsed === 'na' || collapsed === 'n a' || collapsed === 'not applicable' || collapsed === 'not inspected') return 'na';
   if (collapsed === 'pass w provisions' || collapsed === 'pass with provisions') return 'pass w/provisions';
   if (collapsed.startsWith('pass w ') || collapsed.startsWith('pass with ')) return 'pass w/provisions';
   if (collapsed === 'pass rec' || collapsed === 'pass recs' || collapsed === 'pass recommendation' || collapsed === 'pass recommendations') return 'pass w/provisions';
