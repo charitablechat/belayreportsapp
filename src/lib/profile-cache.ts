@@ -83,3 +83,24 @@ export function clearProfileCache(userId?: string): void {
     profileCache.clear();
   }
 }
+
+/**
+ * Narrow updater used after an atomic avatar replacement so the in-memory
+ * cache and last-known-good localStorage snapshot reflect the newly committed
+ * `avatar_url` without forcing a network refetch. Never throws.
+ */
+export function updateCachedProfileAvatar(userId: string, avatarUrl: string | null): void {
+  if (!userId) return;
+  const existing = profileCache.get(userId);
+  if (existing) {
+    profileCache.set(userId, { ...existing, avatar_url: avatarUrl, cachedAt: Date.now() });
+  }
+  try {
+    const persisted = getPersistedProfile(userId);
+    if (persisted) {
+      persistProfileToLocalStorage(userId, { ...persisted, avatar_url: avatarUrl });
+    }
+  } catch {
+    // Non-fatal: cache refresh failure must not roll back the committed avatar.
+  }
+}

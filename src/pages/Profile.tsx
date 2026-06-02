@@ -19,6 +19,12 @@ import { usePWA } from "@/hooks/usePWA";
 import { format } from "date-fns";
 import { VersionBadge } from "@/components/VersionBadge";
 import { OfflineReadinessCard } from "@/components/diagnostics/OfflineReadinessCard";
+import {
+  atomicReplaceAvatar,
+  safeDeleteOldAvatar,
+  type AvatarSupabaseLike,
+} from "@/lib/avatar-replace";
+import { updateCachedProfileAvatar } from "@/lib/profile-cache";
 
 export default function Profile() {
   const navigate = useNavigate();
@@ -102,61 +108,59 @@ export default function Profile() {
     const file = e.target.files?.[0];
     if (!file || !user) return;
 
+    // Reset the input so re-selecting the same file still fires onChange.
+    const inputEl = e.target;
+
     triggerHaptic('light');
 
-    // Validate file size (5MB limit)
+    // Client-side validation (mirrors helper guardrails; short-circuits before
+    // any storage call). Helper re-validates as defense-in-depth.
     if (file.size > 5 * 1024 * 1024) {
+      toast({
+        title: "Image too large",
+        description: "Please choose an image 5MB or smaller.",
+        variant: "destructive",
+      });
+      if (inputEl) inputEl.value = "";
       return;
     }
-
-    // Validate file type
     const validTypes = ["image/jpeg", "image/png", "image/webp", "image/gif"];
     if (!validTypes.includes(file.type)) {
+      toast({
+        title: "Unsupported image type",
+        description: "Please use JPEG, PNG, WEBP, or GIF.",
+        variant: "destructive",
+      });
+      if (inputEl) inputEl.value = "";
       return;
     }
 
     setUploading(true);
 
+    let committed = false;
+    let result: Awaited<ReturnType<typeof atomicReplaceAvatar>> | null = null;
+
     try {
-      // Delete old avatar if exists
-      if (profile.avatar_url) {
-        const oldPath = profile.avatar_url.split("/").pop();
-        if (oldPath) {
-          await supabase.storage
-            .from("avatars")
-            .remove([`${user.id}/${oldPath}`]);
-        }
+      // Atomic replace: upload new → DB update → (orphan cleanup on DB failure).
+      // Old avatar is NOT touched here.
+      result = await atomicReplaceAvatar({
+        supabase: supabase as unknown as AvatarSupabaseLike,
+        userId: user.id,
+        oldUrl: profile.avatar_url || null,
+        file,
+      });
+
+      // DB row is committed — update local UI + profile cache BEFORE any
+      // best-effort destructive cleanup of the old avatar.
+      committed = true;
+      setProfile((prev) => ({ ...prev, avatar_url: result!.publicUrl }));
+      try {
+        updateCachedProfileAvatar(user.id, result.publicUrl);
+      } catch {
+        // Non-fatal: cache refresh failure must not roll back the committed avatar.
       }
 
-      // Upload new avatar
-      const fileExt = file.name.split(".").pop();
-      const fileName = `${Date.now()}.${fileExt}`;
-      const filePath = `${user.id}/${fileName}`;
-
-      const { error: uploadError } = await supabase.storage
-        .from("avatars")
-        .upload(filePath, file, {
-          cacheControl: "3600",
-          upsert: false,
-        });
-
-      if (uploadError) throw uploadError;
-
-      // Get public URL
-      const { data: { publicUrl } } = supabase.storage
-        .from("avatars")
-        .getPublicUrl(filePath);
-
-      // Update profile with new avatar URL
-      const { error: updateError } = await (supabase as any)
-        .from("profiles")
-        .update({ avatar_url: publicUrl })
-        .eq("id", user.id);
-
-      if (updateError) throw updateError;
-
       triggerHaptic('success');
-      setProfile({ ...profile, avatar_url: publicUrl });
       toast({
         title: "Avatar Updated",
         description: "Your profile picture has been updated successfully.",
@@ -164,15 +168,37 @@ export default function Profile() {
     } catch (error: any) {
       console.error("Error uploading avatar:", error);
       triggerHaptic('error');
+      const code = error?.code;
+      const userMessage =
+        code === 'FILE_TOO_LARGE'
+          ? 'Image must be 5MB or smaller.'
+          : code === 'UNSUPPORTED_TYPE'
+          ? 'Unsupported image type.'
+          : code === 'UPLOAD_FAILED'
+          ? 'Could not upload your new avatar. Your existing avatar is unchanged.'
+          : code === 'DB_UPDATE_FAILED'
+          ? 'Could not save your new avatar. Your existing avatar is unchanged.'
+          : 'Failed to upload avatar. Please try again.';
       toast({
         title: "Upload Failed",
-        description: error.message || "Failed to upload avatar. Please try again.",
+        description: userMessage,
         variant: "destructive",
       });
     } finally {
       setUploading(false);
+      if (inputEl) inputEl.value = "";
+    }
+
+    // Best-effort old-avatar cleanup runs AFTER local state + cache are updated.
+    // Failure here never surfaces to the user and never rolls back the commit.
+    if (committed && result?.oldPathToCleanup) {
+      void safeDeleteOldAvatar(
+        supabase as unknown as AvatarSupabaseLike,
+        result.oldPathToCleanup,
+      );
     }
   };
+
 
   const handleSaveProfile = async (e: React.FormEvent) => {
     e.preventDefault();
