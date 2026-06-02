@@ -860,6 +860,14 @@ export default function DailyAssessmentForm() {
     // state has already advanced.
     hasUnsavedRef.current = true;
     if (!hasUnsavedChanges) setHasUnsavedChanges(true);
+    // Save-race guard: stamp protected text fields on every user edit
+    // so an older save/refetch echo cannot mark the form clean. Only
+    // user-driven edits flow through this handler (the assessment
+    // checklists call it for their own fields; hydration / refetch
+    // never does), so stamping here is race-safe.
+    if ((DAILY_ASSESSMENT_PROTECTED_FIELDS as readonly string[]).includes(field)) {
+      saveRaceGuard.markFieldTyped(field);
+    }
     const updatedAssessment = applyTrackedFieldWrite(assessment, 'daily_assessment', field, value);
     setAssessment(updatedAssessment);
 
