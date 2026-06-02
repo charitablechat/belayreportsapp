@@ -633,7 +633,8 @@ export default function InspectionForm() {
       await performSaveRef.current?.(true);
       // Race-guard gate: only mark clean if no protected field was typed
       // after this save started, and the row's updated_at hasn't advanced.
-      if (!saveRaceGuard.shouldKeepDirty(summaryRef.current?.updated_at, startedAtMs)) {
+      const liveUpdatedAt = (summaryRef.current as { updated_at?: string | null } | null)?.updated_at ?? null;
+      if (!saveRaceGuard.shouldKeepDirty(liveUpdatedAt, startedAtMs)) {
         hasUnsavedRef.current = false;
         setHasUnsavedChanges(false);
       }
