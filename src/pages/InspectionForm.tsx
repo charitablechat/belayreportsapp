@@ -628,15 +628,20 @@ export default function InspectionForm() {
       clearTimeout(saveDebounceTimerRef.current);
       saveDebounceTimerRef.current = null;
     }
+    const { startedAtMs } = saveRaceGuard.beginSave();
     try {
       await performSaveRef.current?.(true);
-      hasUnsavedRef.current = false;
-      setHasUnsavedChanges(false);
+      // Race-guard gate: only mark clean if no protected field was typed
+      // after this save started, and the row's updated_at hasn't advanced.
+      if (!saveRaceGuard.shouldKeepDirty(summaryRef.current?.updated_at, startedAtMs)) {
+        hasUnsavedRef.current = false;
+        setHasUnsavedChanges(false);
+      }
       console.log('[InspectionForm] Save-before-leave completed');
     } catch (e) {
       console.warn('[InspectionForm] Save-before-leave failed:', e);
     }
-  }, []);
+  }, [saveRaceGuard]);
   saveBeforeLeaveRef.current = handleSaveAndLeave;
 
   // Unsaved changes protection
