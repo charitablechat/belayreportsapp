@@ -265,6 +265,13 @@ export default function InspectionForm() {
   const [lastSaved, setLastSaved] = useState<Date | null>(null);
   const [lastManuallySaved, setLastManuallySaved] = useState<Date | null>(null);
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
+  /**
+   * Save-race guard for the three protected summary fields
+   * (`critical_actions`, `repairs_performed`, `future_considerations`).
+   * Brings Inspection up to the same live save/refetch race protection
+   * standard as Training. See `useSaveRaceGuard` for contract.
+   */
+  const saveRaceGuard = useSaveRaceGuard();
   const [photoRefreshKey, setPhotoRefreshKey] = useState(0);
   const [versionPanelOpen, setVersionPanelOpen] = useState(false);
   const [lastVersionNumber, setLastVersionNumber] = useState<number | undefined>(undefined);
