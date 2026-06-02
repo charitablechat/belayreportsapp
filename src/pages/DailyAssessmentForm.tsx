@@ -1082,6 +1082,7 @@ export default function DailyAssessmentForm() {
       saveInProgressRef.current = false;
     }, 8000);
     
+    const { startedAtMs: saveStartedAtMs } = saveRaceGuard.beginSave();
     try {
       // offline storage is statically imported — no dynamic import overhead
       if (import.meta.env.DEV) console.log('[Save] Saving to offline storage...');
