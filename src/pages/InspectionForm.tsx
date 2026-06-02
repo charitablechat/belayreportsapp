@@ -19,6 +19,22 @@ import {
   isEmptyPlaceholderInspectionSummary,
   mergeInspectionSummaryPreservingPopulated,
 } from "@/lib/inspection-summary-merge";
+import { useSaveRaceGuard } from "@/hooks/useSaveRaceGuard";
+
+/**
+ * Inspection summary fields protected by the save-race guard.
+ *
+ * These are the user-typed rich-text fields where the Training-class
+ * stale-echo bug was reproducible. `next_inspection_date` is also a
+ * tracked summary field for merge purposes but is intentionally NOT
+ * race-guarded — it's a date picker, not a free-text field, so the
+ * "typed during save" race window does not apply.
+ */
+const INSPECTION_PROTECTED_FIELDS = [
+  'critical_actions',
+  'repairs_performed',
+  'future_considerations',
+] as const;
 import { trackChildDeletions } from "@/lib/track-child-deletions";
 import { isFieldActivelyEdited, recordActiveEditSkip } from "@/lib/active-edit-guard";
 import { checkRequiredHeaderFields, formatMissingFieldLabels } from "@/lib/header-required-fields";
