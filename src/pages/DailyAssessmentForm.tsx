@@ -153,6 +153,12 @@ export default function DailyAssessmentForm() {
   const [showAttestationDialog, setShowAttestationDialog] = useState(false);
   const { fullName: signerFullName } = useUserProfile();
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
+  /**
+   * Save-race guard for the three protected comment fields. Brings
+   * Daily Assessment up to the same live save/refetch race protection
+   * standard as Training and Inspection.
+   */
+  const saveRaceGuard = useSaveRaceGuard();
   const [saveError, setSaveError] = useState<import("@/components/SaveFailureBanner").SaveErrorState>(null);
   
   const [lastSaved, setLastSaved] = useState<Date | null>(null);
