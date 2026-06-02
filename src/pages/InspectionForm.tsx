@@ -500,7 +500,7 @@ export default function InspectionForm() {
         field_timestamps: stamps,
       };
     });
-  }, []);
+  }, [saveRaceGuard]);
 
   /**
    * Phase 2 perf: stable callback identity so memoized child tables
