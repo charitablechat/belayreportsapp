@@ -100,7 +100,6 @@ describe('sanitizeRecoveryLogMetadata', () => {
   it('non-array child values count as 0', () => {
     const out = sanitizeRecoveryLogMetadata({
       snapshot: {
-        // @ts-expect-error — runtime guard test
         children: { systems: 'not-an-array', items: [{}, {}] },
       },
     });
