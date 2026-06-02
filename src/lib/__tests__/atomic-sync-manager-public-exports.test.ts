@@ -97,10 +97,12 @@ describe("atomic-sync-manager public-exports contract", () => {
       });
     }
 
-    it("exports `__test_only__ledgerFallbackRows` as an array", () => {
+    it("exports `__test_only__ledgerFallbackRows` as a function", () => {
+      // It's the ledger-fallback helper itself (async function), not the
+      // resulting rows. Sibling tests invoke it with mocked imports.
       const value = (mod as Record<string, unknown>)["__test_only__ledgerFallbackRows"];
       expect(value).toBeDefined();
-      expect(Array.isArray(value)).toBe(true);
+      expect(typeof value).toBe("function");
     });
   });
 
