@@ -2520,11 +2520,15 @@ export default function InspectionForm() {
       setAutoSaving(false);
     };
 
+    const { startedAtMs } = saveRaceGuard.beginSave();
     try {
       await performSave(true, releaseAutoSaveUi); // Silent auto-save
       setLastSaved(new Date());
-      hasUnsavedRef.current = false;
-      setHasUnsavedChanges(false);
+      const liveUpdatedAt = (summaryRef.current as { updated_at?: string | null } | null)?.updated_at ?? null;
+      if (!saveRaceGuard.shouldKeepDirty(liveUpdatedAt, startedAtMs)) {
+        hasUnsavedRef.current = false;
+        setHasUnsavedChanges(false);
+      }
       if (import.meta.env.DEV) {
         console.log("Auto-saved successfully at", new Date().toLocaleTimeString());
       }
