@@ -19,6 +19,22 @@ import {
   isEmptyPlaceholderInspectionSummary,
   mergeInspectionSummaryPreservingPopulated,
 } from "@/lib/inspection-summary-merge";
+import { useSaveRaceGuard } from "@/hooks/useSaveRaceGuard";
+
+/**
+ * Inspection summary fields protected by the save-race guard.
+ *
+ * These are the user-typed rich-text fields where the Training-class
+ * stale-echo bug was reproducible. `next_inspection_date` is also a
+ * tracked summary field for merge purposes but is intentionally NOT
+ * race-guarded — it's a date picker, not a free-text field, so the
+ * "typed during save" race window does not apply.
+ */
+const INSPECTION_PROTECTED_FIELDS = [
+  'critical_actions',
+  'repairs_performed',
+  'future_considerations',
+] as const;
 import { trackChildDeletions } from "@/lib/track-child-deletions";
 import { isFieldActivelyEdited, recordActiveEditSkip } from "@/lib/active-edit-guard";
 import { checkRequiredHeaderFields, formatMissingFieldLabels } from "@/lib/header-required-fields";
@@ -249,6 +265,13 @@ export default function InspectionForm() {
   const [lastSaved, setLastSaved] = useState<Date | null>(null);
   const [lastManuallySaved, setLastManuallySaved] = useState<Date | null>(null);
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
+  /**
+   * Save-race guard for the three protected summary fields
+   * (`critical_actions`, `repairs_performed`, `future_considerations`).
+   * Brings Inspection up to the same live save/refetch race protection
+   * standard as Training. See `useSaveRaceGuard` for contract.
+   */
+  const saveRaceGuard = useSaveRaceGuard();
   const [photoRefreshKey, setPhotoRefreshKey] = useState(0);
   const [versionPanelOpen, setVersionPanelOpen] = useState(false);
   const [lastVersionNumber, setLastVersionNumber] = useState<number | undefined>(undefined);
@@ -462,6 +485,12 @@ export default function InspectionForm() {
         if (before !== after) {
           stamps[field] = nowIso;
           stamped = true;
+          // Save-race guard: stamp protected text fields so an older
+          // save/refetch echo arriving after this edit cannot mark the
+          // form clean. `next_inspection_date` is excluded — date picker.
+          if ((INSPECTION_PROTECTED_FIELDS as readonly string[]).includes(field)) {
+            saveRaceGuard.markFieldTyped(field, nowIso);
+          }
         }
       }
       if (!stamped) return next;
@@ -471,7 +500,7 @@ export default function InspectionForm() {
         field_timestamps: stamps,
       };
     });
-  }, []);
+  }, [saveRaceGuard]);
 
   /**
    * Phase 2 perf: stable callback identity so memoized child tables
@@ -599,15 +628,21 @@ export default function InspectionForm() {
       clearTimeout(saveDebounceTimerRef.current);
       saveDebounceTimerRef.current = null;
     }
+    const { startedAtMs } = saveRaceGuard.beginSave();
     try {
       await performSaveRef.current?.(true);
-      hasUnsavedRef.current = false;
-      setHasUnsavedChanges(false);
+      // Race-guard gate: only mark clean if no protected field was typed
+      // after this save started, and the row's updated_at hasn't advanced.
+      const liveUpdatedAt = (summaryRef.current as { updated_at?: string | null } | null)?.updated_at ?? null;
+      if (!saveRaceGuard.shouldKeepDirty(liveUpdatedAt, startedAtMs)) {
+        hasUnsavedRef.current = false;
+        setHasUnsavedChanges(false);
+      }
       console.log('[InspectionForm] Save-before-leave completed');
     } catch (e) {
       console.warn('[InspectionForm] Save-before-leave failed:', e);
     }
-  }, []);
+  }, [saveRaceGuard]);
   saveBeforeLeaveRef.current = handleSaveAndLeave;
 
   // Unsaved changes protection
@@ -2426,11 +2461,15 @@ export default function InspectionForm() {
       setAutoSaving(false);
     };
 
+    const { startedAtMs } = saveRaceGuard.beginSave();
     try {
       await performSave(true, releaseAutoUiAfterLocalCommit); // Silent immediate save
       setLastSaved(new Date());
-      hasUnsavedRef.current = false;
-      setHasUnsavedChanges(false);
+      const liveUpdatedAt = (summaryRef.current as { updated_at?: string | null } | null)?.updated_at ?? null;
+      if (!saveRaceGuard.shouldKeepDirty(liveUpdatedAt, startedAtMs)) {
+        hasUnsavedRef.current = false;
+        setHasUnsavedChanges(false);
+      }
       // Non-intrusive success feedback (routes to notification center on mobile)
       toast.success("Changes saved");
       if (import.meta.env.DEV) {
@@ -2481,11 +2520,15 @@ export default function InspectionForm() {
       setAutoSaving(false);
     };
 
+    const { startedAtMs } = saveRaceGuard.beginSave();
     try {
       await performSave(true, releaseAutoSaveUi); // Silent auto-save
       setLastSaved(new Date());
-      hasUnsavedRef.current = false;
-      setHasUnsavedChanges(false);
+      const liveUpdatedAt = (summaryRef.current as { updated_at?: string | null } | null)?.updated_at ?? null;
+      if (!saveRaceGuard.shouldKeepDirty(liveUpdatedAt, startedAtMs)) {
+        hasUnsavedRef.current = false;
+        setHasUnsavedChanges(false);
+      }
       if (import.meta.env.DEV) {
         console.log("Auto-saved successfully at", new Date().toLocaleTimeString());
       }
@@ -2570,12 +2613,16 @@ export default function InspectionForm() {
       saveInProgressRef.current = false;
     }, 8000);
 
+    const { startedAtMs } = saveRaceGuard.beginSave();
     try {
       await performSave(false, releaseUiAfterLocalCommit); // Show warnings on manual save
       setLastSaved(new Date());
       setLastManuallySaved(new Date());
-      hasUnsavedRef.current = false;
-      setHasUnsavedChanges(false);
+      const liveUpdatedAt = (summaryRef.current as { updated_at?: string | null } | null)?.updated_at ?? null;
+      if (!saveRaceGuard.shouldKeepDirty(liveUpdatedAt, startedAtMs)) {
+        hasUnsavedRef.current = false;
+        setHasUnsavedChanges(false);
+      }
       if (import.meta.env.DEV) {
         console.log('[InspectionForm] Progress saved:', isOnline ? 'online' : 'offline');
       }

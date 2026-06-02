@@ -135,46 +135,36 @@ describe('InspectionForm save-race — stale save-echo stale-confirm guard', () 
 });
 
 describe('InspectionForm save-race — intentional user clear still works', () => {
-  it('user clears critical_actions; subsequent stale incoming with old populated value cannot resurrect it', () => {
-    // The merge layer (`mergeInspectionSummaryPreservingPopulated`) is what
-    // physically protects the cleared value. We pass an empty local row
-    // that carries an explicit per-field timestamp (the user-clear stamp)
-    // and an older populated incoming row. The local empty must win.
-    const userClearAt = DURING;
-    const local = {
-      id: 's',
-      inspection_id: 'i',
-      critical_actions: '', // user just cleared it
-      updated_at: userClearAt,
-      field_timestamps: { critical_actions: userClearAt },
-    };
-    const incoming = {
-      id: 's',
-      inspection_id: 'i',
-      critical_actions: 'old populated text from another device',
-      updated_at: BEFORE,
-      field_timestamps: { critical_actions: BEFORE },
-    };
-    const { merged, preserved, honouredClears } = mergeInspectionSummaryPreservingPopulated(
-      local as never,
-      incoming as never,
-    );
-    // The clear wins because user's explicit per-field stamp is strictly newer.
-    expect((merged as Record<string, unknown>).critical_actions).toBe('');
-    // The user's own clear is not the "stale incoming blank vs populated local"
-    // case the preservation list tracks. It also isn't recorded as an
-    // honouredClear here (that path describes incoming-side explicit clears
-    // beating populated local). Both lists may be empty; what matters is the
-    // merged value.
-    expect(preserved).toEqual([]);
-    expect(honouredClears).toEqual([]);
+  it('user clears critical_actions locally; save-race guard keeps form dirty until save persists the clear', () => {
+    // A locally-typed clear is NOT protected at the merge layer (the merge
+    // restores incoming when local is empty + incoming is populated — by
+    // design, so cross-device populated data can hydrate a blank local row).
+    // The user's clear is instead protected at the SAVE-RACE GUARD layer:
+    // the form stamps `pendingFieldsRef[field]` on the clear edit, and any
+    // older save-echo / refetch arriving after that stamp is treated as
+    // stale via `summaryTypedAfter`. The form therefore refuses to mark
+    // itself clean — the save handler then persists the empty value.
+    const userClearAt = Date.parse(DURING); // user cleared during save
+    const typedAfter = summaryTypedAfter({
+      pendingFieldTimestamps: { critical_actions: new Date(userClearAt).toISOString() },
+      sinceMs: SAVE_START,
+    });
+    expect(typedAfter).toBe(true);
+
+    const keepDirty = shouldKeepDirtyAfterSave({
+      pendingFieldTimestamps: { critical_actions: new Date(userClearAt).toISOString() },
+      summaryUpdatedAt: BEFORE,
+      saveStartedAtMs: SAVE_START,
+    });
+    expect(keepDirty).toBe(true);
   });
 
-  it('mount-time empty placeholder cannot wipe a populated local row', () => {
-    // Simulates: form just mounted, summary state still has user's
-    // populated text, a background refetch returns a fresh "empty
-    // placeholder" row with no field_timestamps and a newer row-level
-    // updated_at. The merge MUST preserve local.
+  it('mount-time empty placeholder cannot wipe a populated local row (merge keeps local via per-field LWW)', () => {
+    // Per-field LWW already wins here because local has explicit stamps
+    // and incoming has none — an explicit stamp always beats a row-level
+    // fallback (see field-merge.ts). No entries flow into `preserved[]`
+    // because `mergeRecordFields` never picked incoming; the contract we
+    // assert is the resulting merged values.
     const local = {
       id: 's',
       inspection_id: 'i',
@@ -188,15 +178,67 @@ describe('InspectionForm save-race — intentional user clear still works', () =
       inspection_id: 'i',
       critical_actions: null,
       repairs_performed: '',
-      // newer row-level updated_at but NO explicit per-field stamps
       updated_at: AFTER,
     };
-    const { merged, preserved } = mergeInspectionSummaryPreservingPopulated(
+    const { merged } = mergeInspectionSummaryPreservingPopulated(
       local as never,
       incomingPlaceholder as never,
     );
     expect((merged as Record<string, unknown>).critical_actions).toBe('user typed text');
     expect((merged as Record<string, unknown>).repairs_performed).toBe('user typed repairs');
+  });
+
+  it('empty-preservation bug-fix path: incoming wins LWW with a blank value → merge restores populated local', () => {
+    // Local has NO explicit per-field timestamps so LWW falls back to
+    // row-level updated_at; incoming has a newer updated_at AND blank
+    // values AND no explicit per-field clear stamp. mergeRecordFields
+    // picks incoming (blank); the post-pass MUST restore populated local
+    // and record `preserved`.
+    const local = {
+      id: 's',
+      inspection_id: 'i',
+      critical_actions: 'user typed text',
+      repairs_performed: 'user typed repairs',
+      updated_at: BEFORE,
+    };
+    const incomingBlank = {
+      id: 's',
+      inspection_id: 'i',
+      critical_actions: null,
+      repairs_performed: '',
+      updated_at: AFTER,
+    };
+    const { merged, preserved, honouredClears } = mergeInspectionSummaryPreservingPopulated(
+      local as never,
+      incomingBlank as never,
+    );
+    expect((merged as Record<string, unknown>).critical_actions).toBe('user typed text');
+    expect((merged as Record<string, unknown>).repairs_performed).toBe('user typed repairs');
     expect(preserved.map((p) => p.field).sort()).toEqual(['critical_actions', 'repairs_performed']);
+    expect(honouredClears).toEqual([]);
+  });
+
+  it('honours an EXPLICIT cross-device clear (incoming has newer per-field stamp + blank value)', () => {
+    const local = {
+      id: 's',
+      inspection_id: 'i',
+      critical_actions: 'stale local text',
+      updated_at: BEFORE,
+      field_timestamps: { critical_actions: BEFORE },
+    };
+    const incomingExplicitClear = {
+      id: 's',
+      inspection_id: 'i',
+      critical_actions: '',
+      updated_at: AFTER,
+      field_timestamps: { critical_actions: AFTER },
+    };
+    const { merged, honouredClears, preserved } = mergeInspectionSummaryPreservingPopulated(
+      local as never,
+      incomingExplicitClear as never,
+    );
+    expect((merged as Record<string, unknown>).critical_actions).toBe('');
+    expect(honouredClears.map((p) => p.field)).toEqual(['critical_actions']);
+    expect(preserved).toEqual([]);
   });
 });

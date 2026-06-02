@@ -6,6 +6,19 @@ import { applyTrackedFieldWrite, mergeChildArray, mergeRecordFields, TRACKED_FIE
 import { trackChildDeletions } from "@/lib/track-child-deletions";
 import { isFieldActivelyEdited, recordActiveEditSkip } from "@/lib/active-edit-guard";
 import { checkRequiredHeaderFields, formatMissingFieldLabels } from "@/lib/header-required-fields";
+import { useSaveRaceGuard } from "@/hooks/useSaveRaceGuard";
+
+/**
+ * Daily Assessment fields protected by the save-race guard.
+ * Same Training-class stale-echo bug shape as Inspection's protected
+ * fields. These three are the only free-text comment fields on the
+ * Daily Assessment; the rest of the form is structured checklists.
+ */
+const DAILY_ASSESSMENT_PROTECTED_FIELDS = [
+  'environment_comments',
+  'structure_comments',
+  'systems_comments',
+] as const;
 import { getMissingAssessmentFields, formatMissingDescription, type MissingField } from "@/lib/required-fields";
 import { useParams, useNavigate } from "react-router-dom";
 import { goBack } from "@/lib/navigation";
@@ -140,6 +153,12 @@ export default function DailyAssessmentForm() {
   const [showAttestationDialog, setShowAttestationDialog] = useState(false);
   const { fullName: signerFullName } = useUserProfile();
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
+  /**
+   * Save-race guard for the three protected comment fields. Brings
+   * Daily Assessment up to the same live save/refetch race protection
+   * standard as Training and Inspection.
+   */
+  const saveRaceGuard = useSaveRaceGuard();
   const [saveError, setSaveError] = useState<import("@/components/SaveFailureBanner").SaveErrorState>(null);
   
   const [lastSaved, setLastSaved] = useState<Date | null>(null);
@@ -317,15 +336,20 @@ export default function DailyAssessmentForm() {
       clearTimeout(autoSaveTimerRef.current);
       autoSaveTimerRef.current = null;
     }
+    const { startedAtMs } = saveRaceGuard.beginSave();
     try {
       await handleSaveProgressRef.current?.();
-      hasUnsavedRef.current = false;
-      setHasUnsavedChanges(false);
+      // Race-guard gate: don't mark clean if a protected comment was
+      // typed after this save started.
+      if (!saveRaceGuard.typedAfter(startedAtMs)) {
+        hasUnsavedRef.current = false;
+        setHasUnsavedChanges(false);
+      }
       console.log('[DailyAssessmentForm] Save-before-leave completed');
     } catch (e) {
       console.warn('[DailyAssessmentForm] Save-before-leave failed:', e);
     }
-  }, []);
+  }, [saveRaceGuard]);
   saveBeforeLeaveRef.current = handleSaveAndLeave;
 
   // Stable immediate-save trigger for child fields (e.g. notes onBlur).
@@ -841,6 +865,14 @@ export default function DailyAssessmentForm() {
     // state has already advanced.
     hasUnsavedRef.current = true;
     if (!hasUnsavedChanges) setHasUnsavedChanges(true);
+    // Save-race guard: stamp protected text fields on every user edit
+    // so an older save/refetch echo cannot mark the form clean. Only
+    // user-driven edits flow through this handler (the assessment
+    // checklists call it for their own fields; hydration / refetch
+    // never does), so stamping here is race-safe.
+    if ((DAILY_ASSESSMENT_PROTECTED_FIELDS as readonly string[]).includes(field)) {
+      saveRaceGuard.markFieldTyped(field);
+    }
     const updatedAssessment = applyTrackedFieldWrite(assessment, 'daily_assessment', field, value);
     setAssessment(updatedAssessment);
 
@@ -1050,6 +1082,7 @@ export default function DailyAssessmentForm() {
       saveInProgressRef.current = false;
     }, 8000);
     
+    const { startedAtMs: saveStartedAtMs } = saveRaceGuard.beginSave();
     try {
       // offline storage is statically imported — no dynamic import overhead
       if (import.meta.env.DEV) console.log('[Save] Saving to offline storage...');
@@ -1347,8 +1380,14 @@ export default function DailyAssessmentForm() {
         }
       }
 
-      hasUnsavedRef.current = false;
-      setHasUnsavedChanges(false);
+      // Race-guard gate: keep dirty if a protected comment was typed
+      // after this save started, OR if the assessment row's updated_at
+      // advanced past the save start (live mid-save mutation).
+      const liveUpdatedAt = (updatedAssessment as { updated_at?: string | null } | null)?.updated_at ?? null;
+      if (!saveRaceGuard.shouldKeepDirty(liveUpdatedAt, saveStartedAtMs)) {
+        hasUnsavedRef.current = false;
+        setHasUnsavedChanges(false);
+      }
       setLastSaved(new Date());
       setAssessment(updatedAssessment);
       setSaveError(null);
