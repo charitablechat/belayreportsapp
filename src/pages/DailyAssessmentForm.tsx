@@ -6,6 +6,19 @@ import { applyTrackedFieldWrite, mergeChildArray, mergeRecordFields, TRACKED_FIE
 import { trackChildDeletions } from "@/lib/track-child-deletions";
 import { isFieldActivelyEdited, recordActiveEditSkip } from "@/lib/active-edit-guard";
 import { checkRequiredHeaderFields, formatMissingFieldLabels } from "@/lib/header-required-fields";
+import { useSaveRaceGuard } from "@/hooks/useSaveRaceGuard";
+
+/**
+ * Daily Assessment fields protected by the save-race guard.
+ * Same Training-class stale-echo bug shape as Inspection's protected
+ * fields. These three are the only free-text comment fields on the
+ * Daily Assessment; the rest of the form is structured checklists.
+ */
+const DAILY_ASSESSMENT_PROTECTED_FIELDS = [
+  'environment_comments',
+  'structure_comments',
+  'systems_comments',
+] as const;
 import { getMissingAssessmentFields, formatMissingDescription, type MissingField } from "@/lib/required-fields";
 import { useParams, useNavigate } from "react-router-dom";
 import { goBack } from "@/lib/navigation";
