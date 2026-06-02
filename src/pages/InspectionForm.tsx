@@ -485,6 +485,12 @@ export default function InspectionForm() {
         if (before !== after) {
           stamps[field] = nowIso;
           stamped = true;
+          // Save-race guard: stamp protected text fields so an older
+          // save/refetch echo arriving after this edit cannot mark the
+          // form clean. `next_inspection_date` is excluded — date picker.
+          if ((INSPECTION_PROTECTED_FIELDS as readonly string[]).includes(field)) {
+            saveRaceGuard.markFieldTyped(field, nowIso);
+          }
         }
       }
       if (!stamped) return next;
