@@ -24,6 +24,10 @@ import { verifyRestoreIntegrity } from "@/lib/restore-integrity";
 import { fetchAdminEditSnapshots, restoreAdminEditSnapshot, type AdminEditSnapshotEntry } from "@/lib/admin-edit-snapshot";
 import { formatReportFilename } from "@/lib/report-naming";
 import { sanitizeRecoveryLogMetadata, sanitizeRecoveryErrorForLog } from "@/lib/recovery/restore-decision";
+import { runRestoreGate, blockReasonToast } from "@/lib/recovery/run-restore-gate";
+import { compareRestoreGateRestrictiveness, type RestoreGateResult, type RestoreGateConfirmVariant } from "@/lib/recovery/restore-gate";
+import { RestoreConfirmDialog } from "./RestoreConfirmDialog";
+import { useRoleStatus } from "@/hooks/useRoleStatus";
 import {
   getOfflineTrainings,
   getOfflineDailyAssessments,
