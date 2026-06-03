@@ -955,21 +955,68 @@ export function CloudSnapshotsPanel({ allowDelete = true }: CloudSnapshotsPanelP
   }, []);
 
   const handleRestore = async (snapshotId: string) => {
-    // H2: Hold the restore lock so auto-sync cannot interleave a T0-snapshot
-    // overwrite over the freshly-restored rows. Lock is released on completion
-    // (success or failure); useAutoSync triggers a fresh sync on release.
+    // === PRE-LOCK PHASE === (Slice 5B)
+    // Fetch + validate + confirm WITHOUT holding the restore lock so a long
+    // dialog wait doesn't pin auto-sync.
+    let full: CloudBackupFull | null = null;
+    try {
+      const { fetchCloudSnapshot } = await import('@/lib/cloud-backup');
+      full = await fetchCloudSnapshot(snapshotId);
+    } catch (error) {
+      console.error(
+        '[Cloud Recovery] Restore failed:',
+        sanitizeRecoveryLogMetadata(null),
+        sanitizeRecoveryErrorForLog(error),
+      );
+      toast.error("Failed to restore cloud backup");
+      return;
+    }
+    if (!full) { toast.error("Failed to fetch snapshot data"); return; }
+
+    const reportType = full.report_type as ReportType;
+    const reportId = full.report_id;
+    const snapshotData = full.snapshot_data;
+
+    const liveParent = await readLiveParentForGate(reportType, reportId);
+    const preGate = runRestoreGate({
+      expectedReportType: reportType,
+      expectedReportId: reportId,
+      envelope: { report_type: full.report_type, report_id: full.report_id },
+      snapshot: snapshotData,
+      liveParent,
+      isAdmin,
+    });
+
+    if (preGate.gate.kind === 'block') {
+      toast.error(blockReasonToast(preGate.gate));
+      return;
+    }
+    const confirmed = await awaitRestoreConfirm(preGate.gate.variant, preGate.gate.canProceed);
+    if (!confirmed) return;
+
+    // === LOCKED PHASE === (Slice 5B)
     await withRestoreLock(async () => {
       try {
-        const { fetchCloudSnapshot } = await import('@/lib/cloud-backup');
-        const full = await fetchCloudSnapshot(snapshotId);
-        if (!full) { toast.error("Failed to fetch snapshot data"); return; }
+        // Re-read live parent + re-evaluate gate inside the lock to close the
+        // confirm→write race. Abort with zero mutation if state escalated.
+        const reLiveParent = await readLiveParentForGate(reportType, reportId);
+        const reGate = runRestoreGate({
+          expectedReportType: reportType,
+          expectedReportId: reportId,
+          envelope: { report_type: full!.report_type, report_id: full!.report_id },
+          snapshot: snapshotData,
+          liveParent: reLiveParent,
+          isAdmin,
+        });
+        if (compareRestoreGateRestrictiveness(reGate.gate, preGate.gate) > 0) {
+          toast.error('Local state changed during confirmation — please re-open Recovery and try again.');
+          return;
+        }
 
         const offline = await import('@/lib/offline-storage');
         const { saveInspectionOffline, saveRelatedDataOffline, saveTrainingOffline, saveTrainingDataOffline, saveDailyAssessmentOffline, saveAssessmentDataOffline } = offline;
-        const { parent, children } = full.snapshot_data;
+        const { parent, children } = snapshotData;
         const parentArg = parent as Record<string, unknown> & { id: string };
-        const reportType = full.report_type as ReportType;
-        const reportId = full.report_id;
 
         if (reportType === 'inspection') {
           await saveInspectionOffline(parentArg);
@@ -1021,8 +1068,7 @@ export function CloudSnapshotsPanel({ allowDelete = true }: CloudSnapshotsPanelP
         }
       } catch (error) {
         // Slice 5A: sanitized metadata + safe error summary only. The fetched
-        // snapshot is scoped to the inner try; if the failure happens before
-        // or during fetch the catch logs without snapshot metadata by design.
+        // snapshot is intentionally not reached into in the catch.
         console.error(
           '[Cloud Recovery] Restore failed:',
           sanitizeRecoveryLogMetadata(null),
