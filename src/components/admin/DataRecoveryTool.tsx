@@ -394,14 +394,75 @@ export function LocalSnapshotsPanel({ allowDelete = true }: SnapshotsPanelProps)
     toast.success("Snapshot exported as JSON");
   };
 
+  // Slice 5B — pre-confirm helper that opens the dialog and awaits a boolean.
+  // Lock is NOT held here; the parent caller acquires withRestoreLock only
+  // after this promise resolves with `true`.
+  const awaitRestoreConfirm = (variant: RestoreGateConfirmVariant, canProceed: boolean): Promise<boolean> =>
+    new Promise<boolean>((resolve) => {
+      setPendingRestore({ open: true, variant, canProceed, resolve });
+    });
+
+  const handleRestoreConfirm = useCallback(() => {
+    setPendingRestore((prev) => {
+      prev.resolve?.(true);
+      return INITIAL_PENDING_RESTORE;
+    });
+  }, []);
+  const handleRestoreCancel = useCallback(() => {
+    setPendingRestore((prev) => {
+      prev.resolve?.(false);
+      return INITIAL_PENDING_RESTORE;
+    });
+  }, []);
+
   const handleRestore = async (reportType: ReportType, reportId: string) => {
+    // === PRE-LOCK PHASE ===
+    // Slice 5B: do not hold the restore lock while waiting on a human
+    // confirmation. Acquire it only after the user has confirmed AND we've
+    // re-evaluated the gate inside the lock.
     const snapshot = getReportSnapshot(reportType, reportId);
     if (!snapshot) return;
-    // H2: Hold the restore lock so auto-sync cannot interleave a T0-snapshot
+
+    const liveParent = await readLiveParentForGate(reportType, reportId);
+    const preGate = runRestoreGate({
+      expectedReportType: reportType,
+      expectedReportId: reportId,
+      envelope: null,
+      snapshot,
+      liveParent,
+      isAdmin,
+    });
+
+    if (preGate.gate.kind === 'block') {
+      toast.error(blockReasonToast(preGate.gate));
+      return;
+    }
+    const confirmed = await awaitRestoreConfirm(preGate.gate.variant, preGate.gate.canProceed);
+    if (!confirmed) return;
+
+    // === LOCKED PHASE ===
+    // H2: hold the restore lock so auto-sync cannot interleave a T0-snapshot
     // overwrite over the freshly-restored rows. Lock is released on completion
     // (success or failure); useAutoSync triggers a fresh sync on release.
     await withRestoreLock(async () => {
       try {
+        // Slice 5B: re-read live parent + re-evaluate gate to close the
+        // confirm→write race. If the live state has escalated beyond what the
+        // user confirmed, abort with zero mutation.
+        const reLiveParent = await readLiveParentForGate(reportType, reportId);
+        const reGate = runRestoreGate({
+          expectedReportType: reportType,
+          expectedReportId: reportId,
+          envelope: null,
+          snapshot,
+          liveParent: reLiveParent,
+          isAdmin,
+        });
+        if (compareRestoreGateRestrictiveness(reGate.gate, preGate.gate) > 0) {
+          toast.error('Local state changed during confirmation — please re-open Recovery and try again.');
+          return;
+        }
+
         const offline = await import('@/lib/offline-storage');
         const { saveInspectionOffline, saveRelatedDataOffline, saveTrainingOffline, saveTrainingDataOffline, saveDailyAssessmentOffline, saveAssessmentDataOffline } = offline;
 
