@@ -293,6 +293,8 @@ export function LocalSnapshotsPanel({ allowDelete = true }: SnapshotsPanelProps)
   const [importing, setImporting] = useState(false);
   const [highlightedId, setHighlightedId] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
+  const [pendingRestore, setPendingRestore] = useState<PendingRestoreState>(INITIAL_PENDING_RESTORE);
+  const { isAdmin } = useRoleStatus();
   const [previewState, setPreviewState] = useState<{
     open: boolean;
     snapshot: ReportSnapshot | null;
