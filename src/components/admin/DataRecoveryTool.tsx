@@ -819,12 +819,9 @@ export function CloudSnapshotsPanel({ allowDelete = true }: CloudSnapshotsPanelP
     // overwrite over the freshly-restored rows. Lock is released on completion
     // (success or failure); useAutoSync triggers a fresh sync on release.
     await withRestoreLock(async () => {
-      // Hoisted so the outer catch's sanitizer can include report metadata
-      // when the failure happens after fetch but before/during write.
-      let full: Awaited<ReturnType<typeof import('@/lib/cloud-backup').fetchCloudSnapshot>> | null = null;
       try {
         const { fetchCloudSnapshot } = await import('@/lib/cloud-backup');
-        full = await fetchCloudSnapshot(snapshotId);
+        const full = await fetchCloudSnapshot(snapshotId);
         if (!full) { toast.error("Failed to fetch snapshot data"); return; }
 
         const offline = await import('@/lib/offline-storage');
@@ -883,15 +880,12 @@ export function CloudSnapshotsPanel({ allowDelete = true }: CloudSnapshotsPanelP
           toast.error('Cloud restore finished but verification failed. Please refresh and confirm the report looks correct.');
         }
       } catch (error) {
-        // Slice 5A: sanitized metadata + safe error summary only. `full` may be
-        // undefined if the error occurred before the snapshot was fetched.
+        // Slice 5A: sanitized metadata + safe error summary only. The fetched
+        // snapshot is scoped to the inner try; if the failure happens before
+        // or during fetch the catch logs without snapshot metadata by design.
         console.error(
           '[Cloud Recovery] Restore failed:',
-          sanitizeRecoveryLogMetadata({
-            reportType: full?.report_type,
-            reportId: full?.report_id,
-            snapshot: full?.snapshot_data,
-          }),
+          sanitizeRecoveryLogMetadata(null),
           sanitizeRecoveryErrorForLog(error),
         );
         toast.error("Failed to restore cloud backup");
