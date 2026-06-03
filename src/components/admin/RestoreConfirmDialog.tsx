@@ -12,6 +12,7 @@
  * row contents, photo urls, or any other sensitive fields.
  */
 
+import { useRef } from 'react';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -46,7 +47,7 @@ const CONFIRM_COPY: Record<RestoreGateConfirmVariant, VariantCopy> = {
     confirmLabel: 'Restore',
   },
   confirm_stale: {
-    title: 'This backup may be older than your current copy',
+    title: 'This backup may not be the most recent version',
     body: "This backup looks older than what's currently on this device, or its date couldn't be confirmed. Restoring will replace any newer work with the contents of the backup.",
     confirmLabel: 'Restore anyway',
   },
@@ -57,7 +58,7 @@ const CONFIRM_COPY: Record<RestoreGateConfirmVariant, VariantCopy> = {
   },
   confirm_stale_and_locked: {
     title: 'This report is complete and the backup may be older',
-    body: "This report is marked complete, AND the backup looks older than what's currently on this device. Restoring will reopen the report and replace any newer work with the backup contents.",
+    body: "This report is marked complete, AND the backup looks older than what's on this device. Restoring will reopen the report and replace any newer work with the backup contents.",
     confirmLabel: 'Reopen and restore',
   },
 };
@@ -76,9 +77,23 @@ export function RestoreConfirmDialog({
   onCancel,
 }: RestoreConfirmDialogProps) {
   const copy = canProceed ? CONFIRM_COPY[variant] : HARD_BLOCK_COPY;
-  const handleOpenChange = (next: boolean) => {
-    if (!next) onCancel();
+  // De-dupe: Radix's AlertDialogAction/Cancel auto-closes the dialog and
+  // triggers onOpenChange(false). Without this flag the parent's onCancel
+  // would fire twice (once from the explicit onClick, once from the
+  // open-state transition).
+  const decided = useRef(false);
+  const decide = (fn: () => void) => {
+    if (decided.current) return;
+    decided.current = true;
+    fn();
   };
+  const handleOpenChange = (next: boolean) => {
+    if (!next) decide(onCancel);
+  };
+  // Reset decided flag when the dialog re-opens.
+  if (open && decided.current) {
+    decided.current = false;
+  }
   return (
     <AlertDialog open={open} onOpenChange={handleOpenChange}>
       <AlertDialogContent data-testid="restore-confirm-dialog" data-variant={variant} data-can-proceed={canProceed}>
@@ -89,13 +104,13 @@ export function RestoreConfirmDialog({
         <AlertDialogFooter>
           {canProceed ? (
             <>
-              <AlertDialogCancel onClick={onCancel}>Cancel</AlertDialogCancel>
-              <AlertDialogAction onClick={onConfirm} data-testid="restore-confirm-proceed">
+              <AlertDialogCancel onClick={() => decide(onCancel)}>Cancel</AlertDialogCancel>
+              <AlertDialogAction onClick={() => decide(onConfirm)} data-testid="restore-confirm-proceed">
                 {copy.confirmLabel}
               </AlertDialogAction>
             </>
           ) : (
-            <AlertDialogAction onClick={onCancel} data-testid="restore-confirm-ack">
+            <AlertDialogAction onClick={() => decide(onCancel)} data-testid="restore-confirm-ack">
               {copy.confirmLabel}
             </AlertDialogAction>
           )}
