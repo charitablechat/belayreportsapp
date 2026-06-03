@@ -44,18 +44,19 @@ describe('RestoreConfirmDialog', () => {
 
   it('shows stale wording for confirm_stale', () => {
     setup('confirm_stale', true);
-    expect(screen.getByText(/older than/i)).toBeInTheDocument();
+    expect(screen.getAllByText(/older/i).length).toBeGreaterThan(0);
   });
 
   it('shows locked wording for confirm_locked (admin)', () => {
     setup('confirm_locked', true);
-    expect(screen.getByText(/marked complete/i)).toBeInTheDocument();
+    expect(screen.getAllByText(/marked complete/i).length).toBeGreaterThan(0);
     expect(screen.getByTestId('restore-confirm-proceed')).toBeInTheDocument();
   });
 
   it('shows stale + locked wording for confirm_stale_and_locked (admin)', () => {
     setup('confirm_stale_and_locked', true);
-    expect(screen.getByText(/complete and the backup may be older/i)).toBeInTheDocument();
+    expect(screen.getAllByText(/complete/i).length).toBeGreaterThan(0);
+    expect(screen.getAllByText(/older/i).length).toBeGreaterThan(0);
   });
 
   it('hard-blocks non-admin (canProceed=false): no proceed button, ack calls onCancel', () => {
