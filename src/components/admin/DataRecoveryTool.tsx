@@ -784,6 +784,13 @@ export function LocalSnapshotsPanel({ allowDelete = true }: SnapshotsPanelProps)
         ? () => handleExport(previewState.reportType!, previewState.reportId!)
         : undefined}
     />
+    <RestoreConfirmDialog
+      open={pendingRestore.open}
+      variant={pendingRestore.variant}
+      canProceed={pendingRestore.canProceed}
+      onConfirm={handleRestoreConfirm}
+      onCancel={handleRestoreCancel}
+    />
     </>
     </TooltipProvider>
   );
