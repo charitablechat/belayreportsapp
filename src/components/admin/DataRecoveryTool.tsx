@@ -819,12 +819,9 @@ export function CloudSnapshotsPanel({ allowDelete = true }: CloudSnapshotsPanelP
     // overwrite over the freshly-restored rows. Lock is released on completion
     // (success or failure); useAutoSync triggers a fresh sync on release.
     await withRestoreLock(async () => {
-      // Hoisted so the outer catch's sanitizer can include report metadata
-      // when the failure happens after fetch but before/during write.
-      let full: Awaited<ReturnType<typeof import('@/lib/cloud-backup').fetchCloudSnapshot>> | null = null;
       try {
         const { fetchCloudSnapshot } = await import('@/lib/cloud-backup');
-        full = await fetchCloudSnapshot(snapshotId);
+        const full = await fetchCloudSnapshot(snapshotId);
         if (!full) { toast.error("Failed to fetch snapshot data"); return; }
 
         const offline = await import('@/lib/offline-storage');
