@@ -24,10 +24,17 @@ import { verifyRestoreIntegrity } from "@/lib/restore-integrity";
 import { fetchAdminEditSnapshots, restoreAdminEditSnapshot, type AdminEditSnapshotEntry } from "@/lib/admin-edit-snapshot";
 import { formatReportFilename } from "@/lib/report-naming";
 import { sanitizeRecoveryLogMetadata, sanitizeRecoveryErrorForLog } from "@/lib/recovery/restore-decision";
+import { runRestoreGate, blockReasonToast } from "@/lib/recovery/run-restore-gate";
+import { compareRestoreGateRestrictiveness, type RestoreGateResult, type RestoreGateConfirmVariant } from "@/lib/recovery/restore-gate";
+import { RestoreConfirmDialog } from "./RestoreConfirmDialog";
+import { useRoleStatus } from "@/hooks/useRoleStatus";
 import {
   getOfflineTrainings,
   getOfflineDailyAssessments,
   getOfflineInspections,
+  getOfflineInspection,
+  getOfflineTraining,
+  getOfflineDailyAssessment,
   getQueuedOperations,
   getQueuedAssessmentOperations,
   getQueuedTrainingOperations,
@@ -85,7 +92,51 @@ function errorMessage(error: unknown, fallback: string): string {
   return fallback;
 }
 
+/**
+ * Slice 5B — read the live parent for stale + completion-lock evaluation.
+ * Returns the raw IDB row (or `null` if missing). Errors are swallowed —
+ * a read failure produces `null`, which is treated as "live missing" by
+ * the freshness comparison (i.e. snapshot is fresh, no escalation).
+ */
+async function readLiveParentForGate(
+  reportType: ReportType,
+  reportId: string,
+): Promise<Record<string, unknown> | null> {
+  try {
+    if (reportType === 'inspection') {
+      const v = await getOfflineInspection(reportId);
+      return (v as Record<string, unknown> | null) ?? null;
+    }
+    if (reportType === 'training') {
+      const v = await getOfflineTraining(reportId);
+      return (v as Record<string, unknown> | null) ?? null;
+    }
+    if (reportType === 'daily_assessment') {
+      const v = await getOfflineDailyAssessment(reportId);
+      return (v as Record<string, unknown> | null) ?? null;
+    }
+  } catch {
+    return null;
+  }
+  return null;
+}
+
+interface PendingRestoreState {
+  open: boolean;
+  variant: RestoreGateConfirmVariant;
+  canProceed: boolean;
+  resolve: ((confirmed: boolean) => void) | null;
+}
+
+const INITIAL_PENDING_RESTORE: PendingRestoreState = {
+  open: false,
+  variant: 'confirm_normal',
+  canProceed: true,
+  resolve: null,
+};
+
 // verifyRestoreIntegrity moved to @/lib/restore-integrity (shared with importBackupZip).
+
 // Error Boundary to isolate panel crashes
 interface RecoveryErrorBoundaryProps {
   children: ReactNode;
@@ -242,6 +293,8 @@ export function LocalSnapshotsPanel({ allowDelete = true }: SnapshotsPanelProps)
   const [importing, setImporting] = useState(false);
   const [highlightedId, setHighlightedId] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
+  const [pendingRestore, setPendingRestore] = useState<PendingRestoreState>(INITIAL_PENDING_RESTORE);
+  const { isAdmin } = useRoleStatus();
   const [previewState, setPreviewState] = useState<{
     open: boolean;
     snapshot: ReportSnapshot | null;
@@ -341,14 +394,75 @@ export function LocalSnapshotsPanel({ allowDelete = true }: SnapshotsPanelProps)
     toast.success("Snapshot exported as JSON");
   };
 
+  // Slice 5B — pre-confirm helper that opens the dialog and awaits a boolean.
+  // Lock is NOT held here; the parent caller acquires withRestoreLock only
+  // after this promise resolves with `true`.
+  const awaitRestoreConfirm = (variant: RestoreGateConfirmVariant, canProceed: boolean): Promise<boolean> =>
+    new Promise<boolean>((resolve) => {
+      setPendingRestore({ open: true, variant, canProceed, resolve });
+    });
+
+  const handleRestoreConfirm = useCallback(() => {
+    setPendingRestore((prev) => {
+      prev.resolve?.(true);
+      return INITIAL_PENDING_RESTORE;
+    });
+  }, []);
+  const handleRestoreCancel = useCallback(() => {
+    setPendingRestore((prev) => {
+      prev.resolve?.(false);
+      return INITIAL_PENDING_RESTORE;
+    });
+  }, []);
+
   const handleRestore = async (reportType: ReportType, reportId: string) => {
+    // === PRE-LOCK PHASE ===
+    // Slice 5B: do not hold the restore lock while waiting on a human
+    // confirmation. Acquire it only after the user has confirmed AND we've
+    // re-evaluated the gate inside the lock.
     const snapshot = getReportSnapshot(reportType, reportId);
     if (!snapshot) return;
-    // H2: Hold the restore lock so auto-sync cannot interleave a T0-snapshot
+
+    const liveParent = await readLiveParentForGate(reportType, reportId);
+    const preGate = runRestoreGate({
+      expectedReportType: reportType,
+      expectedReportId: reportId,
+      envelope: null,
+      snapshot,
+      liveParent,
+      isAdmin,
+    });
+
+    if (preGate.gate.kind === 'block') {
+      toast.error(blockReasonToast(preGate.gate));
+      return;
+    }
+    const confirmed = await awaitRestoreConfirm(preGate.gate.variant, preGate.gate.canProceed);
+    if (!confirmed) return;
+
+    // === LOCKED PHASE ===
+    // H2: hold the restore lock so auto-sync cannot interleave a T0-snapshot
     // overwrite over the freshly-restored rows. Lock is released on completion
     // (success or failure); useAutoSync triggers a fresh sync on release.
     await withRestoreLock(async () => {
       try {
+        // Slice 5B: re-read live parent + re-evaluate gate to close the
+        // confirm→write race. If the live state has escalated beyond what the
+        // user confirmed, abort with zero mutation.
+        const reLiveParent = await readLiveParentForGate(reportType, reportId);
+        const reGate = runRestoreGate({
+          expectedReportType: reportType,
+          expectedReportId: reportId,
+          envelope: null,
+          snapshot,
+          liveParent: reLiveParent,
+          isAdmin,
+        });
+        if (compareRestoreGateRestrictiveness(reGate.gate, preGate.gate) > 0) {
+          toast.error('Local state changed during confirmation — please re-open Recovery and try again.');
+          return;
+        }
+
         const offline = await import('@/lib/offline-storage');
         const { saveInspectionOffline, saveRelatedDataOffline, saveTrainingOffline, saveTrainingDataOffline, saveDailyAssessmentOffline, saveAssessmentDataOffline } = offline;
 
@@ -670,6 +784,13 @@ export function LocalSnapshotsPanel({ allowDelete = true }: SnapshotsPanelProps)
         ? () => handleExport(previewState.reportType!, previewState.reportId!)
         : undefined}
     />
+    <RestoreConfirmDialog
+      open={pendingRestore.open}
+      variant={pendingRestore.variant}
+      canProceed={pendingRestore.canProceed}
+      onConfirm={handleRestoreConfirm}
+      onCancel={handleRestoreCancel}
+    />
     </>
     </TooltipProvider>
   );
@@ -707,6 +828,25 @@ export function CloudSnapshotsPanel({ allowDelete = true }: CloudSnapshotsPanelP
   type CloudSnapshotData = CloudBackupFull['snapshot_data'];
   const [previewState, setPreviewState] = useState<{ open: boolean; snapshot: CloudSnapshotData | null; loading: boolean; row: CloudBackupEntry | null }>({ open: false, snapshot: null, loading: false, row: null });
   const previewCache = useRef<Map<string, CloudSnapshotData>>(new Map());
+  const [pendingRestore, setPendingRestore] = useState<PendingRestoreState>(INITIAL_PENDING_RESTORE);
+  const { isAdmin } = useRoleStatus();
+
+  const awaitRestoreConfirm = (variant: RestoreGateConfirmVariant, canProceed: boolean): Promise<boolean> =>
+    new Promise<boolean>((resolve) => {
+      setPendingRestore({ open: true, variant, canProceed, resolve });
+    });
+  const handleRestoreConfirm = useCallback(() => {
+    setPendingRestore((prev) => {
+      prev.resolve?.(true);
+      return INITIAL_PENDING_RESTORE;
+    });
+  }, []);
+  const handleRestoreCancel = useCallback(() => {
+    setPendingRestore((prev) => {
+      prev.resolve?.(false);
+      return INITIAL_PENDING_RESTORE;
+    });
+  }, []);
 
   // Read-only status resolution. Replaces the misleading envelope `synced`
   // flag (originating from `report_cloud_backups.synced`) with the actual
@@ -815,21 +955,68 @@ export function CloudSnapshotsPanel({ allowDelete = true }: CloudSnapshotsPanelP
   }, []);
 
   const handleRestore = async (snapshotId: string) => {
-    // H2: Hold the restore lock so auto-sync cannot interleave a T0-snapshot
-    // overwrite over the freshly-restored rows. Lock is released on completion
-    // (success or failure); useAutoSync triggers a fresh sync on release.
+    // === PRE-LOCK PHASE === (Slice 5B)
+    // Fetch + validate + confirm WITHOUT holding the restore lock so a long
+    // dialog wait doesn't pin auto-sync.
+    let full: CloudBackupFull | null = null;
+    try {
+      const { fetchCloudSnapshot } = await import('@/lib/cloud-backup');
+      full = await fetchCloudSnapshot(snapshotId);
+    } catch (error) {
+      console.error(
+        '[Cloud Recovery] Restore failed:',
+        sanitizeRecoveryLogMetadata(null),
+        sanitizeRecoveryErrorForLog(error),
+      );
+      toast.error("Failed to restore cloud backup");
+      return;
+    }
+    if (!full) { toast.error("Failed to fetch snapshot data"); return; }
+
+    const reportType = full.report_type as ReportType;
+    const reportId = full.report_id;
+    const snapshotData = full.snapshot_data;
+
+    const liveParent = await readLiveParentForGate(reportType, reportId);
+    const preGate = runRestoreGate({
+      expectedReportType: reportType,
+      expectedReportId: reportId,
+      envelope: { report_type: full.report_type, report_id: full.report_id },
+      snapshot: snapshotData,
+      liveParent,
+      isAdmin,
+    });
+
+    if (preGate.gate.kind === 'block') {
+      toast.error(blockReasonToast(preGate.gate));
+      return;
+    }
+    const confirmed = await awaitRestoreConfirm(preGate.gate.variant, preGate.gate.canProceed);
+    if (!confirmed) return;
+
+    // === LOCKED PHASE === (Slice 5B)
     await withRestoreLock(async () => {
       try {
-        const { fetchCloudSnapshot } = await import('@/lib/cloud-backup');
-        const full = await fetchCloudSnapshot(snapshotId);
-        if (!full) { toast.error("Failed to fetch snapshot data"); return; }
+        // Re-read live parent + re-evaluate gate inside the lock to close the
+        // confirm→write race. Abort with zero mutation if state escalated.
+        const reLiveParent = await readLiveParentForGate(reportType, reportId);
+        const reGate = runRestoreGate({
+          expectedReportType: reportType,
+          expectedReportId: reportId,
+          envelope: { report_type: full!.report_type, report_id: full!.report_id },
+          snapshot: snapshotData,
+          liveParent: reLiveParent,
+          isAdmin,
+        });
+        if (compareRestoreGateRestrictiveness(reGate.gate, preGate.gate) > 0) {
+          toast.error('Local state changed during confirmation — please re-open Recovery and try again.');
+          return;
+        }
 
         const offline = await import('@/lib/offline-storage');
         const { saveInspectionOffline, saveRelatedDataOffline, saveTrainingOffline, saveTrainingDataOffline, saveDailyAssessmentOffline, saveAssessmentDataOffline } = offline;
-        const { parent, children } = full.snapshot_data;
+        const { parent, children } = snapshotData;
         const parentArg = parent as Record<string, unknown> & { id: string };
-        const reportType = full.report_type as ReportType;
-        const reportId = full.report_id;
 
         if (reportType === 'inspection') {
           await saveInspectionOffline(parentArg);
@@ -881,8 +1068,7 @@ export function CloudSnapshotsPanel({ allowDelete = true }: CloudSnapshotsPanelP
         }
       } catch (error) {
         // Slice 5A: sanitized metadata + safe error summary only. The fetched
-        // snapshot is scoped to the inner try; if the failure happens before
-        // or during fetch the catch logs without snapshot metadata by design.
+        // snapshot is intentionally not reached into in the catch.
         console.error(
           '[Cloud Recovery] Restore failed:',
           sanitizeRecoveryLogMetadata(null),
@@ -1131,6 +1317,13 @@ export function CloudSnapshotsPanel({ allowDelete = true }: CloudSnapshotsPanelP
       } : undefined}
       onRestore={previewState.row ? async () => { await handleRestore(previewState.row.id); } : undefined}
       onExport={handlePreviewExport}
+    />
+    <RestoreConfirmDialog
+      open={pendingRestore.open}
+      variant={pendingRestore.variant}
+      canProceed={pendingRestore.canProceed}
+      onConfirm={handleRestoreConfirm}
+      onCancel={handleRestoreCancel}
     />
     </>
     </TooltipProvider>

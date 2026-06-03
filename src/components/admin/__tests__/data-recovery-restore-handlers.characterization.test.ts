@@ -77,26 +77,38 @@ describe('DataRecoveryTool — restore-handler log sanitization wiring (Slice 5A
   });
 
   it('cloud handler invokes the metadata sanitizer (without snapshot body access in catch)', () => {
-    const idx = SOURCE.indexOf('[Cloud Recovery] Restore failed:');
-    const window = SOURCE.slice(idx, idx + 600);
-    expect(window).toContain('sanitizeRecoveryLogMetadata(');
-    // The cloud catch deliberately does NOT reach into snapshot_data; the
-    // fetched `full` is scoped to the inner try in DataRecoveryTool.tsx.
-    expect(window).not.toContain('snapshot_data');
+    // Slice 5B: the tag now appears twice in the cloud handler — once in the
+    // pre-lock fetch catch, once in the in-lock catch. Both must pass
+    // sanitized metadata only. Walk each occurrence and scan its catch body
+    // (bounded by the surrounding toast.error call, ~250 chars) for the
+    // sanitizer call and for the absence of `snapshot_data` reads.
+    const tag = '[Cloud Recovery] Restore failed:';
+    let cursor = 0;
+    let occurrences = 0;
+    while (true) {
+      const idx = SOURCE.indexOf(tag, cursor);
+      if (idx === -1) break;
+      occurrences++;
+      const w = SOURCE.slice(idx, idx + 250);
+      expect(w).toContain('sanitizeRecoveryLogMetadata(');
+      // The catch deliberately does NOT reach into snapshot_data; the
+      // fetched `full` is scoped to the pre-lock try in DataRecoveryTool.tsx.
+      expect(w).not.toContain('snapshot_data');
+      cursor = idx + tag.length;
+    }
+    expect(occurrences).toBeGreaterThanOrEqual(1);
   });
 });
 
-describe('DataRecoveryTool — GAPS tracked for Slice 5B/5C (intentionally not enforced in 5A)', () => {
-  // Known gaps — not enforced in Slice 5A. These are tracked as test.todo so
-  // CI reports them as "planned but unimplemented" rather than as silent skips.
-  // Executable behavior characterization for these gaps requires extraction
-  // of the inline restore handlers in DataRecoveryTool.tsx into a testable
-  // module, which is out of scope for Slice 5A (see Slice 5B/5C).
-  it.todo('GAP: explicit confirmation is required before any restore handler mutates IDB or server — tracked in Slice 5B');
-  it.todo('GAP: stale snapshot cannot overwrite a newer local record without explicit admin override — tracked in Slice 5B');
-  it.todo('GAP: snapshots whose envelope report_type / report_id disagree with the inner parent row are rejected before write — tracked in Slice 5B');
-  it.todo('GAP: malformed snapshot shape (non-object children, missing parent.id) is rejected before any save*Offline call — tracked in Slice 5B');
-  it.todo('GAP: completed / locked reports cannot be silently overwritten by restore — tracked in Slice 5B');
-  it.todo('GAP: partial restore failure mid-loop is rolled back rather than left half-applied — tracked in Slice 5B');
+describe('DataRecoveryTool — GAPS tracked for Slice 5C / 5D (intentionally not enforced in 5A/5B)', () => {
+  // Slice 5B closes these gaps for Local + Cloud restore (see
+  // `data-recovery-restore-enforcement.test.ts`):
+  //   • explicit confirmation before any IDB mutation
+  //   • stale-snapshot guard (with `unknown` freshness treated as stale)
+  //   • envelope + parent identity mismatch rejection
+  //   • malformed snapshot shape rejection (incl. unknown child keys)
+  //   • completion-lock guard (non-admin hard block, admin override)
+  // Remaining gaps:
+  it.todo('GAP: partial restore failure mid-loop is rolled back rather than left half-applied — tracked in Slice 5D');
   it.todo('GAP: admin server restores enforce a client-side role and ownership check before RPC — tracked in Slice 5C');
 });
