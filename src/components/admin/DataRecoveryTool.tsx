@@ -880,15 +880,12 @@ export function CloudSnapshotsPanel({ allowDelete = true }: CloudSnapshotsPanelP
           toast.error('Cloud restore finished but verification failed. Please refresh and confirm the report looks correct.');
         }
       } catch (error) {
-        // Slice 5A: sanitized metadata + safe error summary only. `full` may be
-        // undefined if the error occurred before the snapshot was fetched.
+        // Slice 5A: sanitized metadata + safe error summary only. The fetched
+        // snapshot is scoped to the inner try; if the failure happens before
+        // or during fetch the catch logs without snapshot metadata by design.
         console.error(
           '[Cloud Recovery] Restore failed:',
-          sanitizeRecoveryLogMetadata({
-            reportType: full?.report_type,
-            reportId: full?.report_id,
-            snapshot: full?.snapshot_data,
-          }),
+          sanitizeRecoveryLogMetadata(null),
           sanitizeRecoveryErrorForLog(error),
         );
         toast.error("Failed to restore cloud backup");
