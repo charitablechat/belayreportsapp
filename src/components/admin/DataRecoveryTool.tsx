@@ -92,7 +92,51 @@ function errorMessage(error: unknown, fallback: string): string {
   return fallback;
 }
 
+/**
+ * Slice 5B — read the live parent for stale + completion-lock evaluation.
+ * Returns the raw IDB row (or `null` if missing). Errors are swallowed —
+ * a read failure produces `null`, which is treated as "live missing" by
+ * the freshness comparison (i.e. snapshot is fresh, no escalation).
+ */
+async function readLiveParentForGate(
+  reportType: ReportType,
+  reportId: string,
+): Promise<Record<string, unknown> | null> {
+  try {
+    if (reportType === 'inspection') {
+      const v = await getOfflineInspection(reportId);
+      return (v as Record<string, unknown> | null) ?? null;
+    }
+    if (reportType === 'training') {
+      const v = await getOfflineTraining(reportId);
+      return (v as Record<string, unknown> | null) ?? null;
+    }
+    if (reportType === 'daily_assessment') {
+      const v = await getOfflineDailyAssessment(reportId);
+      return (v as Record<string, unknown> | null) ?? null;
+    }
+  } catch {
+    return null;
+  }
+  return null;
+}
+
+interface PendingRestoreState {
+  open: boolean;
+  variant: RestoreGateConfirmVariant;
+  canProceed: boolean;
+  resolve: ((confirmed: boolean) => void) | null;
+}
+
+const INITIAL_PENDING_RESTORE: PendingRestoreState = {
+  open: false,
+  variant: 'confirm_normal',
+  canProceed: true,
+  resolve: null,
+};
+
 // verifyRestoreIntegrity moved to @/lib/restore-integrity (shared with importBackupZip).
+
 // Error Boundary to isolate panel crashes
 interface RecoveryErrorBoundaryProps {
   children: ReactNode;
