@@ -68,11 +68,13 @@ export interface EvaluateRestoreGateInput {
 export function evaluateRestoreGate(
   input: EvaluateRestoreGateInput,
 ): RestoreGateResult {
-  if (input.envelope.ok === false) {
-    return { kind: 'block', reason: input.envelope.reason };
+  const env = input.envelope;
+  if (env.ok === false) {
+    return { kind: 'block', reason: env.reason };
   }
-  if (input.shape.ok === false) {
-    return { kind: 'block', reason: input.shape.reason };
+  const shp = input.shape;
+  if (shp.ok === false) {
+    return { kind: 'block', reason: shp.reason };
   }
 
   // 'unknown' freshness is gated as 'stale' — never silently fresh.
