@@ -828,6 +828,25 @@ export function CloudSnapshotsPanel({ allowDelete = true }: CloudSnapshotsPanelP
   type CloudSnapshotData = CloudBackupFull['snapshot_data'];
   const [previewState, setPreviewState] = useState<{ open: boolean; snapshot: CloudSnapshotData | null; loading: boolean; row: CloudBackupEntry | null }>({ open: false, snapshot: null, loading: false, row: null });
   const previewCache = useRef<Map<string, CloudSnapshotData>>(new Map());
+  const [pendingRestore, setPendingRestore] = useState<PendingRestoreState>(INITIAL_PENDING_RESTORE);
+  const { isAdmin } = useRoleStatus();
+
+  const awaitRestoreConfirm = (variant: RestoreGateConfirmVariant, canProceed: boolean): Promise<boolean> =>
+    new Promise<boolean>((resolve) => {
+      setPendingRestore({ open: true, variant, canProceed, resolve });
+    });
+  const handleRestoreConfirm = useCallback(() => {
+    setPendingRestore((prev) => {
+      prev.resolve?.(true);
+      return INITIAL_PENDING_RESTORE;
+    });
+  }, []);
+  const handleRestoreCancel = useCallback(() => {
+    setPendingRestore((prev) => {
+      prev.resolve?.(false);
+      return INITIAL_PENDING_RESTORE;
+    });
+  }, []);
 
   // Read-only status resolution. Replaces the misleading envelope `synced`
   // flag (originating from `report_cloud_backups.synced`) with the actual
