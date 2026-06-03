@@ -100,10 +100,3 @@ describe('DataRecoveryTool — GAPS tracked for Slice 5B/5C (intentionally not e
   it.todo('GAP: partial restore failure mid-loop is rolled back rather than left half-applied — tracked in Slice 5B');
   it.todo('GAP: admin server restores enforce a client-side role and ownership check before RPC — tracked in Slice 5C');
 });
-  it.skip('GAP: stale snapshot cannot overwrite a newer local record without explicit admin override — tracked in Slice 5B', () => {});
-  it.skip('GAP: snapshots whose envelope report_type / report_id disagree with the inner parent row are rejected before write — tracked in Slice 5B', () => {});
-  it.skip('GAP: malformed snapshot shape (non-object children, missing parent.id) is rejected before any save*Offline call — tracked in Slice 5B', () => {});
-  it.skip('GAP: completed / locked reports cannot be silently overwritten by restore — tracked in Slice 5B', () => {});
-  it.skip('GAP: partial restore failure mid-loop is rolled back rather than left half-applied — tracked in Slice 5B', () => {});
-  it.skip('GAP: admin server restores enforce a client-side role and ownership check before RPC — tracked in Slice 5C', () => {});
-});
