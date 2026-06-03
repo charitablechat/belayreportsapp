@@ -68,10 +68,10 @@ export interface EvaluateRestoreGateInput {
 export function evaluateRestoreGate(
   input: EvaluateRestoreGateInput,
 ): RestoreGateResult {
-  if (!input.envelope.ok) {
+  if (input.envelope.ok === false) {
     return { kind: 'block', reason: input.envelope.reason };
   }
-  if (!input.shape.ok) {
+  if (input.shape.ok === false) {
     return { kind: 'block', reason: input.shape.reason };
   }
 
