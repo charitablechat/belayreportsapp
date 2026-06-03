@@ -1318,6 +1318,13 @@ export function CloudSnapshotsPanel({ allowDelete = true }: CloudSnapshotsPanelP
       onRestore={previewState.row ? async () => { await handleRestore(previewState.row.id); } : undefined}
       onExport={handlePreviewExport}
     />
+    <RestoreConfirmDialog
+      open={pendingRestore.open}
+      variant={pendingRestore.variant}
+      canProceed={pendingRestore.canProceed}
+      onConfirm={handleRestoreConfirm}
+      onCancel={handleRestoreCancel}
+    />
     </>
     </TooltipProvider>
   );
