@@ -77,12 +77,26 @@ describe('DataRecoveryTool — restore-handler log sanitization wiring (Slice 5A
   });
 
   it('cloud handler invokes the metadata sanitizer (without snapshot body access in catch)', () => {
-    const idx = SOURCE.indexOf('[Cloud Recovery] Restore failed:');
-    const window = SOURCE.slice(idx, idx + 600);
-    expect(window).toContain('sanitizeRecoveryLogMetadata(');
-    // The cloud catch deliberately does NOT reach into snapshot_data; the
-    // fetched `full` is scoped to the inner try in DataRecoveryTool.tsx.
-    expect(window).not.toContain('snapshot_data');
+    // Slice 5B: the tag now appears twice in the cloud handler — once in the
+    // pre-lock fetch catch, once in the in-lock catch. Both must pass
+    // sanitized metadata only. Walk each occurrence and scan its catch body
+    // (bounded by the surrounding toast.error call, ~250 chars) for the
+    // sanitizer call and for the absence of `snapshot_data` reads.
+    const tag = '[Cloud Recovery] Restore failed:';
+    let cursor = 0;
+    let occurrences = 0;
+    while (true) {
+      const idx = SOURCE.indexOf(tag, cursor);
+      if (idx === -1) break;
+      occurrences++;
+      const w = SOURCE.slice(idx, idx + 250);
+      expect(w).toContain('sanitizeRecoveryLogMetadata(');
+      // The catch deliberately does NOT reach into snapshot_data; the
+      // fetched `full` is scoped to the pre-lock try in DataRecoveryTool.tsx.
+      expect(w).not.toContain('snapshot_data');
+      cursor = idx + tag.length;
+    }
+    expect(occurrences).toBeGreaterThanOrEqual(1);
   });
 });
 
