@@ -157,7 +157,7 @@ describe('normalizeResultFieldsOnRow', () => {
     expect(out.row.result).toBe('pass w/provisions');
     expect(out.row.cable_result).toBe('pass');
     expect(out.row.braking_result).toBe('fail');
-    expect(out.row.ead_result).toBe(''); // untouched (empty)
+    expect(out.row.ead_result).toBeNull(); // ROPEWORKS-6D: '' coerced to null
     // original not mutated
     expect(row.result).toBe('pass/\nrec');
   });
@@ -210,5 +210,59 @@ describe('normalizeResultFieldsOnRows', () => {
       { index: 1, field: 'result', raw: 'wat' },
       { index: 2, field: 'result', raw: 'huh' },
     ]);
+  });
+});
+
+describe('ROPEWORKS-6D — empty/whitespace result coercion', () => {
+  it('coerces "" on a row to null and marks changed', () => {
+    const { row, changed, unknowns } = normalizeResultFieldsOnRow({
+      id: 'e1',
+      equipment_type: 'Helmet',
+      result: '',
+    });
+    expect(changed).toBe(true);
+    expect(row.result).toBeNull();
+    expect(unknowns).toEqual([]);
+  });
+
+  it('coerces whitespace-only ("   ") to null', () => {
+    const { row, changed } = normalizeResultFieldsOnRow({ result: '   ' });
+    expect(changed).toBe(true);
+    expect(row.result).toBeNull();
+  });
+
+  it('coerces all four RESULT_FIELDS independently', () => {
+    const { row, changed } = normalizeResultFieldsOnRow({
+      result: '',
+      cable_result: '',
+      braking_result: 'pass',
+      ead_result: '  ',
+    });
+    expect(changed).toBe(true);
+    expect(row.result).toBeNull();
+    expect(row.cable_result).toBeNull();
+    expect(row.braking_result).toBe('pass');
+    expect(row.ead_result).toBeNull();
+  });
+
+  it('reproduces the Sentry ROPEWORKS-6D shape (equipment array with empty results)', () => {
+    const equipment = Array.from({ length: 16 }, (_, i) => ({
+      id: `eq-${i}`,
+      equipment_type: 'Harness',
+      equipment_category: 'PPE',
+      result: i === 14 || i === 15 ? '' : 'pass',
+    }));
+    const { rows, changed } = normalizeResultFieldsOnRows(equipment);
+    expect(changed).toBe(true);
+    expect(rows[14].result).toBeNull();
+    expect(rows[15].result).toBeNull();
+    expect(rows[0].result).toBe('pass');
+  });
+
+  it('leaves null and undefined untouched', () => {
+    const { changed: c1 } = normalizeResultFieldsOnRow({ result: null });
+    const { changed: c2 } = normalizeResultFieldsOnRow({ result: undefined });
+    expect(c1).toBe(false);
+    expect(c2).toBe(false);
   });
 });

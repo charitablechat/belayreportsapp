@@ -105,6 +105,11 @@ export function normalizeInspectionResult(raw: unknown): CanonicalResult | null 
  * - If the stored value is canonical, no change.
  * - If the normalizer returns a different canonical value, the row is
  *   updated and `changed = true`.
+ * - If the stored value is an empty/whitespace-only string, the field
+ *   is coerced to `null`. Zod schemas accept `null`/omitted for these
+ *   enum fields but reject `""`, and `""` is a common new-row default
+ *   (per the no-pass-default-policy). Coercing here keeps the
+ *   inspection syncable without silently fabricating a verdict.
  * - If the normalizer returns `null` for a non-empty value (genuinely
  *   unknown), the row is left untouched so the caller can surface it
  *   loudly — we never silently drop liability data.
@@ -119,8 +124,16 @@ export function normalizeResultFieldsOnRow<T extends Record<string, unknown>>(
   for (const field of RESULT_FIELDS) {
     if (!(field in row)) continue;
     const raw = row[field];
-    if (raw === null || raw === undefined || raw === '') continue;
+    if (raw === null || raw === undefined) continue;
     if (typeof raw !== 'string') continue;
+
+    // Empty / whitespace-only → null so Zod's .nullable() accepts it.
+    if (raw === '' || raw.trim() === '') {
+      if (next === row) next = { ...row };
+      (next as Record<string, unknown>)[field] = null;
+      changed = true;
+      continue;
+    }
 
     const normalized = normalizeInspectionResult(raw);
     if (normalized === null) {
