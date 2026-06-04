@@ -1712,6 +1712,31 @@ function AdminEditHistoryPanel() {
   const [loading, setLoading] = useState(true);
   const [restoring, setRestoring] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
+  // Slice 5C — non-redirecting role hook; fail-closed while loading/unknown.
+  const { isAdmin, loading: roleLoading } = useRoleStatus();
+  // Slice 5C — confirmation dialog state (lock NOT held while dialog open).
+  const [pendingRestore, setPendingRestore] = useState<{
+    open: boolean;
+    variant: AdminRestoreGateConfirmVariant;
+    resolve: ((confirmed: boolean) => void) | null;
+  }>({ open: false, variant: 'confirm_normal', resolve: null });
+
+  const awaitConfirm = (variant: AdminRestoreGateConfirmVariant): Promise<boolean> =>
+    new Promise<boolean>((resolve) => {
+      setPendingRestore({ open: true, variant, resolve });
+    });
+  const handleConfirm = useCallback(() => {
+    setPendingRestore((prev) => {
+      prev.resolve?.(true);
+      return { open: false, variant: 'confirm_normal', resolve: null };
+    });
+  }, []);
+  const handleCancel = useCallback(() => {
+    setPendingRestore((prev) => {
+      prev.resolve?.(false);
+      return { open: false, variant: 'confirm_normal', resolve: null };
+    });
+  }, []);
 
   const loadSnapshots = useCallback(async () => {
     setLoading(true);
@@ -1736,33 +1761,98 @@ function AdminEditHistoryPanel() {
     loadSnapshots();
   }, [loadSnapshots]);
 
+  // Slice 5C — admin edit-history restore with full pre-write gate.
+  // See AllUserSnapshotsPanel.handleServerRestore for the same 7-step
+  // sequence rationale (role precheck → fetch row → envelope + shape →
+  // live server-parent read → confirm → withRestoreLock re-fetch +
+  // re-validate + fingerprint match + escalation guard → service call).
   const handleRestore = async (snapshotId: string) => {
+    if (roleLoading || isAdmin !== true) {
+      toast.error(adminBlockReasonToast({
+        kind: 'block',
+        reason: roleLoading ? 'role_unknown' : 'not_admin',
+      }));
+      return;
+    }
     setRestoring(snapshotId);
-    // H2: Hold restore lock during server-side admin restore so concurrent
-    // auto-sync cycles don't push stale local edits over the original data
-    // we're about to write back to the server.
-    await withRestoreLock(async () => {
-      try {
-        const ok = await restoreAdminEditSnapshot(snapshotId);
-        if (ok) {
-          toast.success("Original data restored to database");
-        } else {
-          toast.error("Failed to restore original data");
-        }
-      } catch (error) {
-        // Slice 5A: snapshot body is not in scope here; log only opaque
-        // snapshotId and sanitized error summary.
-        console.error(
-          '[Admin Edit History] Restore failed:',
-          { snapshotId },
-          sanitizeRecoveryErrorForLog(error),
-        );
-        toast.error("Restore failed");
-      } finally {
-        setRestoring(null);
+    try {
+      const row = await fetchAdminEditSnapshotById(snapshotId);
+      if (!row) {
+        toast.error("Failed to fetch snapshot");
+        return;
       }
-    });
+      const preLive = await readLiveServerParentForGate(
+        (row.report_type ?? '') as 'inspection' | 'training' | 'daily_assessment',
+        String(row.report_id ?? ''),
+      );
+      const preGate = runAdminRestoreGate({
+        snapshotRow: row,
+        liveParent: preLive === 'read-error' ? 'read-error' : preLive.row,
+        isAdmin,
+        roleLoading,
+      });
+      if (preGate.gate.kind === 'block') {
+        toast.error(adminBlockReasonToast(preGate.gate));
+        return;
+      }
+      const preFingerprint = fingerprintAdminSnapshot(row);
+
+      const confirmed = await awaitConfirm(preGate.gate.variant);
+      if (!confirmed) return;
+
+      await withRestoreLock(async () => {
+        try {
+          const reRow = await fetchAdminEditSnapshotById(snapshotId);
+          if (!reRow) {
+            toast.error("Snapshot disappeared during confirmation — restore aborted.");
+            return;
+          }
+          if (fingerprintAdminSnapshot(reRow) !== preFingerprint) {
+            toast.error("Snapshot changed during confirmation — restore aborted.");
+            return;
+          }
+          const reLive = await readLiveServerParentForGate(
+            (reRow.report_type ?? '') as 'inspection' | 'training' | 'daily_assessment',
+            String(reRow.report_id ?? ''),
+          );
+          const reGate = runAdminRestoreGate({
+            snapshotRow: reRow,
+            liveParent: reLive === 'read-error' ? 'read-error' : reLive.row,
+            isAdmin,
+            roleLoading,
+          });
+          if (compareAdminRestoreGateRestrictiveness(reGate.gate, preGate.gate) > 0) {
+            toast.error("Server state changed during confirmation — please retry.");
+            return;
+          }
+
+          const ok = await restoreAdminEditSnapshot(snapshotId);
+          if (ok) {
+            toast.success("Original data restored to database");
+          } else {
+            toast.error("Failed to restore original data");
+          }
+        } catch (error) {
+          console.error(
+            '[Admin Edit History] Restore failed:',
+            { snapshotId },
+            sanitizeRecoveryErrorForLog(error),
+          );
+          toast.error("Restore failed");
+        }
+      });
+    } catch (error) {
+      console.error(
+        '[Admin Edit History] Restore failed:',
+        { snapshotId },
+        sanitizeRecoveryErrorForLog(error),
+      );
+      toast.error("Restore failed");
+    } finally {
+      setRestoring(null);
+    }
   };
+
 
   const handleExport = async (snapshotId: string, reportType: string) => {
     try {
