@@ -21,11 +21,18 @@ import { supabase } from "@/integrations/supabase/client";
 import { listAllSnapshots, getReportSnapshot, deleteReportSnapshot, getBackupStorageInfo, importReportBackup, sanitizeFilename, type ReportType, type ReportSnapshot } from "@/lib/local-backup-ledger";
 import { withRestoreLock } from "@/lib/restore-lock";
 import { verifyRestoreIntegrity } from "@/lib/restore-integrity";
-import { fetchAdminEditSnapshots, restoreAdminEditSnapshot, type AdminEditSnapshotEntry } from "@/lib/admin-edit-snapshot";
+import { fetchAdminEditSnapshots, restoreAdminEditSnapshot, fetchAdminEditSnapshotById, type AdminEditSnapshotEntry } from "@/lib/admin-edit-snapshot";
 import { formatReportFilename } from "@/lib/report-naming";
 import { sanitizeRecoveryLogMetadata, sanitizeRecoveryErrorForLog } from "@/lib/recovery/restore-decision";
 import { runRestoreGate, blockReasonToast } from "@/lib/recovery/run-restore-gate";
 import { compareRestoreGateRestrictiveness, type RestoreGateResult, type RestoreGateConfirmVariant } from "@/lib/recovery/restore-gate";
+import {
+  runAdminRestoreGate,
+  adminBlockReasonToast,
+  compareAdminRestoreGateRestrictiveness,
+  fingerprintAdminSnapshot,
+  type AdminRestoreGateConfirmVariant,
+} from "@/lib/recovery/run-admin-restore-gate";
 import { RestoreConfirmDialog } from "./RestoreConfirmDialog";
 import { useRoleStatus } from "@/hooks/useRoleStatus";
 import {
@@ -119,6 +126,42 @@ async function readLiveParentForGate(
     return null;
   }
   return null;
+}
+
+/**
+ * Slice 5C — read the live SERVER parent for stale + completion-lock
+ * evaluation of admin server restores. Returns:
+ *   - { kind: 'ok', row: <row> } when the server row exists
+ *   - { kind: 'ok', row: null } when the row is genuinely not found
+ *   - 'read-error' when the read transport / RLS failed; the gate must
+ *     fail-closed to avoid making a write decision on missing state.
+ */
+type LiveServerParentResult =
+  | { kind: 'ok'; row: Record<string, unknown> | null }
+  | 'read-error';
+
+async function readLiveServerParentForGate(
+  reportType: 'inspection' | 'training' | 'daily_assessment',
+  reportId: string,
+): Promise<LiveServerParentResult> {
+  const table =
+    reportType === 'inspection' ? 'inspections'
+      : reportType === 'training' ? 'trainings'
+        : 'daily_assessments';
+  try {
+    // Narrow read — id/updated_at/status are all we need for the gate.
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const client = supabase as any;
+    const { data, error } = await client
+      .from(table)
+      .select('id, updated_at, status')
+      .eq('id', reportId)
+      .maybeSingle();
+    if (error) return 'read-error';
+    return { kind: 'ok', row: (data as Record<string, unknown> | null) ?? null };
+  } catch {
+    return 'read-error';
+  }
 }
 
 interface PendingRestoreState {
@@ -1339,6 +1382,31 @@ function AllUserSnapshotsPanel() {
   const [restoring, setRestoring] = useState<string | null>(null);
   const [expandedUsers, setExpandedUsers] = useState<Set<string>>(new Set());
   const [searchQuery, setSearchQuery] = useState('');
+  // Slice 5C — non-redirecting role hook; fail-closed while loading/unknown.
+  const { isAdmin, loading: roleLoading } = useRoleStatus();
+  // Slice 5C — confirmation dialog state (lock NOT held while dialog open).
+  const [pendingRestore, setPendingRestore] = useState<{
+    open: boolean;
+    variant: AdminRestoreGateConfirmVariant;
+    resolve: ((confirmed: boolean) => void) | null;
+  }>({ open: false, variant: 'confirm_normal', resolve: null });
+
+  const awaitConfirm = (variant: AdminRestoreGateConfirmVariant): Promise<boolean> =>
+    new Promise<boolean>((resolve) => {
+      setPendingRestore({ open: true, variant, resolve });
+    });
+  const handleConfirm = useCallback(() => {
+    setPendingRestore((prev) => {
+      prev.resolve?.(true);
+      return { open: false, variant: 'confirm_normal', resolve: null };
+    });
+  }, []);
+  const handleCancel = useCallback(() => {
+    setPendingRestore((prev) => {
+      prev.resolve?.(false);
+      return { open: false, variant: 'confirm_normal', resolve: null };
+    });
+  }, []);
 
   const loadSnapshots = useCallback(async () => {
     setLoading(true);
@@ -1366,19 +1434,104 @@ function AllUserSnapshotsPanel() {
     loadSnapshots();
   }, [loadSnapshots]);
 
+  // Slice 5C — admin server snapshot restore with full pre-write gate.
+  // Sequence (matches Slice 5B Local/Cloud pattern):
+  //   1. Role precheck (fail-closed on loading/unknown/non-admin).
+  //   2. Fetch snapshot row (no lock).
+  //   3. Validate envelope + shape (pure).
+  //   4. Read live SERVER parent for freshness + completion-lock.
+  //   5. Open RestoreConfirmDialog with computed variant; await decision.
+  //   6. Confirm → withRestoreLock: re-fetch snapshot row AND live parent;
+  //      compare fingerprint + escalation; abort with zero mutation on
+  //      any mismatch; otherwise call restoreSnapshotToServer.
+  //   7. Success toast only on truthy return.
   const handleServerRestore = async (snapshotId: string) => {
+    // Step 1 — role precheck.
+    if (roleLoading || isAdmin !== true) {
+      toast.error(adminBlockReasonToast({
+        kind: 'block',
+        reason: roleLoading ? 'role_unknown' : 'not_admin',
+      }));
+      return;
+    }
+
     setRestoring(snapshotId);
     try {
-      const { restoreSnapshotToServer } = await import('@/lib/cloud-backup');
-      const ok = await restoreSnapshotToServer(snapshotId);
-      if (ok) {
-        toast.success("Snapshot restored to database");
-      } else {
-        toast.error("Failed to restore snapshot to database");
+      // Step 2 — fetch snapshot row (no lock).
+      const { fetchCloudSnapshot } = await import('@/lib/cloud-backup');
+      const full = await fetchCloudSnapshot(snapshotId);
+      if (!full) {
+        toast.error("Failed to fetch snapshot");
+        return;
       }
+
+      // Steps 3–4 — envelope + shape + live read.
+      const preLive = await readLiveServerParentForGate(
+        (full.report_type ?? '') as 'inspection' | 'training' | 'daily_assessment',
+        String(full.report_id ?? ''),
+      );
+      const preGate = runAdminRestoreGate({
+        snapshotRow: full,
+        liveParent: preLive === 'read-error' ? 'read-error' : preLive.row,
+        isAdmin,
+        roleLoading,
+      });
+      if (preGate.gate.kind === 'block') {
+        toast.error(adminBlockReasonToast(preGate.gate));
+        return;
+      }
+      const preFingerprint = fingerprintAdminSnapshot(full);
+
+      // Step 5 — confirmation (lock NOT held).
+      const confirmed = await awaitConfirm(preGate.gate.variant);
+      if (!confirmed) return;
+
+      // Step 6 — locked phase: re-fetch + re-validate everything.
+      await withRestoreLock(async () => {
+        try {
+          const reFull = await fetchCloudSnapshot(snapshotId);
+          if (!reFull) {
+            toast.error("Snapshot disappeared during confirmation — restore aborted.");
+            return;
+          }
+          if (fingerprintAdminSnapshot(reFull) !== preFingerprint) {
+            toast.error("Snapshot changed during confirmation — restore aborted.");
+            return;
+          }
+          const reLive = await readLiveServerParentForGate(
+            (reFull.report_type ?? '') as 'inspection' | 'training' | 'daily_assessment',
+            String(reFull.report_id ?? ''),
+          );
+          const reGate = runAdminRestoreGate({
+            snapshotRow: reFull,
+            liveParent: reLive === 'read-error' ? 'read-error' : reLive.row,
+            isAdmin,
+            roleLoading,
+          });
+          if (compareAdminRestoreGateRestrictiveness(reGate.gate, preGate.gate) > 0) {
+            toast.error("Server state changed during confirmation — please retry.");
+            return;
+          }
+
+          // Step 7 — call the service. Success toast only on truthy result.
+          const { restoreSnapshotToServer } = await import('@/lib/cloud-backup');
+          const ok = await restoreSnapshotToServer(snapshotId);
+          if (ok) {
+            toast.success("Snapshot restored to database");
+          } else {
+            toast.error("Failed to restore snapshot to database");
+          }
+        } catch (error) {
+          // Slice 5A: sanitized log only — no raw error, no snapshot body.
+          console.error(
+            '[All User Snapshots] Restore failed:',
+            { snapshotId },
+            sanitizeRecoveryErrorForLog(error),
+          );
+          toast.error("Restore failed");
+        }
+      });
     } catch (error) {
-      // Slice 5A: snapshot body is not in scope here (server-side restore);
-      // log only opaque snapshotId and sanitized error summary.
       console.error(
         '[All User Snapshots] Restore failed:',
         { snapshotId },
@@ -1389,6 +1542,8 @@ function AllUserSnapshotsPanel() {
       setRestoring(null);
     }
   };
+
+
 
   const handleExport = async (snapshotId: string, reportType: string, reportId: string) => {
     try {
@@ -1441,7 +1596,9 @@ function AllUserSnapshotsPanel() {
   const userEntries = Object.entries(grouped).sort((a, b) => a[1].name.localeCompare(b[1].name));
 
   return (
+    <>
     <Card className="backdrop-blur-md bg-white/5 dark:bg-white/[0.03] border border-white/10 rounded-xl shadow-lg shadow-black/5 overflow-hidden">
+
       <CardHeader className="px-3 md:px-6 py-4 md:p-6">
         <div className="flex items-center justify-between">
           <div className="min-w-0">
@@ -1537,6 +1694,14 @@ function AllUserSnapshotsPanel() {
         )}
       </CardContent>
     </Card>
+    <RestoreConfirmDialog
+      open={pendingRestore.open}
+      variant={pendingRestore.variant}
+      canProceed
+      onConfirm={handleConfirm}
+      onCancel={handleCancel}
+    />
+    </>
   );
 }
 
@@ -1547,6 +1712,31 @@ function AdminEditHistoryPanel() {
   const [loading, setLoading] = useState(true);
   const [restoring, setRestoring] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
+  // Slice 5C — non-redirecting role hook; fail-closed while loading/unknown.
+  const { isAdmin, loading: roleLoading } = useRoleStatus();
+  // Slice 5C — confirmation dialog state (lock NOT held while dialog open).
+  const [pendingRestore, setPendingRestore] = useState<{
+    open: boolean;
+    variant: AdminRestoreGateConfirmVariant;
+    resolve: ((confirmed: boolean) => void) | null;
+  }>({ open: false, variant: 'confirm_normal', resolve: null });
+
+  const awaitConfirm = (variant: AdminRestoreGateConfirmVariant): Promise<boolean> =>
+    new Promise<boolean>((resolve) => {
+      setPendingRestore({ open: true, variant, resolve });
+    });
+  const handleConfirm = useCallback(() => {
+    setPendingRestore((prev) => {
+      prev.resolve?.(true);
+      return { open: false, variant: 'confirm_normal', resolve: null };
+    });
+  }, []);
+  const handleCancel = useCallback(() => {
+    setPendingRestore((prev) => {
+      prev.resolve?.(false);
+      return { open: false, variant: 'confirm_normal', resolve: null };
+    });
+  }, []);
 
   const loadSnapshots = useCallback(async () => {
     setLoading(true);
@@ -1571,33 +1761,98 @@ function AdminEditHistoryPanel() {
     loadSnapshots();
   }, [loadSnapshots]);
 
+  // Slice 5C — admin edit-history restore with full pre-write gate.
+  // See AllUserSnapshotsPanel.handleServerRestore for the same 7-step
+  // sequence rationale (role precheck → fetch row → envelope + shape →
+  // live server-parent read → confirm → withRestoreLock re-fetch +
+  // re-validate + fingerprint match + escalation guard → service call).
   const handleRestore = async (snapshotId: string) => {
+    if (roleLoading || isAdmin !== true) {
+      toast.error(adminBlockReasonToast({
+        kind: 'block',
+        reason: roleLoading ? 'role_unknown' : 'not_admin',
+      }));
+      return;
+    }
     setRestoring(snapshotId);
-    // H2: Hold restore lock during server-side admin restore so concurrent
-    // auto-sync cycles don't push stale local edits over the original data
-    // we're about to write back to the server.
-    await withRestoreLock(async () => {
-      try {
-        const ok = await restoreAdminEditSnapshot(snapshotId);
-        if (ok) {
-          toast.success("Original data restored to database");
-        } else {
-          toast.error("Failed to restore original data");
-        }
-      } catch (error) {
-        // Slice 5A: snapshot body is not in scope here; log only opaque
-        // snapshotId and sanitized error summary.
-        console.error(
-          '[Admin Edit History] Restore failed:',
-          { snapshotId },
-          sanitizeRecoveryErrorForLog(error),
-        );
-        toast.error("Restore failed");
-      } finally {
-        setRestoring(null);
+    try {
+      const row = await fetchAdminEditSnapshotById(snapshotId);
+      if (!row) {
+        toast.error("Failed to fetch snapshot");
+        return;
       }
-    });
+      const preLive = await readLiveServerParentForGate(
+        (row.report_type ?? '') as 'inspection' | 'training' | 'daily_assessment',
+        String(row.report_id ?? ''),
+      );
+      const preGate = runAdminRestoreGate({
+        snapshotRow: row,
+        liveParent: preLive === 'read-error' ? 'read-error' : preLive.row,
+        isAdmin,
+        roleLoading,
+      });
+      if (preGate.gate.kind === 'block') {
+        toast.error(adminBlockReasonToast(preGate.gate));
+        return;
+      }
+      const preFingerprint = fingerprintAdminSnapshot(row);
+
+      const confirmed = await awaitConfirm(preGate.gate.variant);
+      if (!confirmed) return;
+
+      await withRestoreLock(async () => {
+        try {
+          const reRow = await fetchAdminEditSnapshotById(snapshotId);
+          if (!reRow) {
+            toast.error("Snapshot disappeared during confirmation — restore aborted.");
+            return;
+          }
+          if (fingerprintAdminSnapshot(reRow) !== preFingerprint) {
+            toast.error("Snapshot changed during confirmation — restore aborted.");
+            return;
+          }
+          const reLive = await readLiveServerParentForGate(
+            (reRow.report_type ?? '') as 'inspection' | 'training' | 'daily_assessment',
+            String(reRow.report_id ?? ''),
+          );
+          const reGate = runAdminRestoreGate({
+            snapshotRow: reRow,
+            liveParent: reLive === 'read-error' ? 'read-error' : reLive.row,
+            isAdmin,
+            roleLoading,
+          });
+          if (compareAdminRestoreGateRestrictiveness(reGate.gate, preGate.gate) > 0) {
+            toast.error("Server state changed during confirmation — please retry.");
+            return;
+          }
+
+          const ok = await restoreAdminEditSnapshot(snapshotId);
+          if (ok) {
+            toast.success("Original data restored to database");
+          } else {
+            toast.error("Failed to restore original data");
+          }
+        } catch (error) {
+          console.error(
+            '[Admin Edit History] Restore failed:',
+            { snapshotId },
+            sanitizeRecoveryErrorForLog(error),
+          );
+          toast.error("Restore failed");
+        }
+      });
+    } catch (error) {
+      console.error(
+        '[Admin Edit History] Restore failed:',
+        { snapshotId },
+        sanitizeRecoveryErrorForLog(error),
+      );
+      toast.error("Restore failed");
+    } finally {
+      setRestoring(null);
+    }
   };
+
 
   const handleExport = async (snapshotId: string, reportType: string) => {
     try {
@@ -1627,7 +1882,9 @@ function AdminEditHistoryPanel() {
   };
 
   return (
+    <>
     <Card className="backdrop-blur-md bg-white/5 dark:bg-white/[0.03] border border-white/10 rounded-xl shadow-lg shadow-black/5 overflow-hidden">
+
       <CardHeader className="px-3 md:px-6 py-4 md:p-6">
         <div className="flex items-center justify-between">
           <div className="min-w-0">
@@ -1708,6 +1965,14 @@ function AdminEditHistoryPanel() {
         )}
       </CardContent>
     </Card>
+    <RestoreConfirmDialog
+      open={pendingRestore.open}
+      variant={pendingRestore.variant}
+      canProceed
+      onConfirm={handleConfirm}
+      onCancel={handleCancel}
+    />
+    </>
   );
 }
 
