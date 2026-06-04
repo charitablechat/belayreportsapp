@@ -281,6 +281,44 @@ export async function fetchAdminEditSnapshots(): Promise<AdminEditSnapshotEntry[
 }
 
 /**
+ * Slice 5C — narrow raw-row fetch helper used by the Admin Edit History
+ * pre-write gate. Returns `{ report_type, report_id, original_owner_id,
+ * snapshot_data }` so the gate can run on the raw row without a second
+ * round trip. Returns `null` on read error or row not found. Errors are
+ * intentionally swallowed here — the gate fails-closed when this returns
+ * null, and no sensitive payload is logged.
+ */
+export interface AdminEditSnapshotRow {
+  id: string;
+  report_type: string;
+  report_id: string;
+  original_owner_id: string;
+  snapshot_data: unknown;
+}
+
+export async function fetchAdminEditSnapshotById(
+  snapshotId: string,
+): Promise<AdminEditSnapshotRow | null> {
+  try {
+    const { data, error } = await sb.from('admin_edit_snapshots')
+      .select('id, report_type, report_id, original_owner_id, snapshot_data')
+      .eq('id', snapshotId)
+      .maybeSingle();
+    if (error || !data) return null;
+    const row = data as Record<string, unknown>;
+    return {
+      id: String(row.id ?? ''),
+      report_type: String(row.report_type ?? ''),
+      report_id: String(row.report_id ?? ''),
+      original_owner_id: String(row.original_owner_id ?? ''),
+      snapshot_data: row.snapshot_data ?? null,
+    };
+  } catch {
+    return null;
+  }
+}
+
+/**
  * Restore a pre-edit snapshot back to the database (undo admin changes).
  */
 export async function restoreAdminEditSnapshot(snapshotId: string): Promise<boolean> {
