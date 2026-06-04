@@ -128,6 +128,42 @@ async function readLiveParentForGate(
   return null;
 }
 
+/**
+ * Slice 5C — read the live SERVER parent for stale + completion-lock
+ * evaluation of admin server restores. Returns:
+ *   - { kind: 'ok', row: <row> } when the server row exists
+ *   - { kind: 'ok', row: null } when the row is genuinely not found
+ *   - 'read-error' when the read transport / RLS failed; the gate must
+ *     fail-closed to avoid making a write decision on missing state.
+ */
+type LiveServerParentResult =
+  | { kind: 'ok'; row: Record<string, unknown> | null }
+  | 'read-error';
+
+async function readLiveServerParentForGate(
+  reportType: 'inspection' | 'training' | 'daily_assessment',
+  reportId: string,
+): Promise<LiveServerParentResult> {
+  const table =
+    reportType === 'inspection' ? 'inspections'
+      : reportType === 'training' ? 'trainings'
+        : 'daily_assessments';
+  try {
+    // Narrow read — id/updated_at/status are all we need for the gate.
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const client = supabase as any;
+    const { data, error } = await client
+      .from(table)
+      .select('id, updated_at, status')
+      .eq('id', reportId)
+      .maybeSingle();
+    if (error) return 'read-error';
+    return { kind: 'ok', row: (data as Record<string, unknown> | null) ?? null };
+  } catch {
+    return 'read-error';
+  }
+}
+
 interface PendingRestoreState {
   open: boolean;
   variant: RestoreGateConfirmVariant;
