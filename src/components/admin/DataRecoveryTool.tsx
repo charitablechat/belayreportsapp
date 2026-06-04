@@ -1596,7 +1596,9 @@ function AllUserSnapshotsPanel() {
   const userEntries = Object.entries(grouped).sort((a, b) => a[1].name.localeCompare(b[1].name));
 
   return (
+    <>
     <Card className="backdrop-blur-md bg-white/5 dark:bg-white/[0.03] border border-white/10 rounded-xl shadow-lg shadow-black/5 overflow-hidden">
+
       <CardHeader className="px-3 md:px-6 py-4 md:p-6">
         <div className="flex items-center justify-between">
           <div className="min-w-0">
