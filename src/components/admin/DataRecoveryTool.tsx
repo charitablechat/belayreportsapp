@@ -1965,6 +1965,14 @@ function AdminEditHistoryPanel() {
         )}
       </CardContent>
     </Card>
+    <RestoreConfirmDialog
+      open={pendingRestore.open}
+      variant={pendingRestore.variant}
+      canProceed
+      onConfirm={handleConfirm}
+      onCancel={handleCancel}
+    />
+    </>
   );
 }
 
