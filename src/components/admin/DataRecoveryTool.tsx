@@ -1382,6 +1382,31 @@ function AllUserSnapshotsPanel() {
   const [restoring, setRestoring] = useState<string | null>(null);
   const [expandedUsers, setExpandedUsers] = useState<Set<string>>(new Set());
   const [searchQuery, setSearchQuery] = useState('');
+  // Slice 5C — non-redirecting role hook; fail-closed while loading/unknown.
+  const { isAdmin, loading: roleLoading } = useRoleStatus();
+  // Slice 5C — confirmation dialog state (lock NOT held while dialog open).
+  const [pendingRestore, setPendingRestore] = useState<{
+    open: boolean;
+    variant: AdminRestoreGateConfirmVariant;
+    resolve: ((confirmed: boolean) => void) | null;
+  }>({ open: false, variant: 'confirm_normal', resolve: null });
+
+  const awaitConfirm = (variant: AdminRestoreGateConfirmVariant): Promise<boolean> =>
+    new Promise<boolean>((resolve) => {
+      setPendingRestore({ open: true, variant, resolve });
+    });
+  const handleConfirm = useCallback(() => {
+    setPendingRestore((prev) => {
+      prev.resolve?.(true);
+      return { open: false, variant: 'confirm_normal', resolve: null };
+    });
+  }, []);
+  const handleCancel = useCallback(() => {
+    setPendingRestore((prev) => {
+      prev.resolve?.(false);
+      return { open: false, variant: 'confirm_normal', resolve: null };
+    });
+  }, []);
 
   const loadSnapshots = useCallback(async () => {
     setLoading(true);
@@ -1409,19 +1434,104 @@ function AllUserSnapshotsPanel() {
     loadSnapshots();
   }, [loadSnapshots]);
 
+  // Slice 5C — admin server snapshot restore with full pre-write gate.
+  // Sequence (matches Slice 5B Local/Cloud pattern):
+  //   1. Role precheck (fail-closed on loading/unknown/non-admin).
+  //   2. Fetch snapshot row (no lock).
+  //   3. Validate envelope + shape (pure).
+  //   4. Read live SERVER parent for freshness + completion-lock.
+  //   5. Open RestoreConfirmDialog with computed variant; await decision.
+  //   6. Confirm → withRestoreLock: re-fetch snapshot row AND live parent;
+  //      compare fingerprint + escalation; abort with zero mutation on
+  //      any mismatch; otherwise call restoreSnapshotToServer.
+  //   7. Success toast only on truthy return.
   const handleServerRestore = async (snapshotId: string) => {
+    // Step 1 — role precheck.
+    if (roleLoading || isAdmin !== true) {
+      toast.error(adminBlockReasonToast({
+        kind: 'block',
+        reason: roleLoading ? 'role_unknown' : 'not_admin',
+      }));
+      return;
+    }
+
     setRestoring(snapshotId);
     try {
-      const { restoreSnapshotToServer } = await import('@/lib/cloud-backup');
-      const ok = await restoreSnapshotToServer(snapshotId);
-      if (ok) {
-        toast.success("Snapshot restored to database");
-      } else {
-        toast.error("Failed to restore snapshot to database");
+      // Step 2 — fetch snapshot row (no lock).
+      const { fetchCloudSnapshot } = await import('@/lib/cloud-backup');
+      const full = await fetchCloudSnapshot(snapshotId);
+      if (!full) {
+        toast.error("Failed to fetch snapshot");
+        return;
       }
+
+      // Steps 3–4 — envelope + shape + live read.
+      const preLive = await readLiveServerParentForGate(
+        (full.report_type ?? '') as 'inspection' | 'training' | 'daily_assessment',
+        String(full.report_id ?? ''),
+      );
+      const preGate = runAdminRestoreGate({
+        snapshotRow: full,
+        liveParent: preLive === 'read-error' ? 'read-error' : preLive.row,
+        isAdmin,
+        roleLoading,
+      });
+      if (preGate.gate.kind === 'block') {
+        toast.error(adminBlockReasonToast(preGate.gate));
+        return;
+      }
+      const preFingerprint = fingerprintAdminSnapshot(full);
+
+      // Step 5 — confirmation (lock NOT held).
+      const confirmed = await awaitConfirm(preGate.gate.variant);
+      if (!confirmed) return;
+
+      // Step 6 — locked phase: re-fetch + re-validate everything.
+      await withRestoreLock(async () => {
+        try {
+          const reFull = await fetchCloudSnapshot(snapshotId);
+          if (!reFull) {
+            toast.error("Snapshot disappeared during confirmation — restore aborted.");
+            return;
+          }
+          if (fingerprintAdminSnapshot(reFull) !== preFingerprint) {
+            toast.error("Snapshot changed during confirmation — restore aborted.");
+            return;
+          }
+          const reLive = await readLiveServerParentForGate(
+            (reFull.report_type ?? '') as 'inspection' | 'training' | 'daily_assessment',
+            String(reFull.report_id ?? ''),
+          );
+          const reGate = runAdminRestoreGate({
+            snapshotRow: reFull,
+            liveParent: reLive === 'read-error' ? 'read-error' : reLive.row,
+            isAdmin,
+            roleLoading,
+          });
+          if (compareAdminRestoreGateRestrictiveness(reGate.gate, preGate.gate) > 0) {
+            toast.error("Server state changed during confirmation — please retry.");
+            return;
+          }
+
+          // Step 7 — call the service. Success toast only on truthy result.
+          const { restoreSnapshotToServer } = await import('@/lib/cloud-backup');
+          const ok = await restoreSnapshotToServer(snapshotId);
+          if (ok) {
+            toast.success("Snapshot restored to database");
+          } else {
+            toast.error("Failed to restore snapshot to database");
+          }
+        } catch (error) {
+          // Slice 5A: sanitized log only — no raw error, no snapshot body.
+          console.error(
+            '[All User Snapshots] Restore failed:',
+            { snapshotId },
+            sanitizeRecoveryErrorForLog(error),
+          );
+          toast.error("Restore failed");
+        }
+      });
     } catch (error) {
-      // Slice 5A: snapshot body is not in scope here (server-side restore);
-      // log only opaque snapshotId and sanitized error summary.
       console.error(
         '[All User Snapshots] Restore failed:',
         { snapshotId },
@@ -1432,6 +1542,8 @@ function AllUserSnapshotsPanel() {
       setRestoring(null);
     }
   };
+
+
 
   const handleExport = async (snapshotId: string, reportType: string, reportId: string) => {
     try {
