@@ -157,7 +157,7 @@ describe('normalizeResultFieldsOnRow', () => {
     expect(out.row.result).toBe('pass w/provisions');
     expect(out.row.cable_result).toBe('pass');
     expect(out.row.braking_result).toBe('fail');
-    expect(out.row.ead_result).toBe(''); // untouched (empty)
+    expect(out.row.ead_result).toBeNull(); // ROPEWORKS-6D: '' coerced to null
     // original not mutated
     expect(row.result).toBe('pass/\nrec');
   });
