@@ -381,11 +381,14 @@ function swNormalizeInspectionResult(raw) {
 function swNormalizeResultFields(rows) {
   const fields = ['result', 'cable_result', 'braking_result', 'ead_result'];
   for (const row of rows) {
+    if (!row) continue;
     for (const f of fields) {
-      if (row && typeof row[f] === 'string' && row[f] !== '') {
-        const n = swNormalizeInspectionResult(row[f]);
-        if (n !== null && n !== row[f]) row[f] = n;
-      }
+      const v = row[f];
+      if (typeof v !== 'string') continue;
+      // Empty / whitespace-only → null so the server-side enum accepts it.
+      if (v === '' || v.trim() === '') { row[f] = null; continue; }
+      const n = swNormalizeInspectionResult(v);
+      if (n !== null && n !== v) row[f] = n;
     }
   }
 }
