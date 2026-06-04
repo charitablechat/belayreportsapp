@@ -41,7 +41,7 @@ describe('validateAdminRestoreEnvelope', () => {
       row: { report_id: 'r-1', snapshot_data: {} },
     });
     expect(r.ok).toBe(false);
-    if (!r.ok) expect(r.reason).toBe('envelope_missing');
+    if (r.ok === false) expect(r.reason).toBe('envelope_missing');
   });
 
   it('rejects unknown report_type', () => {
@@ -49,7 +49,7 @@ describe('validateAdminRestoreEnvelope', () => {
       row: { report_type: 'bogus', report_id: 'r-1' },
     });
     expect(r.ok).toBe(false);
-    if (!r.ok) expect(r.reason).toBe('envelope_type_unknown');
+    if (r.ok === false) expect(r.reason).toBe('envelope_type_unknown');
   });
 
   it('rejects empty report_id', () => {
@@ -57,7 +57,7 @@ describe('validateAdminRestoreEnvelope', () => {
       row: { report_type: 'inspection', report_id: '' },
     });
     expect(r.ok).toBe(false);
-    if (!r.ok) expect(r.reason).toBe('envelope_id_missing');
+    if (r.ok === false) expect(r.reason).toBe('envelope_id_missing');
   });
 
   it('rejects parent.id that does not match envelope report_id', () => {
@@ -69,7 +69,7 @@ describe('validateAdminRestoreEnvelope', () => {
       },
     });
     expect(r.ok).toBe(false);
-    if (!r.ok) expect(r.reason).toBe('parent_id_mismatch');
+    if (r.ok === false) expect(r.reason).toBe('parent_id_mismatch');
   });
 
   it('rejects parent.report_type that does not match envelope', () => {
@@ -81,6 +81,6 @@ describe('validateAdminRestoreEnvelope', () => {
       },
     });
     expect(r.ok).toBe(false);
-    if (!r.ok) expect(r.reason).toBe('parent_type_mismatch');
+    if (r.ok === false) expect(r.reason).toBe('parent_type_mismatch');
   });
 });
