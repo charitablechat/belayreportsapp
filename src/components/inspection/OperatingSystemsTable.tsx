@@ -162,7 +162,20 @@ function OperatingSystemsTable({ systems, onUpdate, onImmediateSave: rawOnImmedi
     if (COMMIT_FIELDS.has(field) && onImmediateSave) {
       setTimeout(() => onImmediateSave(), 0);
     }
-  }, [onUpdate, onImmediateSave]);
+    // Re-add heal: if the user is typing a name/system_name that matches a
+    // prior delete tombstone (same businessKey) or restoring a tombstoned
+    // server-id row, lift the tombstone so the row survives reload.
+    if ((field === "name" || field === "system_name") && effectiveInspectionId) {
+      const merged = { ...item, [field]: value };
+      const bk = osBusinessKey(merged);
+      if (bk) {
+        clearChildTombstone("inspection_operating_system", effectiveInspectionId, { businessKey: bk });
+      }
+      if (item.id && !String(item.id).startsWith("temp-")) {
+        clearChildTombstone("inspection_operating_system", effectiveInspectionId, { id: item.id });
+      }
+    }
+  }, [onUpdate, onImmediateSave, effectiveInspectionId]);
 
 
   const handleDeleteConfirm = useCallback(() => {
