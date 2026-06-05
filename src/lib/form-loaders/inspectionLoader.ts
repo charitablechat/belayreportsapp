@@ -150,12 +150,7 @@ export async function loadInspectionFromOffline(
 
   return {
     inspection: offlineInspection ?? null,
-    systems: filterChildRows(
-      "inspection_operating_system",
-      id,
-      systems || [],
-      osBusinessKey,
-    ),
+    systems: applySystemsTombstone(id, (systems || []) as DbRow[]),
     ziplines: ziplines || [],
     equipment: equipment || [],
     standards: standards || [],
@@ -214,12 +209,7 @@ export async function fetchInspectionChildrenFromServer(id: string) {
   ]);
 
   return {
-    systems: filterChildRows(
-      "inspection_operating_system",
-      id,
-      (systemsData as DbRow[]) || [],
-      osBusinessKey,
-    ),
+    systems: applySystemsTombstone(id, (systemsData as DbRow[]) || []),
     ziplines: (ziplinesData as DbRow[]) || [],
     equipment: (equipmentData as DbRow[]) || [],
     standards: (standardsData as DbRow[]) || [],
