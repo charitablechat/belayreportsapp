@@ -1,103 +1,76 @@
+## Quick answer on the Lovable incident email
 
-## 1. Root cause hypothesis (high confidence)
+Unrelated. That incident is about file uploads inside the Lovable build editor (attaching images/PDFs to the AI chat). It does not affect deployed app data, IndexedDB, or Supabase writes. Luke's "Climbing Wall / Automated Safety disappears" is a separate, app-side regression from yesterday's tombstone-load hotfix.
 
-**There is no version-system bug. Production has not been re-published since the P1 Sentry enum-normalization fix landed.** The displayed `4.8.1` is the true current production version. `4.8.2` does not exist yet anywhere — not in `version.json`, not in any built bundle, not on the CDN.
+## Root cause
 
-Evidence:
-- `curl https://rwreports.com/version.json` → `{"version":"4.8.1","build":"dev"}` (live production)
-- Repo `version.json` → `{"version":"4.8.0"}` (committed source of truth; the Vite plugin auto-bumps to the next patch *only on `mode === 'production'` builds*, which is what the Lovable Publish action runs — see `vite-auto-version.ts` lines ~80–95)
-- The preview panel screenshot correctly says `preview build v4.8.0` / `installed v4.8.1` / `deployed v4.8.1 — update available`. That "update available" is the preview comparing its own dev build (4.8.0) to the last published prod build (4.8.1). It is *not* claiming a 4.8.2 exists.
-- The "current" label on rwreports.com is correct: published `4.8.1` == deployed `4.8.1`.
+Yesterday's Lakeview hotfix added a persistent `inspection_operating_system` tombstone in `OperatingSystemsTable.handleDeleteConfirm` and a load-time filter (`applySystemsTombstone`) anchored to either server id OR a `businessKey = lower(name) + "|" + lower(system_name)`.
 
-So the P1 `"not inspected" → "na"` fix is in the workspace but has **not** shipped to end users. The next production Publish will bump `version.json` `4.8.0 → 4.8.1`… wait — see §3.
+When Luke deleted the prior "Climbing Wall / Automated Safety" row, a tombstone was written with businessKey `climbing wall|automated safety` (60-day TTL). When he now re-adds a new row and types the same name+system_name, the new row's derived businessKey matches the tombstone, so on reload `applySystemsTombstone` filters it out. The save itself succeeds — the row exists in IDB and Supabase — it just gets filtered out on every subsequent load.
 
-## 2. Current version sources (audit complete)
+Same mechanism explains any other Operating-Systems row Luke ever deletes-then-recreates with the same name+system pair. Dividers are not affected (no businessKey; tombstoned by id only — new divider gets a fresh id).
 
-| Source | Value | Notes |
-|---|---|---|
-| `version.json` (repo) | `4.8.0` | SoT consumed by `vite-auto-version.ts` |
-| `vite-auto-version.ts` | bumps patch on `build && mode==='production'` only | Single-digit rollover, writes back to `version.json` |
-| `import.meta.env.APP_VERSION` | injected at build time | Read by `attestation.ts`, `version-check.ts`, `useVersionStatus`, `VersionInfoModal` |
-| `/version.json` (build output) | emitted by plugin's `generateBundle` | What `rwreports.com/version.json` serves |
-| `get-deployed-version` edge fn | proxies `rwreports.com/version.json` | Used by preview to show real prod version |
-| `useVersionStatus` | compares `APP_VERSION` (installed) vs proxy/`/version.json` (deployed) | Correct semantics |
-| SW (`vite-pwa-config`, `sw-sync.js`) | Workbox + custom SW | Cache versioning handled by Workbox revision hashes; `version.json` is excluded from precache (served `no-store` by Lovable proxy per PWA docs) |
-| PWA manifest | `display: standalone` etc. | Manifest fields don't carry version |
+## Fix
 
-The system is actually correctly designed: one source (`version.json`), one build-time bump, one runtime comparator. **The user's mental model ("4.8.2 should be live") is what's off, not the plumbing.**
+Narrow, shared-path fix in `src/components/inspection/OperatingSystemsTable.tsx`: when the user edits `name` or `system_name`, compute the resulting businessKey and call `clearChildTombstone("inspection_operating_system", effectiveInspectionId, { businessKey })`. This makes "re-add with the same name" lift the prior tombstone immediately, before the next save/reload.
 
-## 3. The one real subtlety to flag
+Also clear by row id on edit (covers the case where a server-id row is somehow tombstoned and the user is editing it back into existence — defensive, cheap).
 
-`version.json` in the repo is `4.8.0`, but production is serving `4.8.1`. That means the last production build bumped in-memory and wrote `4.8.1` to the build output, but the `4.8.1` value was **not committed back to the repo**. The plugin does `fs.writeFileSync(VERSION_FILE, ...)` at build time, but Lovable's publish pipeline doesn't commit that change back to git. So:
+`clearChildTombstone` already exists and is no-op-safe when no matching tombstone is present, so this is a one-call addition with no behavioral risk to the unaffected paths.
 
-- Next production publish: plugin reads repo `4.8.0`, bumps to `4.8.1`, writes that to the bundle and to `/version.json`. **Result: production stays at `4.8.1`. No version bump visible to users.** The P1 fix would ship, but under the same version number — `useVersionStatus` would not flag "update available" for installed-PWA users still on the prior `4.8.1` build, because SemVer comparison returns equal.
-- That is the only latent bug here, and it explains why "publish should bump to 4.8.2" feels intuitive but won't actually happen without intervention.
+### Code change (single file)
 
-Fix options (pick one before publishing):
-- **(A) Bump `version.json` to `4.8.1` in the repo** so the next prod build bumps to `4.8.2`. Minimal, matches user expectation, no code change.
-- **(B) Bump `version.json` to `4.8.2` directly** and let the plugin push it to `4.8.3` on next publish. Same shape, one step ahead.
-- **(C) Leave the plugin's auto-bump behaviour and accept that re-publishing without a repo commit will reuse the same patch. Document it.** Lowest churn but doesn't solve the "PWA update prompt won't fire" problem for already-installed users.
+In `updateSystem` in `OperatingSystemsTable.tsx`, after the `onUpdate` call, when `field === "name" || field === "system_name"`:
 
-Recommended: **(A)**. It restores the invariant `repo version == last published version`, the next publish naturally produces `4.8.2` (which contains the P1 fix), and installed PWAs will correctly see "update available".
+```ts
+const merged = { ...item, [field]: value };
+const bk = osBusinessKey(merged); // reuse shared helper from inspectionLoader
+if (effectiveInspectionId) {
+  if (bk) {
+    clearChildTombstone("inspection_operating_system", effectiveInspectionId, { businessKey: bk });
+  }
+  if (item.id && !String(item.id).startsWith("temp-")) {
+    clearChildTombstone("inspection_operating_system", effectiveInspectionId, { id: item.id });
+  }
+}
+```
 
-## 4. Proposed action (narrow)
+Import `clearChildTombstone` alongside the existing `addChildTombstone`, and import `osBusinessKey` from `@/lib/form-loaders/inspectionLoader` (already exported there per cross-platform shared-path rule).
 
-1. Edit `version.json`: `"4.8.0"` → `"4.8.1"` (single-line change, matches the last actually-published version).
-2. User clicks **Publish** in Lovable. Plugin bumps to `4.8.2`, writes new `/version.json` and `APP_VERSION`, emits to CDN.
-3. Verify (see §8).
+No change to delete logic, no change to load filters, no change to other tables.
 
-No code changes to the version-check pipeline, SW, manifest, or update UI. The pipeline is sound.
+## Tests
 
-## 5. Files expected to change
+1. New unit test `src/components/inspection/__tests__/operating-systems-recreate-clears-tombstone.test.ts`:
+   - Seed a tombstone for businessKey `climbing wall|automated safety`.
+   - Simulate `updateSystem` editing a fresh temp row's `name` to "Climbing Wall" then `system_name` to "Automated Safety".
+   - Assert `isChildTombstoned(...)` is false after the second edit.
+   - Assert `applySystemsTombstone(reportId, [{id:"temp-x", name:"Climbing Wall", system_name:"Automated Safety"}])` returns the row (not filtered).
 
-- `version.json` — one line, `4.8.0` → `4.8.1`.
+2. Existing `inspection-form-systems-tombstone-load.test.ts` and `operating-systems-resurrection.test.ts` must still pass (delete-without-recreate behavior unchanged).
 
-## 6. Files / areas explicitly NOT changing
+3. Run focused tests then full suite:
+   ```bash
+   bunx vitest run \
+     src/components/inspection/__tests__/operating-systems-recreate-clears-tombstone.test.ts \
+     src/pages/__tests__/inspection-form-systems-tombstone-load.test.ts \
+     src/lib/__tests__/operating-systems-resurrection.test.ts
+   bunx vitest run
+   ```
 
-- `vite-auto-version.ts`, `vite-pwa-config.ts`, `src/lib/version-check.ts`, `src/hooks/useVersionStatus.tsx`, `src/components/VersionInfoModal.tsx`, `src/components/pwa/*`, `src/lib/attestation.ts`, `supabase/functions/get-deployed-version/`, `public/sw-*.js`, `package.json`, PWA manifest, `.eslint-any-budget`, `.bundle-size-budget`, any report/sync/auth/IDB code.
+## Cross-platform impact
 
-## 7. Offline / PWA safety
+- All platforms (web, PWA, iPad, desktop, mobile) render Operating Systems through the same `OperatingSystemsTable.tsx` component and load through the same `inspectionLoader.ts` + `child-row-tombstones.ts`. Single-file edit covers every device path.
+- No platform-specific branches introduced.
 
-- No SW cache-name change → no orphaned caches, no app-shell purge.
-- No IndexedDB schema touch → reports, pending sync queue, photos, attestation, autocomplete history all preserved.
-- Workbox `autoUpdate` + the existing `UpdateNotification`/`UpdateBadge`/`StaleVersionBanner` trio will surface the new build with the existing one-tap "INSTALL UPDATE" flow. iOS-standalone fallback hint already implemented.
-- "Check for Updates" button (`forceVersionCheck`) already bypasses throttles and triggers `reg.update()`.
+## Production cleanup (Luke's Lakeview report only — NOT in this hotfix)
 
-## 8. Verification plan
+After deploy, Luke can clear the Lakeview report's stale tombstone bucket from his browser by recreating the row (the fix will lift it automatically on first edit). No DML or per-report cleanup needed; the code change is self-healing.
 
-**Pre-publish (read-only):**
-- Confirm `cat version.json` shows `4.8.1` after edit.
-- Confirm grep finds no other version literal that needs syncing: `rg -n '"4\.8\.[0-9]"' --glob '!node_modules'`.
+If you would like a one-time `localStorage.removeItem('rw_child_tombstones_v1:inspection_operating_system:c575d3d9-68a4-43f4-a6e5-e4268338e465')` instruction sent to Luke for instant relief before the new build reaches him, say the word and I'll include it in the release note — but it's optional given the auto-heal behavior.
 
-**Post-publish:**
-1. `curl -s https://rwreports.com/version.json` → expect `{"version":"4.8.2","build":"<new sha>"}`.
-2. `curl -s https://rwreports.com/version.json | jq -r .build` → diff against current `dev`/prior hash to prove a new bundle shipped.
-3. Hard-reload `rwreports.com` in desktop Chrome → Version Info modal shows Installed `v4.8.2`, Deployed `v4.8.2`, "Current".
-4. Installed PWA (desktop + iPad/Safari + Android): on next foreground, `StaleVersionBanner` or `UpdateNotification` appears with `v4.8.1 → v4.8.2`. Tap "INSTALL UPDATE" / "REFRESH" → reloads to `v4.8.2`. Verify reports, pending queue, photos still present.
-5. P1 fix presence check (no PII): in DevTools console on the live `4.8.2` build, run `(await import('/src/lib/inspection-result-normalizer.ts')).normalizeInspectionResult('not inspected')` — expect `'na'`. (If the module is tree-shaken/minified, alternative: inspect Sentry over the next 24–72 h for zero new `systems[].result = "not inspected"` events tagged release `4.8.2`.)
-6. Preview panel: should now show `installed v4.8.0` (preview's own) / `deployed v4.8.2 — update available`. The "update available" pill on the preview is expected and correct.
+## Out of scope / monitored
 
-**Focused tests to run before publish:**
-- `bunx vitest run src/lib/__tests__/version-rollover.test.ts src/lib/__tests__/inspection-result-normalizer.test.ts src/lib/__tests__/sw-sync-result-normalizer-mirror.test.ts`
-- Expect all green; no code under test changed.
-
-## 9. Cross-platform verification
-
-Shared path — `version.json` is the single source consumed identically by desktop browser, installed PWA (Workbox + custom SW), iPad/Safari (with the existing iOS-standalone fallback hint in `StaleVersionBanner`), and mobile web. Admin vs regular-user: no role-gated code in the version pipeline, behaviour is identical. No per-platform branch added.
-
-## 10. Should this block Slice 5?
-
-**Yes, briefly.** Until production is republished:
-- The P1 Sentry enum fix is not actually live.
-- Slice 5 verification cannot meaningfully use "production confirms the fix" as a gate.
-
-But the unblock is ~30 seconds of work (one-line `version.json` edit + Publish). After that, Slice 5 can proceed in parallel with the 24–72 h Sentry observation window.
-
-## 11. Approval checkpoints
-
-Before I touch anything, please confirm:
-1. Approve option **(A)** — set `version.json` to `4.8.1` so next publish produces `4.8.2`.
-2. Confirm you will click **Publish** after the edit (I can't trigger publish from here).
-3. Confirm no other in-flight workspace changes should be held back from this publish (the publish will ship whatever else is in `main`).
-
-On approval I will make the single-line edit and stop, then wait for your post-publish confirmation before continuing to Slice 5.
+- Contact-field save issue remains on monitored follow-up.
+- No backend / RLS / edge-function changes.
+- No change to deletion tombstone semantics or TTL.
