@@ -125,6 +125,7 @@ import { useEquipmentTypeOptions } from "@/hooks/useEquipmentTypeOptions";
 import {
   mergeStandards,
   mergeStandardsPreserveLocal,
+  applySystemsTombstone,
 } from "@/lib/form-loaders/inspectionLoader";
 // Slice 1.5 — performSave engine extracted to inspectionSaver.
 import {
