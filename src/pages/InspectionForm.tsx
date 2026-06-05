@@ -1711,24 +1711,32 @@ export default function InspectionForm() {
           childDataLoadedRef.current.standards = true;
           childDataLoadedRef.current.summary = true;
           if (systemsData && systemsData.length > 0) {
-            const normalizedSystems = systemsData.map(item => ({
-              ...item,
-              result: normalizeResultValue(item.result)
-            }));
+            const normalizedSystems = applySystemsTombstone(
+              id!,
+              systemsData.map(item => ({
+                ...item,
+                result: normalizeResultValue(item.result)
+              })),
+            );
             setSystems(prev => mergeChildArray(
               prev as Array<DbRow & { id: string }>,
               normalizedSystems as Array<DbRow & { id: string }>,
               { table: 'systems', deletedIds: deletedSystemIdsRef.current, onDeletedIdConfirmed: dropDeletedSystemId, coalesceTempByBusinessKey: ['inspection_id', 'system_name'] },
             ) as DbRow[]);
+            // Cache the filtered set so the next offline load doesn't
+            // re-introduce the tombstoned rows from IDB.
             saveRelatedDataOffline('systems', id!, normalizedSystems).catch(e =>
               console.warn('[InspectionForm] Non-critical: failed to cache systems', e)
             );
           } else if (offlineSystems.length > 0) {
             console.warn('[InspectionForm] Server returned empty systems but local has data -- preserving local');
-            const normalizedSystems = offlineSystems.map(item => ({
-              ...item,
-              result: normalizeResultValue(item.result)
-            }));
+            const normalizedSystems = applySystemsTombstone(
+              id!,
+              offlineSystems.map(item => ({
+                ...item,
+                result: normalizeResultValue(item.result)
+              })),
+            );
             setSystems(prev => mergeChildArray(
               prev as Array<DbRow & { id: string }>,
               normalizedSystems as Array<DbRow & { id: string }>,
