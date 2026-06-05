@@ -1480,7 +1480,7 @@ function AllUserSnapshotsPanel() {
         toast.error(adminBlockReasonToast(preGate.gate));
         return;
       }
-      const preFingerprint = fingerprintAdminSnapshot(full);
+      const preFingerprint = await fingerprintAdminSnapshot(full);
 
       // Step 5 — confirmation (lock NOT held).
       const confirmed = await awaitConfirm(preGate.gate.variant);
@@ -1494,7 +1494,7 @@ function AllUserSnapshotsPanel() {
             toast.error("Snapshot disappeared during confirmation — restore aborted.");
             return;
           }
-          if (fingerprintAdminSnapshot(reFull) !== preFingerprint) {
+          if ((await fingerprintAdminSnapshot(reFull)) !== preFingerprint) {
             toast.error("Snapshot changed during confirmation — restore aborted.");
             return;
           }
@@ -1795,7 +1795,7 @@ function AdminEditHistoryPanel() {
         toast.error(adminBlockReasonToast(preGate.gate));
         return;
       }
-      const preFingerprint = fingerprintAdminSnapshot(row);
+      const preFingerprint = await fingerprintAdminSnapshot(row);
 
       const confirmed = await awaitConfirm(preGate.gate.variant);
       if (!confirmed) return;
@@ -1807,7 +1807,7 @@ function AdminEditHistoryPanel() {
             toast.error("Snapshot disappeared during confirmation — restore aborted.");
             return;
           }
-          if (fingerprintAdminSnapshot(reRow) !== preFingerprint) {
+          if ((await fingerprintAdminSnapshot(reRow)) !== preFingerprint) {
             toast.error("Snapshot changed during confirmation — restore aborted.");
             return;
           }

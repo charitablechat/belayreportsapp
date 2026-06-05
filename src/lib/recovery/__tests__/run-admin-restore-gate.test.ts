@@ -233,13 +233,15 @@ describe('compareAdminRestoreGateRestrictiveness', () => {
 });
 
 describe('fingerprintAdminSnapshot — TOCTOU detection', () => {
-  it('produces a stable string for identical rows', () => {
-    expect(fingerprintAdminSnapshot(GOOD_ROW)).toBe(fingerprintAdminSnapshot(GOOD_ROW));
+  it('produces a stable string for identical rows', async () => {
+    expect(await fingerprintAdminSnapshot(GOOD_ROW)).toBe(
+      await fingerprintAdminSnapshot(GOOD_ROW),
+    );
   });
 
-  it('differs when parent.updated_at changes', () => {
-    const a = fingerprintAdminSnapshot(GOOD_ROW);
-    const b = fingerprintAdminSnapshot({
+  it('differs when parent.updated_at changes', async () => {
+    const a = await fingerprintAdminSnapshot(GOOD_ROW);
+    const b = await fingerprintAdminSnapshot({
       ...GOOD_ROW,
       snapshot_data: {
         ...GOOD_ROW.snapshot_data,
@@ -249,9 +251,9 @@ describe('fingerprintAdminSnapshot — TOCTOU detection', () => {
     expect(a).not.toBe(b);
   });
 
-  it('differs when child row count changes', () => {
-    const a = fingerprintAdminSnapshot(GOOD_ROW);
-    const b = fingerprintAdminSnapshot({
+  it('differs when child row count changes', async () => {
+    const a = await fingerprintAdminSnapshot(GOOD_ROW);
+    const b = await fingerprintAdminSnapshot({
       ...GOOD_ROW,
       snapshot_data: {
         ...GOOD_ROW.snapshot_data,
@@ -261,9 +263,9 @@ describe('fingerprintAdminSnapshot — TOCTOU detection', () => {
     expect(a).not.toBe(b);
   });
 
-  it('differs when a child table is added', () => {
-    const a = fingerprintAdminSnapshot(GOOD_ROW);
-    const b = fingerprintAdminSnapshot({
+  it('differs when a child table is added', async () => {
+    const a = await fingerprintAdminSnapshot(GOOD_ROW);
+    const b = await fingerprintAdminSnapshot({
       ...GOOD_ROW,
       snapshot_data: {
         ...GOOD_ROW.snapshot_data,
@@ -276,14 +278,14 @@ describe('fingerprintAdminSnapshot — TOCTOU detection', () => {
     expect(a).not.toBe(b);
   });
 
-  it('differs when report_id changes', () => {
-    const a = fingerprintAdminSnapshot(GOOD_ROW);
-    const b = fingerprintAdminSnapshot({ ...GOOD_ROW, report_id: 'OTHER' });
+  it('differs when report_id changes', async () => {
+    const a = await fingerprintAdminSnapshot(GOOD_ROW);
+    const b = await fingerprintAdminSnapshot({ ...GOOD_ROW, report_id: 'OTHER' });
     expect(a).not.toBe(b);
   });
 
-  it('contains no obviously sensitive fields (org / notes / photo_url)', () => {
-    const fp = fingerprintAdminSnapshot({
+  it('contains no obviously sensitive fields (org / notes / photo_url)', async () => {
+    const fp = await fingerprintAdminSnapshot({
       report_type: 'inspection',
       report_id: 'r-1',
       snapshot_data: {
@@ -298,6 +300,94 @@ describe('fingerprintAdminSnapshot — TOCTOU detection', () => {
       },
     });
     expect(fp).not.toContain('SHOULD_NOT_APPEAR');
+  });
+
+  // --- Slice 5C follow-up: content-sensitive SHA-256 digest ---
+
+  it('flips when child row CONTENT changes with same keys + same row counts', async () => {
+    const base = {
+      report_type: 'inspection',
+      report_id: 'r-1',
+      snapshot_data: {
+        parent: { id: 'r-1', updated_at: '2026-01-01T00:00:00Z' },
+        children: { inspection_equipment: [{ id: 'e1', result: 'pass' }] },
+      },
+    };
+    const mutated = {
+      ...base,
+      snapshot_data: {
+        ...base.snapshot_data,
+        children: { inspection_equipment: [{ id: 'e1', result: 'fail' }] },
+      },
+    };
+    expect(await fingerprintAdminSnapshot(base)).not.toBe(
+      await fingerprintAdminSnapshot(mutated),
+    );
+  });
+
+  it('flips when parent CONTENT changes (same id and updated_at)', async () => {
+    const base = {
+      report_type: 'inspection',
+      report_id: 'r-1',
+      snapshot_data: {
+        parent: { id: 'r-1', updated_at: '2026-01-01T00:00:00Z', notes: 'a' },
+        children: {},
+      },
+    };
+    const mutated = {
+      ...base,
+      snapshot_data: {
+        ...base.snapshot_data,
+        parent: { id: 'r-1', updated_at: '2026-01-01T00:00:00Z', notes: 'b' },
+      },
+    };
+    expect(await fingerprintAdminSnapshot(base)).not.toBe(
+      await fingerprintAdminSnapshot(mutated),
+    );
+  });
+
+  it('object key ORDER does not change the fingerprint (canonicalization)', async () => {
+    const a = {
+      report_type: 'inspection',
+      report_id: 'r-1',
+      snapshot_data: {
+        parent: { id: 'r-1', updated_at: '2026-01-01T00:00:00Z', a: 1, b: 2 },
+        children: { inspection_equipment: [{ id: 'e1', x: 1, y: 2 }] },
+      },
+    };
+    const b = {
+      report_type: 'inspection',
+      report_id: 'r-1',
+      snapshot_data: {
+        children: { inspection_equipment: [{ y: 2, x: 1, id: 'e1' }] },
+        parent: { b: 2, updated_at: '2026-01-01T00:00:00Z', a: 1, id: 'r-1' },
+      },
+    };
+    expect(await fingerprintAdminSnapshot(a)).toBe(await fingerprintAdminSnapshot(b));
+  });
+
+  it('array ORDER changes the fingerprint (restore order is semantic)', async () => {
+    const a = {
+      report_type: 'inspection',
+      report_id: 'r-1',
+      snapshot_data: {
+        parent: { id: 'r-1', updated_at: '2026-01-01T00:00:00Z' },
+        children: { inspection_equipment: [{ id: 'e1' }, { id: 'e2' }] },
+      },
+    };
+    const b = {
+      ...a,
+      snapshot_data: {
+        ...a.snapshot_data,
+        children: { inspection_equipment: [{ id: 'e2' }, { id: 'e1' }] },
+      },
+    };
+    expect(await fingerprintAdminSnapshot(a)).not.toBe(await fingerprintAdminSnapshot(b));
+  });
+
+  it('digest segment is opaque hex (sha256:<64 hex>)', async () => {
+    const fp = await fingerprintAdminSnapshot(GOOD_ROW);
+    expect(fp).toMatch(/\|sha256:[0-9a-f]{64}$/);
   });
 });
 

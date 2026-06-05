@@ -207,20 +207,62 @@ export function compareAdminRestoreGateRestrictiveness(
 }
 
 /**
- * Stable fingerprint of an admin snapshot row, derived from the fields
- * we validate. Used to close the snapshot-row TOCTOU window: callers
- * compute the fingerprint at pre-confirm time, re-fetch the row inside
- * the restore lock, recompute the fingerprint, and abort if they differ.
- *
- * NEVER logged user-facing. Designed to expose ONLY structural identity
- * (type / id / parent.id / parent.updated_at / per-table row counts) —
- * no raw report body, notes, photos, organization, location, client names.
+ * Deterministic canonical JSON: object keys sorted lexicographically at
+ * every depth; arrays preserved in original order (semantic for restore);
+ * `undefined` omitted; `null` preserved; primitives verbatim. NOT logged.
  */
-export function fingerprintAdminSnapshot(row: {
+function canonicalize(value: unknown): unknown {
+  if (value === null) return null;
+  if (Array.isArray(value)) return value.map((v) => canonicalize(v));
+  if (typeof value === 'object') {
+    const out: Record<string, unknown> = {};
+    const keys = Object.keys(value as Record<string, unknown>).sort();
+    for (const k of keys) {
+      const v = (value as Record<string, unknown>)[k];
+      if (v === undefined) continue;
+      out[k] = canonicalize(v);
+    }
+    return out;
+  }
+  return value;
+}
+
+async function sha256Hex(input: string): Promise<string> {
+  const subtle = (globalThis.crypto as Crypto | undefined)?.subtle;
+  if (!subtle) {
+    // Fail-closed: unique token guarantees mismatch on next compare
+    // rather than a silent collision when Web Crypto is unavailable.
+    return `nosubtle:${Date.now()}:${Math.random().toString(36).slice(2)}`;
+  }
+  const buf = new TextEncoder().encode(input);
+  const digest = await subtle.digest('SHA-256', buf);
+  const bytes = new Uint8Array(digest);
+  let hex = '';
+  for (let i = 0; i < bytes.length; i++) {
+    hex += bytes[i].toString(16).padStart(2, '0');
+  }
+  return hex;
+}
+
+/**
+ * Stable fingerprint of an admin snapshot row. Combines structural
+ * identity (type / id / parent.id / parent.updated_at / per-table row
+ * counts) with a SHA-256 canonical-JSON digest of the validated restore
+ * payload (`report_type`, `report_id`, `snapshot_data.parent`, full
+ * whitelisted `snapshot_data.children`).
+ *
+ * The digest closes the case where child keys + row counts stay constant
+ * but row CONTENT changes between confirmation and the in-lock re-fetch
+ * (report_cloud_backups rows are owner-mutable via RLS UPDATE policy).
+ *
+ * NEVER logged user-facing. The canonical input is never logged. The
+ * digest hex is opaque and contains no sensitive substrings.
+ */
+export async function fingerprintAdminSnapshot(row: {
   report_type?: unknown;
   report_id?: unknown;
   snapshot_data?: unknown;
-} | null | undefined): string {
+} | null | undefined): Promise<string> {
   if (!row || typeof row !== 'object') return 'null';
   const reportType = typeof row.report_type === 'string' ? row.report_type : 'x';
   const reportId = typeof row.report_id === 'string' ? row.report_id : 'x';
@@ -228,8 +270,10 @@ export function fingerprintAdminSnapshot(row: {
   let parentId = 'x';
   let parentUpdated = 'x';
   let childSig = '';
+  let parent: unknown = null;
+  let children: unknown = null;
   if (sd && typeof sd === 'object') {
-    const parent = (sd as { parent?: unknown }).parent;
+    parent = (sd as { parent?: unknown }).parent ?? null;
     if (parent && typeof parent === 'object') {
       const pid = (parent as { id?: unknown }).id;
       if (typeof pid === 'string') parentId = pid;
@@ -238,7 +282,7 @@ export function fingerprintAdminSnapshot(row: {
         parentUpdated = String(pu);
       }
     }
-    const children = (sd as { children?: unknown }).children;
+    children = (sd as { children?: unknown }).children ?? null;
     if (children && typeof children === 'object' && !Array.isArray(children)) {
       childSig = Object.entries(children as Record<string, unknown>)
         .map(([k, v]) => `${k}:${Array.isArray(v) ? v.length : 'x'}`)
@@ -246,7 +290,24 @@ export function fingerprintAdminSnapshot(row: {
         .join(',');
     }
   }
-  return [reportType, reportId, parentId, parentUpdated, childSig].join('|');
+  const structural = [reportType, reportId, parentId, parentUpdated, childSig].join('|');
+
+  // Canonical digest input — only the validated fields. Never logged.
+  let hex: string;
+  try {
+    const canonicalInput = JSON.stringify(
+      canonicalize({
+        report_type: reportType,
+        report_id: reportId,
+        parent,
+        children,
+      }),
+    );
+    hex = await sha256Hex(canonicalInput);
+  } catch {
+    hex = `digesterror:${Date.now()}:${Math.random().toString(36).slice(2)}`;
+  }
+  return `${structural}|sha256:${hex}`;
 }
 
 /**
