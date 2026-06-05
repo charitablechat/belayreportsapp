@@ -22,12 +22,41 @@ import { filterChildRows } from "@/lib/child-row-tombstones";
  * Business-key derivation for operating-system rows. Must match the
  * derivation used at delete-time in OperatingSystemsTable so tombstones
  * filter unsynced temp-id rows correctly.
+ *
+ * Exported so InspectionForm load paths and tests share one definition
+ * (cross-platform shared-path rule — every web/PWA/iPad/desktop/mobile
+ * client routes through this single helper).
  */
-function osBusinessKey(row: any): string | null {
+export function osBusinessKey(
+  row: { name?: unknown; system_name?: unknown } | null | undefined,
+): string | null {
   const a = (row?.name ?? "").toString().trim().toLowerCase();
   const b = (row?.system_name ?? "").toString().trim().toLowerCase();
   const k = [a, b].filter(Boolean).join("|");
   return k || null;
+}
+
+/**
+ * Apply the persistent operating-systems tombstone to a row array.
+ *
+ * Every InspectionForm load path (offline preload, server load,
+ * server-empty/local-fallback, JSON-import reload) must route through
+ * this helper so explicit user deletes of systems/dividers survive
+ * browser restart and stale server refetches. The in-memory
+ * `deletedSystemIdsRef` covers the live session; this covers the cold
+ * reload. Same shape as `filterDeletedZiplines`.
+ */
+export function applySystemsTombstone<T extends { id?: string | null }>(
+  inspectionId: string | null | undefined,
+  rows: T[],
+): T[] {
+  if (!inspectionId || rows.length === 0) return rows;
+  return filterChildRows(
+    "inspection_operating_system",
+    inspectionId,
+    rows,
+    osBusinessKey as (row: T) => string | null,
+  );
 }
 
 // ---- STANDARDS_TEMPLATE + merge helpers (moved verbatim from page) -------

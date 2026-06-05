@@ -125,6 +125,7 @@ import { useEquipmentTypeOptions } from "@/hooks/useEquipmentTypeOptions";
 import {
   mergeStandards,
   mergeStandardsPreserveLocal,
+  applySystemsTombstone,
 } from "@/lib/form-loaders/inspectionLoader";
 // Slice 1.5 — performSave engine extracted to inspectionSaver.
 import {
@@ -1474,10 +1475,13 @@ export default function InspectionForm() {
       // If individual arrays have data, they came from real reads
       if (offlineSystems.length > 0) {
         childDataLoadedRef.current.systems = true;
-        const normalizedSystems = offlineSystems.map(item => ({
-          ...item,
-          result: normalizeResultValue(item.result)
-        }));
+        const normalizedSystems = applySystemsTombstone(
+          id!,
+          offlineSystems.map(item => ({
+            ...item,
+            result: normalizeResultValue(item.result)
+          })),
+        );
         setSystems(prev => mergeChildArray(
           prev as Array<DbRow & { id: string }>,
           normalizedSystems as Array<DbRow & { id: string }>,
@@ -1707,24 +1711,32 @@ export default function InspectionForm() {
           childDataLoadedRef.current.standards = true;
           childDataLoadedRef.current.summary = true;
           if (systemsData && systemsData.length > 0) {
-            const normalizedSystems = systemsData.map(item => ({
-              ...item,
-              result: normalizeResultValue(item.result)
-            }));
+            const normalizedSystems = applySystemsTombstone(
+              id!,
+              systemsData.map(item => ({
+                ...item,
+                result: normalizeResultValue(item.result)
+              })),
+            );
             setSystems(prev => mergeChildArray(
               prev as Array<DbRow & { id: string }>,
               normalizedSystems as Array<DbRow & { id: string }>,
               { table: 'systems', deletedIds: deletedSystemIdsRef.current, onDeletedIdConfirmed: dropDeletedSystemId, coalesceTempByBusinessKey: ['inspection_id', 'system_name'] },
             ) as DbRow[]);
+            // Cache the filtered set so the next offline load doesn't
+            // re-introduce the tombstoned rows from IDB.
             saveRelatedDataOffline('systems', id!, normalizedSystems).catch(e =>
               console.warn('[InspectionForm] Non-critical: failed to cache systems', e)
             );
           } else if (offlineSystems.length > 0) {
             console.warn('[InspectionForm] Server returned empty systems but local has data -- preserving local');
-            const normalizedSystems = offlineSystems.map(item => ({
-              ...item,
-              result: normalizeResultValue(item.result)
-            }));
+            const normalizedSystems = applySystemsTombstone(
+              id!,
+              offlineSystems.map(item => ({
+                ...item,
+                result: normalizeResultValue(item.result)
+              })),
+            );
             setSystems(prev => mergeChildArray(
               prev as Array<DbRow & { id: string }>,
               normalizedSystems as Array<DbRow & { id: string }>,
@@ -1901,7 +1913,7 @@ export default function InspectionForm() {
         deletedSystemIdsRef.current.clear();
         deletedZiplineIdsRef.current.clear();
         deletedEquipmentIdsRef.current.clear();
-        setSystems(offSystems); childDataLoadedRef.current.systems = true;
+        setSystems(applySystemsTombstone(id!, offSystems as DbRow[])); childDataLoadedRef.current.systems = true;
         setZiplines(filterDeletedZiplines(id!, offZiplines as DbRow[], 'seed')); childDataLoadedRef.current.ziplines = true;
         setEquipment(offEquipment); childDataLoadedRef.current.equipment = true;
         setStandards(prev => mergeStandardsPreserveLocal(offStandards, prev)); childDataLoadedRef.current.standards = true;
