@@ -1475,10 +1475,13 @@ export default function InspectionForm() {
       // If individual arrays have data, they came from real reads
       if (offlineSystems.length > 0) {
         childDataLoadedRef.current.systems = true;
-        const normalizedSystems = offlineSystems.map(item => ({
-          ...item,
-          result: normalizeResultValue(item.result)
-        }));
+        const normalizedSystems = applySystemsTombstone(
+          id!,
+          offlineSystems.map(item => ({
+            ...item,
+            result: normalizeResultValue(item.result)
+          })),
+        );
         setSystems(prev => mergeChildArray(
           prev as Array<DbRow & { id: string }>,
           normalizedSystems as Array<DbRow & { id: string }>,
