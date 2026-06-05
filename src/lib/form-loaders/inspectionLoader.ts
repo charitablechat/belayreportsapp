@@ -16,7 +16,7 @@ import {
   getRelatedDataOffline,
   type DbRow,
 } from "@/lib/offline-storage";
-import { filterChildRows } from "@/lib/child-row-tombstones";
+import { filterChildRows, reconcileChildTombstones } from "@/lib/child-row-tombstones";
 
 /**
  * Business-key derivation for operating-system rows. Must match the
@@ -51,6 +51,17 @@ export function applySystemsTombstone<T extends { id?: string | null }>(
   rows: T[],
 ): T[] {
   if (!inspectionId || rows.length === 0) return rows;
+  // Re-add recovery: if a loaded row's business key matches a prior
+  // tombstone but the row was created AFTER that delete, treat it as an
+  // intentional re-add and retire only that business-key suppression.
+  // Old server-id tombstones are preserved.
+  reconcileChildTombstones(
+    "inspection_operating_system",
+    inspectionId,
+    rows,
+    osBusinessKey as (row: T) => string | null,
+    (row) => (row as { created_at?: string | number | Date | null }).created_at ?? null,
+  );
   return filterChildRows(
     "inspection_operating_system",
     inspectionId,
