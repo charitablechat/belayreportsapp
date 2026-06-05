@@ -96,20 +96,84 @@ function writeVersion(next: string): void {
   fs.writeFileSync(VERSION_FILE, JSON.stringify({ version: next }, null, 2) + '\n');
 }
 
+/**
+ * Compare two SemVer MAJOR.MINOR.PATCH strings. Returns positive if `a > b`,
+ * negative if `a < b`, zero if equal. Malformed segments coerce to 0.
+ */
+function compareSemver(a: string, b: string): number {
+  const pa = String(a).split('.').map((p) => parseInt(p, 10));
+  const pb = String(b).split('.').map((p) => parseInt(p, 10));
+  for (let i = 0; i < 3; i++) {
+    const av = Number.isFinite(pa[i]) ? pa[i] : 0;
+    const bv = Number.isFinite(pb[i]) ? pb[i] : 0;
+    if (av !== bv) return av - bv;
+  }
+  return 0;
+}
+
+const LIVE_VERSION_URL = 'https://rwreports.com/version.json';
+const LIVE_VERSION_TIMEOUT_MS = 3500;
+
+/**
+ * Fetches the currently-deployed version from production. Used as the durable
+ * record of "what number did the previous production build emit" so the next
+ * build can bump from there even when the in-build writeback to version.json
+ * is not committed back to the repo (as is the case in the Lovable build
+ * sandbox). Soft-fails to null on any error so the build never breaks on
+ * transient network issues.
+ */
+async function fetchLiveDeployedVersion(): Promise<string | null> {
+  try {
+    if (typeof fetch !== 'function') return null;
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), LIVE_VERSION_TIMEOUT_MS);
+    try {
+      const res = await fetch(`${LIVE_VERSION_URL}?t=${Date.now()}`, {
+        signal: controller.signal,
+        headers: { 'Cache-Control': 'no-cache' },
+      });
+      if (!res.ok) return null;
+      const data = (await res.json()) as { version?: unknown };
+      const v = typeof data?.version === 'string' ? data.version : null;
+      if (!v || !/^\d+\.\d+\.\d+$/.test(v)) return null;
+      return v;
+    } finally {
+      clearTimeout(timer);
+    }
+  } catch {
+    return null;
+  }
+}
+
 export function viteAutoVersion(): Plugin {
   let resolvedVersion = '0.0.0';
   let resolvedHash = 'dev';
 
   return {
     name: 'vite-auto-version',
-    config(_userConfig, env) {
+    async config(_userConfig, env) {
       const current = readVersion();
 
       // Auto-bump patch on production builds only. Dev / preview reads as-is.
       if (env.command === 'build' && env.mode === 'production') {
         try {
-          resolvedVersion = bumpVersion(current, 'patch');
-          writeVersion(resolvedVersion);
+          // Seed from max(repoVersion, liveDeployedVersion). The live deployed
+          // version.json is the durable record of the previous build's output:
+          // even if the in-build writeVersion() below is not committed back to
+          // the repo (as in the Lovable build sandbox), the live file is the
+          // authoritative "last shipped" value. Without this, every build
+          // would read the same stale repo baseline and emit the same number.
+          let baseline = current;
+          const live = await fetchLiveDeployedVersion();
+          if (live && compareSemver(live, baseline) > 0) {
+            console.log(
+              `[vite-auto-version] live deployed (${live}) is ahead of repo (${current}); seeding bump from live.`
+            );
+            baseline = live;
+          }
+          resolvedVersion = bumpVersion(baseline, 'patch');
+          // Best-effort writeback. Harmless when not committed; helpful when it is.
+          try { writeVersion(resolvedVersion); } catch { /* ignore */ }
         } catch (err) {
           // If the bump fails for any reason, fall back to the current value
           // rather than blocking the build. The build will still produce a
