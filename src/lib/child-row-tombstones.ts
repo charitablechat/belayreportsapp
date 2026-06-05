@@ -234,6 +234,80 @@ export function clearChildTombstone(
   }
 }
 
+/**
+ * Reconcile tombstones against loaded rows: if a tombstone's businessKey
+ * matches a row whose `created_at` is strictly later than the
+ * tombstone's `deletedAt`, that row is an intentional re-add. Retire
+ * ONLY the matching businessKey suppression, preserving any old
+ * server-id tombstone on the same entry so previously deleted rows
+ * stay deleted.
+ *
+ * Rules:
+ *   - Only acts when getCreatedAt returns a finite timestamp newer than
+ *     tombstone.deletedAt. Rows without a reliable created_at are left
+ *     alone and remain governed by the edit-time clear path.
+ *   - Never resurrects an id-tombstoned row: if the matching row's id
+ *     equals the tombstone's id, do NOT reconcile (same row).
+ *   - If the tombstone had both id and businessKey, the businessKey is
+ *     stripped but the id-only tombstone is preserved.
+ *   - If the tombstone was businessKey-only, the whole entry is dropped.
+ *   - Unrelated tombstones (no businessKey match) are untouched.
+ *   - Returns the number of tombstones reconciled.
+ */
+export function reconcileChildTombstones<T extends { id?: string | null }>(
+  entity: ChildEntity,
+  reportId: string,
+  rows: T[],
+  getBusinessKey: (row: T) => string | null | undefined,
+  getCreatedAt: (row: T) => string | number | Date | null | undefined,
+): number {
+  if (!reportId || rows.length === 0) return 0;
+  const bucket = readBucket(entity, reportId);
+  if (bucket.length === 0) return 0;
+
+  const rowsByKey = new Map<string, { createdAt: number; id: string | null }[]>();
+  for (const row of rows) {
+    const bk = normalizeBusinessKey(getBusinessKey(row));
+    if (!bk) continue;
+    const raw = getCreatedAt(row);
+    if (raw == null) continue;
+    const t = raw instanceof Date ? raw.getTime() : new Date(raw as string | number).getTime();
+    if (!Number.isFinite(t)) continue;
+    const list = rowsByKey.get(bk) ?? [];
+    list.push({ createdAt: t, id: row.id ?? null });
+    rowsByKey.set(bk, list);
+  }
+  if (rowsByKey.size === 0) return 0;
+
+  let reconciled = 0;
+  const next: ChildRowTombstone[] = [];
+  for (const t of bucket) {
+    if (!t.businessKey) {
+      next.push(t);
+      continue;
+    }
+    const matches = rowsByKey.get(t.businessKey);
+    const eligible = matches?.some(
+      (m) => m.createdAt > t.deletedAt && (!t.id || m.id !== t.id),
+    );
+    if (!eligible) {
+      next.push(t);
+      continue;
+    }
+    reconciled++;
+    if (t.id) {
+      // Preserve id-only protection so a historical deleted row with
+      // the same business key stays hidden if it ever resurfaces.
+      next.push({ ...t, businessKey: null });
+    }
+    // businessKey-only tombstone: drop entirely.
+  }
+  if (reconciled > 0) {
+    writeBucket(entity, reportId, next);
+  }
+  return reconciled;
+}
+
 /** Test-only: clear all tombstones across all entities/reports. */
 export function __test_only__clearAllChildTombstones(): void {
   try {
