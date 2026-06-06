@@ -152,9 +152,44 @@ export async function reconcileChildTable({
     return { deletedCount: 0, deletedRows: [], blocked: true, blockReason: 'local_empty_unconfirmed' };
   }
 
+  // H4 GUARD: zero-overlap protection for guarded child tables.
+  // When local and server are BOTH non-empty but share NO ids, treat the
+  // localItems snapshot as untrustworthy (stale read, temp-id-only batch,
+  // or post-rotation drift) and refuse the destructive sweep. This fires
+  // BEFORE the 70% tripwire so callers passing `expectedNonEmpty=true`
+  // (which opts out of the tripwire via `bulk:true`) cannot bypass it.
+  // Excluded tables (e.g. summaries) legitimately rotate their single id
+  // on temp→server upsert and must not be guarded here.
+  if (
+    ZERO_OVERLAP_GUARDED_TABLES.has(childTable) &&
+    localCount >= 1 &&
+    serverCount >= 1
+  ) {
+    let overlap = 0;
+    for (const row of serverRows) {
+      if (typeof row.id === 'string' && localIdSet.has(row.id)) {
+        overlap++;
+        if (overlap > 0) break;
+      }
+    }
+    if (overlap === 0) {
+      console.warn(
+        `[Reconcile] BLOCKED: ${childTable} zero local/server id overlap ` +
+        `(server=${serverCount}, local=${localCount}) -- refusing destructive sweep`,
+      );
+      return {
+        deletedCount: 0,
+        deletedRows: [],
+        blocked: true,
+        blockReason: 'no_local_server_overlap',
+      };
+    }
+  }
+
   // (Removed: V4 50% rule and V4 absolute-delta-of-3 rule.
   //  Both blocked legitimate user deletions and were causing "deleted rows reappear".
   //  The final tripwire below + per-read expectedNonEmpty flag now provide safety.)
+
 
   // 3. Find server rows not in local state (these were deleted by user)
   const rowsToDelete = serverRows.filter(
