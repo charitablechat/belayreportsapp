@@ -15,8 +15,6 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 
 type Row = { id: string };
 
-type Row = { id: string };
-
 vi.mock("@/integrations/supabase/client", () => {
   const state: { countByTable: Record<string, number> } = { countByTable: {} };
   const deleteSpy = vi.fn().mockResolvedValue({ error: null });
@@ -42,8 +40,11 @@ vi.mock("@/integrations/supabase/client", () => {
   return { supabase: { from } };
 });
 
-
 import { reconcileChildTable } from "../sync-reconciliation";
+
+const deleteSpy = (globalThis as any).__deleteSpy as ReturnType<typeof vi.fn>;
+const insertSpy = (globalThis as any).__insertSpy as ReturnType<typeof vi.fn>;
+
 
 const setServerCount = (table: string, count: number) => {
   (globalThis as any).__overlapGuardState.countByTable[table] = count;
