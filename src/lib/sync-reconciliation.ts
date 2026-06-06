@@ -46,6 +46,46 @@ export interface ReconcileResult {
 }
 
 /**
+ * H4 zero-overlap guard — list of child tables where reconcile must REFUSE to
+ * delete server rows when the local id set shares zero overlap with the server
+ * id set despite both sides being non-empty.
+ *
+ * Why these tables: rows are identified by stable server UUIDs preserved
+ * end-to-end (form → IDB → upsert → server). A user editing a report cannot
+ * legitimately rotate every existing id in a single sync cycle — at worst
+ * they replace one row at a time, which leaves overlap ≥ 1. Zero overlap on
+ * these tables therefore signals a stale, mismatched, or temp-id-only
+ * localItems snapshot (the production churn pattern seen on Luke's reports)
+ * and the destructive sweep must be refused.
+ *
+ * Tables intentionally EXCLUDED from the guard:
+ *   - inspection_summary, training_summary: hold exactly one row whose id is
+ *     legitimately regenerated on upsert when the original was a temp- id.
+ *     A 1→1 id rotation with zero overlap is normal and must be allowed.
+ *
+ * Tables not in this set fall back to the existing Guard A/B + 70% tripwire
+ * behavior unchanged.
+ */
+const ZERO_OVERLAP_GUARDED_TABLES = new Set<string>([
+  'inspection_systems',
+  'inspection_equipment',
+  'inspection_ziplines',
+  'inspection_standards',
+  'training_delivery_approaches',
+  'training_operating_systems',
+  'training_immediate_attention',
+  'training_verifiable_items',
+  'training_systems_in_place',
+  'daily_assessment_beginning_of_day',
+  'daily_assessment_end_of_day',
+  'daily_assessment_operating_systems',
+  'daily_assessment_equipment_checks',
+  'daily_assessment_structure_checks',
+  'daily_assessment_environment_checks',
+]);
+
+
+/**
  * Delete server-side child rows that are no longer present in the local state,
  * and log them to report_deleted_items for audit/recovery.
  */
