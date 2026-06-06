@@ -15,25 +15,18 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 
 type Row = { id: string };
 
-let deleteSpy: ReturnType<typeof vi.fn>;
-let insertSpy: ReturnType<typeof vi.fn>;
+type Row = { id: string };
 
 vi.mock("@/integrations/supabase/client", () => {
-  // Per-table count results are configured per-test via `countByTable`.
-  const state: { countByTable: Record<string, number> } = {
-    countByTable: {},
-  };
-  // Expose for tests to mutate.
+  const state: { countByTable: Record<string, number> } = { countByTable: {} };
+  const deleteSpy = vi.fn().mockResolvedValue({ error: null });
+  const insertSpy = vi.fn().mockResolvedValue({ error: null });
   (globalThis as any).__overlapGuardState = state;
-
-  insertSpy = vi.fn().mockResolvedValue({ error: null });
-  deleteSpy = vi.fn().mockResolvedValue({ error: null });
   (globalThis as any).__deleteSpy = deleteSpy;
   (globalThis as any).__insertSpy = insertSpy;
 
   const from = (table: string) => ({
-    // tripwire count path
-    select: (_cols: string, opts?: { count?: string; head?: boolean }) => ({
+    select: (_cols: string, _opts?: { count?: string; head?: boolean }) => ({
       eq: async (_col: string, _val: string) => ({
         data: null,
         count: state.countByTable[table] ?? 0,
@@ -48,6 +41,7 @@ vi.mock("@/integrations/supabase/client", () => {
 
   return { supabase: { from } };
 });
+
 
 import { reconcileChildTable } from "../sync-reconciliation";
 
