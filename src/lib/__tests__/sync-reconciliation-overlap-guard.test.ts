@@ -21,15 +21,14 @@ type OverlapGuardHarness = {
   __insertSpy: ReturnType<typeof vi.fn>;
 };
 
-const harness = globalThis as unknown as OverlapGuardHarness;
-
 vi.mock("@/integrations/supabase/client", () => {
   const state: { countByTable: Record<string, number> } = { countByTable: {} };
   const deleteSpy = vi.fn().mockResolvedValue({ error: null });
   const insertSpy = vi.fn().mockResolvedValue({ error: null });
-  harness.__overlapGuardState = state;
-  harness.__deleteSpy = deleteSpy;
-  harness.__insertSpy = insertSpy;
+  const h = globalThis as unknown as OverlapGuardHarness;
+  h.__overlapGuardState = state;
+  h.__deleteSpy = deleteSpy;
+  h.__insertSpy = insertSpy;
 
   const from = (table: string) => ({
     select: (_cols: string, _opts?: { count?: string; head?: boolean }) => ({
@@ -50,6 +49,7 @@ vi.mock("@/integrations/supabase/client", () => {
 
 import { reconcileChildTable } from "../sync-reconciliation";
 
+const harness = globalThis as unknown as OverlapGuardHarness;
 const deleteSpy = harness.__deleteSpy;
 const insertSpy = harness.__insertSpy;
 
