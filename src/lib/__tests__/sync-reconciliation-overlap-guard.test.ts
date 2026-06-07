@@ -77,7 +77,7 @@ const callReconcile = (opts: {
 
 describe("H4 zero-overlap guard — reconcileChildTable", () => {
   beforeEach(() => {
-    (globalThis as any).__overlapGuardState.countByTable = {};
+    harness.__overlapGuardState.countByTable = {};
     deleteSpy.mockClear();
     insertSpy.mockClear();
   });
