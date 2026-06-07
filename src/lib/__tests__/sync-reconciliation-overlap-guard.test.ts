@@ -15,13 +15,21 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 
 type Row = { id: string };
 
+type OverlapGuardHarness = {
+  __overlapGuardState: { countByTable: Record<string, number> };
+  __deleteSpy: ReturnType<typeof vi.fn>;
+  __insertSpy: ReturnType<typeof vi.fn>;
+};
+
+const harness = globalThis as unknown as OverlapGuardHarness;
+
 vi.mock("@/integrations/supabase/client", () => {
   const state: { countByTable: Record<string, number> } = { countByTable: {} };
   const deleteSpy = vi.fn().mockResolvedValue({ error: null });
   const insertSpy = vi.fn().mockResolvedValue({ error: null });
-  (globalThis as any).__overlapGuardState = state;
-  (globalThis as any).__deleteSpy = deleteSpy;
-  (globalThis as any).__insertSpy = insertSpy;
+  harness.__overlapGuardState = state;
+  harness.__deleteSpy = deleteSpy;
+  harness.__insertSpy = insertSpy;
 
   const from = (table: string) => ({
     select: (_cols: string, _opts?: { count?: string; head?: boolean }) => ({
@@ -42,12 +50,12 @@ vi.mock("@/integrations/supabase/client", () => {
 
 import { reconcileChildTable } from "../sync-reconciliation";
 
-const deleteSpy = (globalThis as any).__deleteSpy as ReturnType<typeof vi.fn>;
-const insertSpy = (globalThis as any).__insertSpy as ReturnType<typeof vi.fn>;
+const deleteSpy = harness.__deleteSpy;
+const insertSpy = harness.__insertSpy;
 
 
 const setServerCount = (table: string, count: number) => {
-  (globalThis as any).__overlapGuardState.countByTable[table] = count;
+  harness.__overlapGuardState.countByTable[table] = count;
 };
 
 const callReconcile = (opts: {
