@@ -3921,12 +3921,19 @@ export async function refetchInspectionPackage(inspectionId: string): Promise<vo
       getOfflineInspection,
       saveInspectionOffline,
     );
+    // Server-refetch cache refresh: we just fetched the authoritative
+    // server child rows for a known-permanent report id and are
+    // replacing the local cached child rows with them. The temp-ID
+    // clear guard exists to block accidental wipes of in-flight
+    // unsynced data on permanent IDs; this call site is the
+    // legitimate exception (server payload in hand, about to write
+    // it back). The default guard remains strict everywhere else.
     await Promise.all([
-      clearRelatedDataOffline('systems', inspectionId).then(() => systems.length > 0 ? saveRelatedDataOffline('systems', inspectionId, systems) : null),
-      clearRelatedDataOffline('ziplines', inspectionId).then(() => ziplines.length > 0 ? saveRelatedDataOffline('ziplines', inspectionId, ziplines) : null),
-      clearRelatedDataOffline('equipment', inspectionId).then(() => equipment.length > 0 ? saveRelatedDataOffline('equipment', inspectionId, equipment) : null),
-      clearRelatedDataOffline('standards', inspectionId).then(() => standards.length > 0 ? saveRelatedDataOffline('standards', inspectionId, standards) : null),
-      clearRelatedDataOffline('summary', inspectionId).then(() => summaryRows.length > 0 ? saveRelatedDataOffline('summary', inspectionId, summaryRows) : null),
+      clearRelatedDataOffline('systems', inspectionId, { bypassTempGuard: true }).then(() => systems.length > 0 ? saveRelatedDataOffline('systems', inspectionId, systems) : null),
+      clearRelatedDataOffline('ziplines', inspectionId, { bypassTempGuard: true }).then(() => ziplines.length > 0 ? saveRelatedDataOffline('ziplines', inspectionId, ziplines) : null),
+      clearRelatedDataOffline('equipment', inspectionId, { bypassTempGuard: true }).then(() => equipment.length > 0 ? saveRelatedDataOffline('equipment', inspectionId, equipment) : null),
+      clearRelatedDataOffline('standards', inspectionId, { bypassTempGuard: true }).then(() => standards.length > 0 ? saveRelatedDataOffline('standards', inspectionId, standards) : null),
+      clearRelatedDataOffline('summary', inspectionId, { bypassTempGuard: true }).then(() => summaryRows.length > 0 ? saveRelatedDataOffline('summary', inspectionId, summaryRows) : null),
     ]);
     syncLog.log('[Atomic Sync] Refetched inspection package:', inspectionId);
   } catch (e) {
@@ -3988,12 +3995,17 @@ export async function refetchTrainingPackage(trainingId: string): Promise<void> 
       }
     }
 
+    // Server-refetch cache refresh: authoritative server child rows
+    // replace local cached child rows for a known-permanent training
+    // id. The temp-ID clear guard remains strict everywhere else to
+    // block accidental wipes of in-flight unsynced data; this call
+    // site is the documented exception (server payload in hand).
     await Promise.all([
-      clearTrainingDataOffline('delivery_approaches', trainingId).then(() => da.length > 0 ? saveTrainingDataOffline('delivery_approaches', trainingId, da) : null),
-      clearTrainingDataOffline('operating_systems', trainingId).then(() => os.length > 0 ? saveTrainingDataOffline('operating_systems', trainingId, os) : null),
-      clearTrainingDataOffline('immediate_attention', trainingId).then(() => ia.length > 0 ? saveTrainingDataOffline('immediate_attention', trainingId, ia) : null),
-      clearTrainingDataOffline('verifiable_items', trainingId).then(() => vi.length > 0 ? saveTrainingDataOffline('verifiable_items', trainingId, vi) : null),
-      clearTrainingDataOffline('systems_in_place', trainingId).then(() => sip.length > 0 ? saveTrainingDataOffline('systems_in_place', trainingId, sip) : null),
+      clearTrainingDataOffline('delivery_approaches', trainingId, { bypassTempGuard: true }).then(() => da.length > 0 ? saveTrainingDataOffline('delivery_approaches', trainingId, da) : null),
+      clearTrainingDataOffline('operating_systems', trainingId, { bypassTempGuard: true }).then(() => os.length > 0 ? saveTrainingDataOffline('operating_systems', trainingId, os) : null),
+      clearTrainingDataOffline('immediate_attention', trainingId, { bypassTempGuard: true }).then(() => ia.length > 0 ? saveTrainingDataOffline('immediate_attention', trainingId, ia) : null),
+      clearTrainingDataOffline('verifiable_items', trainingId, { bypassTempGuard: true }).then(() => vi.length > 0 ? saveTrainingDataOffline('verifiable_items', trainingId, vi) : null),
+      clearTrainingDataOffline('systems_in_place', trainingId, { bypassTempGuard: true }).then(() => sip.length > 0 ? saveTrainingDataOffline('systems_in_place', trainingId, sip) : null),
       summaryToCache
         ? saveTrainingDataOffline('summary', trainingId, [summaryToCache])
         : Promise.resolve(),
@@ -4030,13 +4042,18 @@ export async function refetchAssessmentPackage(assessmentId: string): Promise<vo
       getOfflineDailyAssessment,
       saveDailyAssessmentOffline,
     );
+    // Server-refetch cache refresh: authoritative server child rows
+    // replace local cached child rows for a known-permanent assessment
+    // id. The temp-ID clear guard remains strict everywhere else to
+    // block accidental wipes of in-flight unsynced data; this call
+    // site is the documented exception (server payload in hand).
     await Promise.all([
-      clearAssessmentDataOffline('beginning_of_day', assessmentId).then(() => bod.length > 0 ? saveAssessmentDataOffline('beginning_of_day', assessmentId, bod) : null),
-      clearAssessmentDataOffline('end_of_day', assessmentId).then(() => eod.length > 0 ? saveAssessmentDataOffline('end_of_day', assessmentId, eod) : null),
-      clearAssessmentDataOffline('operating_systems', assessmentId).then(() => opSys.length > 0 ? saveAssessmentDataOffline('operating_systems', assessmentId, opSys) : null),
-      clearAssessmentDataOffline('equipment_checks', assessmentId).then(() => eq.length > 0 ? saveAssessmentDataOffline('equipment_checks', assessmentId, eq) : null),
-      clearAssessmentDataOffline('structure_checks', assessmentId).then(() => st.length > 0 ? saveAssessmentDataOffline('structure_checks', assessmentId, st) : null),
-      clearAssessmentDataOffline('environment_checks', assessmentId).then(() => env.length > 0 ? saveAssessmentDataOffline('environment_checks', assessmentId, env) : null),
+      clearAssessmentDataOffline('beginning_of_day', assessmentId, { bypassTempGuard: true }).then(() => bod.length > 0 ? saveAssessmentDataOffline('beginning_of_day', assessmentId, bod) : null),
+      clearAssessmentDataOffline('end_of_day', assessmentId, { bypassTempGuard: true }).then(() => eod.length > 0 ? saveAssessmentDataOffline('end_of_day', assessmentId, eod) : null),
+      clearAssessmentDataOffline('operating_systems', assessmentId, { bypassTempGuard: true }).then(() => opSys.length > 0 ? saveAssessmentDataOffline('operating_systems', assessmentId, opSys) : null),
+      clearAssessmentDataOffline('equipment_checks', assessmentId, { bypassTempGuard: true }).then(() => eq.length > 0 ? saveAssessmentDataOffline('equipment_checks', assessmentId, eq) : null),
+      clearAssessmentDataOffline('structure_checks', assessmentId, { bypassTempGuard: true }).then(() => st.length > 0 ? saveAssessmentDataOffline('structure_checks', assessmentId, st) : null),
+      clearAssessmentDataOffline('environment_checks', assessmentId, { bypassTempGuard: true }).then(() => env.length > 0 ? saveAssessmentDataOffline('environment_checks', assessmentId, env) : null),
     ]);
     syncLog.log('[Atomic Sync] Refetched assessment package:', assessmentId);
   } catch (e) {
