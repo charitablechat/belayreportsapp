@@ -3921,12 +3921,19 @@ export async function refetchInspectionPackage(inspectionId: string): Promise<vo
       getOfflineInspection,
       saveInspectionOffline,
     );
+    // Server-refetch cache refresh: we just fetched the authoritative
+    // server child rows for a known-permanent report id and are
+    // replacing the local cached child rows with them. The temp-ID
+    // clear guard exists to block accidental wipes of in-flight
+    // unsynced data on permanent IDs; this call site is the
+    // legitimate exception (server payload in hand, about to write
+    // it back). The default guard remains strict everywhere else.
     await Promise.all([
-      clearRelatedDataOffline('systems', inspectionId).then(() => systems.length > 0 ? saveRelatedDataOffline('systems', inspectionId, systems) : null),
-      clearRelatedDataOffline('ziplines', inspectionId).then(() => ziplines.length > 0 ? saveRelatedDataOffline('ziplines', inspectionId, ziplines) : null),
-      clearRelatedDataOffline('equipment', inspectionId).then(() => equipment.length > 0 ? saveRelatedDataOffline('equipment', inspectionId, equipment) : null),
-      clearRelatedDataOffline('standards', inspectionId).then(() => standards.length > 0 ? saveRelatedDataOffline('standards', inspectionId, standards) : null),
-      clearRelatedDataOffline('summary', inspectionId).then(() => summaryRows.length > 0 ? saveRelatedDataOffline('summary', inspectionId, summaryRows) : null),
+      clearRelatedDataOffline('systems', inspectionId, { bypassTempGuard: true }).then(() => systems.length > 0 ? saveRelatedDataOffline('systems', inspectionId, systems) : null),
+      clearRelatedDataOffline('ziplines', inspectionId, { bypassTempGuard: true }).then(() => ziplines.length > 0 ? saveRelatedDataOffline('ziplines', inspectionId, ziplines) : null),
+      clearRelatedDataOffline('equipment', inspectionId, { bypassTempGuard: true }).then(() => equipment.length > 0 ? saveRelatedDataOffline('equipment', inspectionId, equipment) : null),
+      clearRelatedDataOffline('standards', inspectionId, { bypassTempGuard: true }).then(() => standards.length > 0 ? saveRelatedDataOffline('standards', inspectionId, standards) : null),
+      clearRelatedDataOffline('summary', inspectionId, { bypassTempGuard: true }).then(() => summaryRows.length > 0 ? saveRelatedDataOffline('summary', inspectionId, summaryRows) : null),
     ]);
     syncLog.log('[Atomic Sync] Refetched inspection package:', inspectionId);
   } catch (e) {
