@@ -4042,13 +4042,18 @@ export async function refetchAssessmentPackage(assessmentId: string): Promise<vo
       getOfflineDailyAssessment,
       saveDailyAssessmentOffline,
     );
+    // Server-refetch cache refresh: authoritative server child rows
+    // replace local cached child rows for a known-permanent assessment
+    // id. The temp-ID clear guard remains strict everywhere else to
+    // block accidental wipes of in-flight unsynced data; this call
+    // site is the documented exception (server payload in hand).
     await Promise.all([
-      clearAssessmentDataOffline('beginning_of_day', assessmentId).then(() => bod.length > 0 ? saveAssessmentDataOffline('beginning_of_day', assessmentId, bod) : null),
-      clearAssessmentDataOffline('end_of_day', assessmentId).then(() => eod.length > 0 ? saveAssessmentDataOffline('end_of_day', assessmentId, eod) : null),
-      clearAssessmentDataOffline('operating_systems', assessmentId).then(() => opSys.length > 0 ? saveAssessmentDataOffline('operating_systems', assessmentId, opSys) : null),
-      clearAssessmentDataOffline('equipment_checks', assessmentId).then(() => eq.length > 0 ? saveAssessmentDataOffline('equipment_checks', assessmentId, eq) : null),
-      clearAssessmentDataOffline('structure_checks', assessmentId).then(() => st.length > 0 ? saveAssessmentDataOffline('structure_checks', assessmentId, st) : null),
-      clearAssessmentDataOffline('environment_checks', assessmentId).then(() => env.length > 0 ? saveAssessmentDataOffline('environment_checks', assessmentId, env) : null),
+      clearAssessmentDataOffline('beginning_of_day', assessmentId, { bypassTempGuard: true }).then(() => bod.length > 0 ? saveAssessmentDataOffline('beginning_of_day', assessmentId, bod) : null),
+      clearAssessmentDataOffline('end_of_day', assessmentId, { bypassTempGuard: true }).then(() => eod.length > 0 ? saveAssessmentDataOffline('end_of_day', assessmentId, eod) : null),
+      clearAssessmentDataOffline('operating_systems', assessmentId, { bypassTempGuard: true }).then(() => opSys.length > 0 ? saveAssessmentDataOffline('operating_systems', assessmentId, opSys) : null),
+      clearAssessmentDataOffline('equipment_checks', assessmentId, { bypassTempGuard: true }).then(() => eq.length > 0 ? saveAssessmentDataOffline('equipment_checks', assessmentId, eq) : null),
+      clearAssessmentDataOffline('structure_checks', assessmentId, { bypassTempGuard: true }).then(() => st.length > 0 ? saveAssessmentDataOffline('structure_checks', assessmentId, st) : null),
+      clearAssessmentDataOffline('environment_checks', assessmentId, { bypassTempGuard: true }).then(() => env.length > 0 ? saveAssessmentDataOffline('environment_checks', assessmentId, env) : null),
     ]);
     syncLog.log('[Atomic Sync] Refetched assessment package:', assessmentId);
   } catch (e) {
