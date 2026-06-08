@@ -3995,12 +3995,17 @@ export async function refetchTrainingPackage(trainingId: string): Promise<void> 
       }
     }
 
+    // Server-refetch cache refresh: authoritative server child rows
+    // replace local cached child rows for a known-permanent training
+    // id. The temp-ID clear guard remains strict everywhere else to
+    // block accidental wipes of in-flight unsynced data; this call
+    // site is the documented exception (server payload in hand).
     await Promise.all([
-      clearTrainingDataOffline('delivery_approaches', trainingId).then(() => da.length > 0 ? saveTrainingDataOffline('delivery_approaches', trainingId, da) : null),
-      clearTrainingDataOffline('operating_systems', trainingId).then(() => os.length > 0 ? saveTrainingDataOffline('operating_systems', trainingId, os) : null),
-      clearTrainingDataOffline('immediate_attention', trainingId).then(() => ia.length > 0 ? saveTrainingDataOffline('immediate_attention', trainingId, ia) : null),
-      clearTrainingDataOffline('verifiable_items', trainingId).then(() => vi.length > 0 ? saveTrainingDataOffline('verifiable_items', trainingId, vi) : null),
-      clearTrainingDataOffline('systems_in_place', trainingId).then(() => sip.length > 0 ? saveTrainingDataOffline('systems_in_place', trainingId, sip) : null),
+      clearTrainingDataOffline('delivery_approaches', trainingId, { bypassTempGuard: true }).then(() => da.length > 0 ? saveTrainingDataOffline('delivery_approaches', trainingId, da) : null),
+      clearTrainingDataOffline('operating_systems', trainingId, { bypassTempGuard: true }).then(() => os.length > 0 ? saveTrainingDataOffline('operating_systems', trainingId, os) : null),
+      clearTrainingDataOffline('immediate_attention', trainingId, { bypassTempGuard: true }).then(() => ia.length > 0 ? saveTrainingDataOffline('immediate_attention', trainingId, ia) : null),
+      clearTrainingDataOffline('verifiable_items', trainingId, { bypassTempGuard: true }).then(() => vi.length > 0 ? saveTrainingDataOffline('verifiable_items', trainingId, vi) : null),
+      clearTrainingDataOffline('systems_in_place', trainingId, { bypassTempGuard: true }).then(() => sip.length > 0 ? saveTrainingDataOffline('systems_in_place', trainingId, sip) : null),
       summaryToCache
         ? saveTrainingDataOffline('summary', trainingId, [summaryToCache])
         : Promise.resolve(),
