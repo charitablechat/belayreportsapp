@@ -36,8 +36,36 @@ test.describe('offline cold-start: PWA must never trap users on offline.html', (
       },
       { timeout: 20_000 },
     ).catch(() => { /* tolerated — assertions below still apply */ });
-    // Extra beat for Workbox precaching to finish writing all chunks.
-    await page.waitForTimeout(3000);
+
+    // Wait until every hashed asset referenced by the current document is
+    // present in Cache Storage. Replaces the previous fixed 3s sleep, which
+    // raced precache + asset warm-up on slower CI runners and produced the
+    // empty-#root offline failure mode. Our SW warms these via the
+    // `warm-assets` postMessage from main.tsx; Workbox also precaches them.
+    await page.waitForFunction(
+      async () => {
+        try {
+          const targets: string[] = [];
+          document.querySelectorAll<HTMLScriptElement>('script[src]').forEach((el) => {
+            if (el.src) targets.push(el.src);
+          });
+          document.querySelectorAll<HTMLLinkElement>(
+            'link[rel="stylesheet"][href], link[rel="modulepreload"][href]'
+          ).forEach((el) => {
+            if (el.href) targets.push(el.href);
+          });
+          if (targets.length === 0) return true;
+          for (const url of targets) {
+            const hit = await caches.match(url, { ignoreSearch: true });
+            if (!hit) return false;
+          }
+          return true;
+        } catch {
+          return false;
+        }
+      },
+      { timeout: 20_000 },
+    ).catch(() => { /* tolerated — assertions below still apply */ });
   }
 
   test('relaunching `/` offline serves the React app shell', async ({ page, context }) => {
