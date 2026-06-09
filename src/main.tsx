@@ -118,6 +118,37 @@ if (isServiceWorkerAllowed()) {
       console.log('[SW] Service Worker ready — sending auth token');
     }
     sendAuthTokenToSW();
+    // Warm the offline-navigation cache with the JS/CSS/font/icon assets
+    // referenced by the currently-loaded document. This guarantees that an
+    // immediate offline relaunch can mount React without depending on
+    // Workbox precache having finished installing first.
+    // See public/sw-offline-navigation.js `warm-assets` message handler.
+    const sendWarmAssets = () => {
+      try {
+        if (!navigator.serviceWorker.controller) return;
+        const urls = new Set<string>();
+        document.querySelectorAll<HTMLScriptElement>('script[src]').forEach((el) => {
+          if (el.src) urls.add(el.src);
+        });
+        document.querySelectorAll<HTMLLinkElement>(
+          'link[rel="stylesheet"][href], link[rel="modulepreload"][href], link[rel="preload"][href], link[rel="icon"][href], link[rel="apple-touch-icon"][href], link[rel="manifest"][href]'
+        ).forEach((el) => {
+          if (el.href) urls.add(el.href);
+        });
+        if (urls.size === 0) return;
+        navigator.serviceWorker.controller.postMessage({
+          type: 'warm-assets',
+          urls: Array.from(urls),
+        });
+      } catch {
+        // best effort
+      }
+    };
+    if (document.readyState === 'complete') {
+      sendWarmAssets();
+    } else {
+      window.addEventListener('load', sendWarmAssets, { once: true });
+    }
   }).catch(() => {});
 
   navigator.serviceWorker.addEventListener('message', (event) => {
