@@ -41,7 +41,7 @@ describe('bumpVersion — single-digit rollover', () => {
   it('rejects malformed input', () => {
     expect(() => bumpVersion('not.a.version', 'patch')).toThrow();
     expect(() => bumpVersion('4.8', 'patch')).toThrow();
-    expect(() => bumpVersion('4.8.5', 'bogus' as any)).toThrow();
+    expect(() => bumpVersion('4.8.5', 'bogus' as never)).toThrow();
   });
 });
 

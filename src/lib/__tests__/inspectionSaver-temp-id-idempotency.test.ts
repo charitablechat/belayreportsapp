@@ -11,7 +11,8 @@
  */
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
-type Call = { table: string; op: "insert" | "upsert" | "update"; rows: unknown; opts?: unknown };
+type SupabaseWriteOptions = { onConflict?: string; ignoreDuplicates?: boolean };
+type Call = { table: string; op: "insert" | "upsert" | "update"; rows: unknown; opts?: SupabaseWriteOptions };
 const calls: Call[] = [];
 
 vi.mock("@/integrations/supabase/client", () => {
@@ -22,7 +23,7 @@ vi.mock("@/integrations/supabase/client", () => {
     b.select = vi.fn(() => ok([{ id: "ins-1" }]));
     b.eq = vi.fn(() => b);
     b.update = vi.fn((rows: unknown) => { calls.push({ table, op: "update", rows }); return b; });
-    b.upsert = vi.fn((rows: unknown, opts?: unknown) => {
+    b.upsert = vi.fn((rows: unknown, opts?: SupabaseWriteOptions) => {
       calls.push({ table, op: "upsert", rows, opts });
       return ok();
     });
@@ -54,6 +55,7 @@ vi.mock("@/lib/cached-auth", () => ({
 vi.mock("@/lib/offline-readiness", () => ({ recordSaveWithoutIdentity: vi.fn() }));
 
 import { pushInspectionToRemote, realIdFromTempId } from "@/lib/form-savers/inspectionSaver";
+import type { DbRow } from "@/lib/offline-storage";
 
 const INSP_ID = "11111111-1111-4111-8111-111111111111";
 
@@ -84,14 +86,14 @@ describe("pushInspectionToRemote — temp-id idempotency", () => {
 
     const payload = (rev: string) => ({
       id: INSP_ID,
-      inspection: { id: INSP_ID, updated_at: new Date().toISOString() } as any,
+      inspection: { id: INSP_ID, updated_at: new Date().toISOString() } as DbRow,
       systems: [],
       ziplines: [],
       equipment: [
-        { id: tempEqId, equipment_type: "harness", result: "Pass", comments: rev } as any,
+        { id: tempEqId, equipment_type: "harness", result: "Pass", comments: rev } as DbRow,
       ],
       standards: [],
-      summary: { id: "sum-1", inspection_id: INSP_ID } as any,
+      summary: { id: "sum-1", inspection_id: INSP_ID } as DbRow,
     });
 
     await pushInspectionToRemote(payload("first"), { updatedInspection: payload("first").inspection });
@@ -119,17 +121,17 @@ describe("pushInspectionToRemote — temp-id idempotency", () => {
 
     const first = {
       id: INSP_ID,
-      inspection: { id: INSP_ID, updated_at: new Date().toISOString() } as any,
+      inspection: { id: INSP_ID, updated_at: new Date().toISOString() } as DbRow,
       systems: [],
       ziplines: [],
-      equipment: [{ id: tempId, equipment_type: "rope", result: "Pass" } as any],
+      equipment: [{ id: tempId, equipment_type: "rope", result: "Pass" } as DbRow],
       standards: [],
-      summary: { id: "sum-1", inspection_id: INSP_ID } as any,
+      summary: { id: "sum-1", inspection_id: INSP_ID } as DbRow,
     };
     const second = {
       ...first,
       equipment: [
-        { id: tempId, equipment_type: "rope", result: "Pass", comments: "richer", production_year: "2024" } as any,
+        { id: tempId, equipment_type: "rope", result: "Pass", comments: "richer", production_year: "2024" } as DbRow,
       ],
     };
 
@@ -152,24 +154,24 @@ describe("pushInspectionToRemote — temp-id idempotency", () => {
     await pushInspectionToRemote(
       {
         id: INSP_ID,
-        inspection: { id: INSP_ID, updated_at: new Date().toISOString() } as any,
-        systems: [{ id: sysTemp, system_name: "Belay" } as any],
-        ziplines: [{ id: zipTemp, zipline_name: "Z1" } as any],
+        inspection: { id: INSP_ID, updated_at: new Date().toISOString() } as DbRow,
+        systems: [{ id: sysTemp, system_name: "Belay" } as DbRow],
+        ziplines: [{ id: zipTemp, zipline_name: "Z1" } as DbRow],
         equipment: [],
         standards: [],
-        summary: { id: "sum-1", inspection_id: INSP_ID } as any,
+        summary: { id: "sum-1", inspection_id: INSP_ID } as DbRow,
       },
-      { updatedInspection: { id: INSP_ID, updated_at: new Date().toISOString() } as any },
+      { updatedInspection: { id: INSP_ID, updated_at: new Date().toISOString() } as DbRow },
     );
 
     const sysOp = calls.find((c) => c.table === "inspection_systems");
     const zipOp = calls.find((c) => c.table === "inspection_ziplines");
     expect(sysOp?.op).toBe("upsert");
     expect(zipOp?.op).toBe("upsert");
-    expect((sysOp!.opts as any).onConflict).toBe("id");
-    expect((zipOp!.opts as any).onConflict).toBe("id");
-    expect((sysOp!.opts as any).ignoreDuplicates).not.toBe(true);
-    expect((zipOp!.opts as any).ignoreDuplicates).not.toBe(true);
+    expect(sysOp!.opts?.onConflict).toBe("id");
+    expect(zipOp!.opts?.onConflict).toBe("id");
+    expect(sysOp!.opts?.ignoreDuplicates).not.toBe(true);
+    expect(zipOp!.opts?.ignoreDuplicates).not.toBe(true);
 
     expect((sysOp!.rows as Array<{ id: string }>)[0].id).toBe("55555555-5555-4555-8555-555555555555");
     expect((zipOp!.rows as Array<{ id: string }>)[0].id).toBe("66666666-6666-4666-8666-666666666666");

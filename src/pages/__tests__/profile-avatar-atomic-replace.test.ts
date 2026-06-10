@@ -19,7 +19,7 @@ function makeFile(opts: { size?: number; type?: string; name?: string } = {}): F
 }
 
 interface MockCalls {
-  uploads: Array<{ path: string; opts: any }>;
+  uploads: Array<{ path: string; opts: unknown }>;
   updates: Array<{ values: Record<string, unknown>; id: string }>;
   removes: string[][];
 }
@@ -239,7 +239,7 @@ describe('atomicReplaceAvatar — ordering & atomicity', () => {
       const result = await atomicReplaceAvatar({
         supabase: client,
         userId: USER_ID,
-        oldUrl: url as any,
+        oldUrl: url as string | null,
         file: makeFile(),
         generateId: () => 'new-id',
       });

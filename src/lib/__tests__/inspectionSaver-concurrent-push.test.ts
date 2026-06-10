@@ -85,6 +85,7 @@ vi.mock("@/lib/offline-readiness", () => ({ recordSaveWithoutIdentity: vi.fn() }
 vi.mock("@/lib/sync-events", () => ({ registerSelfWrite: vi.fn() }));
 
 import { pushInspectionToRemote } from "@/lib/form-savers/inspectionSaver";
+import type { DbRow } from "@/lib/offline-storage";
 import {
   withInspectionPushLock,
   __resetInspectionPushLocksForTests,
@@ -100,7 +101,7 @@ beforeEach(() => {
 
 const makePayload = (inspectionId: string, tempEqIds: string[], rev = "v1") => ({
   id: inspectionId,
-  inspection: { id: inspectionId, updated_at: new Date().toISOString() } as any,
+  inspection: { id: inspectionId, updated_at: new Date().toISOString() } as DbRow,
   systems: [],
   ziplines: [],
   equipment: tempEqIds.map((tid, i) => ({
@@ -109,9 +110,9 @@ const makePayload = (inspectionId: string, tempEqIds: string[], rev = "v1") => (
     equipment_type: `Item ${i}`,
     result: "Pass",
     comments: rev,
-  })) as any[],
+  })) satisfies DbRow[],
   standards: [],
-  summary: { id: "sum-1", inspection_id: inspectionId } as any,
+  summary: { id: "sum-1", inspection_id: inspectionId } as DbRow,
 });
 
 describe("pushInspectionToRemote — concurrent-push regression (Lonestar shape)", () => {
