@@ -333,7 +333,7 @@ export default function TrainingForm() {
 
   // Save-before-leave handler: flushes debounce and performs immediate save
   // Use a ref for the save function to avoid stale closure in useCallback([], [])
-  const saveTrainingRef = useRef<() => Promise<void>>();
+  const saveTrainingRef = useRef<((silent?: boolean) => Promise<void>) | undefined>();
   const saveBeforeLeaveRef = useRef<(() => Promise<void>) | null>(null);
   const handleSaveAndLeave = useCallback(async () => {
     if (saveDebounceTimerRef.current) {
@@ -352,14 +352,16 @@ export default function TrainingForm() {
   saveBeforeLeaveRef.current = handleSaveAndLeave;
 
   // Stable immediate-save trigger for child fields (e.g. notes onBlur).
-  // Flushes pending debounce timer and performs save now so values persist
-  // before navigation. Identity is stable to keep React.memo children happy.
+  // Flushes pending debounce timer and performs a silent save now so values
+  // persist before navigation without showing the manual HARD-SAVED toast on
+  // every routine blur/calendar edit. Identity is stable to keep React.memo
+  // children happy.
   const triggerImmediateSave = useCallback(() => {
     if (saveDebounceTimerRef.current) {
       clearTimeout(saveDebounceTimerRef.current);
       saveDebounceTimerRef.current = null;
     }
-    return saveTrainingRef.current?.() ?? Promise.resolve();
+    return saveTrainingRef.current?.(true) ?? Promise.resolve();
   }, []);
 
   // Unsaved changes protection
@@ -375,7 +377,7 @@ export default function TrainingForm() {
     hasUnsavedChanges,
     saving: isSaving,
     saveDebounceTimerRef,
-    performSaveRef: saveTrainingRef as React.MutableRefObject<((silent?: boolean) => Promise<void>) | undefined>,
+    performSaveRef: saveTrainingRef,
     formName: 'TrainingForm',
     onEmergencySnapshot: () => {
       const latestTraining = trainingRef.current;
