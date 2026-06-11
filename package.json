@@ -12,9 +12,10 @@
     "bundle-size:budget": "node scripts/bundle-size-budget.mjs",
     "preview": "vite preview",
     "test": "vitest run",
-    "test:e2e": "playwright test",
-    "test:e2e:smoke": "playwright test tests/e2e/smoke",
-    "test:e2e:auth": "playwright test tests/e2e/auth",
+    "test:e2e:install": "playwright install chromium",
+    "test:e2e": "bun run test:e2e:install && playwright test",
+    "test:e2e:smoke": "bun run test:e2e:install && playwright test tests/e2e/smoke",
+    "test:e2e:auth": "bun run test:e2e:install && playwright test tests/e2e/auth",
     "bump:patch": "node scripts/bump-version.mjs patch",
     "bump:minor": "node scripts/bump-version.mjs minor",
     "bump:major": "node scripts/bump-version.mjs major"
