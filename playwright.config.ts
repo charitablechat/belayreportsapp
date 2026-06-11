@@ -70,8 +70,10 @@ export default defineConfig({
           'bun run build && bun run preview -- --port 4173 --strictPort',
         url: 'http://127.0.0.1:4173',
         reuseExistingServer: !process.env.CI,
-        // 180s covers cold-cache build (~100s on a small runner) + preview
-        // server boot. 120s was tight after adding the build step.
-        timeout: 180_000,
+        // Cold GitHub runners can exceed 180s while building the app before
+        // `vite preview` starts. Keep the job-level cap at 8 minutes, but give
+        // Playwright enough startup headroom so the smoke job does not fail
+        // before the preview server has a chance to boot.
+        timeout: 360_000,
       },
 });
