@@ -98,9 +98,13 @@
      
      ${messageSection}
      
-     <!-- Report Content -->
+     <!-- Report Content (sanitized server-side to strip <script>, event handlers, iframes, etc.) -->
      <div style="padding: 0;">
-       ${html}
+       ${DOMPurify.sanitize(html, {
+         FORBID_TAGS: ["script", "iframe", "object", "embed", "form", "input", "button", "meta", "link", "base"],
+         FORBID_ATTR: ["onerror", "onload", "onclick", "onmouseover", "onfocus", "onblur", "onchange", "onsubmit", "onkeydown", "onkeyup", "onkeypress", "formaction", "srcdoc"],
+         ALLOW_DATA_ATTR: false,
+       })}
      </div>
      
      <!-- Footer -->
