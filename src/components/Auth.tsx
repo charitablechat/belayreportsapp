@@ -11,7 +11,7 @@ import { Eye, EyeOff, WifiOff, ArrowRight } from "lucide-react";
 import { usePWA } from "@/hooks/usePWA";
 const belayReportsLogo = "/__l5e/assets-v1/8c7f8dfa-a725-400e-8f7e-c806cf7d7039/belay-reports-wide.gif";
 import signinBg from "@/assets/signin-bg.jpg.asset.json";
-import shimmerLogo from "@/assets/shimmer-wide-logo.gif.asset.json";
+
 import { hasCachedSessionForOffline } from "@/lib/cached-auth";
 import { createOfflineSession } from "@/lib/offline-auth";
 import { createGuestSession } from "@/lib/guest-session";
@@ -199,13 +199,6 @@ export default function Auth() {
           src={signinBg.url}
           alt=""
           className="w-full h-full object-cover"
-        />
-      </div>
-      <div className="relative z-10 rounded-2xl bg-white/20 dark:bg-black/30 backdrop-blur-xl border border-white/30 shadow-2xl p-6 md:p-8">
-        <img
-          src={shimmerLogo.url}
-          alt="Belay Reports"
-          className="w-full max-w-md md:max-w-lg max-h-[20vh] object-contain drop-shadow-lg"
         />
       </div>
 
