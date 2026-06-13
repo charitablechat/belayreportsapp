@@ -197,7 +197,7 @@ export default function Auth() {
         <img
           src={marbleBg.url}
           alt=""
-          className="w-full h-full object-cover"
+          className="w-full h-full object-contain"
         />
       </div>
       <Card className="relative z-10 w-full max-w-md shadow-2xl backdrop-blur-sm bg-card/95 mx-2">
