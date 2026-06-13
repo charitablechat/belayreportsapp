@@ -24,7 +24,7 @@ serve(async (req) => {
 
     const results = [];
 
-    // Upload rope-works logo
+    // Upload belay-reports logo
     try {
       const response = await fetch(publicAssetUrls[0]);
       if (response.ok) {
@@ -40,16 +40,16 @@ serve(async (req) => {
           });
         
         if (error) {
-          results.push({ logo: 'rope-works', status: 'error', message: error.message });
+          results.push({ logo: 'belay-reports', status: 'error', message: error.message });
         } else {
-          results.push({ logo: 'rope-works', status: 'success', path: data.path });
+          results.push({ logo: 'belay-reports', status: 'success', path: data.path });
         }
       } else {
-        results.push({ logo: 'rope-works', status: 'error', message: `HTTP ${response.status}` });
+        results.push({ logo: 'belay-reports', status: 'error', message: `HTTP ${response.status}` });
       }
     } catch (error) {
       results.push({ 
-        logo: 'rope-works', 
+        logo: 'belay-reports', 
         status: 'error', 
         message: error instanceof Error ? error.message : String(error)
       });
