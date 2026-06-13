@@ -194,12 +194,9 @@ export default function Auth() {
     <div className="relative min-h-screen flex items-center justify-center p-2 md:p-4">
       {/* Background */}
       <div className="absolute inset-0 z-0">
-        <video
-          src={authVideo}
-          autoPlay
-          loop
-          muted
-          playsInline
+        <img
+          src={marbleBg.url}
+          alt=""
           className="w-full h-full object-cover"
         />
       </div>
