@@ -269,7 +269,8 @@ export default function NewInspection() {
         throw new Error(errBody.error || `Server returned ${res.status}`);
       }
 
-      const { data: rawData, truncated, partial } = await res.json();
+      const { data: rawData, truncated, partial, incomplete } = await res.json();
+      const isIncomplete = incomplete ?? partial;
 
       // Normalize: move mistakenly-classified ziplines out of the generic
       // systems ("Other Elements") array and dedupe.
@@ -321,7 +322,7 @@ export default function NewInspection() {
           : "Form fields populated from document",
       });
 
-      if (partial) {
+      if (isIncomplete) {
         toast.warning("Import may be incomplete", {
           description: "Some items were truncated due to document size. Please verify all items were imported.",
           duration: 8000,
