@@ -93,14 +93,35 @@ serve(async (req) => {
       );
     }
 
-    // Truncate to avoid exceeding token limits
-    const maxChars = 60000;
-    const wasTruncated = extractedText.length > maxChars;
-    const truncatedText = wasTruncated
-      ? extractedText.slice(0, maxChars) + "\n\n[...truncated...]"
-      : extractedText;
+    // Chunk long inputs instead of hard-truncating. Single-pass for small inputs
+    // preserves the original behavior exactly.
+    const CHUNK_THRESHOLD = 50_000;
+    const CHUNK_SIZE = 45_000;
+    const CHUNK_OVERLAP = 2_000;
 
-    console.log(`[parse-inspection-docx] Extracted ${extractedText.length} chars from ${fileName} (truncated: ${wasTruncated})`);
+    function chunkText(text: string): string[] {
+      if (text.length <= CHUNK_THRESHOLD) return [text];
+      const chunks: string[] = [];
+      let start = 0;
+      while (start < text.length) {
+        const end = Math.min(start + CHUNK_SIZE, text.length);
+        // Try to break on a paragraph/line boundary near `end` for cleaner splits
+        let breakAt = end;
+        if (end < text.length) {
+          const windowStart = Math.max(start + CHUNK_SIZE - 500, start);
+          const window = text.slice(windowStart, end);
+          const lastNl = window.lastIndexOf("\n");
+          if (lastNl > 0) breakAt = windowStart + lastNl;
+        }
+        chunks.push(text.slice(start, breakAt));
+        if (breakAt >= text.length) break;
+        start = Math.max(0, breakAt - CHUNK_OVERLAP);
+      }
+      return chunks;
+    }
+
+    const chunks = chunkText(extractedText);
+    console.log(`[parse-inspection-docx] Extracted ${extractedText.length} chars from ${fileName}; ${chunks.length} chunk(s)`);
     console.log(`[parse-inspection-docx] First 500 chars:\n${extractedText.slice(0, 500)}`);
 
     // Call AI to extract structured data
@@ -220,7 +241,11 @@ CRITICAL RULES:
 10. DATE DISAMBIGUATION: The report itself was performed on a specific date (cover page, header, or "Inspection Date" field). Put THAT date in \`report_inspection_date\`. The report also lists a separate "Previous Inspection Date" field that refers to an EARLIER inspection (usually a prior year) — put THAT value in \`previous_inspection_date\`. Never put the same date in both fields unless the document literally shows the same date for both.
 11. ZIPLINE CLASSIFICATION: Any element whose name or type contains "zipline", "zip line", "zip-line", "canopy zipline", "racing zipline", or similar zipline terminology goes ONLY in the \`ziplines\` array. NEVER also list it under \`systems\`. The \`systems\` array is exclusively for non-zipline operating systems / elements (e.g. swings, climbing walls, traverses, belay systems).`;
 
-    const userPrompt = `Extract ALL structured data from this inspection report. You MUST include:
+    const buildUserPrompt = (text: string, chunkInfo?: { index: number; total: number }) => {
+      const header = chunkInfo
+        ? `This is chunk ${chunkInfo.index + 1} of ${chunkInfo.total} from a long inspection report. Extract every item that appears in THIS chunk. Do not infer items from missing chunks. Header fields (organization, dates, etc.) may only appear in chunk 1 — leave them null otherwise.\n\n`
+        : "";
+      return `${header}Extract ALL structured data from this inspection report. You MUST include:
 - Every operating system/element with its name, system_name, result, and full comments (verbatim)
 - Every piece of equipment with type, category, result, full comments, production_year, rope_type — do NOT include quantity
 - Every zipline with all measurements (cable_type, cable_length, braking_system, ead_system, load_tension, unload_tension) and full comments
@@ -231,7 +256,8 @@ Do not skip ANY item. Do not abbreviate or summarize comments. Include every sin
 
 Report text:
 
-${truncatedText}`;
+${text}`;
+    };
 
     const makeAiCall = async (userMsg: string) => {
       const resp = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
@@ -243,7 +269,7 @@ ${truncatedText}`;
         },
         body: JSON.stringify({
           model: "google/gemini-2.5-pro",
-          max_tokens: 16384,
+          max_tokens: 32_768,
           messages: [
             { role: "system", content: systemPrompt },
             { role: "user", content: userMsg },
@@ -264,91 +290,144 @@ ${truncatedText}`;
       return resp.json();
     };
 
-    // First pass
-    const aiData = await makeAiCall(userPrompt);
-    const choice = aiData.choices?.[0];
-    const finishReason = choice?.finish_reason;
-    const usage = aiData.usage;
-
-    console.log(`[parse-inspection-docx] finish_reason: ${finishReason}, usage: prompt=${usage?.prompt_tokens}, completion=${usage?.completion_tokens}`);
-
-    const toolCall = choice?.message?.tool_calls?.[0];
-    if (!toolCall?.function?.arguments) {
-      throw new Error("AI did not return structured data");
-    }
-
-    let extracted = JSON.parse(toolCall.function.arguments);
-    let partial = false;
-
-    // If truncated, do a second pass for ALL sections
-    if (finishReason === "length" || finishReason === "MAX_TOKENS") {
-      console.warn("[parse-inspection-docx] Output was truncated — running second pass for all sections");
-      partial = true;
-
+    // Extract one chunk; returns parsed data + whether the model was truncated.
+    const extractChunk = async (text: string, info?: { index: number; total: number }) => {
+      const data = await makeAiCall(buildUserPrompt(text, info));
+      const choice = data.choices?.[0];
+      const finish = choice?.finish_reason;
+      const toolCall = choice?.message?.tool_calls?.[0];
+      if (!toolCall?.function?.arguments) {
+        throw new Error("AI did not return structured data");
+      }
+      let parsed: Record<string, any> = {};
       try {
-        const secondPrompt = `The previous extraction was truncated. Extract ALL sections from this report — include every item with full verbatim comments:
-1. ALL operating systems/elements with name, system_name, result, and full comments
-2. ALL equipment items (type, category, result, comments, production_year, rope_type — NO quantity)
-3. ALL ziplines with all measurements and full comments
-4. ALL standards with documentation status and full comments
-5. The complete summary section (repairs_performed, critical_actions, future_considerations, next_inspection_date) — copy ALL text verbatim
+        parsed = JSON.parse(toolCall.function.arguments);
+      } catch (e) {
+        console.error("[parse-inspection-docx] JSON parse failed for chunk", info?.index, e);
+        parsed = {};
+      }
+      const incomplete = finish === "length" || finish === "MAX_TOKENS";
+      console.log(
+        `[parse-inspection-docx] chunk ${info ? info.index + 1 + "/" + info.total : "1/1"} finish=${finish} systems=${parsed.systems?.length || 0} equipment=${parsed.equipment?.length || 0} ziplines=${parsed.ziplines?.length || 0} standards=${parsed.standards?.length || 0}`,
+      );
+      return { parsed, incomplete };
+    };
 
-Do not skip ANY item. Do not abbreviate or summarize comments.
-
-Report text:
-
-${truncatedText}`;
-
-        const secondData = await makeAiCall(secondPrompt);
-        const secondCall = secondData.choices?.[0]?.message?.tool_calls?.[0];
-
-        if (secondCall?.function?.arguments) {
-          const secondExtracted = JSON.parse(secondCall.function.arguments);
-
-          // Merge each section: keep whichever pass returned more items
-          for (const section of ["systems", "equipment", "ziplines", "standards"] as const) {
-            const firstLen = extracted[section]?.length || 0;
-            const secondLen = secondExtracted[section]?.length || 0;
-            if (secondLen > firstLen) {
-              console.log(`[parse-inspection-docx] Second pass: ${section} ${secondLen} items (vs ${firstLen})`);
-              extracted[section] = secondExtracted[section];
-            }
-          }
-
-          // Merge summary: keep whichever has more total content (by character length)
-          if (secondExtracted.summary) {
-            const sumLen = (obj: Record<string, string | undefined> | undefined) =>
-              Object.values(obj || {}).reduce((acc: number, v) => acc + (typeof v === "string" ? v.length : 0), 0);
-            const firstSumLen = sumLen(extracted.summary);
-            const secondSumLen = sumLen(secondExtracted.summary);
-            if (secondSumLen > firstSumLen) {
-              console.log(`[parse-inspection-docx] Second pass summary is longer (${secondSumLen} vs ${firstSumLen} chars)`);
-              extracted.summary = secondExtracted.summary;
-            }
-          }
-
-          // Check if second pass completed fully
-          const secondFinish = secondData.choices?.[0]?.finish_reason;
-          if (secondFinish !== "length" && secondFinish !== "MAX_TOKENS") {
-            partial = false;
-          }
+    // Run all chunks sequentially (rate-limit polite).
+    const chunkResults: { parsed: Record<string, any>; incomplete: boolean }[] = [];
+    for (let i = 0; i < chunks.length; i++) {
+      const info = chunks.length > 1 ? { index: i, total: chunks.length } : undefined;
+      const result = await extractChunk(chunks[i], info);
+      chunkResults.push(result);
+      if (result.incomplete) {
+        console.warn(`[parse-inspection-docx] chunk ${i + 1} truncated — retrying once`);
+        try {
+          const retry = await extractChunk(chunks[i], info);
+          chunkResults.push(retry);
+        } catch (e) {
+          console.error(`[parse-inspection-docx] retry failed for chunk ${i + 1}:`, e);
         }
-      } catch (retryErr) {
-        console.error("[parse-inspection-docx] Second pass failed:", retryErr);
       }
     }
 
-    // Log extraction stats with comment char counts for debugging
+    // ---- Union + dedupe merge ----
+    const norm = (s: unknown) => (typeof s === "string" ? s.trim().toLowerCase().replace(/\s+/g, " ") : "");
+    const commentLen = (v: unknown) => (typeof v === "string" ? v.length : 0);
+
+    function mergeArray<T extends Record<string, any>>(
+      acc: Map<string, T>,
+      items: T[] | undefined,
+      keyFn: (item: T) => string,
+    ) {
+      for (const item of items || []) {
+        if (!item) continue;
+        const key = keyFn(item);
+        if (!key) continue;
+        const existing = acc.get(key);
+        if (!existing) {
+          acc.set(key, item);
+          continue;
+        }
+        // Prefer the row with the longer verbatim comments; backfill empty fields from the other.
+        const winner = commentLen(item.comments) > commentLen(existing.comments) ? item : existing;
+        const loser = winner === item ? existing : item;
+        const merged: Record<string, any> = { ...winner };
+        for (const k of Object.keys(loser)) {
+          if (merged[k] == null || merged[k] === "") merged[k] = (loser as any)[k];
+        }
+        acc.set(key, merged as T);
+      }
+    }
+
+    const systemsMap = new Map<string, any>();
+    const equipmentMap = new Map<string, any>();
+    const ziplinesMap = new Map<string, any>();
+    const standardsMap = new Map<string, any>();
+
+    const header: Record<string, any> = {};
+    const summary: Record<string, string> = {};
+    let anyIncomplete = false;
+
+    for (const { parsed, incomplete } of chunkResults) {
+      if (incomplete) anyIncomplete = true;
+      for (const k of [
+        "organization",
+        "location",
+        "onsite_contact",
+        "previous_inspector",
+        "report_inspection_date",
+        "previous_inspection_date",
+        "course_history",
+      ]) {
+        if (!header[k] && parsed[k]) header[k] = parsed[k];
+      }
+      if (parsed.summary && typeof parsed.summary === "object") {
+        for (const [k, v] of Object.entries(parsed.summary)) {
+          if (typeof v === "string" && v.length > (summary[k]?.length || 0)) {
+            summary[k] = v;
+          }
+        }
+      }
+      mergeArray(systemsMap, parsed.systems, (s) => `${norm(s.name)}|${norm(s.system_name)}`);
+      mergeArray(
+        equipmentMap,
+        parsed.equipment,
+        (e) =>
+          `${norm(e.equipment_type)}|${norm(e.equipment_category)}|${norm(e.production_year)}|${norm(e.rope_type)}`,
+      );
+      mergeArray(ziplinesMap, parsed.ziplines, (z) => norm(z.zipline_name));
+      mergeArray(standardsMap, parsed.standards, (s) => norm(s.standard_name));
+    }
+
+    const extracted: Record<string, any> = {
+      ...header,
+      systems: [...systemsMap.values()],
+      equipment: [...equipmentMap.values()],
+      ziplines: [...ziplinesMap.values()],
+      standards: [...standardsMap.values()],
+      summary: Object.keys(summary).length ? summary : null,
+    };
+
     const commentChars = (arr: { comments?: string }[] | undefined) =>
       (arr || []).reduce((acc, item) => acc + (item.comments?.length || 0), 0);
-    const sumChars = Object.values(extracted.summary || {}).reduce((acc: number, v) => acc + (typeof v === "string" ? v.length : 0), 0);
+    const sumChars = Object.values(extracted.summary || {}).reduce(
+      (acc: number, v) => acc + (typeof v === "string" ? v.length : 0),
+      0,
+    );
     console.log(
-      `[parse-inspection-docx] Extracted: ${extracted.systems?.length || 0} systems (${commentChars(extracted.systems)} comment chars), ${extracted.equipment?.length || 0} equipment (${commentChars(extracted.equipment)} comment chars), ${extracted.ziplines?.length || 0} ziplines, ${extracted.standards?.length || 0} standards, summary: ${sumChars} chars (partial: ${partial})`
+      `[parse-inspection-docx] FINAL: ${extracted.systems.length} systems (${commentChars(extracted.systems)} cc), ${extracted.equipment.length} equipment (${commentChars(extracted.equipment)} cc), ${extracted.ziplines.length} ziplines, ${extracted.standards.length} standards, summary ${sumChars} chars, incomplete=${anyIncomplete}, chunks=${chunks.length}`,
     );
 
-    return new Response(JSON.stringify({ success: true, data: extracted, truncated: wasTruncated, partial }), {
-      headers: { ...corsHeaders, "Content-Type": "application/json" },
-    });
+    return new Response(
+      JSON.stringify({
+        success: true,
+        data: extracted,
+        truncated: false,
+        incomplete: anyIncomplete,
+        chunks: chunks.length,
+      }),
+      { headers: { ...corsHeaders, "Content-Type": "application/json" } },
+    );
   } catch (error) {
     console.error("[parse-inspection-docx] Error:", error);
     if (error instanceof DOMException && error.name === "TimeoutError") {
