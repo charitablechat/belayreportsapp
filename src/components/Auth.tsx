@@ -212,7 +212,6 @@ export default function Auth() {
           <div className="mx-auto w-48 h-24 flex items-center justify-center">
             <img src={belayReportsLogo} alt="Belay Reports Logo" width={192} height={93} className="w-full h-full object-contain" fetchPriority="high" />
           </div>
-          <CardTitle className="text-2xl font-bold">Belay Reports</CardTitle>
           <CardDescription>
             {isForgotPassword 
               ? "Reset your password" 
