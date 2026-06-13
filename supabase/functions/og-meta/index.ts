@@ -79,10 +79,17 @@ serve(async (req: Request) => {
       status = data.status || "draft";
     }
 
-    const statusLabel = status === "completed" ? "Verified" : status === "draft" ? "Draft" : "Archived";
+    // Only expose organization/location/date for completed (published) reports.
+    // Draft/archived reports return generic copy to avoid leaking private metadata
+    // about unfinished or withdrawn work to anyone who guesses an 8-char ID prefix.
+    const isPublic = status === "completed";
+    const statusLabel = isPublic ? "Verified" : status === "draft" ? "Draft" : "Archived";
     const typeLabel = TYPE_LABELS[type];
-    const desc = [date, location, statusLabel].filter(Boolean).join(" | ");
-    const title = `${typeLabel} — ${org}`;
+    const desc = isPublic
+      ? [date, location, statusLabel].filter(Boolean).join(" | ")
+      : `${statusLabel} ${typeLabel}`;
+    const title = isPublic ? `${typeLabel} — ${org}` : `${typeLabel} — Rope Works`;
+
 
     const ogImageUrl = `${functionsBaseUrl}/generate-og-image?type=${type}&id=${id}&size=og`;
     const twitterImageUrl = `${functionsBaseUrl}/generate-og-image?type=${type}&id=${id}&size=twitter`;
