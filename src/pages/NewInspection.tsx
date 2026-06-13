@@ -322,7 +322,7 @@ export default function NewInspection() {
           : "Form fields populated from document",
       });
 
-      if (partial) {
+      if (isIncomplete) {
         toast.warning("Import may be incomplete", {
           description: "Some items were truncated due to document size. Please verify all items were imported.",
           duration: 8000,
