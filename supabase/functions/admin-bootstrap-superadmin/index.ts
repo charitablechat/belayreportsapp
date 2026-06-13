@@ -32,6 +32,14 @@ Deno.serve(async (req) => {
       userId = created.user!.id;
     }
 
+    // Ensure profile row exists (FK target for inspections/trainings/etc.)
+    await admin
+      .from("profiles")
+      .upsert(
+        { id: userId, first_name: "Kale", is_active: true },
+        { onConflict: "id", ignoreDuplicates: true },
+      );
+
     // Grant super_admin role (org-less)
     const { data: existingRole } = await admin
       .from("user_roles")
