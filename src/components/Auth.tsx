@@ -11,6 +11,7 @@ import { Eye, EyeOff, WifiOff, ArrowRight } from "lucide-react";
 import { usePWA } from "@/hooks/usePWA";
 const ropeWorksLogo = "/rope-works-logo.avif";
 import marbleBg from "@/assets/marble-bg.gif.asset.json";
+import shimmerLogo from "@/assets/shimmer-wide-logo.gif.asset.json";
 import { hasCachedSessionForOffline } from "@/lib/cached-auth";
 import { createOfflineSession } from "@/lib/offline-auth";
 import { createGuestSession } from "@/lib/guest-session";
@@ -191,7 +192,7 @@ export default function Auth() {
   };
 
   return (
-    <div className="relative min-h-screen flex items-center justify-center p-2 md:p-4">
+    <div className="relative min-h-screen flex flex-col items-center justify-center gap-6 md:gap-10 p-2 md:p-4">
       {/* Background */}
       <div className="absolute inset-0 z-0">
         <img
@@ -200,6 +201,12 @@ export default function Auth() {
           className="w-full h-full object-cover"
         />
       </div>
+      <img
+        src={shimmerLogo.url}
+        alt="Belay Reports"
+        className="relative z-10 w-full max-w-md md:max-w-lg max-h-[20vh] object-contain drop-shadow-lg"
+      />
+
       <Card className="relative z-10 w-full max-w-md shadow-2xl backdrop-blur-sm bg-card/95 mx-2">
         <CardHeader className="space-y-4 text-center">
           <div className="mx-auto w-48 h-24 flex items-center justify-center">
