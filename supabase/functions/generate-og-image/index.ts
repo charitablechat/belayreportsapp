@@ -83,21 +83,30 @@ function buildImage(meta: ReportMeta | null, width: number, height: number) {
 
 async function fetchMeta(supabase: ReturnType<typeof createClient>, type: ReportType, hash: string): Promise<ReportMeta | null> {
   const p = `${hash}%`;
+  // Privacy gate: only completed (published) reports expose real org/location/date.
+  // Drafts/archived return a redacted shell so social unfurls don't leak private
+  // metadata to anyone who guesses an 8-char ID prefix.
+  const redact = (status: string, t: ReportType): ReportMeta => ({
+    organization: "Rope Works", date: "", location: "", status, type: t,
+  });
   if (type === "inspection") {
     const { data } = await supabase.from("inspections").select("id, organization, inspection_date, location, status").is("deleted_at", null).like("id", p).limit(1).single();
     if (!data) return null;
+    if (data.status !== "completed") return redact(data.status || "draft", "inspection");
     const { count } = await supabase.from("inspection_equipment").select("id", { count: "exact", head: true }).eq("inspection_id", data.id);
-    return { organization: data.organization || "Unknown", date: data.inspection_date || "N/A", location: data.location || "N/A", status: data.status || "draft", equipmentCount: count || 0, type: "inspection" };
+    return { organization: data.organization || "Unknown", date: data.inspection_date || "N/A", location: data.location || "N/A", status: data.status, equipmentCount: count || 0, type: "inspection" };
   }
   if (type === "training") {
     const { data } = await supabase.from("trainings").select("organization, start_date, site, status").is("deleted_at", null).like("id", p).limit(1).single();
     if (!data) return null;
-    return { organization: data.organization || "Unknown", date: data.start_date || "N/A", location: data.site || "N/A", status: data.status || "draft", type: "training" };
+    if (data.status !== "completed") return redact(data.status || "draft", "training");
+    return { organization: data.organization || "Unknown", date: data.start_date || "N/A", location: data.site || "N/A", status: data.status, type: "training" };
   }
   if (type === "daily_assessment") {
     const { data } = await supabase.from("daily_assessments").select("organization, assessment_date, site, status").is("deleted_at", null).like("id", p).limit(1).single();
     if (!data) return null;
-    return { organization: data.organization || "Unknown", date: data.assessment_date || "N/A", location: data.site || "N/A", status: data.status || "draft", type: "daily_assessment" };
+    if (data.status !== "completed") return redact(data.status || "draft", "daily_assessment");
+    return { organization: data.organization || "Unknown", date: data.assessment_date || "N/A", location: data.site || "N/A", status: data.status, type: "daily_assessment" };
   }
   return null;
 }
