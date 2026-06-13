@@ -1,82 +1,61 @@
-## Root cause
+## Scope
 
-The import pipeline (`supabase/functions/parse-inspection-docx/index.ts`) silently drops items in three places. Any one of them can cause the symptom; long reports usually hit all three.
+Replace legacy "Rope Works" branding with Belay Reports in the PWA manifest, head metadata, and all PWA icon files. Use the uploaded square icon as the source of truth for icon generation.
 
-1. **Hard 60,000-character text truncation before the AI ever sees it.**
-   `index.ts:97-101` slices the extracted document text at 60k chars and appends `"[...truncated...]"`. Real inspection reports routinely run 80-150k characters of plain text (tables of equipment expand a lot once mammoth flattens them). Everything past 60k — usually the back half of the equipment inventory and the standards/summary section — is invisible to the AI. No item from that range can ever come back.
+## Files changed
 
-2. **Single AI call capped at 16,384 completion tokens.**
-   `index.ts:246` + the `tool_choice` forced function call. A fully populated tool-call JSON for ~150 equipment rows + ~40 elements + verbatim comments easily exceeds that. When Gemini hits `finish_reason: "length"`, the tool-call arguments come back as a partial JSON string. `JSON.parse` either throws (caught above as "AI did not return structured data") or, more commonly, succeeds on a structurally-valid prefix that lost its final array entries.
+1. **`vite-pwa-config.ts`** — manifest fields:
+   - `name`: `"Rope Works Inspection"` → `"Belay Reports"`
+   - `short_name`: `"RW Inspect"` → `"Belay Reports"` (12 chars, fits iOS/Android home-screen labels)
+   - `description`: unchanged (already generic, no legacy brand)
+   - `theme_color`: keep `#1e40af` (no new brand color was specified — call out and ask later if needed)
+   - `includeAssets`: drop `rope-works-logo.avif` (file doesn't exist in `public/`, currently a dead reference)
+   - `icons` array: paths unchanged (`icons/icon-192.png` etc.) — the underlying PNGs are regenerated in step 3
 
-3. **Two-pass "merge" keeps the longer array instead of unioning them.**
-   `index.ts:308-316`. When the first pass is truncated, a second pass runs with the *same* truncated text and the same forced tool. The merge step picks `secondExtracted[section]` only if it has more items — so items that appeared only in pass 1 are discarded, and items only in pass 2 replace (not augment) pass 1. Net result is "best of two partial lists," never their union.
+2. **`index.html`** — three legacy strings:
+   - `<meta name="author" content="Rope Works Inc." />` → `"Belay Reports"`
+   - `<meta name="apple-mobile-web-app-title" content="Rope Works" />` → `"Belay Reports"`
+   - `<link rel="preload" as="image" href="/rope-works-logo.avif" ...>` → delete this line (the file isn't shipped)
+   - `<title>` already says "Belay Reports — Digital Inspection Platform" — unchanged
+   - `<meta name="description">` — unchanged (no brand reference)
 
-Supporting evidence: the function already logs `Extracted: X systems … Y equipment …`, and the truncation flag is returned to the client (`NewInspection.tsx:325` shows the "Import may be incomplete" toast). The toast is firing for users on real reports — that is the same condition as the silent drops here.
+3. **Icon PNG regeneration** — generate from uploaded `Belay_Reports_Icon_Logo_120_x_120_px.png` using Pillow (Lanczos resample for upscales, sharpening pass after upscale to mitigate 120→512 quality loss):
 
-The frontend (`NewInspection.tsx` + `src/lib/import-normalize.ts`) and the database write path are not at fault: whatever the edge function returns is normalized and pre-filled correctly. So the fix lives entirely in the edge function.
+   | File in `public/icons/` | Size | Purpose |
+   |---|---|---|
+   | `favicon-16.png` | 16×16 | browser tab |
+   | `favicon-32.png` | 32×32 | browser tab |
+   | `apple-touch-icon.png` | 180×180 | iOS home screen |
+   | `app-icon.png` | 512×512 | generic app icon |
+   | `icon-192.png` | 192×192 | PWA standard |
+   | `icon-512.png` | 512×512 | PWA standard |
+   | `icon-192-maskable.png` | 192×192 | PWA maskable — logo centered in 80% safe area on `#0b0f17` background to match the `background_color` |
+   | `icon-512-maskable.png` | 512×512 | same |
+   | `favicon.png` (`public/`) | 512×512 | root favicon referenced by `index.html` |
 
-## Plan
+   Also overwrite `public/favicon.ico` with a multi-resolution ICO (16, 32, 48) generated from the same source so browsers requesting `/favicon.ico` get the new mark.
 
-Single, focused edit to `supabase/functions/parse-inspection-docx/index.ts`. No schema changes, no frontend changes, no new dependencies.
+   Source caveat: the uploaded icon is only 120×120. Upscaling to 512 loses sharpness. If you have a higher-res version (≥512×512 square PNG, transparent or solid background), share it and I'll re-run the icon generation — the rest of the plan stays the same.
 
-### Step 1 — Remove the 60k character hard cap; chunk instead
+## Files explicitly NOT changed
 
-- Delete the `maxChars = 60000` slice.
-- If `extractedText.length` is above a configurable threshold (default 50,000 chars), split the text into overlapping chunks (e.g. 45,000 chars with a 2,000-char overlap so a row that straddles a boundary is seen by both chunks).
-- Each chunk is sent through the same AI tool-call extraction with the same schema and system prompt.
-- Short reports (under the threshold) still go through a single AI call — no behavior change for the common case.
+- **`public/db-config.js`** — `name: 'rope-works-inspections'` is the **IndexedDB database name**. Renaming it would orphan every installed PWA's offline reports, photos, and pending sync queue. Leave as-is.
+- **Test files** that reference `'rope-works-inspections'` (the IDB name) — unchanged for the same reason.
+- **`.lovable/memory/auth/offline-access-and-guest-mode.md`** and **`COMPREHENSIVE_TEST_PLAN.md`** — historical docs; not user-facing. Skip.
+- **`tests/e2e/smoke/offline-cold-start.spec.ts`** — uses the IDB name in fixture setup. Skip.
+- **`src/integrations/supabase/client.ts`**, project ref, custom domain config — not branding files.
+- **Service workers** (`sw-push.js`, `sw-sync.js`, `sw-offline-navigation.js`, `offline.html`) — no legacy brand text spotted; will grep again before declaring done. If any hit appears it will be the same small string swap.
 
-### Step 2 — Raise the per-call output budget and tighten the prompt
+## Verification
 
-- Bump `max_tokens` from 16,384 to the model's max (32,768 for `google/gemini-2.5-pro`) so a single chunk almost never hits `finish_reason: "length"`.
-- Keep `tool_choice` forced; the per-chunk payload is now small enough to fit.
+1. `grep -rIn 'Rope Works\|rope-works\|RW Inspect' .` (excluding `node_modules`, `.lovable/memory`, `COMPREHENSIVE_TEST_PLAN.md`, test fixtures referencing the IDB name) returns nothing.
+2. Re-inspect each generated icon by reading the file dimensions back (Pillow `Image.open(...).size`) and visually viewing the 192 and 512 maskable variants to confirm safe-area centering.
+3. Reload preview, confirm browser tab favicon updated and `/manifest.webmanifest` returns the new `name`/`short_name` (curl from console or DevTools).
+4. Note to user: a browser that already installed the PWA caches `start_url`, `id`, and `scope` from the old manifest. Manifest name/icon updates appear after the next browser-driven manifest refresh; users who already installed the app will need to either wait for the OS to re-fetch or reinstall to see the new icon on the home screen. The new icon appears immediately in browsers that have not installed yet.
 
-### Step 3 — Replace "longer array wins" with a true union + dedupe
+## Risks
 
-For each section (`systems`, `equipment`, `ziplines`, `standards`), accumulate items from every chunk and every retry pass, then dedupe with a stable key:
+- 120×120 source upscaled to 512 will look soft on retina home screens. Mitigated by Lanczos + a mild unsharp mask, but a true ≥512 source would be better. Flagged above.
+- The `theme_color` (`#1e40af` blue) doesn't match the teal+slate of the new logo. Not changing it without explicit guidance — happy to update if you give me the hex (or say "match the logo teal" and I'll sample it).
 
-| Section | Dedupe key |
-|---|---|
-| systems | `name` + `system_name` (case- and whitespace-normalized) |
-| equipment | `equipment_type` + `equipment_category` + `production_year` + `rope_type` |
-| ziplines | `zipline_name` |
-| standards | `standard_name` |
-
-When duplicates collide, prefer the row with the longer non-empty `comments` so verbatim notes are not lost.
-
-For scalar header fields (`organization`, `location`, dates, `summary.*`) keep the existing behavior: first non-empty value wins, except `summary.*` which keeps the longest text per sub-field (already implemented for the whole `summary`; extend to per-field).
-
-### Step 4 — Update the truncation flag semantics
-
-- `truncated` (in the response) currently means "we cut the input." With chunking, that becomes false. Replace it with `incomplete: boolean` that is true only if *any* chunk's second-pass retry still came back with `finish_reason: "length"`. The frontend's existing `toast.warning("Import may be incomplete", …)` branch keeps working — only the field name changes.
-- Adjust the one client read site (`NewInspection.tsx:325` area) to read `incomplete ?? truncated` so old deploys stay compatible during the rollout window.
-
-### Step 5 — Logging for verification
-
-Per chunk: log chunk index, char range, finish reason, counts per section. At the end: log final union counts and dedupe drop counts. These already exist for the single-pass case; extend the same log lines across chunks so the next "items missing" report is diagnosable from the function logs alone.
-
-## Verification (before declaring done)
-
-1. **Unit-level**: add focused tests for the new merge/dedupe helpers in `supabase/functions/parse-inspection-docx/` (pure functions, no Deno serve), covering: union across two chunks, comment-length tiebreak, zipline-vs-system classification preserved, empty arrays.
-2. **Edge function smoke**: invoke locally / via `supabase--curl_edge_functions` with three real fixtures:
-   - small `.docx` (under threshold, single pass) — counts must match the current production output exactly.
-   - large `.docx` (over 100k chars) — counts must be ≥ current output and match a manual row count from the source document.
-   - `.pdf` re-export of the same large report — counts must match the `.docx` run within ±1 row.
-3. **Frontend round-trip**: in the preview, run "Import from Previous Report" with the large fixture, confirm the toast no longer says "may be incomplete," and visually verify every section's row count against the source. Spot-check 5 comments verbatim.
-4. **Regression**: existing `src/lib/__tests__/import-normalize.test.ts` must still pass unchanged.
-
-## What will NOT change
-
-- No database schema changes, no migrations, no RLS changes.
-- No change to `src/lib/import-normalize.ts`, the `NewInspection.tsx` pre-fill code path, or the IndexedDB write path.
-- No new dependencies (`mammoth`, `pdf-parse`, `word-extractor` stay on current versions).
-- No change to the AI model, gateway URL, or auth pattern.
-- No touching of unrelated edge functions or the other two import paths (training, daily assessment) in this change.
-
-## Risk assessment
-
-- The chunking path runs only above 50k chars. Small reports take the existing one-call path verbatim, so they cannot regress.
-- Doubling/tripling AI calls on large reports increases credits-per-import and latency by roughly the chunk count. Mitigation: 50k threshold is tunable; we can lift it after observing real chunk sizes. Will note this trade-off in the closing summary.
-- The dedupe keys above are conservative (won't merge two genuinely-different rows that share the same name). If a report legitimately has two distinct equipment lines with identical type+category+year+rope, the second will be kept as a separate row only when comments differ — which is the common real-world case anyway.
-
-Ready to implement on approval.
+Ready to execute on approval.
