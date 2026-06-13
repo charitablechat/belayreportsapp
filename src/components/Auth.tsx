@@ -10,7 +10,7 @@ import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Eye, EyeOff, WifiOff, ArrowRight } from "lucide-react";
 import { usePWA } from "@/hooks/usePWA";
 const belayReportsLogo = "/__l5e/assets-v1/8c7f8dfa-a725-400e-8f7e-c806cf7d7039/belay-reports-wide.gif";
-import marbleBg from "@/assets/marble-bg.gif.asset.json";
+import signinBg from "@/assets/signin-bg.jpg.asset.json";
 import shimmerLogo from "@/assets/shimmer-wide-logo.gif.asset.json";
 import { hasCachedSessionForOffline } from "@/lib/cached-auth";
 import { createOfflineSession } from "@/lib/offline-auth";
@@ -196,7 +196,7 @@ export default function Auth() {
       {/* Background */}
       <div className="absolute inset-0 z-0">
         <img
-          src={marbleBg.url}
+          src={signinBg.url}
           alt=""
           className="w-full h-full object-cover"
         />
