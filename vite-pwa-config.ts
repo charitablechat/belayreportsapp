@@ -23,11 +23,11 @@ export const pwaConfig = VitePWA({
   devOptions: {
     enabled: false,
   },
-  includeAssets: ['favicon.ico', 'db-config.js', 'sw-push.js', 'sw-sync.js', 'sw-offline-navigation.js', 'offline.html', 'rope-works-logo.avif'],
+  includeAssets: ['favicon.ico', 'db-config.js', 'sw-push.js', 'sw-sync.js', 'sw-offline-navigation.js', 'offline.html'],
   manifest: {
     id: '/',
-    name: 'Rope Works Inspection',
-    short_name: 'RW Inspect',
+    name: 'Belay Reports',
+    short_name: 'Belay Reports',
     description: 'Professional digital inspection platform for aerial adventure programs',
     theme_color: '#1e40af',
     background_color: '#0b0f17',
