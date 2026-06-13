@@ -56,33 +56,71 @@ serve(async (req) => {
     const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
     const supabase = createClient(supabaseUrl, supabaseKey);
 
+    // Authorization: require service-role (internal/backup) or valid user JWT.
+    // Ownership is enforced post-fetch (owner or admin/super_admin).
+    const authHeader = req.headers.get('Authorization');
+    const token = authHeader?.replace('Bearer ', '') ?? '';
+    if (!token) {
+      return new Response(
+        JSON.stringify({ error: 'Unauthorized' }),
+        { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
+      );
+    }
+    const isServiceRole = token === supabaseKey;
+    let callerUserId: string | null = null;
+    if (!isServiceRole) {
+      const { data: { user }, error: authError } = await supabase.auth.getUser(token);
+      if (authError || !user) {
+        return new Response(
+          JSON.stringify({ error: 'Unauthorized' }),
+          { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
+        );
+      }
+      callerUserId = user.id;
+    }
+
     const { trainingId, forceRegenerate } = await req.json();
 
     if (!trainingId) {
       throw new Error('Training ID is required');
     }
 
-    // OPTIMIZATION: Server-side cache check — skip regeneration if nothing changed
-    if (!forceRegenerate) {
-      const { data: trainingMeta } = await supabase
-        .from('trainings')
-        .select('updated_at, latest_report_generated_at, latest_report_html')
-        .eq('id', trainingId)
-        .single();
-      
-      if (trainingMeta?.latest_report_generated_at && trainingMeta?.updated_at) {
-        const generatedAt = new Date(trainingMeta.latest_report_generated_at).getTime();
-        const updatedAt = new Date(trainingMeta.updated_at).getTime();
-        
-        if (generatedAt >= updatedAt && trainingMeta.latest_report_html) {
-          console.log(`[generate-training-html] Cache HIT — returning cached report.`);
-          return new Response(
-            JSON.stringify({ html: trainingMeta.latest_report_html, cached: true }),
-            { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 200 }
-          );
-        }
-        console.log(`[generate-training-html] Cache MISS — report data changed.`);
+    // Always fetch the inspector_id alongside cache fields so we can enforce
+    // ownership before serving either the cached or freshly generated report.
+    const { data: trainingMeta } = await supabase
+      .from('trainings')
+      .select('inspector_id, updated_at, latest_report_generated_at, latest_report_html')
+      .eq('id', trainingId)
+      .single();
+
+    if (!isServiceRole && callerUserId && trainingMeta && trainingMeta.inspector_id !== callerUserId) {
+      const { data: roleRow } = await supabase
+        .from('user_roles')
+        .select('role')
+        .eq('user_id', callerUserId)
+        .in('role', ['admin', 'super_admin'])
+        .maybeSingle();
+      if (!roleRow) {
+        return new Response(
+          JSON.stringify({ error: 'Forbidden' }),
+          { status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
+        );
       }
+    }
+
+    // OPTIMIZATION: Server-side cache check — skip regeneration if nothing changed
+    if (!forceRegenerate && trainingMeta?.latest_report_generated_at && trainingMeta?.updated_at) {
+      const generatedAt = new Date(trainingMeta.latest_report_generated_at).getTime();
+      const updatedAt = new Date(trainingMeta.updated_at).getTime();
+
+      if (generatedAt >= updatedAt && trainingMeta.latest_report_html) {
+        console.log(`[generate-training-html] Cache HIT — returning cached report.`);
+        return new Response(
+          JSON.stringify({ html: trainingMeta.latest_report_html, cached: true }),
+          { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 200 }
+        );
+      }
+      console.log(`[generate-training-html] Cache MISS — report data changed.`);
     }
 
     // OPTIMIZATION: Parallelize logo fetch with training data fetch

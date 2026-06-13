@@ -48,6 +48,29 @@ serve(async (req) => {
     const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
     const supabase = createClient(supabaseUrl, supabaseKey);
 
+    // Authorization: require service-role (internal/backup) or valid user JWT.
+    // Ownership is enforced post-fetch (owner or admin/super_admin).
+    const authHeader = req.headers.get('Authorization');
+    const token = authHeader?.replace('Bearer ', '') ?? '';
+    if (!token) {
+      return new Response(
+        JSON.stringify({ error: 'Unauthorized' }),
+        { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
+      );
+    }
+    const isServiceRole = token === supabaseKey;
+    let callerUserId: string | null = null;
+    if (!isServiceRole) {
+      const { data: { user }, error: authError } = await supabase.auth.getUser(token);
+      if (authError || !user) {
+        return new Response(
+          JSON.stringify({ error: 'Unauthorized' }),
+          { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
+        );
+      }
+      callerUserId = user.id;
+    }
+
     const { assessmentId, forceRegenerate } = await req.json();
 
     // OPTIMIZATION: Parallelize logo fetch with assessment data fetch
@@ -58,6 +81,22 @@ serve(async (req) => {
     const ropeWorksLogo = logos.ropeWorks;
     const acctLogo = logos.acct;
     const { data: assessment } = assessmentResult;
+
+    // Ownership check: owner OR admin/super_admin. Service-role bypasses.
+    if (!isServiceRole && callerUserId && assessment && assessment.inspector_id !== callerUserId) {
+      const { data: roleRow } = await supabase
+        .from('user_roles')
+        .select('role')
+        .eq('user_id', callerUserId)
+        .in('role', ['admin', 'super_admin'])
+        .maybeSingle();
+      if (!roleRow) {
+        return new Response(
+          JSON.stringify({ error: 'Forbidden' }),
+          { status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
+        );
+      }
+    }
 
     // OPTIMIZATION: Server-side cache check — skip regeneration if nothing changed
     if (!forceRegenerate && assessment?.latest_report_generated_at && assessment?.updated_at) {

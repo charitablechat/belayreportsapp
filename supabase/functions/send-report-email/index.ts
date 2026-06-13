@@ -1,6 +1,7 @@
  import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
  import { Resend } from "https://esm.sh/resend@2.0.0";
  import { createClient } from "https://esm.sh/@supabase/supabase-js@2.78.0";
+ import DOMPurify from "npm:isomorphic-dompurify@2.16.0";
  import { checkRateLimit, getClientIP, createRateLimitResponse } from "../_shared/rate-limiter.ts";
  
  const resend = new Resend(Deno.env.get("RESEND_API_KEY"));
@@ -97,9 +98,13 @@
      
      ${messageSection}
      
-     <!-- Report Content -->
+     <!-- Report Content (sanitized server-side to strip <script>, event handlers, iframes, etc.) -->
      <div style="padding: 0;">
-       ${html}
+       ${DOMPurify.sanitize(html, {
+         FORBID_TAGS: ["script", "iframe", "object", "embed", "form", "input", "button", "meta", "link", "base"],
+         FORBID_ATTR: ["onerror", "onload", "onclick", "onmouseover", "onfocus", "onblur", "onchange", "onsubmit", "onkeydown", "onkeyup", "onkeypress", "formaction", "srcdoc"],
+         ALLOW_DATA_ATTR: false,
+       })}
      </div>
      
      <!-- Footer -->
