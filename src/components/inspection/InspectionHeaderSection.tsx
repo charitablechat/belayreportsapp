@@ -2,7 +2,7 @@ import React from "react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { ArrowLeft, CloudOff, AlertTriangle, WifiOff, RefreshCw } from "lucide-react";
-import ropeWorksLogo from "@/assets/rope-works-logo.png";
+import belayReportsLogo from "@/assets/belay-reports-logo.png";
 import { AutoSaveIndicator } from "@/components/AutoSaveIndicator";
 import { ForceSyncButton } from "@/components/pwa/ForceSyncButton";
 import type { SaveErrorState } from "@/components/SaveFailureBanner";
@@ -132,8 +132,8 @@ function InspectionHeaderSectionImpl(props: InspectionHeaderSectionProps) {
                 <ArrowLeft className="w-4 h-4" />
               </Button>
               <img
-                src={ropeWorksLogo}
-                alt="Rope Works"
+                src={belayReportsLogo}
+                alt="Belay Reports"
                 className="h-8 sm:h-10 w-auto object-contain"
               />
             </div>

@@ -614,7 +614,7 @@ function ItemPhotoUpload({
       const uploadSuffix = `${uploadTs}-${Math.random().toString(36).slice(2, 8)}`;
       const photoId = `item-${itemId}-${uploadTs}`;
       const placeholderPath = `pending/${inspectionId}/items/${itemId}-${uploadSuffix}.jpg`;
-      const deviceFileName = `RopeWorks_${photoSection || 'item'}_${uploadTs}.jpg`;
+      const deviceFileName = `BelayReports_${photoSection || 'item'}_${uploadTs}.jpg`;
       const previousPhotoUrl = photoUrl; // capture before any state mutation
       if (isPhotoTraceEnabled()) photoTrace('handleUpload.placeholder', { photoId, placeholderPath, caption: captionFromName, replacing: previousPhotoUrl }, cid);
 

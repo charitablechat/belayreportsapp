@@ -24,7 +24,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
 import { Loader2, Save, FileDown, FileText, ChevronLeft, WifiOff, Wifi, Mail, CheckCircle, Info, Users, Settings, AlertTriangle, ClipboardCheck, FileCheck, LogOut, User, CloudOff, ArrowLeft, Camera, RefreshCw, HardDrive } from "lucide-react";
 import { toast } from "@/components/ui/sonner";
-import ropeWorksLogo from "@/assets/rope-works-logo.png";
+import belayReportsLogo from "@/assets/belay-reports-logo.png";
 
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { AutoSaveIndicator } from "@/components/AutoSaveIndicator";

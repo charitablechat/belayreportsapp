@@ -42,7 +42,7 @@ export const InstallSuccessNotification = () => {
       }, 250);
 
       // Show success toast
-      toast.success('Welcome to Rope Works! 🎉', {
+      toast.success('Welcome to Belay Reports! 🎉', {
         description: (
           <div className="space-y-2 mt-2">
             <p className="font-medium">Your app is now installed!</p>

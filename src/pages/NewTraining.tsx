@@ -8,7 +8,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { ArrowLeft, CloudOff, Info, Loader2, MapPin, X } from "lucide-react";
-import ropeWorksLogo from "@/assets/rope-works-logo.png";
+import belayReportsLogo from "@/assets/belay-reports-logo.png";
 import { useNetworkStatus } from "@/hooks/useNetworkStatus";
 import { OrganizationAutocomplete } from "@/components/OrganizationAutocomplete";
 import { Input } from "@/components/ui/input";
@@ -217,7 +217,7 @@ export default function NewTraining() {
             <ArrowLeft className="w-4 h-4" />
             <span className="hidden sm:inline ml-2">Back to Dashboard</span>
           </Button>
-          <img src={ropeWorksLogo} alt="Rope Works" className="h-8 md:h-10 w-auto object-contain cursor-pointer hover:opacity-80 transition-opacity" onClick={() => navigate('/dashboard')} />
+          <img src={belayReportsLogo} alt="Belay Reports" className="h-8 md:h-10 w-auto object-contain cursor-pointer hover:opacity-80 transition-opacity" onClick={() => navigate('/dashboard')} />
         </div>
       </header>
 

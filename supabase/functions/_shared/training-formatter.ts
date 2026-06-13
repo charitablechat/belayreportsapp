@@ -208,7 +208,7 @@ export function formatTrainingContent(data: TrainingData): FormattedContent {
       traineeNames: stripHtml(data.training.trainee_names) || 'N/A',
       traineeNamesList: traineeNamesList
     },
-    standardsText: 'Rope Works Inc. completed a site visit for training and operations on the above date(s). LISTED BELOW are the operating systems on your site we trained or reviewed in accordance with Rope Works Inc. operational procedures and the Association for Challenge Course Technology (ACCT) operational and training standards. Standards applied include ANSI/ACCT 03-2016 and ANSI/ACCT 03-2019.',
+    standardsText: 'Belay Reports completed a site visit for training and operations on the above date(s). LISTED BELOW are the operating systems on your site we trained or reviewed in accordance with Belay Reports operational procedures and the Association for Challenge Course Technology (ACCT) operational and training standards. Standards applied include ANSI/ACCT 03-2016 and ANSI/ACCT 03-2019.',
     deliveryApproaches: data.approaches.map(a => stripHtml(a.approach)),
     operatingSystems: data.systems.map(s => ({
       name: stripHtml(s.system_name),

@@ -104,8 +104,8 @@ serve(async (req) => {
 
     // Get sender's name
     const senderName = training.profiles 
-      ? `${training.profiles.first_name || ''} ${training.profiles.last_name || ''}`.trim() || 'Rope Works Inc.'
-      : 'Rope Works Inc.';
+      ? `${training.profiles.first_name || ''} ${training.profiles.last_name || ''}`.trim() || 'Belay Reports'
+      : 'Belay Reports';
 
     // Format dates
     const startDate = new Date(training.start_date).toLocaleDateString('en-US', { 
@@ -143,7 +143,7 @@ serve(async (req) => {
         <div class="container">
           <div class="header">
             <h1 style="margin: 0; font-size: 28px;">Training Report</h1>
-            <p style="margin: 10px 0 0 0; opacity: 0.9;">Rope Works Inc. - Professional Training Services</p>
+            <p style="margin: 10px 0 0 0; opacity: 0.9;">Belay Reports - Professional Training Services</p>
           </div>
           
           <div class="content">
@@ -186,7 +186,7 @@ serve(async (req) => {
           </div>
           
           <div class="footer">
-            <p><strong>Rope Works Inc.</strong></p>
+            <p><strong>Belay Reports</strong></p>
             <p>Professional Rope Course Inspection & Training Services</p>
             <p>ACCT Accredited Vendor</p>
             <p style="font-size: 11px; margin-top: 15px; color: #999;">
@@ -207,7 +207,7 @@ serve(async (req) => {
         "Authorization": `Bearer ${resendApiKey}`,
       },
       body: JSON.stringify({
-        from: "Rope Works Inc. <onboarding@resend.dev>",
+        from: "Belay Reports <onboarding@resend.dev>",
         to: [recipientEmail],
         subject: `Training Report - ${training.organization}`,
         html: emailHtml,

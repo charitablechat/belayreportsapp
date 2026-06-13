@@ -144,7 +144,7 @@
     var offline = await caches.match('/offline.html', { ignoreSearch: true });
     if (offline) return offline;
     return new Response(
-      '<!doctype html><title>Rope Works</title><meta name="viewport" content="width=device-width,initial-scale=1"><meta http-equiv="refresh" content="1; url=/"><body style="font-family:-apple-system,sans-serif;background:#0b0f17;color:#f8fafc;display:flex;align-items:center;justify-content:center;min-height:100vh;margin:0;padding:24px;text-align:center"><div><h1 style="font-size:18px;margin:0 0 8px">Rope Works</h1><p style="margin:0;font-size:14px;color:#cbd5e1">Loading the app…</p></div></body>',
+      '<!doctype html><title>Belay Reports</title><meta name="viewport" content="width=device-width,initial-scale=1"><meta http-equiv="refresh" content="1; url=/"><body style="font-family:-apple-system,sans-serif;background:#0b0f17;color:#f8fafc;display:flex;align-items:center;justify-content:center;min-height:100vh;margin:0;padding:24px;text-align:center"><div><h1 style="font-size:18px;margin:0 0 8px">Belay Reports</h1><p style="margin:0;font-size:14px;color:#cbd5e1">Loading the app…</p></div></body>',
       { status: 200, headers: { 'Content-Type': 'text/html; charset=utf-8' } }
     );
   }

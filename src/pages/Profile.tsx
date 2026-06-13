@@ -9,7 +9,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { ArrowLeft, Camera, Check, Loader2, Lock, User, X, RefreshCw } from "lucide-react";
-import ropeWorksLogo from "@/assets/rope-works-logo.png";
+import belayReportsLogo from "@/assets/belay-reports-logo.png";
 import { getSessionBackground } from "@/lib/background-manager";
 import { triggerHaptic } from "@/lib/haptics";
 import { useToast } from "@/hooks/use-toast";
@@ -303,7 +303,7 @@ export default function Profile() {
             <Button variant="ghost" size="icon" onClick={() => goBack(navigate)}>
               <ArrowLeft className="w-4 h-4" />
             </Button>
-            <img src={ropeWorksLogo} alt="Rope Works" className="h-10 w-auto object-contain" />
+            <img src={belayReportsLogo} alt="Belay Reports" className="h-10 w-auto object-contain" />
           </div>
           <h1 className="text-xl font-semibold">Profile Settings</h1>
           <div className="w-10" /> {/* Spacer for centering */}

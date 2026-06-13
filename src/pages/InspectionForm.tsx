@@ -52,7 +52,7 @@ import { AutoSaveIndicator } from "@/components/AutoSaveIndicator";
 import { SaveFailureBanner } from "@/components/SaveFailureBanner";
 import { useActiveTimer } from "@/hooks/useActiveTimer";
 import { ActiveTimerDisplay } from "@/components/ActiveTimerDisplay";
-import ropeWorksLogo from "@/assets/rope-works-logo.png";
+import belayReportsLogo from "@/assets/belay-reports-logo.png";
 import InspectionHeader from "@/components/inspection/InspectionHeader";
 import { CollaboratorPresence } from "@/components/CollaboratorPresence";
 import OperatingSystemsTable from "@/components/inspection/OperatingSystemsTable";

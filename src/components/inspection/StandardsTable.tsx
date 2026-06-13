@@ -172,7 +172,7 @@ function StandardsTable({ standards, onUpdate, onImmediateSave }: StandardsTable
           <p>
             The information contained in this report has been documented by a Qualified Professional. 
             This report is effective for one year from the date of inspection. Issued by: 
-            Rope Works Inc., PO Box 1074, Dripping Springs, TX 78620
+            Belay Reports
           </p>
         </div>
       </CardContent>

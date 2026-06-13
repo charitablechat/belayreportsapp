@@ -182,9 +182,9 @@ export default function TrainingHeader({ training, onUpdate, isReadOnly = false,
         </div>
 
         <p className="text-sm text-muted-foreground pt-2">
-          Rope Works Inc. completed a site visit for training and operations on the above date(s). 
+          Belay Reports completed a site visit for training and operations on the above date(s). 
           LISTED BELOW are the operating systems on your site we trained or reviewed in accordance with 
-          Rope Works Inc. operational procedures and the Association for Challenge Course Technology (ACCT) 
+          Belay Reports operational procedures and the Association for Challenge Course Technology (ACCT) 
           operational and training standards. Standards applied include ANSI/ACCT 03-2016 and ANSI/ACCT 03-2019.
         </p>
       </CardContent>

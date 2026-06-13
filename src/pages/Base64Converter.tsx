@@ -2,26 +2,26 @@ import { useState, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import { toast } from 'sonner';
 import { useRequireAdmin } from '@/hooks/useRequireAdmin';
-import ropeWorksLogo from '@/assets/rope-works-logo-final.png';
+import belayReportsLogo from '@/assets/belay-reports-logo-final.png';
 import acctLogo from '@/assets/acct-logo-final.png';
 
 const Base64Converter = () => {
   const { isAdmin, loading: adminLoading } = useRequireAdmin();
-  const [ropeWorksBase64, setRopeWorksBase64] = useState<string>('');
+  const [belayReportsBase64, setRopeWorksBase64] = useState<string>('');
   const [acctBase64, setAcctBase64] = useState<string>('');
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     const convertToBase64 = async () => {
       try {
-        // Convert Rope Works logo
-        const ropeWorksResponse = await fetch(ropeWorksLogo);
-        const ropeWorksBlob = await ropeWorksResponse.blob();
-        const ropeWorksReader = new FileReader();
-        ropeWorksReader.onloadend = () => {
-          setRopeWorksBase64(ropeWorksReader.result as string);
+        // Convert Belay Reports logo
+        const belayReportsResponse = await fetch(belayReportsLogo);
+        const belayReportsBlob = await belayReportsResponse.blob();
+        const belayReportsReader = new FileReader();
+        belayReportsReader.onloadend = () => {
+          setRopeWorksBase64(belayReportsReader.result as string);
         };
-        ropeWorksReader.readAsDataURL(ropeWorksBlob);
+        belayReportsReader.readAsDataURL(belayReportsBlob);
 
         // Convert ACCT logo
         const acctResponse = await fetch(acctLogo);
@@ -61,19 +61,19 @@ const Base64Converter = () => {
       ) : (
         <div className="space-y-8">
           <div>
-            <h2 className="text-xl font-semibold mb-2">Rope Works Logo</h2>
-            <img src={ropeWorksBase64} alt="Rope Works" className="mb-4 max-w-md border" />
+            <h2 className="text-xl font-semibold mb-2">Belay Reports Logo</h2>
+            <img src={belayReportsBase64} alt="Belay Reports" className="mb-4 max-w-md border" />
             <div className="bg-slate-100 p-4 rounded relative">
-              <p className="text-sm font-mono break-all pr-24">{ropeWorksBase64}</p>
+              <p className="text-sm font-mono break-all pr-24">{belayReportsBase64}</p>
               <Button
-                onClick={() => copyToClipboard(ropeWorksBase64, 'Rope Works Logo')}
+                onClick={() => copyToClipboard(belayReportsBase64, 'Belay Reports Logo')}
                 className="absolute top-2 right-2"
                 size="sm"
               >
                 Copy
               </Button>
             </div>
-            <p className="mt-2 text-sm text-slate-600">Length: {ropeWorksBase64.length} characters</p>
+            <p className="mt-2 text-sm text-slate-600">Length: {belayReportsBase64.length} characters</p>
           </div>
 
           <div>

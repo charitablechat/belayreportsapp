@@ -51,7 +51,7 @@
  * tab A has staged. The restore lock must be cross-tab.
  *
  * Mitigation: on each acquire/release the lock broadcasts a message via
- * `BroadcastChannel('ropeworks-restore-lock-v1')` and tracks remote holders
+ * `BroadcastChannel('belayreports-restore-lock-v1')` and tracks remote holders
  * in an in-memory Map keyed on tab id. While held, the holding tab
  * heartbeats every 5s; remote holders that haven't heartbeated within
  * 15s are evicted (e.g. another tab crashed). On module load, the new
@@ -74,7 +74,7 @@ const PERSIST_KEY = "restore-lock-v1";
 const CRASH_TTL_MS = 15 * 60 * 1000;
 
 // Audit M3: cross-tab signal config.
-const BROADCAST_CHANNEL_NAME = "ropeworks-restore-lock-v1";
+const BROADCAST_CHANNEL_NAME = "belayreports-restore-lock-v1";
 // Heartbeat the local hold every 5s so other tabs know we're still alive.
 const HEARTBEAT_INTERVAL_MS = 5_000;
 // Remote holders that haven't heartbeated within this window are considered

@@ -128,7 +128,7 @@ serve(async (req) => {
       getLogoBase64(),
       fetchTrainingData(trainingId, supabase),
     ]);
-    const ropeWorksLogo = logos.ropeWorks;
+    const belayReportsLogo = logos.belayReports;
     const acctLogo = logos.acct;
     const content = formatTrainingContent(trainingData);
 
@@ -160,12 +160,12 @@ serve(async (req) => {
     }
 
     // Footer disclaimer text for training reports
-    const footerDisclaimerText = `The information contained in this report has been documented by a Qualified Professional.<br>This report is effective for one year from the date of inspection. Issued by:<br>Rope Works Inc., PO Box 1074, Dripping Springs, TX 78620`;
+    const footerDisclaimerText = `The information contained in this report has been documented by a Qualified Professional.<br>This report is effective for one year from the date of inspection. Issued by:<br>Belay Reports`;
 
     // Helper wrappers using shared layout functions
-    // HEADER: Both logos (Rope Works LEFT, ACCT RIGHT on same line)
+    // HEADER: Both logos (Belay Reports LEFT, ACCT RIGHT on same line)
     // FOOTER: NO logos - only page number and disclaimer text
-    const header = () => createPageHeader(ropeWorksLogo, acctLogo);
+    const header = () => createPageHeader(belayReportsLogo, acctLogo);
     const footer = (pageNum: number) => createPageFooter(pageNum, footerDisclaimerText);
 
     // Admin-edit banner intentionally disabled — audit trail lives in the admin panel only.
@@ -577,7 +577,7 @@ serve(async (req) => {
 
       /*
        * LOGO VISIBILITY FIX - CRITICAL
-       * Ensure BOTH logos (Rope Works AND ACCT) are ALWAYS visible in PDF.
+       * Ensure BOTH logos (Belay Reports AND ACCT) are ALWAYS visible in PDF.
        */
       .page-header {
         display: flex !important;

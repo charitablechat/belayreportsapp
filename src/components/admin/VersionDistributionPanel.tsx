@@ -14,7 +14,7 @@ const CANONICAL_VERSION_URL = 'https://rwreports.com/version.json';
 const PRODUCTION_HOSTS = new Set([
   'rwreports.com',
   'www.rwreports.com',
-  'ropeworks.lovable.app',
+  'belayreports.com',
 ]);
 
 function resolvePublishedVersionUrl(): string {

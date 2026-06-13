@@ -18,7 +18,7 @@ serve(async (req) => {
     // correct Supabase storage URL shape (/storage/v1/object/public/...).
     const storageBase = `${supabaseUrl}/storage/v1/object/public/pdf-templates`;
     const publicAssetUrls = [
-      `${storageBase}/rope-works-logo.png`,
+      `${storageBase}/belay-reports-logo.png`,
       `${storageBase}/acct-accredited-vendor.png`,
     ];
 
@@ -34,7 +34,7 @@ serve(async (req) => {
         
         const { data, error } = await supabase.storage
           .from('pdf-templates')
-          .upload('rope-works-logo-embedded.png', uint8Array, {
+          .upload('belay-reports-logo-embedded.png', uint8Array, {
             contentType: 'image/png',
             upsert: true
           });

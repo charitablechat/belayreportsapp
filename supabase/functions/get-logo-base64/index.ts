@@ -37,7 +37,7 @@ serve(async (req) => {
     // Map logo types to storage paths
     const logoPath = logoType === 'acct' 
       ? 'acct-logo-embedded.png'
-      : 'rope-works-logo-embedded.png';
+      : 'belay-reports-logo-embedded.png';
     
     const storageUrl = `${supabaseUrl}/storage/v1/object/public/pdf-templates/${logoPath}`;
     

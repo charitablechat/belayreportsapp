@@ -188,7 +188,7 @@ serve(async (req) => {
       
       doc.setFontSize(9);
       doc.setTextColor(100, 116, 139);
-      doc.text('Rope Works Inc. - ACCT Accredited Vendor', pageWidth / 2, pageHeight - 12, { align: 'center' });
+      doc.text('Belay Reports - ACCT Accredited Vendor', pageWidth / 2, pageHeight - 12, { align: 'center' });
       if (inspectorProfile?.acct_number) {
         doc.text(`ACCT #: ${inspectorProfile.acct_number}`, pageWidth / 2, pageHeight - 7, { align: 'center' });
       }
@@ -199,7 +199,7 @@ serve(async (req) => {
     try {
       // L4 / PDF logos: derive base URL from env (project-ref rotation safety)
       const _supabaseUrl = Deno.env.get('SUPABASE_URL') ?? 'https://ssgzcgvygnsrqalisshx.supabase.co';
-      const logoResponse = await fetch(`${_supabaseUrl}/storage/v1/object/public/pdf-templates/rope-works-logo.png`);
+      const logoResponse = await fetch(`${_supabaseUrl}/storage/v1/object/public/pdf-templates/belay-reports-logo.png`);
       if (logoResponse.ok) {
         const logoBlob = await logoResponse.arrayBuffer();
         const logoArray = new Uint8Array(logoBlob);
@@ -226,7 +226,7 @@ serve(async (req) => {
     doc.setTextColor(255, 255, 255);
     doc.setFontSize(24);
     doc.setFont('helvetica', 'bold');
-    doc.text('ROPE WORKS INC.', pageWidth / 2, 15, { align: 'center' });
+    doc.text('BELAY REPORTS INC.', pageWidth / 2, 15, { align: 'center' });
     doc.setFontSize(16);
     doc.setFont('helvetica', 'normal');
     doc.text('Challenge Course Inspection Report', pageWidth / 2, 25, { align: 'center' });

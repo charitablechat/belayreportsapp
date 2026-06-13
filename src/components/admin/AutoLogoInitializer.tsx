@@ -19,7 +19,7 @@ export function AutoLogoInitializer() {
     try {
       // Always upload logos to ensure latest versions are in storage
       const results = await Promise.allSettled([
-        uploadLogoFromPublic('/pdf-templates/rope-works-logo.png', 'rope-works-logo-embedded.png'),
+        uploadLogoFromPublic('/pdf-templates/belay-reports-logo.png', 'belay-reports-logo-embedded.png'),
         uploadLogoFromPublic('/pdf-templates/acct-accredited-vendor.png', 'acct-logo-embedded.png')
       ]);
 

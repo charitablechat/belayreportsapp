@@ -475,7 +475,7 @@ Deno.serve(async (req) => {
     // ── Step 5: Prepare email attachment (just the gzipped JSON) ──
     const attachments: Array<{ filename: string; content: string }> = [
       {
-        filename: `ropeworks-backup-${timestamp}.json.gz`,
+        filename: `belayreports-backup-${timestamp}.json.gz`,
         content: base64JsonGz,
       },
     ];
@@ -565,7 +565,7 @@ Deno.serve(async (req) => {
     const { data: manifestUrlData } = await adminClient.storage
       .from("database-backups")
       .createSignedUrl(`daily/${timestamp}/manifest.json`, 60 * 60 * 24 * 7, {
-        download: `ropeworks-backup-manifest-${timestamp}.json`,
+        download: `belayreports-backup-manifest-${timestamp}.json`,
       });
     const downloadUrl = manifestUrlData?.signedUrl || "#";
 
@@ -605,8 +605,8 @@ Deno.serve(async (req) => {
     });
 
     const emailSubject = failedTables.length > 0
-      ? `⚠️ Ropeworks Daily Backup (${failedTables.length} failures) — ${emailTimestamp}`
-      : `Ropeworks Daily Backup — ${emailTimestamp}`;
+      ? `⚠️ Belay Reports Daily Backup (${failedTables.length} failures) — ${emailTimestamp}`
+      : `Belay Reports Daily Backup — ${emailTimestamp}`;
 
     const emailResponse = await fetch(`${GATEWAY_URL}/emails`, {
       method: "POST",
@@ -616,7 +616,7 @@ Deno.serve(async (req) => {
         "X-Connection-Api-Key": RESEND_API_KEY,
       },
       body: JSON.stringify({
-        from: "Ropeworks <noreply@mail.belayreports.com>",
+        from: "Belay Reports <noreply@mail.belayreports.com>",
         to: ["kale@belayreports.com"],
         subject: emailSubject,
         html,

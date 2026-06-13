@@ -11,7 +11,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { ArrowLeft, MapPin, CloudOff, Info, X, Loader2, Upload, FileText, CheckCircle2 } from "lucide-react";
 import { PreviousInspectionDatePicker } from "@/components/PreviousInspectionDatePicker";
-import ropeWorksLogo from "@/assets/rope-works-logo.png";
+import belayReportsLogo from "@/assets/belay-reports-logo.png";
 import { saveInspectionOffline, queueOperation } from "@/lib/offline-storage";
 import { useNetworkStatus } from "@/hooks/useNetworkStatus";
 import { OrganizationAutocomplete } from "@/components/OrganizationAutocomplete";
@@ -612,7 +612,7 @@ export default function NewInspection() {
             <ArrowLeft className="w-4 h-4" />
             <span className="hidden sm:inline ml-2">Back to Dashboard</span>
           </Button>
-          <img src={ropeWorksLogo} alt="Rope Works" className="h-8 md:h-10 w-auto object-contain cursor-pointer hover:opacity-80 transition-opacity" onClick={() => navigate('/dashboard')} />
+          <img src={belayReportsLogo} alt="Belay Reports" className="h-8 md:h-10 w-auto object-contain cursor-pointer hover:opacity-80 transition-opacity" onClick={() => navigate('/dashboard')} />
         </div>
       </header>
 

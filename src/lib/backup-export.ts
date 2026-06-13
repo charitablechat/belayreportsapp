@@ -94,7 +94,7 @@ export async function downloadBackupAsExcel(blob: Blob): Promise<void> {
     type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
   });
   const ts = backupTimestamp(backup.exported_at);
-  await saveToDeviceAsync(outBlob, `ropeworks-backup-${ts}.xlsx`);
+  await saveToDeviceAsync(outBlob, `belayreports-backup-${ts}.xlsx`);
 }
 
 /**
@@ -133,5 +133,5 @@ export async function downloadBackupAsCsv(blob: Blob): Promise<void> {
 
   const content = await zip.generateAsync({ type: "blob" });
   const ts = backupTimestamp(backup.exported_at);
-  await saveToDeviceAsync(content, `ropeworks-backup-${ts}.zip`);
+  await saveToDeviceAsync(content, `belayreports-backup-${ts}.zip`);
 }

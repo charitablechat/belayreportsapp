@@ -28,7 +28,7 @@ import { ReportCardSkeleton } from "@/components/dashboard/ReportCardSkeleton";
 /* TEMPORARY FEATURE: Known Issues */
 import { KnownIssuesCard } from "@/components/dashboard/KnownIssuesCard";
 import { DeveloperNotesCard } from "@/components/dashboard/DeveloperNotesCard";
-import ropeWorksLogo from "@/assets/rope-works-logo.png";
+import belayReportsLogo from "@/assets/belay-reports-logo.png";
 import acctLogo from "@/assets/acct-accredited-vendor.png";
 import { getSessionBackground } from "@/lib/background-manager";
 import { triggerHaptic } from "@/lib/haptics";
@@ -1806,7 +1806,7 @@ export default function Dashboard() {
           {/* Top row - Logos, status indicators, and user dropdown */}
           <div className="flex items-center justify-between gap-4 mb-3">
             <div className="flex items-center gap-2 md:gap-3">
-              <img src={ropeWorksLogo} alt="Rope Works" className="h-8 md:h-12 w-auto object-contain cursor-pointer hover:opacity-80 transition-opacity" onClick={() => navigate('/dashboard')} />
+              <img src={belayReportsLogo} alt="Belay Reports" className="h-8 md:h-12 w-auto object-contain cursor-pointer hover:opacity-80 transition-opacity" onClick={() => navigate('/dashboard')} />
               <img src={acctLogo} alt="ACCT Accredited Vendor" className="h-8 md:h-12 w-auto object-contain" />
             </div>
             
@@ -1898,7 +1898,7 @@ export default function Dashboard() {
               <div className="text-center mb-8">
                 <h2 className="text-4xl font-bold text-primary dark:text-white mb-2">
                   <span className="block md:inline">Welcome to</span>{' '}
-                  <span className="block md:inline">Rope Works</span>
+                  <span className="block md:inline">Belay Reports</span>
                 </h2>
                 <p className="text-lg text-muted-foreground dark:text-neutral-200">
                   Choose a report type to get started

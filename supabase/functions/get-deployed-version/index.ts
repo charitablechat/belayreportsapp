@@ -3,7 +3,7 @@
  * server-side and re-emitting it with permissive CORS headers.
  *
  * Why this exists: the Lovable preview iframe is served from a different
- * origin than rwreports.com / ropeworks.lovable.app, and neither production
+ * origin than rwreports.com / belayreports.com, and neither production
  * origin sends Access-Control-Allow-Origin on /version.json. So a direct
  * cross-origin fetch from the preview is blocked. This tiny proxy lets the
  * preview's VersionBadge show the real deployed version (e.g. v4.8.1)

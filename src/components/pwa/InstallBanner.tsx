@@ -66,7 +66,7 @@ export const InstallBanner = () => {
                 <Download className="h-6 w-6" />
               </div>
               <div className="flex-1">
-                <h3 className="font-semibold text-sm sm:text-base">Install Rope Works Inspection</h3>
+                <h3 className="font-semibold text-sm sm:text-base">Install Belay Reports</h3>
                 <p className="text-xs sm:text-sm text-primary-foreground/90">
                   Work offline • Faster access • Home screen shortcut
                 </p>
