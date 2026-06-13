@@ -11,6 +11,7 @@ import { Eye, EyeOff, WifiOff, ArrowRight } from "lucide-react";
 import { usePWA } from "@/hooks/usePWA";
 const ropeWorksLogo = "/rope-works-logo.avif";
 import marbleBg from "@/assets/marble-bg.gif.asset.json";
+import shimmerLogo from "@/assets/shimmer-wide-logo.gif.asset.json";
 import { hasCachedSessionForOffline } from "@/lib/cached-auth";
 import { createOfflineSession } from "@/lib/offline-auth";
 import { createGuestSession } from "@/lib/guest-session";
