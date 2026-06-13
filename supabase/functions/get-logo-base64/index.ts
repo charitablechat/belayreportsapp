@@ -24,7 +24,7 @@ serve(async (req) => {
     }
 
     const url = new URL(req.url);
-    const logoType = url.searchParams.get('type') || 'rope-works';
+    const logoType = url.searchParams.get('type') || 'belay-reports';
     
     console.log(`Fetching logo: ${logoType}`);
     

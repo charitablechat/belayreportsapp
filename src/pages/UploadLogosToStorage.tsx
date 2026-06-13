@@ -4,7 +4,8 @@ import { Button } from '@/components/ui/button';
 import { toast } from 'sonner';
 import { Upload, CheckCircle2 } from 'lucide-react';
 import { useRequireAdmin } from '@/hooks/useRequireAdmin';
-import belayReportsLogo from '@/assets/belay-reports-logo-final.png';
+import belayReportsLogoAsset from "@/assets/belay-reports-wide.gif.asset.json";
+const belayReportsLogo = belayReportsLogoAsset.url;
 import acctLogo from '@/assets/acct-logo-final.png';
 
 export default function UploadLogosToStorage() {

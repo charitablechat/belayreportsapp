@@ -2,7 +2,8 @@ import { useState } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { Button } from '@/components/ui/button';
 import { useRequireAdmin } from '@/hooks/useRequireAdmin';
-import belayReportsLogo from '@/assets/belay-reports-logo-final.png';
+import belayReportsLogoAsset from "@/assets/belay-reports-wide.gif.asset.json";
+const belayReportsLogo = belayReportsLogoAsset.url;
 import acctLogo from '@/assets/acct-logo-final.png';
 
 const UploadLogos = () => {
