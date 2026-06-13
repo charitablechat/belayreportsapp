@@ -201,13 +201,6 @@ export default function Auth() {
           className="w-full h-full object-cover"
         />
       </div>
-      <div className="relative z-10 rounded-2xl bg-white/20 dark:bg-black/30 backdrop-blur-xl border border-white/30 shadow-2xl p-6 md:p-8">
-        <img
-          src={shimmerLogo.url}
-          alt="Belay Reports"
-          className="w-full max-w-md md:max-w-lg max-h-[20vh] object-contain drop-shadow-lg"
-        />
-      </div>
 
       <Card className="relative z-10 w-full max-w-md shadow-2xl backdrop-blur-2xl bg-white/70 dark:bg-black/50 border border-white/40 dark:border-white/10 mx-2">
         <CardHeader className="space-y-4 text-center">
