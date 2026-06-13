@@ -7,7 +7,8 @@ import {
   AlertTriangle,
   WifiOff,
 } from "lucide-react";
-import belayReportsLogo from "@/assets/belay-reports-logo.png";
+import belayReportsLogoAsset from "@/assets/belay-reports-wide.gif.asset.json";
+const belayReportsLogo = belayReportsLogoAsset.url;
 import { AutoSaveIndicator } from "@/components/AutoSaveIndicator";
 import type { SaveErrorState } from "@/components/SaveFailureBanner";
 import {

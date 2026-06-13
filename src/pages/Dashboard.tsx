@@ -28,7 +28,8 @@ import { ReportCardSkeleton } from "@/components/dashboard/ReportCardSkeleton";
 /* TEMPORARY FEATURE: Known Issues */
 import { KnownIssuesCard } from "@/components/dashboard/KnownIssuesCard";
 import { DeveloperNotesCard } from "@/components/dashboard/DeveloperNotesCard";
-import belayReportsLogo from "@/assets/belay-reports-logo.png";
+import belayReportsLogoAsset from "@/assets/belay-reports-wide.gif.asset.json";
+const belayReportsLogo = belayReportsLogoAsset.url;
 import acctLogo from "@/assets/acct-accredited-vendor.png";
 import { getSessionBackground } from "@/lib/background-manager";
 import { triggerHaptic } from "@/lib/haptics";

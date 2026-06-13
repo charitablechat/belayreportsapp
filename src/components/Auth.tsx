@@ -9,7 +9,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Eye, EyeOff, WifiOff, ArrowRight } from "lucide-react";
 import { usePWA } from "@/hooks/usePWA";
-const belayReportsLogo = "/belay-reports-logo.avif";
+const belayReportsLogo = "/__l5e/assets-v1/8c7f8dfa-a725-400e-8f7e-c806cf7d7039/belay-reports-wide.gif";
 import marbleBg from "@/assets/marble-bg.gif.asset.json";
 import shimmerLogo from "@/assets/shimmer-wide-logo.gif.asset.json";
 import { hasCachedSessionForOffline } from "@/lib/cached-auth";

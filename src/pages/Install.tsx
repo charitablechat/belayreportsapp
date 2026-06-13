@@ -4,7 +4,8 @@ import { Download, Smartphone, Zap, Wifi, Save, RefreshCw, ArrowLeft } from 'luc
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { usePWAInstall } from '@/hooks/usePWAInstall';
-import logo from '@/assets/belay-reports-logo.png';
+import logoAsset from "@/assets/belay-reports-wide.gif.asset.json";
+const logo = logoAsset.url;
 
 export default function Install() {
   const navigate = useNavigate();

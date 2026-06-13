@@ -17,11 +17,11 @@ export default function AdminLogoManagement() {
   const navigate = useNavigate();
   const { loading: authLoading } = useRequireAdmin();
   
-  const [belayReportsFile, setRopeWorksFile] = useState<File | null>(null);
+  const [belayReportsFile, setBelayReportsFile] = useState<File | null>(null);
   const [acctFile, setAcctFile] = useState<File | null>(null);
-  const [belayReportsPreview, setRopeWorksPreview] = useState<string>('');
+  const [belayReportsPreview, setBelayReportsPreview] = useState<string>('');
   const [acctPreview, setAcctPreview] = useState<string>('');
-  const [belayReportsOptimized, setRopeWorksOptimized] = useState<OptimizedResult | null>(null);
+  const [belayReportsOptimized, setBelayReportsOptimized] = useState<OptimizedResult | null>(null);
   const [acctOptimized, setAcctOptimized] = useState<OptimizedResult | null>(null);
   const [optimizing, setOptimizing] = useState(false);
   const [uploading, setUploading] = useState(false);
@@ -83,9 +83,9 @@ export default function AdminLogoManagement() {
       const previewUrl = URL.createObjectURL(result.blob);
 
       if (type === 'belayReports') {
-        setRopeWorksFile(file);
-        setRopeWorksPreview(previewUrl);
-        setRopeWorksOptimized(result);
+        setBelayReportsFile(file);
+        setBelayReportsPreview(previewUrl);
+        setBelayReportsOptimized(result);
       } else {
         setAcctFile(file);
         setAcctPreview(previewUrl);
@@ -135,11 +135,11 @@ export default function AdminLogoManagement() {
       toast.success('Logos updated successfully! Changes will appear in new reports.');
       
       // Clear selections and reload current logos
-      setRopeWorksFile(null);
+      setBelayReportsFile(null);
       setAcctFile(null);
-      setRopeWorksPreview('');
+      setBelayReportsPreview('');
       setAcctPreview('');
-      setRopeWorksOptimized(null);
+      setBelayReportsOptimized(null);
       setAcctOptimized(null);
       loadCurrentLogos();
     } catch (error) {

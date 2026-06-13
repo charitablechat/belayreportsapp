@@ -47,7 +47,8 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import belayReportsLogo from "@/assets/belay-reports-logo.png";
+import belayReportsLogoAsset from "@/assets/belay-reports-wide.gif.asset.json";
+const belayReportsLogo = belayReportsLogoAsset.url;
 import { useNetworkStatus } from "@/hooks/useNetworkStatus";
 import { useStorageHealthCheck } from "@/hooks/useStorageHealthCheck";
 

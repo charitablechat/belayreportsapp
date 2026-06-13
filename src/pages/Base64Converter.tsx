@@ -7,7 +7,7 @@ import acctLogo from '@/assets/acct-logo-final.png';
 
 const Base64Converter = () => {
   const { isAdmin, loading: adminLoading } = useRequireAdmin();
-  const [belayReportsBase64, setRopeWorksBase64] = useState<string>('');
+  const [belayReportsBase64, setBelayReportsBase64] = useState<string>('');
   const [acctBase64, setAcctBase64] = useState<string>('');
   const [loading, setLoading] = useState(true);
 
@@ -19,7 +19,7 @@ const Base64Converter = () => {
         const belayReportsBlob = await belayReportsResponse.blob();
         const belayReportsReader = new FileReader();
         belayReportsReader.onloadend = () => {
-          setRopeWorksBase64(belayReportsReader.result as string);
+          setBelayReportsBase64(belayReportsReader.result as string);
         };
         belayReportsReader.readAsDataURL(belayReportsBlob);
 

@@ -1,7 +1,8 @@
 import { motion } from "framer-motion";
 import { GradientButton } from "@/components/ui/gradient-button";
 import { useNavigate } from "react-router-dom";
-import belayReportsLogo from "@/assets/belay-reports-logo.png";
+import belayReportsLogoAsset from "@/assets/belay-reports-wide.gif.asset.json";
+const belayReportsLogo = belayReportsLogoAsset.url;
 import acctLogo from "@/assets/acct-accredited-vendor.png";
 import authVideo from "@/assets/auth-background.mp4";
 

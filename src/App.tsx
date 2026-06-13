@@ -216,7 +216,7 @@ const OfflineRouteError = () => {
     <div className="min-h-screen bg-background text-foreground flex items-center justify-center px-6 py-10">
       <main className="w-full max-w-sm text-center space-y-5">
         <img
-          src="/belay-reports-logo.avif"
+          src="/__l5e/assets-v1/8c7f8dfa-a725-400e-8f7e-c806cf7d7039/belay-reports-wide.gif"
           alt="Belay Reports"
           className="mx-auto h-24 w-24 rounded-full object-contain bg-background"
         />
