@@ -24,11 +24,15 @@ import { applySystemsTombstone } from "../form-loaders/inspectionLoader";
 
 const ENT = "inspection_operating_system" as const;
 const RID = "c575d3d9-68a4-43f4-a6e5-e4268338e465";
-const BK = (r: Record<string, unknown>): string | null =>
-  [(r?.name ?? "").trim().toLowerCase(), (r?.system_name ?? "").trim().toLowerCase()]
+const BK = (r: Record<string, unknown>): string | null => {
+  const name = typeof r?.name === "string" ? r.name : "";
+  const system = typeof r?.system_name === "string" ? r.system_name : "";
+  return [name.trim().toLowerCase(), system.trim().toLowerCase()]
     .filter(Boolean)
     .join("|") || null;
-const CA = (r: Record<string, unknown>) => r.created_at ?? null;
+};
+const CA = (r: Record<string, unknown>): string | number | Date =>
+  (r.created_at as string | number | Date | null) ?? "";
 
 describe("reconcileChildTombstones (re-add recovery)", () => {
   beforeEach(() => {
