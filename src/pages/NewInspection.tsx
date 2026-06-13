@@ -25,6 +25,7 @@ import {
   mapImportedPreviousInspectionDate,
   normalizeImportedChildData,
 } from "@/lib/import-normalize";
+import { saveFailedImportPayload, type ChildTable } from "@/lib/import-retry";
 
 // Types for extracted child data
 interface ExtractedSystem {
@@ -300,7 +301,7 @@ export default function NewInspection() {
       // Store child data
       setChildData({
         systems: data.systems || [],
-        equipment: [], // Temporarily disabled — keep AI extraction but skip auto-populate
+        equipment: data.equipment || [],
         ziplines: data.ziplines || [],
         standards: data.standards || [],
         summary: data.summary || null,
@@ -369,9 +370,13 @@ export default function NewInspection() {
   };
 
   /** Bulk-insert child rows after inspection is created */
-  /** Bulk-insert child rows after inspection is created */
-  const insertChildData = async (inspectionId: string) => {
-    const promises: PromiseLike<any>[] = [];
+  const insertChildData = async (inspectionId: string): Promise<{
+    failed: ChildTable[];
+    succeeded: ChildTable[];
+    failedPayload: Partial<Record<ChildTable, Record<string, unknown>[]>>;
+  }> => {
+    type TableJob = { table: ChildTable; rows: Record<string, unknown>[] };
+    const jobs: TableJob[] = [];
 
     if (childData.systems.length > 0) {
       const rows = childData.systems.map((s, i) => ({
@@ -384,10 +389,7 @@ export default function NewInspection() {
         is_divider: false,
       }));
       console.log(`[NewInspection] Inserting ${rows.length} systems`);
-      promises.push(
-        supabase.from("inspection_systems").insert(rows)
-          .then(({ error }) => { if (error) throw error; })
-      );
+      jobs.push({ table: "inspection_systems", rows });
     }
 
     if (childData.equipment.length > 0) {
@@ -413,10 +415,7 @@ export default function NewInspection() {
         display_order: i,
       }));
       console.log(`[NewInspection] Inserting ${rows.length} equipment`);
-      promises.push(
-        supabase.from("inspection_equipment").insert(rows)
-          .then(({ error }) => { if (error) throw error; })
-      );
+      jobs.push({ table: "inspection_equipment", rows });
     }
 
     if (childData.ziplines.length > 0) {
@@ -434,10 +433,7 @@ export default function NewInspection() {
         display_order: i,
       }));
       console.log(`[NewInspection] Inserting ${rows.length} ziplines`);
-      promises.push(
-        supabase.from("inspection_ziplines").insert(rows)
-          .then(({ error }) => { if (error) throw error; })
-      );
+      jobs.push({ table: "inspection_ziplines", rows });
     }
 
     if (childData.standards.length > 0) {
@@ -448,32 +444,48 @@ export default function NewInspection() {
         comments: s.comments || null,
       }));
       console.log(`[NewInspection] Inserting ${rows.length} standards`);
-      promises.push(
-        supabase.from("inspection_standards").insert(rows)
-          .then(({ error }) => { if (error) throw error; })
-      );
+      jobs.push({ table: "inspection_standards", rows });
     }
 
     if (childData.summary) {
       console.log(`[NewInspection] Inserting summary`);
-      promises.push(
-        supabase.from("inspection_summary").insert({
+      jobs.push({
+        table: "inspection_summary",
+        rows: [{
           inspection_id: inspectionId,
           repairs_performed: childData.summary.repairs_performed || null,
           critical_actions: childData.summary.critical_actions || null,
           future_considerations: childData.summary.future_considerations || null,
           next_inspection_date: childData.summary.next_inspection_date || null,
-        }).then(({ error }) => { if (error) throw error; })
-      );
+        }],
+      });
     }
 
-    const results = await Promise.allSettled(promises);
-    const failures = results.filter((r) => r.status === "rejected");
-    if (failures.length > 0) {
-      console.error("[NewInspection] Child insert failures:", failures.map((f: any) => f.reason?.message || f.reason));
-    } else {
+    const results = await Promise.allSettled(
+      jobs.map((job) =>
+        supabase.from(job.table).insert(job.rows).then(({ error }) => { if (error) throw error; })
+      )
+    );
+
+    const failed: ChildTable[] = [];
+    const succeeded: ChildTable[] = [];
+    const failedPayload: Partial<Record<ChildTable, Record<string, unknown>[]>> = {};
+
+    results.forEach((result, i) => {
+      if (result.status === "rejected") {
+        failed.push(jobs[i].table);
+        failedPayload[jobs[i].table] = jobs[i].rows;
+        console.error(`[NewInspection] Insert failed for ${jobs[i].table}:`, (result as PromiseRejectedResult).reason?.message || (result as PromiseRejectedResult).reason);
+      } else {
+        succeeded.push(jobs[i].table);
+      }
+    });
+
+    if (failed.length === 0) {
       console.log("[NewInspection] All child inserts succeeded");
     }
+
+    return { failed, succeeded, failedPayload };
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -570,7 +582,22 @@ export default function NewInspection() {
           childData.summary;
 
         if (hasChildData) {
-          await insertChildData(data.id);
+          const { failed, failedPayload } = await insertChildData(data.id);
+          if (failed.length > 0) {
+            saveFailedImportPayload({
+              inspectionId: data.id,
+              savedAt: new Date().toISOString(),
+              tables: failedPayload,
+            });
+            toast.warning("Some imported items did not save", {
+              description: `${failed.join(", ")}. Open the inspection to retry.`,
+            });
+            triggerHaptic('error');
+          } else {
+            triggerHaptic('success');
+          }
+        } else {
+          triggerHaptic('success');
         }
 
         const profile = await getCachedProfile(user.id);
@@ -582,12 +609,14 @@ export default function NewInspection() {
 
         navigate(`/inspection/${data.id}`);
       } else {
+        // TODO: Offline child-data sync is a follow-up task.
+        // The offline submit path queues the parent inspection only;
+        // child data from imports will not be persisted until that work is done.
         await saveInspectionOffline(newInspection);
         await queueOperation('create', tempId, newInspection);
+        triggerHaptic('success');
         navigate(`/inspection/${tempId}`);
       }
-      
-      triggerHaptic('success');
     } catch (error: any) {
       console.error("Error creating inspection:", error);
       triggerHaptic('error');

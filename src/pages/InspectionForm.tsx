@@ -137,6 +137,7 @@ import {
 import { withInspectionPushLock } from "@/lib/form-savers/inspection-push-mutex";
 
 import { InspectionHeaderSection } from "@/components/inspection/InspectionHeaderSection";
+import { ImportRetryBanner } from "@/components/inspection/ImportRetryBanner";
 
 // `saveRelatedDataOffline` accepts a small set of well-known child-table keys.
 // Mirrors the `RelatedDataType` union in `@/lib/offline-storage`.
@@ -3369,6 +3370,8 @@ export default function InspectionForm() {
           isReadOnly={effectiveReadOnly}
           missingFieldKeys={missingRequiredFields.map(m => m.key)}
         />
+
+        {id && <ImportRetryBanner inspectionId={id} />}
 
         {id && currentUser?.id && (
           <CollaboratorPresence
