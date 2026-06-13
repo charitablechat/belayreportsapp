@@ -83,7 +83,7 @@ describe('runSyncDiagnostic — happy path', () => {
   it('produces a stable JSON-roundtrippable payload', async () => {
     const report = await runSyncDiagnostic();
     const text = formatSyncDiagnostic(report);
-    expect(text.startsWith('=== RopeWorks sync diagnostic — ')).toBe(true);
+    expect(text.startsWith('=== BelayReports sync diagnostic — ')).toBe(true);
     // The body after the header should parse as JSON.
     const jsonStart = text.indexOf('\n') + 1;
     expect(() => JSON.parse(text.slice(jsonStart))).not.toThrow();
@@ -133,7 +133,7 @@ describe('formatSyncDiagnostic', () => {
     vi.mocked(offlineStorage.getDB).mockResolvedValue({} as never);
     const report = await runSyncDiagnostic();
     const text = formatSyncDiagnostic(report);
-    expect(text).toContain('=== RopeWorks sync diagnostic — ');
+    expect(text).toContain('=== BelayReports sync diagnostic — ');
     expect(text).toContain(report.capturedAt);
   });
 });

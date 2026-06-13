@@ -306,7 +306,7 @@ serve(async (req) => {
           `;
 
           await resend.emails.send({
-            from: 'Rope Works <notifications@resend.dev>',
+            from: 'Belay Reports <notifications@resend.dev>',
             to: [email],
             subject: title,
             html: emailHtml,

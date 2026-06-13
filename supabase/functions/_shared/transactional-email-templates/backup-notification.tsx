@@ -4,7 +4,7 @@ import {
 } from 'npm:@react-email/components@0.0.22'
 import type { TemplateEntry } from './registry.ts'
 
-const SITE_NAME = "Rope Works Inc."
+const SITE_NAME = "Belay Reports"
 
 interface BackupNotificationProps {
   timestamp?: string
@@ -116,7 +116,7 @@ const BackupNotificationEmail = ({
 export const template = {
   component: BackupNotificationEmail,
   subject: (data: Record<string, any>) => {
-    return `Ropeworks Daily Backup — ${data.timestamp || 'Complete'}`
+    return `Belay Reports Daily Backup — ${data.timestamp || 'Complete'}`
   },
   displayName: 'Daily backup notification',
   previewData: {

@@ -47,7 +47,8 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import ropeWorksLogo from "@/assets/rope-works-logo.png";
+import belayReportsLogoAsset from "@/assets/belay-reports-wide.gif.asset.json";
+const belayReportsLogo = belayReportsLogoAsset.url;
 import { useNetworkStatus } from "@/hooks/useNetworkStatus";
 import { useStorageHealthCheck } from "@/hooks/useStorageHealthCheck";
 
@@ -1967,7 +1968,7 @@ export default function DailyAssessmentForm() {
               <Button variant="ghost" size="icon" onClick={() => setShowLeaveDialog(true)}>
                 <ArrowLeft className="w-4 h-4" />
               </Button>
-              <img src={ropeWorksLogo} alt="Rope Works" className="h-8 sm:h-10 w-auto object-contain" />
+              <img src={belayReportsLogo} alt="Belay Reports" className="h-8 sm:h-10 w-auto object-contain" />
             </div>
             
             {/* UserProfileDropdown is now in the global AuthenticatedHeader */}

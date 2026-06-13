@@ -17,15 +17,15 @@ export default function AdminLogoManagement() {
   const navigate = useNavigate();
   const { loading: authLoading } = useRequireAdmin();
   
-  const [ropeWorksFile, setRopeWorksFile] = useState<File | null>(null);
+  const [belayReportsFile, setBelayReportsFile] = useState<File | null>(null);
   const [acctFile, setAcctFile] = useState<File | null>(null);
-  const [ropeWorksPreview, setRopeWorksPreview] = useState<string>('');
+  const [belayReportsPreview, setBelayReportsPreview] = useState<string>('');
   const [acctPreview, setAcctPreview] = useState<string>('');
-  const [ropeWorksOptimized, setRopeWorksOptimized] = useState<OptimizedResult | null>(null);
+  const [belayReportsOptimized, setBelayReportsOptimized] = useState<OptimizedResult | null>(null);
   const [acctOptimized, setAcctOptimized] = useState<OptimizedResult | null>(null);
   const [optimizing, setOptimizing] = useState(false);
   const [uploading, setUploading] = useState(false);
-  const [currentLogos, setCurrentLogos] = useState<{ ropeWorks: string; acct: string }>({ ropeWorks: '', acct: '' });
+  const [currentLogos, setCurrentLogos] = useState<{ belayReports: string; acct: string }>({ belayReports: '', acct: '' });
 
   useEffect(() => {
     loadCurrentLogos();
@@ -33,16 +33,16 @@ export default function AdminLogoManagement() {
 
   const loadCurrentLogos = async () => {
     try {
-      const { data: ropeWorksData } = supabase.storage
+      const { data: belayReportsData } = supabase.storage
         .from('pdf-templates')
-        .getPublicUrl('rope-works-logo-embedded.png');
+        .getPublicUrl('belay-reports-logo-embedded.png');
       
       const { data: acctData } = supabase.storage
         .from('pdf-templates')
         .getPublicUrl('acct-logo-embedded.png');
 
       setCurrentLogos({
-        ropeWorks: ropeWorksData.publicUrl + '?t=' + Date.now(),
+        belayReports: belayReportsData.publicUrl + '?t=' + Date.now(),
         acct: acctData.publicUrl + '?t=' + Date.now()
       });
     } catch (error) {
@@ -50,7 +50,7 @@ export default function AdminLogoManagement() {
     }
   };
 
-  const handleFileChange = async (file: File | null, type: 'ropeWorks' | 'acct') => {
+  const handleFileChange = async (file: File | null, type: 'belayReports' | 'acct') => {
     if (!file) return;
 
     // Validate file type
@@ -69,7 +69,7 @@ export default function AdminLogoManagement() {
 
     try {
       // Get the appropriate preset for this logo type
-      const preset = type === 'ropeWorks' ? LOGO_PRESETS.ropeWorks : LOGO_PRESETS.acct;
+      const preset = type === 'belayReports' ? LOGO_PRESETS.belayReports : LOGO_PRESETS.acct;
 
       // Optimize the image
       const result = await optimizeImage(file, {
@@ -82,10 +82,10 @@ export default function AdminLogoManagement() {
       // Create preview from optimized blob
       const previewUrl = URL.createObjectURL(result.blob);
 
-      if (type === 'ropeWorks') {
-        setRopeWorksFile(file);
-        setRopeWorksPreview(previewUrl);
-        setRopeWorksOptimized(result);
+      if (type === 'belayReports') {
+        setBelayReportsFile(file);
+        setBelayReportsPreview(previewUrl);
+        setBelayReportsOptimized(result);
       } else {
         setAcctFile(file);
         setAcctPreview(previewUrl);
@@ -113,7 +113,7 @@ export default function AdminLogoManagement() {
   };
 
   const handleUpload = async () => {
-    if (!ropeWorksOptimized && !acctOptimized) {
+    if (!belayReportsOptimized && !acctOptimized) {
       toast.error('Please select at least one logo to upload');
       return;
     }
@@ -122,8 +122,8 @@ export default function AdminLogoManagement() {
     try {
       const uploadPromises = [];
 
-      if (ropeWorksOptimized) {
-        uploadPromises.push(uploadLogo(ropeWorksOptimized.blob, 'rope-works-logo-embedded.png'));
+      if (belayReportsOptimized) {
+        uploadPromises.push(uploadLogo(belayReportsOptimized.blob, 'belay-reports-logo-embedded.png'));
       }
 
       if (acctOptimized) {
@@ -135,11 +135,11 @@ export default function AdminLogoManagement() {
       toast.success('Logos updated successfully! Changes will appear in new reports.');
       
       // Clear selections and reload current logos
-      setRopeWorksFile(null);
+      setBelayReportsFile(null);
       setAcctFile(null);
-      setRopeWorksPreview('');
+      setBelayReportsPreview('');
       setAcctPreview('');
-      setRopeWorksOptimized(null);
+      setBelayReportsOptimized(null);
       setAcctOptimized(null);
       loadCurrentLogos();
     } catch (error) {
@@ -173,15 +173,15 @@ export default function AdminLogoManagement() {
         {/* Current Logos */}
         <Card>
           <CardHeader>
-            <CardTitle>Current Rope Works Logo</CardTitle>
+            <CardTitle>Current Belay Reports Logo</CardTitle>
             <CardDescription>Currently used in all reports</CardDescription>
           </CardHeader>
           <CardContent>
             <div className="flex items-center justify-center p-6 bg-muted rounded-lg min-h-[200px]">
-              {currentLogos.ropeWorks ? (
+              {currentLogos.belayReports ? (
                 <img 
-                  src={currentLogos.ropeWorks} 
-                  alt="Rope Works Logo" 
+                  src={currentLogos.belayReports} 
+                  alt="Belay Reports Logo" 
                   className="max-h-[180px] object-contain"
                 />
               ) : (
@@ -216,7 +216,7 @@ export default function AdminLogoManagement() {
       <Alert className="mb-6">
         <Info className="h-4 w-4" />
         <AlertDescription>
-          <strong>Optimal Dimensions:</strong> Rope Works Logo: 300×140px | ACCT Badge: 240×120px. 
+          <strong>Optimal Dimensions:</strong> Belay Reports Logo: 300×140px | ACCT Badge: 240×120px. 
           Images will be automatically optimized and resized to these dimensions for best quality in PDF reports.
         </AlertDescription>
       </Alert>
@@ -231,22 +231,22 @@ export default function AdminLogoManagement() {
         </CardHeader>
         <CardContent className="space-y-6">
           <div className="grid md:grid-cols-2 gap-6">
-            {/* Rope Works Upload */}
+            {/* Belay Reports Upload */}
             <div className="space-y-4">
-              <Label htmlFor="rope-works-upload">Rope Works Logo</Label>
+              <Label htmlFor="belay-reports-upload">Belay Reports Logo</Label>
               <Input
-                id="rope-works-upload"
+                id="belay-reports-upload"
                 type="file"
                 accept="image/*,image/heic,image/heif,.heic,.heif"
-                onChange={(e) => handleFileChange(e.target.files?.[0] || null, 'ropeWorks')}
+                onChange={(e) => handleFileChange(e.target.files?.[0] || null, 'belayReports')}
                 disabled={uploading || optimizing}
               />
-              {ropeWorksPreview && ropeWorksOptimized && (
+              {belayReportsPreview && belayReportsOptimized && (
                 <div className="space-y-3">
                   <div className="p-4 bg-muted rounded-lg">
                     <p className="text-sm text-muted-foreground mb-2">Optimized Preview:</p>
                     <img 
-                      src={ropeWorksPreview} 
+                      src={belayReportsPreview} 
                       alt="Preview" 
                       className="max-h-[150px] object-contain mx-auto"
                     />
@@ -259,17 +259,17 @@ export default function AdminLogoManagement() {
                     <div className="flex justify-between text-muted-foreground">
                       <span>Size:</span>
                       <span>
-                        {formatFileSize(ropeWorksOptimized.originalSize)} → {formatFileSize(ropeWorksOptimized.optimizedSize)}
-                        <Badge variant="secondary" className="ml-2">{ropeWorksOptimized.compressionRatio}% smaller</Badge>
+                        {formatFileSize(belayReportsOptimized.originalSize)} → {formatFileSize(belayReportsOptimized.optimizedSize)}
+                        <Badge variant="secondary" className="ml-2">{belayReportsOptimized.compressionRatio}% smaller</Badge>
                       </span>
                     </div>
                     <div className="flex justify-between text-muted-foreground">
                       <span>Dimensions:</span>
                       <span>
-                        {formatDimensions(ropeWorksOptimized.originalDimensions)} → {formatDimensions(ropeWorksOptimized.optimizedDimensions)}
+                        {formatDimensions(belayReportsOptimized.originalDimensions)} → {formatDimensions(belayReportsOptimized.optimizedDimensions)}
                       </span>
                     </div>
-                    {ropeWorksOptimized.formatChanged && (
+                    {belayReportsOptimized.formatChanged && (
                       <div className="flex justify-between text-muted-foreground">
                         <span>Format:</span>
                         <span>Converted to PNG</span>
@@ -340,7 +340,7 @@ export default function AdminLogoManagement() {
           <div className="flex gap-4">
             <Button 
               onClick={handleUpload} 
-              disabled={uploading || optimizing || (!ropeWorksOptimized && !acctOptimized)}
+              disabled={uploading || optimizing || (!belayReportsOptimized && !acctOptimized)}
               className="w-full md:w-auto"
             >
               {uploading ? (

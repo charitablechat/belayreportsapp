@@ -252,5 +252,5 @@ export async function runSyncDiagnostic(): Promise<SyncDiagnosticReport> {
  * receiver a step when matching the report against an inbound email.
  */
 export function formatSyncDiagnostic(report: SyncDiagnosticReport): string {
-  return `=== RopeWorks sync diagnostic — ${report.capturedAt} ===\n${JSON.stringify(report, null, 2)}`;
+  return `=== BelayReports sync diagnostic — ${report.capturedAt} ===\n${JSON.stringify(report, null, 2)}`;
 }

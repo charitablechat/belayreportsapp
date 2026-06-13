@@ -245,7 +245,7 @@ export default function PhotoCapture({
         uploaded: false,
       });
       
-      const deviceFileName = `RopeWorks_${section}_${Date.now()}.jpg`;
+      const deviceFileName = `BelayReports_${section}_${Date.now()}.jpg`;
       saveToDevice(processedFile, deviceFileName);
       
       onPhotoAdded();
@@ -283,7 +283,7 @@ export default function PhotoCapture({
         uploaded: false,
       });
       
-      const deviceFileName = `RopeWorks_${section}_${Date.now()}.jpg`;
+      const deviceFileName = `BelayReports_${section}_${Date.now()}.jpg`;
       saveToDevice(processedFile, deviceFileName);
       
       onPhotoAdded();
@@ -305,7 +305,7 @@ export default function PhotoCapture({
     });
     
     // Save to device storage — fire-and-forget
-    const deviceFileName = `RopeWorks_${section}_${Date.now()}.jpg`;
+    const deviceFileName = `BelayReports_${section}_${Date.now()}.jpg`;
     saveToDevice(processedFile, deviceFileName);
 
     if (import.meta.env.DEV) {

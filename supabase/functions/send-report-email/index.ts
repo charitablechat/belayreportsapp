@@ -110,7 +110,7 @@
      <!-- Footer -->
      <div style="background-color: #f8f9fa; padding: 24px; text-align: center; border-top: 1px solid #e5e7eb;">
        <p style="margin: 0 0 4px 0; font-family: Arial, sans-serif; font-size: 14px; color: #374151; font-weight: bold;">
-         Rope Works Inc. - Professional Inspection Services
+         Belay Reports - Professional Inspection Services
        </p>
        <p style="margin: 0; font-family: Arial, sans-serif; font-size: 12px; color: #6b7280;">
          ACCT Accredited Vendor
@@ -191,7 +191,7 @@
      
      const senderName = profile 
        ? [profile.first_name, profile.last_name].filter(Boolean).join(' ') 
-       : user.email?.split('@')[0] || 'Rope Works';
+       : user.email?.split('@')[0] || 'Belay Reports';
  
      // Build email with professional wrapper
      const emailHtml = buildEmailHtml({
@@ -212,7 +212,7 @@
  
      // Send email via Resend
      const emailResponse = await resend.emails.send({
-       from: "Rope Works <reports@resend.dev>",
+       from: "Belay Reports <reports@resend.dev>",
        to: [recipientEmail],
        subject,
        html: emailHtml,

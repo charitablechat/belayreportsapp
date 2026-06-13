@@ -4,7 +4,8 @@ import { Download, Smartphone, Zap, Wifi, Save, RefreshCw, ArrowLeft } from 'luc
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { usePWAInstall } from '@/hooks/usePWAInstall';
-import logo from '@/assets/rope-works-logo.png';
+import logoAsset from "@/assets/belay-reports-wide.gif.asset.json";
+const logo = logoAsset.url;
 
 export default function Install() {
   const navigate = useNavigate();
@@ -39,9 +40,9 @@ export default function Install() {
         {/* Hero Section */}
         <div className="text-center mb-12">
           <div className="flex justify-center mb-6">
-            <img src={logo} alt="Rope Works" className="h-16" />
+            <img src={logo} alt="Belay Reports" className="h-16" />
           </div>
-          <h1 className="text-4xl font-bold mb-4">Install Rope Works Inspection</h1>
+          <h1 className="text-4xl font-bold mb-4">Install Belay Reports</h1>
           <p className="text-lg text-muted-foreground max-w-2xl mx-auto">
             Get the best experience with our Progressive Web App. Install it on your device for fast, offline-capable inspections.
           </p>

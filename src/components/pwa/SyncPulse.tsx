@@ -764,7 +764,7 @@ export const SyncPulse = ({ className }: { className?: string }) => {
                     </button>
                     {multiTabBlock && (
                       <p className="text-amber-300/90 text-[10px] leading-relaxed">
-                        Another tab of this app is blocking sync. Close other tabs of RopeWorks, then tap RECOVER STORAGE.
+                        Another tab of this app is blocking sync. Close other tabs of BelayReports, then tap RECOVER STORAGE.
                       </p>
                     )}
                     {recoverResult && (

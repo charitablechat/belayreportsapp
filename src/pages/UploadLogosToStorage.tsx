@@ -4,7 +4,8 @@ import { Button } from '@/components/ui/button';
 import { toast } from 'sonner';
 import { Upload, CheckCircle2 } from 'lucide-react';
 import { useRequireAdmin } from '@/hooks/useRequireAdmin';
-import ropeWorksLogo from '@/assets/rope-works-logo-final.png';
+import belayReportsLogoAsset from "@/assets/belay-reports-wide.gif.asset.json";
+const belayReportsLogo = belayReportsLogoAsset.url;
 import acctLogo from '@/assets/acct-logo-final.png';
 
 export default function UploadLogosToStorage() {
@@ -16,21 +17,21 @@ export default function UploadLogosToStorage() {
     setUploading(true);
     try {
       // Fetch the logo files
-      const [ropeWorksResponse, acctResponse] = await Promise.all([
-        fetch(ropeWorksLogo),
+      const [belayReportsResponse, acctResponse] = await Promise.all([
+        fetch(belayReportsLogo),
         fetch(acctLogo)
       ]);
 
-      const [ropeWorksBlob, acctBlob] = await Promise.all([
-        ropeWorksResponse.blob(),
+      const [belayReportsBlob, acctBlob] = await Promise.all([
+        belayReportsResponse.blob(),
         acctResponse.blob()
       ]);
 
       // Upload to Supabase Storage
-      const [ropeWorksUpload, acctUpload] = await Promise.all([
+      const [belayReportsUpload, acctUpload] = await Promise.all([
         supabase.storage
           .from('pdf-templates')
-          .upload('rope-works-logo-embedded.png', ropeWorksBlob, {
+          .upload('belay-reports-logo-embedded.png', belayReportsBlob, {
             contentType: 'image/png',
             upsert: true
           }),
@@ -42,7 +43,7 @@ export default function UploadLogosToStorage() {
           })
       ]);
 
-      if (ropeWorksUpload.error) throw ropeWorksUpload.error;
+      if (belayReportsUpload.error) throw belayReportsUpload.error;
       if (acctUpload.error) throw acctUpload.error;
 
       toast.success('Logos uploaded successfully to storage!');
@@ -58,15 +59,15 @@ export default function UploadLogosToStorage() {
       }
 
       console.log('Base64 data received:', {
-        ropeWorksLength: data.ropeWorksLength,
+        belayReportsLength: data.belayReportsLength,
         acctLength: data.acctLength
       });
 
       toast.success('Base64 strings generated! Check console for details');
       
       // Display the base64 strings
-      console.log('=== ROPE WORKS LOGO BASE64 ===');
-      console.log(data.ropeWorksLogo);
+      console.log('=== BELAY REPORTS LOGO BASE64 ===');
+      console.log(data.belayReportsLogo);
       console.log('\n=== ACCT LOGO BASE64 ===');
       console.log(data.acctLogo);
       
@@ -92,10 +93,10 @@ export default function UploadLogosToStorage() {
 
           <div className="space-y-2">
             <div className="flex items-center gap-2">
-              <img src={ropeWorksLogo} alt="Rope Works" className="w-24 h-24 object-contain border rounded" />
+              <img src={belayReportsLogo} alt="Belay Reports" className="w-24 h-24 object-contain border rounded" />
               <div>
-                <p className="font-semibold">Rope Works Logo</p>
-                <p className="text-sm text-muted-foreground">rope-works-logo-embedded.png</p>
+                <p className="font-semibold">Belay Reports Logo</p>
+                <p className="text-sm text-muted-foreground">belay-reports-logo-embedded.png</p>
               </div>
             </div>
             

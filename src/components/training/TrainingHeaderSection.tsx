@@ -7,7 +7,8 @@ import {
   AlertTriangle,
   WifiOff,
 } from "lucide-react";
-import ropeWorksLogo from "@/assets/rope-works-logo.png";
+import belayReportsLogoAsset from "@/assets/belay-reports-wide.gif.asset.json";
+const belayReportsLogo = belayReportsLogoAsset.url;
 import { AutoSaveIndicator } from "@/components/AutoSaveIndicator";
 import type { SaveErrorState } from "@/components/SaveFailureBanner";
 import {
@@ -125,8 +126,8 @@ function TrainingHeaderSectionImpl(props: TrainingHeaderSectionProps) {
                 <ArrowLeft className="w-4 h-4" />
               </Button>
               <img
-                src={ropeWorksLogo}
-                alt="Rope Works"
+                src={belayReportsLogo}
+                alt="Belay Reports"
                 className="h-8 sm:h-10 w-auto object-contain"
               />
             </div>

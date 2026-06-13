@@ -67,7 +67,7 @@ export async function reverseGeocode(latitude: number, longitude: number): Promi
     const response = await fetch(url.toString(), {
       headers: {
         'Accept': 'application/json',
-        'User-Agent': 'RopeWorksInspection/1.0'
+        'User-Agent': 'BelayReportsInspection/1.0'
       }
     });
 

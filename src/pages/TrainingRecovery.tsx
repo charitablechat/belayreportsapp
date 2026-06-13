@@ -237,7 +237,7 @@ export default function TrainingRecovery() {
           <p className="font-semibold">How to recover missing text</p>
           <ol className="list-decimal pl-5 space-y-1.5">
             <li>
-              Open Ropeworks on the <strong>exact same iPad, phone, or computer</strong> where you
+              Open Belay Reports on the <strong>exact same iPad, phone, or computer</strong> where you
               originally typed the report. Use the same app or browser you used that day.
             </li>
             <li>

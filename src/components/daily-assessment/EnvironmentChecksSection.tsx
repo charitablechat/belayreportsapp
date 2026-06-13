@@ -5,7 +5,7 @@ import { triggerHaptic } from "@/lib/haptics";
 import { SectionComments } from "./SectionComments";
 
 const ENVIRONMENT_ITEMS = [
-  { key: 'weather_conditions', label: 'Weather conditions appropriate and in line with Rope Works policy' },
+  { key: 'weather_conditions', label: 'Weather conditions appropriate and in line with Belay Reports policy' },
   { key: 'no_vandalism', label: 'Zero presence of course vandalism (use comment area if otherwise)' },
   { key: 'no_overhead_hazards', label: 'Free from trees/limbs or other overhead hazards' },
 ];

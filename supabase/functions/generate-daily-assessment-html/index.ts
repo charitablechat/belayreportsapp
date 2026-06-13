@@ -78,7 +78,7 @@ serve(async (req) => {
       getLogoBase64(),
       supabase.from('daily_assessments').select('*').eq('id', assessmentId).single(),
     ]);
-    const ropeWorksLogo = logos.ropeWorks;
+    const belayReportsLogo = logos.belayReports;
     const acctLogo = logos.acct;
     const { data: assessment } = assessmentResult;
 
@@ -209,9 +209,9 @@ serve(async (req) => {
     const footerDisclaimerText = `Daily Course Assessment Documentation | ${assessment.site || 'N/A'}<br>Generated on ${generatedTimestamp}`;
 
     // Helper wrappers using shared layout functions
-    // HEADER: Both logos (Rope Works LEFT, ACCT RIGHT on same line)
+    // HEADER: Both logos (Belay Reports LEFT, ACCT RIGHT on same line)
     // FOOTER: NO logos - only page number and disclaimer text
-    const header = () => createPageHeader(ropeWorksLogo, acctLogo);
+    const header = () => createPageHeader(belayReportsLogo, acctLogo);
     const footer = (pageNum: number) => createPageFooter(pageNum, footerDisclaimerText);
 
     // Admin-edit banner intentionally disabled — audit trail lives in the admin panel only.

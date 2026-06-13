@@ -224,7 +224,7 @@ serve(async (req) => {
         .single(),
     ]);
 
-    const ropeWorksLogo = logos.ropeWorks;
+    const belayReportsLogo = logos.belayReports;
     const acctLogo = logos.acct;
 
     const { data: inspection, error: inspectionError } = inspectionResult;
@@ -1709,7 +1709,7 @@ serve(async (req) => {
   <div class="print-header">
     <div class="print-header-inner">
       <div class="header-left">
-        <img src="${ropeWorksLogo}" alt="Rope Works" style="height: 50px; width: auto;">
+        <img src="${belayReportsLogo}" alt="Belay Reports" style="height: 50px; width: auto;">
       </div>
       <div class="header-center">
         <div class="header-title"></div>
@@ -1727,7 +1727,7 @@ serve(async (req) => {
       <div class="disclaimer">
         The information contained in this report has been documented by a Qualified Professional.<br>
         This report is effective for one year from the date of inspection. Issued by:<br>
-        Rope Works Inc., PO Box 1074, Dripping Springs, TX 78620
+        Belay Reports
       </div>
     </div>
   </div>
@@ -1739,7 +1739,7 @@ serve(async (req) => {
   <div class="page">
     <div class="page-header">
       <div class="header-left">
-        <img src="${ropeWorksLogo}" alt="Rope Works">
+        <img src="${belayReportsLogo}" alt="Belay Reports">
       </div>
       <div class="header-center">
         <div class="header-title"></div>
@@ -1816,7 +1816,7 @@ serve(async (req) => {
 
       <h2>INSPECTION OVERVIEW</h2>
       <div class="text-block">
-        <p>This report covers the condition of the aerial adventure site for the date of inspection reflected on this form. The inspection provided is strictly an evaluation of the structural condition of the course elements and equipment. The inspection does not include training on how to operate the equipment, nor how to operate the course. The inspection only verifies the existence of written local operating procedures (LOP), an emergency action plan (EAP), and training documentation. The inspection does not perform a review or evaluate the LOP, EAP and training documentation. Potential problems can occur afterwards due to vandalism, improper use, weather, etc. Rope Works Inc. is not responsible for modifications or repairs made to the challenge course by anyone other than a Rope Works Inc. employee. We recommend you conduct your own periodic internal monitoring at a minimum on a quarterly basis. At a minimum an annual professional inspection is required by a qualified professional to be in compliance with the Association for Challenge Course Technology ANSI/ACCT current published standards.</p>
+        <p>This report covers the condition of the aerial adventure site for the date of inspection reflected on this form. The inspection provided is strictly an evaluation of the structural condition of the course elements and equipment. The inspection does not include training on how to operate the equipment, nor how to operate the course. The inspection only verifies the existence of written local operating procedures (LOP), an emergency action plan (EAP), and training documentation. The inspection does not perform a review or evaluate the LOP, EAP and training documentation. Potential problems can occur afterwards due to vandalism, improper use, weather, etc. Belay Reports is not responsible for modifications or repairs made to the challenge course by anyone other than a Belay Reports employee. We recommend you conduct your own periodic internal monitoring at a minimum on a quarterly basis. At a minimum an annual professional inspection is required by a qualified professional to be in compliance with the Association for Challenge Course Technology ANSI/ACCT current published standards.</p>
       </div>
     </div>
 
@@ -1826,7 +1826,7 @@ serve(async (req) => {
       <div class="disclaimer">
         The information contained in this report has been documented by a Qualified Professional.<br>
         This report is effective for one year from the date of inspection. Issued by:<br>
-        Rope Works Inc., PO Box 1074, Dripping Springs, TX 78620
+        Belay Reports
       </div>
     </div>
   </div>
@@ -1835,7 +1835,7 @@ serve(async (req) => {
   <div class="page">
     <div class="page-header">
       <div class="header-left">
-        <img src="${ropeWorksLogo}" alt="Rope Works">
+        <img src="${belayReportsLogo}" alt="Belay Reports">
       </div>
       <div class="header-center">
         <div class="header-title"></div>
@@ -1885,7 +1885,7 @@ serve(async (req) => {
       <div class="disclaimer">
         The information contained in this report has been documented by a Qualified Professional.<br>
         This report is effective for one year from the date of inspection. Issued by:<br>
-        Rope Works Inc., PO Box 1074, Dripping Springs, TX 78620
+        Belay Reports
       </div>
     </div>
   </div>
@@ -1894,7 +1894,7 @@ serve(async (req) => {
   <div class="page">
     <div class="page-header">
       <div class="header-left">
-        <img src="${ropeWorksLogo}" alt="Rope Works">
+        <img src="${belayReportsLogo}" alt="Belay Reports">
       </div>
       <div class="header-center">
         <div class="header-title"></div>
@@ -1908,7 +1908,7 @@ serve(async (req) => {
       <h2 style="margin-top: 5px;">INSPECTION RESULTS KEY</h2>
       <p style="margin-bottom: 15px; font-size: 10pt; line-height: 1.6;">
         This represents the overall rating for each system based on the condition of the items inspected on the day of the inspection. 
-        Rope Works Inc. inspects all challenge course and canopy/zip line tours to the standards set forth by the Association for Challenge Course Technology (ACCT). 
+        Belay Reports inspects all challenge course and canopy/zip line tours to the standards set forth by the Association for Challenge Course Technology (ACCT). 
         Any deviation from the ACCT standards in regards to the inspection criteria will be addressed in the comments section.
       </p>
 
@@ -1939,7 +1939,7 @@ serve(async (req) => {
       <div class="disclaimer">
         The information contained in this report has been documented by a Qualified Professional.<br>
         This report is effective for one year from the date of inspection. Issued by:<br>
-        Rope Works Inc., PO Box 1074, Dripping Springs, TX 78620
+        Belay Reports
       </div>
     </div>
   </div>
@@ -1952,7 +1952,7 @@ serve(async (req) => {
   <div class="page">
     <div class="page-header">
       <div class="header-left">
-        <img src="${ropeWorksLogo}" alt="Rope Works">
+        <img src="${belayReportsLogo}" alt="Belay Reports">
       </div>
       <div class="header-center">
         <div class="header-title"></div>
@@ -2071,7 +2071,7 @@ serve(async (req) => {
       <div class="disclaimer">
         The information contained in this report has been documented by a Qualified Professional.<br>
         This report is effective for one year from the date of inspection. Issued by:<br>
-        Rope Works Inc., PO Box 1074, Dripping Springs, TX 78620
+        Belay Reports
       </div>
     </div>
   </div>
@@ -2085,7 +2085,7 @@ serve(async (req) => {
   <div class="page">
     <div class="page-header">
       <div class="header-left">
-        <img src="${ropeWorksLogo}" alt="Rope Works">
+        <img src="${belayReportsLogo}" alt="Belay Reports">
       </div>
       <div class="header-center">
         <div class="header-title"></div>
@@ -2138,7 +2138,7 @@ serve(async (req) => {
       <div class="disclaimer">
         The information contained in this report has been documented by a Qualified Professional.<br>
         This report is effective for one year from the date of inspection. Issued by:<br>
-        Rope Works Inc., PO Box 1074, Dripping Springs, TX 78620
+        Belay Reports
       </div>
     </div>
   </div>
@@ -2153,7 +2153,7 @@ serve(async (req) => {
   <div class="page">
     <div class="page-header">
       <div class="header-left">
-        <img src="${ropeWorksLogo}" alt="Rope Works">
+        <img src="${belayReportsLogo}" alt="Belay Reports">
       </div>
       <div class="header-center">
         <div class="header-title"></div>
@@ -2226,7 +2226,7 @@ serve(async (req) => {
       <div class="disclaimer">
         The information contained in this report has been documented by a Qualified Professional.<br>
         This report is effective for one year from the date of inspection. Issued by:<br>
-        Rope Works Inc., PO Box 1074, Dripping Springs, TX 78620
+        Belay Reports
       </div>
     </div>
   </div>
@@ -2244,7 +2244,7 @@ serve(async (req) => {
   <div class="page">
     <div class="page-header">
       <div class="header-left">
-        <img src="${ropeWorksLogo}" alt="Rope Works">
+        <img src="${belayReportsLogo}" alt="Belay Reports">
       </div>
       <div class="header-center">
         <div class="header-title"></div>
@@ -2367,7 +2367,7 @@ serve(async (req) => {
       <div class="disclaimer">
         The information contained in this report has been documented by a Qualified Professional.<br>
         This report is effective for one year from the date of inspection. Issued by:<br>
-        Rope Works Inc., PO Box 1074, Dripping Springs, TX 78620
+        Belay Reports
       </div>
     </div>
   </div>
@@ -2381,7 +2381,7 @@ serve(async (req) => {
   <div class="page">
     <div class="page-header">
       <div class="header-left">
-        <img src="${ropeWorksLogo}" alt="Rope Works">
+        <img src="${belayReportsLogo}" alt="Belay Reports">
       </div>
       <div class="header-center">
         <div class="header-title"></div>
@@ -2463,7 +2463,7 @@ serve(async (req) => {
       <div class="disclaimer">
         The information contained in this report has been documented by a Qualified Professional.<br>
         This report is effective for one year from the date of inspection. Issued by:<br>
-        Rope Works Inc., PO Box 1074, Dripping Springs, TX 78620
+        Belay Reports
       </div>
     </div>
   </div>
@@ -2478,7 +2478,7 @@ serve(async (req) => {
   <div class="page">
     <div class="page-header">
       <div class="header-left">
-        <img src="${ropeWorksLogo}" alt="Rope Works">
+        <img src="${belayReportsLogo}" alt="Belay Reports">
       </div>
       <div class="header-center">
         <div class="header-title"></div>
@@ -2529,7 +2529,7 @@ serve(async (req) => {
       <div class="disclaimer">
         The information contained in this report has been documented by a Qualified Professional.<br>
         This report is effective for one year from the date of inspection. Issued by:<br>
-        Rope Works Inc., PO Box 1074, Dripping Springs, TX 78620
+        Belay Reports
       </div>
     </div>
   </div>
@@ -2546,7 +2546,7 @@ serve(async (req) => {
   <div class="page">
     <div class="page-header">
       <div class="header-left">
-        <img src="${ropeWorksLogo}" alt="Rope Works">
+        <img src="${belayReportsLogo}" alt="Belay Reports">
       </div>
       <div class="header-center">
         <div class="header-title"></div>
@@ -2614,7 +2614,7 @@ serve(async (req) => {
       <div class="disclaimer">
         The information contained in this report has been documented by a Qualified Professional.<br>
         This report is effective for one year from the date of inspection. Issued by:<br>
-        Rope Works Inc., PO Box 1074, Dripping Springs, TX 78620
+        Belay Reports
       </div>
     </div>
   </div>
@@ -2623,7 +2623,7 @@ serve(async (req) => {
   <div class="page">
     <div class="page-header">
       <div class="header-left">
-        <img src="${ropeWorksLogo}" alt="Rope Works">
+        <img src="${belayReportsLogo}" alt="Belay Reports">
       </div>
       <div class="header-center">
         <div class="header-title"></div>
@@ -2692,7 +2692,7 @@ serve(async (req) => {
       <div class="disclaimer">
         The information contained in this report has been documented by a Qualified Professional.<br>
         This report is effective for one year from the date of inspection. Issued by:<br>
-        Rope Works Inc., PO Box 1074, Dripping Springs, TX 78620
+        Belay Reports
       </div>
     </div>
   </div>
@@ -2707,7 +2707,7 @@ serve(async (req) => {
   <div class="page">
     <div class="page-header">
       <div class="header-left">
-        <img src="${ropeWorksLogo}" alt="Rope Works">
+        <img src="${belayReportsLogo}" alt="Belay Reports">
       </div>
       <div class="header-center">
         <div class="header-title"></div>
@@ -2741,7 +2741,7 @@ serve(async (req) => {
       <div class="disclaimer">
         The information contained in this report has been documented by a Qualified Professional.<br>
         This report is effective for one year from the date of inspection. Issued by:<br>
-        Rope Works Inc., PO Box 1074, Dripping Springs, TX 78620
+        Belay Reports
       </div>
     </div>
   </div>

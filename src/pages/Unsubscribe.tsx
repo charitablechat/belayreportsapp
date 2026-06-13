@@ -89,7 +89,7 @@ const Unsubscribe = () => {
           {status === "valid" && (
             <>
               <p className="text-muted-foreground">
-                Would you like to unsubscribe from email notifications from Rope Works?
+                Would you like to unsubscribe from email notifications from Belay Reports?
               </p>
               <Button onClick={handleUnsubscribe} disabled={processing} variant="destructive" className="w-full">
                 {processing ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null}
@@ -103,7 +103,7 @@ const Unsubscribe = () => {
               <CheckCircle className="h-10 w-10 text-success" />
               <p className="font-medium">You've been unsubscribed</p>
               <p className="text-sm text-muted-foreground">
-                You will no longer receive email notifications from Rope Works.
+                You will no longer receive email notifications from Belay Reports.
               </p>
             </div>
           )}

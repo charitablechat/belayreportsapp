@@ -1,7 +1,8 @@
 import { motion } from "framer-motion";
 import { GradientButton } from "@/components/ui/gradient-button";
 import { useNavigate } from "react-router-dom";
-import ropeWorksLogo from "@/assets/rope-works-logo.png";
+import belayReportsLogoAsset from "@/assets/belay-reports-wide.gif.asset.json";
+const belayReportsLogo = belayReportsLogoAsset.url;
 import acctLogo from "@/assets/acct-accredited-vendor.png";
 import authVideo from "@/assets/auth-background.mp4";
 
@@ -32,7 +33,7 @@ export default function AuroraLanding() {
           className="relative flex flex-col gap-6 items-center justify-center px-2 md:px-4"
         >
           <div className="flex items-center gap-4 mb-4">
-            <img src={ropeWorksLogo} alt="Rope Works" className="h-16 w-auto object-contain cursor-pointer hover:opacity-80 transition-opacity" onClick={() => navigate('/dashboard')} />
+            <img src={belayReportsLogo} alt="Belay Reports" className="h-16 w-auto object-contain cursor-pointer hover:opacity-80 transition-opacity" onClick={() => navigate('/dashboard')} />
             <img src={acctLogo} alt="ACCT Accredited Vendor" className="h-16 w-auto object-contain" />
           </div>
           

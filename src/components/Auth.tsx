@@ -9,7 +9,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Eye, EyeOff, WifiOff, ArrowRight } from "lucide-react";
 import { usePWA } from "@/hooks/usePWA";
-const ropeWorksLogo = "/rope-works-logo.avif";
+const belayReportsLogo = "/__l5e/assets-v1/8c7f8dfa-a725-400e-8f7e-c806cf7d7039/belay-reports-wide.gif";
 import marbleBg from "@/assets/marble-bg.gif.asset.json";
 import shimmerLogo from "@/assets/shimmer-wide-logo.gif.asset.json";
 import { hasCachedSessionForOffline } from "@/lib/cached-auth";
@@ -210,9 +210,9 @@ export default function Auth() {
       <Card className="relative z-10 w-full max-w-md shadow-2xl backdrop-blur-sm bg-card/95 mx-2">
         <CardHeader className="space-y-4 text-center">
           <div className="mx-auto w-48 h-24 flex items-center justify-center">
-            <img src={ropeWorksLogo} alt="Rope Works Logo" width={192} height={93} className="w-full h-full object-contain" fetchPriority="high" />
+            <img src={belayReportsLogo} alt="Belay Reports Logo" width={192} height={93} className="w-full h-full object-contain" fetchPriority="high" />
           </div>
-          <CardTitle className="text-2xl font-bold">Rope Works Inspection</CardTitle>
+          <CardTitle className="text-2xl font-bold">Belay Reports</CardTitle>
           <CardDescription>
             {isForgotPassword 
               ? "Reset your password" 

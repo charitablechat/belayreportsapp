@@ -118,7 +118,7 @@ export function SaveFailureBanner({
       const ts = new Date().toISOString().replace(/[:.]/g, "-");
       const a = document.createElement("a");
       a.href = url;
-      a.download = `rope-works-draft-${reportType}-${idShort}-${ts}.json`;
+      a.download = `belay-reports-draft-${reportType}-${idShort}-${ts}.json`;
       document.body.appendChild(a);
       a.click();
       document.body.removeChild(a);

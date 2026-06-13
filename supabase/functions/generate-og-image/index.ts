@@ -73,8 +73,8 @@ function buildImage(meta: ReportMeta | null, width: number, height: number) {
       ),
       // Bottom branding
       e("div", { style: { display: "flex", justifyContent: "space-between", alignItems: "center", padding: "16px 40px", borderTop: "1px solid #1a1a1a" } },
-        e("div", { style: { fontSize: 12, color: "#444", letterSpacing: 1, display: "flex" } }, "ROPE WORKS DIGITAL INSPECTION PLATFORM"),
-        e("div", { style: { fontSize: 11, color: "#333", display: "flex" } }, "ropeworks.lovable.app"),
+        e("div", { style: { fontSize: 12, color: "#444", letterSpacing: 1, display: "flex" } }, "BELAY REPORTS DIGITAL INSPECTION PLATFORM"),
+        e("div", { style: { fontSize: 11, color: "#333", display: "flex" } }, "belayreports.com"),
       ),
     ),
     { width, height, headers: { "Cache-Control": "public, max-age=3600, s-maxage=3600" } }
@@ -87,7 +87,7 @@ async function fetchMeta(supabase: ReturnType<typeof createClient>, type: Report
   // Drafts/archived return a redacted shell so social unfurls don't leak private
   // metadata to anyone who guesses an 8-char ID prefix.
   const redact = (status: string, t: ReportType): ReportMeta => ({
-    organization: "Rope Works", date: "", location: "", status, type: t,
+    organization: "Belay Reports", date: "", location: "", status, type: t,
   });
   if (type === "inspection") {
     const { data } = await supabase.from("inspections").select("id, organization, inspection_date, location, status").is("deleted_at", null).like("id", p).limit(1).single();

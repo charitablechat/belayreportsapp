@@ -2,7 +2,8 @@ import { useState } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { Button } from '@/components/ui/button';
 import { useRequireAdmin } from '@/hooks/useRequireAdmin';
-import ropeWorksLogo from '@/assets/rope-works-logo-final.png';
+import belayReportsLogoAsset from "@/assets/belay-reports-wide.gif.asset.json";
+const belayReportsLogo = belayReportsLogoAsset.url;
 import acctLogo from '@/assets/acct-logo-final.png';
 
 const UploadLogos = () => {
@@ -13,21 +14,21 @@ const UploadLogos = () => {
     setUploading(true);
     try {
       // Fetch the logo files
-      const ropeWorksResponse = await fetch(ropeWorksLogo);
-      const ropeWorksBlob = await ropeWorksResponse.blob();
+      const belayReportsResponse = await fetch(belayReportsLogo);
+      const belayReportsBlob = await belayReportsResponse.blob();
       
       const acctResponse = await fetch(acctLogo);
       const acctBlob = await acctResponse.blob();
 
-      // Upload Rope Works logo
-      const { error: ropeWorksError } = await supabase.storage
+      // Upload Belay Reports logo
+      const { error: belayReportsError } = await supabase.storage
         .from('pdf-templates')
-        .upload('rope-works-logo.png', ropeWorksBlob, {
+        .upload('belay-reports-logo.png', belayReportsBlob, {
           contentType: 'image/png',
           upsert: true
         });
 
-      if (ropeWorksError) throw ropeWorksError;
+      if (belayReportsError) throw belayReportsError;
 
       // Upload ACCT logo
       const { error: acctError } = await supabase.storage
@@ -54,8 +55,8 @@ const UploadLogos = () => {
       
       <div className="space-y-4">
         <div>
-          <img src={ropeWorksLogo} alt="Rope Works Logo" className="max-w-md border mb-2" />
-          <p className="text-sm text-slate-600">Rope Works Logo</p>
+          <img src={belayReportsLogo} alt="Belay Reports Logo" className="max-w-md border mb-2" />
+          <p className="text-sm text-slate-600">Belay Reports Logo</p>
         </div>
 
         <div>

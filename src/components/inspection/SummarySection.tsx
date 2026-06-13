@@ -115,7 +115,7 @@ function SummarySection({ summary, onUpdate, onImmediateSave, onRegenerate, onNe
         </div>
 
         <div className="border-t pt-6">
-          <h3 className="text-base font-semibold mb-4">General Rope Works Inspection Retirement Guidelines:</h3>
+          <h3 className="text-base font-semibold mb-4">General Belay Reports Retirement Guidelines:</h3>
           <p className="text-xs text-muted-foreground mb-4">
             These are generalized and are not a substitute for the Pre use inspection.
           </p>
@@ -187,7 +187,7 @@ function SummarySection({ summary, onUpdate, onImmediateSave, onRegenerate, onNe
           <p>
             The information contained in this report has been documented by a Qualified Professional. 
             This report is effective for one year from the date of inspection. Issued by: 
-            Rope Works Inc., PO Box 1074, Dripping Springs, TX 78620
+            Belay Reports
           </p>
         </div>
       </CardContent>

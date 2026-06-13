@@ -4,7 +4,7 @@
  * This file provides consistent header/footer layouts across all report types.
  * 
  * LOGO PLACEMENT (PDF EXPORT REQUIREMENTS):
- * - HEADER: Both logos on same horizontal line (Rope Works LEFT, ACCT RIGHT)
+ * - HEADER: Both logos on same horizontal line (Belay Reports LEFT, ACCT RIGHT)
  * - FOOTER: NO LOGOS - only page number and disclaimer text
  * 
  * This ensures PDF exports have consistent branding without footer clutter.
@@ -31,10 +31,10 @@ export function arrayBufferToBase64(buffer: ArrayBuffer): string {
 }
 
 // Module-level cache: logos are fetched once per cold start and reused across warm invocations
-let cachedLogos: { ropeWorks: string; acct: string } | null = null;
+let cachedLogos: { belayReports: string; acct: string } | null = null;
 
 // Fetch logos from Supabase storage and convert to base64 data URIs
-export async function getLogoBase64(): Promise<{ropeWorks: string, acct: string}> {
+export async function getLogoBase64(): Promise<{belayReports: string, acct: string}> {
   if (cachedLogos) {
     console.log('[Report Layout] Using cached logos');
     return cachedLogos;
@@ -44,61 +44,61 @@ export async function getLogoBase64(): Promise<{ropeWorks: string, acct: string}
   // silently break PDF logo rendering.
   const supabaseUrl = Deno.env.get('SUPABASE_URL') ?? 'https://ssgzcgvygnsrqalisshx.supabase.co';
   const storageBaseUrl = `${supabaseUrl}/storage/v1/object/public/pdf-templates`;
-  const ropeWorksUrl = `${storageBaseUrl}/rope-works-logo-embedded.png`;
+  const belayReportsUrl = `${storageBaseUrl}/belay-reports-logo-embedded.png`;
   const acctUrl = `${storageBaseUrl}/acct-logo-embedded.png`;
   
   console.log('[Report Layout] Fetching logos from storage...');
   
   try {
-    const [ropeWorksResponse, acctResponse] = await Promise.all([
-      fetch(ropeWorksUrl),
+    const [belayReportsResponse, acctResponse] = await Promise.all([
+      fetch(belayReportsUrl),
       fetch(acctUrl)
     ]);
     
-    if (ropeWorksResponse.ok && acctResponse.ok) {
-      const [ropeWorksBuffer, acctBuffer] = await Promise.all([
-        ropeWorksResponse.arrayBuffer(),
+    if (belayReportsResponse.ok && acctResponse.ok) {
+      const [belayReportsBuffer, acctBuffer] = await Promise.all([
+        belayReportsResponse.arrayBuffer(),
         acctResponse.arrayBuffer()
       ]);
       
-      const ropeWorksBase64 = arrayBufferToBase64(ropeWorksBuffer);
+      const belayReportsBase64 = arrayBufferToBase64(belayReportsBuffer);
       const acctBase64 = arrayBufferToBase64(acctBuffer);
       
-      const ropeWorksMime = ropeWorksResponse.headers.get('content-type') || 'image/png';
+      const belayReportsMime = belayReportsResponse.headers.get('content-type') || 'image/png';
       const acctMime = acctResponse.headers.get('content-type') || 'image/png';
       
       console.log('[Report Layout] Successfully loaded logos from storage');
       
       cachedLogos = {
-        ropeWorks: `data:${ropeWorksMime};base64,${ropeWorksBase64}`,
+        belayReports: `data:${belayReportsMime};base64,${belayReportsBase64}`,
         acct: `data:${acctMime};base64,${acctBase64}`
       };
       return cachedLogos;
     } else {
-      console.error('[Report Layout] Failed to fetch logos:', ropeWorksResponse.status, acctResponse.status);
+      console.error('[Report Layout] Failed to fetch logos:', belayReportsResponse.status, acctResponse.status);
     }
   } catch (error) {
     console.error('[Report Layout] Error fetching logos:', error);
   }
   
   console.warn('[Report Layout] Using placeholder logos');
-  return { ropeWorks: PLACEHOLDER_LOGO, acct: PLACEHOLDER_LOGO };
+  return { belayReports: PLACEHOLDER_LOGO, acct: PLACEHOLDER_LOGO };
 }
 
 /**
  * Creates the page header with both logos on same line
- * - Rope Works logo: LEFT aligned
+ * - Belay Reports logo: LEFT aligned
  * - ACCT logo: RIGHT aligned
  * - Both on same horizontal line (flexbox nowrap)
  */
-export function createPageHeader(ropeWorksLogo: string, acctLogo: string): string {
+export function createPageHeader(belayReportsLogo: string, acctLogo: string): string {
   // Use table layout for PDF reliability - tables never wrap cells to new rows
   return `
     <div class="page-header">
       <table class="header-logo-table" cellpadding="0" cellspacing="0" border="0">
         <tr>
           <td class="header-cell-left">
-            <img src="${ropeWorksLogo}" alt="Rope Works" class="header-logo-left">
+            <img src="${belayReportsLogo}" alt="Belay Reports" class="header-logo-left">
           </td>
           <td class="header-cell-right">
             <img src="${acctLogo}" alt="ACCT Accredited Vendor" class="header-logo-right">
@@ -317,14 +317,14 @@ export function buildVersionFooter(opts: {
 
 /**
  * Shared CSS for header/footer layout
- * HEADER: Both logos on same horizontal line (Rope Works LEFT, ACCT RIGHT)
+ * HEADER: Both logos on same horizontal line (Belay Reports LEFT, ACCT RIGHT)
  * FOOTER: NO logos - only page number, line, and disclaimer
  */
 export const SHARED_HEADER_FOOTER_CSS = `
     /* 
      * SHARED HEADER/FOOTER LAYOUT
      * ============================
-     * HEADER: Both logos on same line (LEFT: Rope Works, RIGHT: ACCT)
+     * HEADER: Both logos on same line (LEFT: Belay Reports, RIGHT: ACCT)
      * FOOTER: NO logos - only page number and disclaimer text
      */
     :root {

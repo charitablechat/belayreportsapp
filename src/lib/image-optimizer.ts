@@ -24,10 +24,10 @@ export interface OptimizedResult {
 
 // Optimal dimensions for different logo types
 export const LOGO_PRESETS = {
-  ropeWorks: {
+  belayReports: {
     maxWidth: 300,
     maxHeight: 140,
-    label: 'Rope Works Logo (300×140px)'
+    label: 'Belay Reports Logo (300×140px)'
   },
   acct: {
     maxWidth: 240,

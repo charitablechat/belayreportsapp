@@ -30,7 +30,7 @@ const COMMON_PASSWORDS = new Set([
   'qwerty', 'qwerty123', 'abc123', 'abcd1234', 'letmein', 'welcome',
   'welcome1', 'admin', 'admin123', 'iloveyou', 'monkey', 'football',
   'dragon', 'baseball', 'master', 'sunshine', 'princess', 'solo',
-  'starwars', 'ropeworks', 'ropeworks123', 'changeme', 'password!',
+  'starwars', 'belayreports', 'belayreports123', 'ropeworks', 'ropeworks123', 'changeme', 'password!',
 ]);
 
 function validatePasswordStrength(rawPassword: string | undefined | null): string | null {

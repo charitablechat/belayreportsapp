@@ -24,7 +24,7 @@ serve(async (req) => {
     }
 
     const url = new URL(req.url);
-    const logoType = url.searchParams.get('type') || 'rope-works';
+    const logoType = url.searchParams.get('type') || 'belay-reports';
     
     console.log(`Fetching logo: ${logoType}`);
     
@@ -37,7 +37,7 @@ serve(async (req) => {
     // Map logo types to storage paths
     const logoPath = logoType === 'acct' 
       ? 'acct-logo-embedded.png'
-      : 'rope-works-logo-embedded.png';
+      : 'belay-reports-logo-embedded.png';
     
     const storageUrl = `${supabaseUrl}/storage/v1/object/public/pdf-templates/${logoPath}`;
     

@@ -8,7 +8,7 @@
 // Callers should treat the return value as opaque (no trailing slash,
 // scheme included). Pass through to Supabase as `redirectTo` or embed
 // directly into HTML/JSON response bodies.
-const PRODUCTION_FALLBACK = "https://ropeworks.lovable.app";
+const PRODUCTION_FALLBACK = "https://belayreports.com";
 
 let warnedOnce = false;
 

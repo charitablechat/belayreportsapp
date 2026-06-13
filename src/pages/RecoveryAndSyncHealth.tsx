@@ -643,7 +643,7 @@ export default function RecoveryAndSyncHealth() {
           <p className="font-semibold">How to check a report</p>
           <ol className="list-decimal pl-5 space-y-1.5">
             <li>
-              Open Ropeworks on the <strong>same device and browser</strong> where you originally
+              Open Belay Reports on the <strong>same device and browser</strong> where you originally
               typed the report.
             </li>
             <li>
@@ -737,7 +737,7 @@ export default function RecoveryAndSyncHealth() {
             <CardContent className="pt-6 text-sm">
               <p>No training reports were found on this device for this signed-in user.</p>
               <p className="text-muted-foreground mt-1">
-                If you were expecting to see a report here, open Ropeworks on the device where you
+                If you were expecting to see a report here, open Belay Reports on the device where you
                 originally typed it.
               </p>
             </CardContent>

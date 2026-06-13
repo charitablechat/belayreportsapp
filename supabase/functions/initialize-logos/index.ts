@@ -18,13 +18,13 @@ serve(async (req) => {
     // correct Supabase storage URL shape (/storage/v1/object/public/...).
     const storageBase = `${supabaseUrl}/storage/v1/object/public/pdf-templates`;
     const publicAssetUrls = [
-      `${storageBase}/rope-works-logo.png`,
+      `${storageBase}/belay-reports-logo.png`,
       `${storageBase}/acct-accredited-vendor.png`,
     ];
 
     const results = [];
 
-    // Upload rope-works logo
+    // Upload belay-reports logo
     try {
       const response = await fetch(publicAssetUrls[0]);
       if (response.ok) {
@@ -34,22 +34,22 @@ serve(async (req) => {
         
         const { data, error } = await supabase.storage
           .from('pdf-templates')
-          .upload('rope-works-logo-embedded.png', uint8Array, {
+          .upload('belay-reports-logo-embedded.png', uint8Array, {
             contentType: 'image/png',
             upsert: true
           });
         
         if (error) {
-          results.push({ logo: 'rope-works', status: 'error', message: error.message });
+          results.push({ logo: 'belay-reports', status: 'error', message: error.message });
         } else {
-          results.push({ logo: 'rope-works', status: 'success', path: data.path });
+          results.push({ logo: 'belay-reports', status: 'success', path: data.path });
         }
       } else {
-        results.push({ logo: 'rope-works', status: 'error', message: `HTTP ${response.status}` });
+        results.push({ logo: 'belay-reports', status: 'error', message: `HTTP ${response.status}` });
       }
     } catch (error) {
       results.push({ 
-        logo: 'rope-works', 
+        logo: 'belay-reports', 
         status: 'error', 
         message: error instanceof Error ? error.message : String(error)
       });

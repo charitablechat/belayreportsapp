@@ -216,12 +216,12 @@ const OfflineRouteError = () => {
     <div className="min-h-screen bg-background text-foreground flex items-center justify-center px-6 py-10">
       <main className="w-full max-w-sm text-center space-y-5">
         <img
-          src="/rope-works-logo.avif"
-          alt="Rope Works"
+          src="/__l5e/assets-v1/8c7f8dfa-a725-400e-8f7e-c806cf7d7039/belay-reports-wide.gif"
+          alt="Belay Reports"
           className="mx-auto h-24 w-24 rounded-full object-contain bg-background"
         />
         <div className="space-y-2">
-          <h1 className="text-2xl font-semibold">Open Rope Works offline</h1>
+          <h1 className="text-2xl font-semibold">Open Belay Reports offline</h1>
           <p className="text-sm text-muted-foreground">
             The app shell is available. Continue offline and your work will stay on this device until you reconnect.
           </p>

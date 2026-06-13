@@ -88,7 +88,7 @@ serve(async (req: Request) => {
     const desc = isPublic
       ? [date, location, statusLabel].filter(Boolean).join(" | ")
       : `${statusLabel} ${typeLabel}`;
-    const title = isPublic ? `${typeLabel} — ${org}` : `${typeLabel} — Rope Works`;
+    const title = isPublic ? `${typeLabel} — ${org}` : `${typeLabel} — Belay Reports`;
 
 
     const ogImageUrl = `${functionsBaseUrl}/generate-og-image?type=${type}&id=${id}&size=og`;
@@ -106,7 +106,7 @@ serve(async (req: Request) => {
   <meta property="og:image" content="${escapeHtml(ogImageUrl)}" />
   <meta property="og:image:width" content="1200" />
   <meta property="og:image:height" content="630" />
-  <meta property="og:site_name" content="Rope Works" />
+  <meta property="og:site_name" content="Belay Reports" />
   <meta name="twitter:card" content="summary_large_image" />
   <meta name="twitter:title" content="${escapeHtml(title)}" />
   <meta name="twitter:description" content="${escapeHtml(desc)}" />
@@ -114,7 +114,7 @@ serve(async (req: Request) => {
   <meta http-equiv="refresh" content="0;url=${spaBaseUrl}/dashboard" />
 </head>
 <body style="background:#0a0a0a;color:#e0e0e0;font-family:monospace;display:flex;align-items:center;justify-content:center;height:100vh;margin:0">
-  <p>Redirecting to <a href="${spaBaseUrl}/dashboard" style="color:#00ff41">Rope Works</a>…</p>
+  <p>Redirecting to <a href="${spaBaseUrl}/dashboard" style="color:#00ff41">Belay Reports</a>…</p>
 </body>
 </html>`;
 
