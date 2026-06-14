@@ -22,7 +22,7 @@ const DB_NAME = 'rope-works-inspections';
 const STORE_NAME = 'sync_empty_local_conflicts';
 const TTL_MS = 30 * 24 * 60 * 60 * 1000; // 30 days
 
-export type EmptyLocalReportType = 'inspection' | 'training' | 'daily_assessment';
+export type EmptyLocalReportType = 'inspection' | 'training' | 'daily_assessment' | 'jcf';
 
 export interface EmptyLocalConflictEntry {
   /** Parent record id (inspection/training/assessment). Primary key. */
