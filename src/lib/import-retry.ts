@@ -108,10 +108,9 @@ export async function retryFailedImport(
 
   const results = await Promise.allSettled(
     tablesToRetry.map(([table, rows]) =>
-      supabase
-        .from(table)
+      (supabase.from(table) as any)
         .insert(rows)
-        .then(({ error }) => {
+        .then(({ error }: { error: unknown }) => {
           if (error) throw error;
         })
     )

@@ -463,7 +463,7 @@ export default function NewInspection() {
 
     const results = await Promise.allSettled(
       jobs.map((job) =>
-        supabase.from(job.table).insert(job.rows).then(({ error }) => { if (error) throw error; })
+        (supabase.from(job.table) as any).insert(job.rows).then(({ error }: { error: unknown }) => { if (error) throw error; })
       )
     );
 
