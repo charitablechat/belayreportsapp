@@ -1839,7 +1839,7 @@ function makeIdbReadFailure(context: string, error: unknown): IdbReadFailure {
  * can still detect the empty-ledger / failed-fallback path via the
  * `idbError` log line.
  */
-type LedgerReportType = 'inspection' | 'training' | 'daily_assessment';
+type LedgerReportType = 'inspection' | 'training' | 'daily_assessment' | 'jcf';
 type WedgeLedgerFallbackOptions = { allowLedgerFallback?: boolean };
 async function withWedgeLedgerFallback<T extends { id?: string }>(
   reader: () => Promise<T[] | IdbReadFailure>,
@@ -1854,7 +1854,13 @@ async function withWedgeLedgerFallback<T extends { id?: string }>(
 
   try {
     const { listUnsyncedDbRowsFromLedger } = await import('./local-backup-ledger');
-    const ledgerRows = listUnsyncedDbRowsFromLedger(reportType, userId) as unknown as T[];
+    // JCF is not supported by the local-backup-ledger (no rw_backup_jcf_*
+    // snapshots are written). Skip the fallback rather than crash.
+    if (reportType === 'jcf') return result;
+    const ledgerRows = listUnsyncedDbRowsFromLedger(
+      reportType as 'inspection' | 'training' | 'daily_assessment',
+      userId,
+    ) as unknown as T[];
     console.warn('[Offline Storage] Mode 11A ledger fallback active', {
       context,
       reportType,
