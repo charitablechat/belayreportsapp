@@ -127,7 +127,7 @@ interface DashboardReportsSectionProps {
   inspections: any[];
   trainings: any[];
   dailyAssessments: any[];
-  jcfs: any[];
+  jcfs?: any[];
   allInspections?: any[];
   allTrainings?: any[];
   allDailyAssessments?: any[];
@@ -165,7 +165,7 @@ function DashboardReportsSectionImpl({
   inspections,
   trainings,
   dailyAssessments,
-  jcfs,
+  jcfs = [],
   allInspections,
   allTrainings,
   allDailyAssessments,
