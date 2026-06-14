@@ -583,7 +583,7 @@ function DashboardReportsSectionImpl({
             />
           )}
 
-          {crossTabResults && crossTabResults.jcfs.length > 0 && (
+          {JCF_UI_ENABLED && crossTabResults && crossTabResults.jcfs.length > 0 && (
             <CrossTabSection
               label="JCFs"
               icon={<Briefcase className="w-4 h-4" />}
