@@ -148,13 +148,12 @@ export function listTombstones(table: TombstonedTable): string[] {
 // ('inspection' | 'training' | 'daily_assessment'). Translate to the plural
 // IDB store name used as the tombstone bucket key.
 export function tableForReportType(
-  reportType: 'inspection' | 'training' | 'daily_assessment' | 'jcf',
+  reportType: 'inspection' | 'training' | 'daily_assessment',
 ): TombstonedTable {
   switch (reportType) {
     case 'inspection': return 'inspections';
     case 'training': return 'trainings';
     case 'daily_assessment': return 'daily_assessments';
-    case 'jcf': return 'jcf_reports';
   }
 }
 
