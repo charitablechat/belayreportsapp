@@ -510,7 +510,8 @@ function DashboardReportsSectionImpl({
             activeReportTab === 'inspections' ? inspectionsValidated
             : activeReportTab === 'training' ? trainingsValidated
             : activeReportTab === 'daily' ? dailyValidated
-            : (inspectionsValidated && trainingsValidated && dailyValidated)
+            : activeReportTab === 'jcf' ? jcfsValidated
+            : (inspectionsValidated && trainingsValidated && dailyValidated && jcfsValidated)
           }
         />
       )}
@@ -576,6 +577,20 @@ function DashboardReportsSectionImpl({
               profilesById={profilesById}
             />
           )}
+
+          {crossTabResults && crossTabResults.jcfs.length > 0 && (
+            <CrossTabSection
+              label="JCFs"
+              icon={<Briefcase className="w-4 h-4" />}
+              reports={crossTabResults.jcfs}
+              type="jcf"
+              compact={compact}
+              viewMode={filters.viewMode}
+              onDelete={(r) => handleDeleteForType(r, 'jcf')}
+              onClick={(r) => handleClick(r, 'jcf')}
+              profilesById={profilesById}
+            />
+          )}
         </div>
       ) : (
         /* Normal tab-based view */
@@ -593,6 +608,10 @@ function DashboardReportsSectionImpl({
               <FileText className="w-4 h-4 hidden sm:inline" />
               Daily ({totalDailyAssessments !== undefined ? totalDailyAssessments : '…'})
             </TabsTrigger>
+            <TabsTrigger value="jcf" className="flex items-center gap-2">
+              <Briefcase className="w-4 h-4 hidden sm:inline" />
+              JCF ({totalJcfs !== undefined ? totalJcfs : '…'})
+            </TabsTrigger>
             {isSuperAdmin && (
               <TabsTrigger value="invoiced" className="flex items-center gap-2">
                 <Receipt className="w-4 h-4 hidden sm:inline" />
@@ -602,7 +621,7 @@ function DashboardReportsSectionImpl({
           </TabsList>
 
           {/* Content for all tabs - rendered by the same logic */}
-          {['inspections', 'training', 'daily', ...(isSuperAdmin ? ['invoiced'] : [])].map((tab) => (
+          {['inspections', 'training', 'daily', 'jcf', ...(isSuperAdmin ? ['invoiced'] : [])].map((tab) => (
             <TabsContent key={tab} value={tab}>
               {loading ? (
                 <div className="grid gap-4">
