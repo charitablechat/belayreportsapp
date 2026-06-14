@@ -166,6 +166,10 @@ import {
   getQueuedAssessmentOperations,
   removeQueuedAssessmentOperation,
   isInPostOnlineRecoveryGrace,
+  getUnsyncedJCFs,
+  saveJCFOffline,
+  getOfflineJCF,
+  deleteOfflineJCF,
 } from "./offline-storage";
 import { 
   validateInspectionPackage,
