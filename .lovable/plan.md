@@ -1,61 +1,66 @@
-## Scope
+## Glassmorphism Dashboard & Report Cards Redesign
 
-Replace legacy "Rope Works" branding with Belay Reports in the PWA manifest, head metadata, and all PWA icon files. Use the uploaded square icon as the source of truth for icon generation.
+### Objective
+Elevate the dashboard and report cards to a premium, professional aesthetic using a consistent Glassmorphism design language — translucent surfaces, soft blurs, subtle gradients, and a neutral refined palette. All changes are purely cosmetic; zero data or functional logic is touched.
 
-## Files changed
+### Scope
+- **Dashboard page container** (`src/pages/Dashboard.tsx`)
+- **Report cards** (`src/components/dashboard/ReportCard.tsx`)
+- **Stats bar** (`src/components/dashboard/DashboardStatsBar.tsx`)
+- **Foyer action cards** (within Dashboard.tsx)
+- **Supporting design tokens** (`src/index.css`)
+- **Card primitive** (`src/components/ui/card.tsx`) — optional glass variant
 
-1. **`vite-pwa-config.ts`** — manifest fields:
-   - `name`: `"Rope Works Inspection"` → `"Belay Reports"`
-   - `short_name`: `"RW Inspect"` → `"Belay Reports"` (12 chars, fits iOS/Android home-screen labels)
-   - `description`: unchanged (already generic, no legacy brand)
-   - `theme_color`: keep `#1e40af` (no new brand color was specified — call out and ask later if needed)
-   - `includeAssets`: drop `rope-works-logo.avif` (file doesn't exist in `public/`, currently a dead reference)
-   - `icons` array: paths unchanged (`icons/icon-192.png` etc.) — the underlying PNGs are regenerated in step 3
+### Out of Scope
+- Form pages (Inspection, Training, Daily, JCF)
+- Dialogs, sheets, and modals
+- Non-dashboard routes
 
-2. **`index.html`** — three legacy strings:
-   - `<meta name="author" content="Rope Works Inc." />` → `"Belay Reports"`
-   - `<meta name="apple-mobile-web-app-title" content="Rope Works" />` → `"Belay Reports"`
-   - `<link rel="preload" as="image" href="/rope-works-logo.avif" ...>` → delete this line (the file isn't shipped)
-   - `<title>` already says "Belay Reports — Digital Inspection Platform" — unchanged
-   - `<meta name="description">` — unchanged (no brand reference)
+### Design Direction
+- **Surface treatment**: `backdrop-blur-md` (≈12px) with `bg-white/[0.03–0.08]` in light mode, `bg-slate-900/[0.25–0.40]` in dark mode.
+- **Borders**: ultra-subtle `border-white/10` (light) / `border-white/[0.06]` (dark) instead of solid `border-foreground`.
+- **Shadows**: soft diffuse shadows (`shadow-lg shadow-black/5`) for depth without heaviness.
+- **Age-state cards**: replace solid `bg-red-200`, `bg-yellow-50`, `bg-sky-50` with tinted glass — e.g., `bg-red-500/[0.03]` + `border-l-destructive/50`.
+- **Background layer**: replace the random texture image with a fixed, subtle animated mesh gradient (CSS-only, low CPU cost) behind the glass layers.
 
-3. **Icon PNG regeneration** — generate from uploaded `Belay_Reports_Icon_Logo_120_x_120_px.png` using Pillow (Lanczos resample for upscales, sharpening pass after upscale to mitigate 120→512 quality loss):
+### Implementation Steps
 
-   | File in `public/icons/` | Size | Purpose |
-   |---|---|---|
-   | `favicon-16.png` | 16×16 | browser tab |
-   | `favicon-32.png` | 32×32 | browser tab |
-   | `apple-touch-icon.png` | 180×180 | iOS home screen |
-   | `app-icon.png` | 512×512 | generic app icon |
-   | `icon-192.png` | 192×192 | PWA standard |
-   | `icon-512.png` | 512×512 | PWA standard |
-   | `icon-192-maskable.png` | 192×192 | PWA maskable — logo centered in 80% safe area on `#0b0f17` background to match the `background_color` |
-   | `icon-512-maskable.png` | 512×512 | same |
-   | `favicon.png` (`public/`) | 512×512 | root favicon referenced by `index.html` |
+#### 1. Design Tokens & Utilities (`src/index.css`)
+- Add `.glass-dashboard` utility: `backdrop-blur-md bg-white/[0.03] dark:bg-slate-900/30 border border-white/10 dark:border-white/[0.06] shadow-lg shadow-black/5`.
+- Add `.glass-card` override variant for report cards with tinted edge states.
+- Add a subtle `.dashboard-bg-gradient` keyframe animation for the page background (neutral slate/indigo tones, very low saturation).
 
-   Also overwrite `public/favicon.ico` with a multi-resolution ICO (16, 32, 48) generated from the same source so browsers requesting `/favicon.ico` get the new mark.
+#### 2. Dashboard Container (`src/pages/Dashboard.tsx`)
+- Replace the outer container’s solid `bg-background` with the new gradient background layer.
+- Wrap the `<main>` content area in a glass surface if needed for readability.
+- Update the **Reports Section** wrapper: remove `border-2 border-foreground rounded-lg p-4` and apply `.glass-dashboard` with generous padding.
+- Update **Foyer cards** (Inspection, Training, Daily, JCF): replace solid color accents with glass surfaces + subtle icon halo. Keep existing layout and navigation.
 
-   Source caveat: the uploaded icon is only 120×120. Upscaling to 512 loses sharpness. If you have a higher-res version (≥512×512 square PNG, transparent or solid background), share it and I'll re-run the icon generation — the rest of the plan stays the same.
+#### 3. Report Cards (`src/components/dashboard/ReportCard.tsx`)
+- Replace `ageStateClasses` solid backgrounds with glass tints:
+  - `critical`: `bg-red-500/[0.03] border-l-4 border-l-destructive/60`
+  - `warning`: `bg-amber-500/[0.03] border-l-4 border-l-amber-500/60`
+  - `completed`: `bg-sky-500/[0.03] border-l-4 border-l-sky-500/60`
+  - `default`: `bg-white/[0.02] border-l-4 border-l-muted-foreground/20`
+- Add `backdrop-blur-md` to the card base class.
+- Keep all interaction logic (hover lift, click, sparkles, haptics, badges, dropdown) untouched.
+- Ensure the `COMPLETED` and `INVOICED` watermarks remain visually legible over the new translucent backgrounds.
 
-## Files explicitly NOT changed
+#### 4. Stats Bar (`src/components/dashboard/DashboardStatsBar.tsx`)
+- Replace `bg-card` / `bg-primary/10` stat buttons with glass variants.
+- Active state: slightly elevated opacity + ring, no solid color block.
+- Storage pressure bar: keep existing logic, optionally soften the background to a glass tint.
 
-- **`public/db-config.js`** — `name: 'rope-works-inspections'` is the **IndexedDB database name**. Renaming it would orphan every installed PWA's offline reports, photos, and pending sync queue. Leave as-is.
-- **Test files** that reference `'rope-works-inspections'` (the IDB name) — unchanged for the same reason.
-- **`.lovable/memory/auth/offline-access-and-guest-mode.md`** and **`COMPREHENSIVE_TEST_PLAN.md`** — historical docs; not user-facing. Skip.
-- **`tests/e2e/smoke/offline-cold-start.spec.ts`** — uses the IDB name in fixture setup. Skip.
-- **`src/integrations/supabase/client.ts`**, project ref, custom domain config — not branding files.
-- **Service workers** (`sw-push.js`, `sw-sync.js`, `sw-offline-navigation.js`, `offline.html`) — no legacy brand text spotted; will grep again before declaring done. If any hit appears it will be the same small string swap.
+#### 5. Shadcn Card Primitive (`src/components/ui/card.tsx`)
+- **Decision needed**: either introduce an optional `glass` prop/variant, or leave the primitive untouched and apply glass classes via `className` overrides in dashboard components. *Plan recommends the latter* (no primitive changes) to avoid side-effects across the app.
 
-## Verification
+### Visual QA Checklist
+- [ ] Dashboard renders cleanly in both light and dark modes.
+- [ ] Report cards remain legible with all age states.
+- [ ] `COMPLETED` / `INVOICED` watermarks are still clearly visible.
+- [ ] Hover/active states on cards feel responsive.
+- [ ] No layout shifts or broken spacing.
+- [ ] Mobile viewport: glass readability holds, no performance degradation.
 
-1. `grep -rIn 'Rope Works\|rope-works\|RW Inspect' .` (excluding `node_modules`, `.lovable/memory`, `COMPREHENSIVE_TEST_PLAN.md`, test fixtures referencing the IDB name) returns nothing.
-2. Re-inspect each generated icon by reading the file dimensions back (Pillow `Image.open(...).size`) and visually viewing the 192 and 512 maskable variants to confirm safe-area centering.
-3. Reload preview, confirm browser tab favicon updated and `/manifest.webmanifest` returns the new `name`/`short_name` (curl from console or DevTools).
-4. Note to user: a browser that already installed the PWA caches `start_url`, `id`, and `scope` from the old manifest. Manifest name/icon updates appear after the next browser-driven manifest refresh; users who already installed the app will need to either wait for the OS to re-fetch or reinstall to see the new icon on the home screen. The new icon appears immediately in browsers that have not installed yet.
-
-## Risks
-
-- 120×120 source upscaled to 512 will look soft on retina home screens. Mitigated by Lanczos + a mild unsharp mask, but a true ≥512 source would be better. Flagged above.
-- The `theme_color` (`#1e40af` blue) doesn't match the teal+slate of the new logo. Not changing it without explicit guidance — happy to update if you give me the hex (or say "match the logo teal" and I'll sample it).
-
-Ready to execute on approval.
+### Estimated Effort
+Small — focused CSS/className changes across 4 files with no logic modifications.
