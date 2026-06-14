@@ -366,50 +366,68 @@ All colors MUST be HSL.
     @apply backdrop-blur-md bg-white/40 dark:bg-[hsl(var(--primary-dark))]/40 border border-white/50 dark:border-white/10 shadow-lg rounded-lg;
   }
 
-  /* Premium frosted-glass surfaces for the BelayReports teal aurora canvas.
-     Translucent, blurred, lifted — tuned to read cleanly on the light teal
-     canvas in light mode and on deep teal in dark mode. */
+  /* Frosted-glass surface system — Deep Dark Glassmorphism.
+     Light mode keeps the earlier light-teal glass; dark mode uses the
+     BelayReports spec: rgba(255,255,255,0.07) on a teal hairline. */
   .glass-surface {
-    @apply backdrop-blur-xl bg-white/55 dark:bg-[hsl(var(--primary-dark))]/45
-           border border-white/50 dark:border-white/[0.08]
-           shadow-[0_10px_40px_-12px_hsl(var(--primary-dark)/0.25)] rounded-xl;
+    @apply backdrop-blur-xl bg-white/55 dark:bg-white/[0.07]
+           border border-white/50 dark:border-[rgba(20,184,166,0.18)]
+           shadow-[0_10px_40px_-12px_hsl(var(--primary-dark)/0.25)]
+           dark:shadow-[0_8px_32px_rgba(0,0,0,0.35)] rounded-xl;
   }
 
   .glass-panel {
-    @apply backdrop-blur-xl bg-white/60 dark:bg-[hsl(var(--primary-dark))]/50
-           border border-white/55 dark:border-white/[0.10]
-           shadow-[0_20px_60px_-20px_hsl(var(--primary-dark)/0.35)] rounded-2xl;
+    @apply backdrop-blur-xl bg-white/60 dark:bg-white/[0.07]
+           border border-white/55 dark:border-[rgba(20,184,166,0.18)]
+           shadow-[0_20px_60px_-20px_hsl(var(--primary-dark)/0.35)]
+           dark:shadow-[0_8px_32px_rgba(0,0,0,0.35)] rounded-2xl;
+  }
+
+  /* Stronger teal hairline for the three report-type cards. */
+  .glass-panel-strong {
+    @apply backdrop-blur-xl bg-white/60 dark:bg-white/[0.07]
+           border border-white/55 dark:border-[rgba(20,184,166,0.28)]
+           shadow-[0_20px_60px_-20px_hsl(var(--primary-dark)/0.35)]
+           dark:shadow-[0_8px_32px_rgba(0,0,0,0.35)] rounded-2xl;
   }
 
   .glass-report-card {
-    @apply backdrop-blur-xl bg-white/55 dark:bg-[hsl(var(--primary-dark))]/45
-           border border-white/50 dark:border-white/[0.08]
-           shadow-[0_10px_30px_-12px_hsl(var(--primary-dark)/0.25)];
+    @apply backdrop-blur-xl bg-white/55 dark:bg-white/[0.07]
+           border border-white/50 dark:border-[rgba(20,184,166,0.18)]
+           shadow-[0_10px_30px_-12px_hsl(var(--primary-dark)/0.25)]
+           dark:shadow-[0_8px_32px_rgba(0,0,0,0.35)]
+           dark:hover:bg-white/[0.11] dark:hover:border-[rgba(20,184,166,0.35)]
+           dark:hover:-translate-y-px transition-all duration-200;
   }
 
   .glass-stat-button {
-    @apply backdrop-blur-md bg-white/50 dark:bg-[hsl(var(--primary-dark))]/40
-           border border-white/55 dark:border-white/[0.08] shadow-sm;
+    @apply backdrop-blur-md bg-white/50 dark:bg-white/[0.07]
+           border border-white/55 dark:border-[rgba(20,184,166,0.18)] shadow-sm
+           dark:shadow-[0_8px_32px_rgba(0,0,0,0.35)];
   }
 
-  /* Frosted input — for search bars, selects, textareas inside glass panels. */
+  /* Frosted input — search bars, selects, textareas inside glass panels. */
   .glass-input {
-    @apply backdrop-blur-md bg-white/55 dark:bg-[hsl(var(--primary-dark))]/40
-           border border-white/55 dark:border-white/[0.10]
-           focus:border-primary/60 focus-visible:ring-primary/40;
+    @apply backdrop-blur-md bg-white/55 dark:bg-white/[0.06]
+           border border-white/55 dark:border-white/[0.12]
+           text-foreground dark:text-white/80
+           placeholder:text-muted-foreground dark:placeholder:text-white/35
+           focus:border-primary/60 focus-visible:ring-primary/40
+           dark:focus:bg-white/[0.09] dark:focus:border-primary/50;
   }
 
-  /* Frosted chip — for Badges and small pills. */
+  /* Frosted chip — Badges and small pills. */
   .glass-chip {
-    @apply backdrop-blur-md bg-white/55 dark:bg-[hsl(var(--primary-dark))]/40
-           border border-white/55 dark:border-white/[0.10];
+    @apply backdrop-blur-md bg-white/55 dark:bg-white/[0.10]
+           border border-white/55 dark:border-white/[0.15];
   }
 
-  /* Frosted header bar. */
+  /* Frosted top-bar header. */
   .glass-header {
-    @apply backdrop-blur-2xl bg-white/55 dark:bg-[hsl(var(--primary-dark))]/45
-           border border-white/55 dark:border-white/[0.10]
-           shadow-[0_8px_24px_-12px_hsl(var(--primary-dark)/0.25)];
+    @apply backdrop-blur-2xl bg-white/55 dark:bg-[rgba(13,61,61,0.75)]
+           border-b border-white/55 dark:border-[rgba(20,184,166,0.20)]
+           shadow-[0_8px_24px_-12px_hsl(var(--primary-dark)/0.25)]
+           dark:shadow-[0_2px_16px_rgba(0,0,0,0.4)];
   }
 
   /* Subtle 1px top-edge highlight that makes glass feel lit from above. */
@@ -418,11 +436,17 @@ All colors MUST be HSL.
       0 10px 30px -12px hsl(var(--primary-dark) / 0.25),
       inset 0 1px 0 0 hsl(0 0% 100% / 0.55);
   }
+  .dark .glass-card-glow {
+    box-shadow:
+      0 8px 32px rgba(0, 0, 0, 0.35),
+      inset 0 1px 0 0 rgba(255, 255, 255, 0.08);
+  }
 
   /* Safari fallback — drop to solid card fill when backdrop-filter is absent. */
   @supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
-    .glass-card, .glass-surface, .glass-panel, .glass-report-card,
-    .glass-stat-button, .glass-input, .glass-chip, .glass-header {
+    .glass-card, .glass-surface, .glass-panel, .glass-panel-strong,
+    .glass-report-card, .glass-stat-button, .glass-input, .glass-chip,
+    .glass-header {
       background-color: hsl(var(--card));
     }
   }
