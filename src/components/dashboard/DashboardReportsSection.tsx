@@ -628,7 +628,7 @@ function DashboardReportsSectionImpl({
           </TabsList>
 
           {/* Content for all tabs - rendered by the same logic */}
-          {['inspections', 'training', 'daily', 'jcf', ...(isSuperAdmin ? ['invoiced'] : [])].map((tab) => (
+          {['inspections', 'training', 'daily', ...(JCF_UI_ENABLED ? ['jcf'] : []), ...(isSuperAdmin ? ['invoiced'] : [])].map((tab) => (
             <TabsContent key={tab} value={tab}>
               {loading ? (
                 <div className="grid gap-4">
