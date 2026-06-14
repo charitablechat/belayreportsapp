@@ -349,21 +349,61 @@ All colors MUST be HSL.
   }
 
   /* Premium glassmorphism surfaces used across the dashboard.
-     Cosmetic only — pair with existing layout classes. */
+     Tuned for the Deep Navy Editorial canvas — frosted, luminous, lifted. */
   .glass-surface {
-    @apply backdrop-blur-md bg-white/40 dark:bg-slate-900/30 border border-white/40 dark:border-white/[0.06] shadow-[0_8px_30px_-12px_rgba(15,23,42,0.15)] rounded-xl;
+    @apply backdrop-blur-xl bg-white/[0.06] dark:bg-slate-900/40 border border-white/[0.12] dark:border-white/[0.08] shadow-[0_8px_32px_rgba(2,6,23,0.35)] rounded-xl;
   }
 
   .glass-panel {
-    @apply backdrop-blur-xl bg-white/55 dark:bg-slate-900/40 border border-white/50 dark:border-white/[0.08] shadow-[0_20px_50px_-20px_rgba(15,23,42,0.25)] rounded-2xl;
+    @apply backdrop-blur-xl bg-white/[0.06] dark:bg-slate-900/45 border border-white/[0.14] dark:border-white/[0.10] shadow-[0_20px_60px_rgba(2,6,23,0.45)] rounded-2xl;
   }
 
   .glass-report-card {
-    @apply backdrop-blur-md bg-white/55 dark:bg-slate-900/35 border border-white/40 dark:border-white/[0.06] shadow-[0_6px_24px_-12px_rgba(15,23,42,0.18)];
+    @apply backdrop-blur-xl bg-white/[0.05] dark:bg-slate-900/40 border border-white/[0.10] dark:border-white/[0.07] shadow-[0_8px_28px_rgba(2,6,23,0.35)];
   }
 
   .glass-stat-button {
-    @apply backdrop-blur-sm bg-white/40 dark:bg-slate-900/30 border border-white/40 dark:border-white/[0.06] shadow-sm;
+    @apply backdrop-blur-md bg-white/[0.05] dark:bg-slate-900/35 border border-white/[0.10] dark:border-white/[0.08] shadow-sm;
+  }
+
+  /* Subtle 1px top-edge highlight that makes glass feel lit from above. */
+  .glass-card-glow {
+    box-shadow:
+      0 8px 28px rgba(2, 6, 23, 0.35),
+      inset 0 1px 0 0 rgba(255, 255, 255, 0.08);
+  }
+
+  /* Deep Navy Editorial canvas — fixed full-viewport background with a slow,
+     compositor-only animated gradient mesh. Respects prefers-reduced-motion. */
+  .dashboard-canvas {
+    position: fixed;
+    inset: 0;
+    z-index: 0;
+    overflow: hidden;
+    background-color: #0b1220;
+    background-image:
+      radial-gradient(ellipse 80% 60% at 20% 20%, rgba(51, 65, 85, 0.55), transparent 60%),
+      radial-gradient(ellipse 70% 60% at 80% 30%, rgba(30, 41, 59, 0.7), transparent 65%),
+      radial-gradient(ellipse 90% 70% at 50% 100%, rgba(15, 23, 42, 0.95), transparent 70%),
+      linear-gradient(180deg, #0f172a 0%, #1e293b 60%, #0f172a 100%);
+    background-size: 200% 200%, 200% 200%, 200% 200%, 100% 100%;
+    background-position: 0% 0%, 100% 0%, 50% 100%, 0% 0%;
+    animation: dashboard-canvas-drift 60s ease-in-out infinite alternate;
+    will-change: background-position;
+  }
+  .dashboard-canvas::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(180deg, rgba(2, 6, 23, 0.35) 0%, rgba(2, 6, 23, 0.15) 40%, rgba(2, 6, 23, 0.55) 100%);
+    pointer-events: none;
+  }
+  @keyframes dashboard-canvas-drift {
+    0%   { background-position: 0% 0%, 100% 0%, 50% 100%, 0% 0%; }
+    100% { background-position: 20% 15%, 80% 25%, 55% 90%, 0% 0%; }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .dashboard-canvas { animation: none; }
   }
 
   /*

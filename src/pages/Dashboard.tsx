@@ -2004,20 +2004,9 @@ export default function Dashboard() {
         </div>
       )}
       
-      {/* Background image */}
-      <div className="fixed inset-0 z-0 overflow-hidden">
-        <img
-          src={getSessionBackground()}
-          alt=""
-          className="w-full h-full object-cover object-center"
-        />
-        
-        {/* Gradient fade: ensures text/cards remain readable over full-page background */}
-        <div className="absolute inset-0 bg-gradient-to-b from-slate-900/50 via-background/60 to-background/80" />
-        
-        {/* Reduced motion fallback */}
-        <div className="absolute inset-0 bg-gradient-to-br from-blue-900/80 via-sky-900/70 to-blue-900/80 hidden motion-reduce:block" />
-      </div>
+      {/* Deep Navy Editorial canvas — slow animated gradient mesh.
+          Cosmetic only; getSessionBackground() retained for fast revert. */}
+      <div className="dashboard-canvas" aria-hidden="true" />
       <div className="relative z-10 min-h-screen">
         <header className="border-b border-white/20 bg-white/10 dark:bg-black/20 backdrop-blur-[12px] shadow-md shadow-black/5">
         <div className="container mx-auto px-1 md:px-4 py-3 md:py-4">

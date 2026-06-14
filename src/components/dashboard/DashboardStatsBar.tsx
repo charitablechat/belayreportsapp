@@ -38,8 +38,8 @@ export function DashboardStatsBar({ total, drafts, overdue, completed, onFilterC
                 "flex flex-col items-center gap-1 rounded-xl p-2.5 transition-all text-center",
                 "hover:-translate-y-0.5 hover:shadow-md",
                 isActive
-                  ? "backdrop-blur-md bg-primary/15 border border-primary/40 ring-1 ring-primary/20 shadow-sm"
-                  : "glass-stat-button hover:bg-white/60 dark:hover:bg-slate-900/50"
+                  ? "backdrop-blur-md bg-primary/25 border border-primary/60 ring-2 ring-primary/30 shadow-[0_4px_20px_rgba(59,130,246,0.35)]"
+                  : "glass-stat-button hover:bg-white/[0.10] dark:hover:bg-slate-900/55"
               )}
             >
               <div className="flex items-center gap-1.5">
