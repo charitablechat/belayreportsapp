@@ -3049,6 +3049,21 @@ export async function getDB() {
               console.warn('[Offline Storage] v19 autocomplete_history.synced coercion failed:', err);
             }
           }
+          // === NEW in v21: jcf_reports + jcf_operations stores ===
+          if (!db.objectStoreNames.contains('jcf_reports')) {
+            const store = db.createObjectStore('jcf_reports', { keyPath: 'id' });
+            store.createIndex('by-status', 'status');
+            store.createIndex('by-synced', 'synced_at');
+            if (import.meta.env.DEV) {
+              console.log('[Offline Storage] Created jcf_reports store (v21 upgrade)');
+            }
+          }
+          if (!db.objectStoreNames.contains('jcf_operations')) {
+            db.createObjectStore('jcf_operations', { autoIncrement: true });
+            if (import.meta.env.DEV) {
+              console.log('[Offline Storage] Created jcf_operations store (v21 upgrade)');
+            }
+          }
         },
       });
     };
