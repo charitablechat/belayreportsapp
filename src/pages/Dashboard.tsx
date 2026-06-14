@@ -2122,7 +2122,7 @@ export default function Dashboard() {
                 </p>
               </div>
 
-              <div className="grid md:grid-cols-3 gap-6 max-w-6xl mx-auto">
+              <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-6 max-w-6xl mx-auto">
                 {/* INSPECTION CARD - FUNCTIONAL */}
                 <Card 
                   className="relative overflow-visible hover:shadow-2xl transition-all duration-300 border-2 hover:border-blue-500 cursor-pointer group"
