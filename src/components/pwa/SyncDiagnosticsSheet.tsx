@@ -1141,6 +1141,7 @@ const REPORT_TYPE_LABEL: Record<EmptyLocalConflictEntry['reportType'], string> =
   inspection: 'Inspection',
   training: 'Training',
   daily_assessment: 'Daily Assessment',
+  jcf: 'Job Completion Form',
 };
 
 const EmptyLocalConflictRow = ({
