@@ -187,8 +187,8 @@ All colors MUST be HSL.
     --secondary-foreground: 0 0% 100%;
 
     --muted: 180 48% 19%;
-    --muted-foreground: 0 0% 100% / 0.7;
-    --text-muted: 0 0% 100% / 0.5;
+    --muted-foreground: 0 0% 100% / 0.88;
+    --text-muted: 0 0% 100% / 0.62;
 
     --accent: 173 80% 40%;
     --accent-foreground: 0 0% 100%;
@@ -333,7 +333,7 @@ All colors MUST be HSL.
 
   /* Deep dark gradient as a full-viewport canvas behind the app. */
   .dark body {
-    background: linear-gradient(135deg, #0D3D3D 0%, #0A2E2E 40%, #071E2A 100%);
+    background: linear-gradient(135deg, #0A2828 0%, #081E2E 55%, #060F1A 100%);
     background-attachment: fixed;
     min-height: 100vh;
   }
@@ -370,39 +370,39 @@ All colors MUST be HSL.
      Light mode keeps the earlier light-teal glass; dark mode uses the
      BelayReports spec: rgba(255,255,255,0.07) on a teal hairline. */
   .glass-surface {
-    @apply backdrop-blur-xl bg-white/55 dark:bg-white/[0.07]
-           border border-white/50 dark:border-[rgba(20,184,166,0.18)]
+    @apply backdrop-blur-xl bg-white/55 dark:bg-white/[0.10]
+           border border-white/50 dark:border-[rgba(20,184,166,0.28)]
            shadow-[0_10px_40px_-12px_hsl(var(--primary-dark)/0.25)]
            dark:shadow-[0_8px_32px_rgba(0,0,0,0.35)] rounded-xl;
   }
 
   .glass-panel {
-    @apply backdrop-blur-xl bg-white/60 dark:bg-white/[0.07]
-           border border-white/55 dark:border-[rgba(20,184,166,0.18)]
+    @apply backdrop-blur-xl bg-white/60 dark:bg-white/[0.09]
+           border border-white/55 dark:border-[rgba(20,184,166,0.28)]
            shadow-[0_20px_60px_-20px_hsl(var(--primary-dark)/0.35)]
            dark:shadow-[0_8px_32px_rgba(0,0,0,0.35)] rounded-2xl;
   }
 
   /* Stronger teal hairline for the three report-type cards. */
   .glass-panel-strong {
-    @apply backdrop-blur-xl bg-white/60 dark:bg-white/[0.07]
+    @apply backdrop-blur-xl bg-white/60 dark:bg-white/[0.13]
            border border-white/55 dark:border-[rgba(20,184,166,0.28)]
            shadow-[0_20px_60px_-20px_hsl(var(--primary-dark)/0.35)]
            dark:shadow-[0_8px_32px_rgba(0,0,0,0.35)] rounded-2xl;
   }
 
   .glass-report-card {
-    @apply backdrop-blur-xl bg-white/55 dark:bg-white/[0.07]
-           border border-white/50 dark:border-[rgba(20,184,166,0.18)]
+    @apply backdrop-blur-xl bg-white/55 dark:bg-white/[0.10]
+           border border-white/50 dark:border-[rgba(20,184,166,0.28)]
            shadow-[0_10px_30px_-12px_hsl(var(--primary-dark)/0.25)]
            dark:shadow-[0_8px_32px_rgba(0,0,0,0.35)]
-           dark:hover:bg-white/[0.11] dark:hover:border-[rgba(20,184,166,0.35)]
+           dark:hover:bg-white/[0.15] dark:hover:border-[rgba(20,184,166,0.40)]
            dark:hover:-translate-y-px transition-all duration-200;
   }
 
   .glass-stat-button {
-    @apply backdrop-blur-md bg-white/50 dark:bg-white/[0.07]
-           border border-white/55 dark:border-[rgba(20,184,166,0.18)] shadow-sm
+    @apply backdrop-blur-md bg-white/50 dark:bg-white/[0.10]
+           border border-white/55 dark:border-[rgba(20,184,166,0.28)] shadow-sm
            dark:shadow-[0_8px_32px_rgba(0,0,0,0.35)];
   }
 
@@ -410,8 +410,8 @@ All colors MUST be HSL.
   .glass-input {
     @apply backdrop-blur-md bg-white/55 dark:bg-white/[0.06]
            border border-white/55 dark:border-white/[0.12]
-           text-foreground dark:text-white/80
-           placeholder:text-muted-foreground dark:placeholder:text-white/35
+           text-foreground dark:text-white
+           placeholder:text-muted-foreground dark:placeholder:text-white/45
            focus:border-primary/60 focus-visible:ring-primary/40
            dark:focus:bg-white/[0.09] dark:focus:border-primary/50;
   }
@@ -424,7 +424,7 @@ All colors MUST be HSL.
 
   /* Frosted top-bar header. */
   .glass-header {
-    @apply backdrop-blur-2xl bg-white/55 dark:bg-[rgba(13,61,61,0.75)]
+    @apply backdrop-blur-2xl bg-white/55 dark:bg-[rgba(8,30,46,0.90)]
            border-b border-white/55 dark:border-[rgba(20,184,166,0.20)]
            shadow-[0_8px_24px_-12px_hsl(var(--primary-dark)/0.25)]
            dark:shadow-[0_2px_16px_rgba(0,0,0,0.4)];
@@ -493,6 +493,7 @@ All colors MUST be HSL.
     border: none;
     border-radius: 10px;
     box-shadow: 0 4px 16px rgba(20, 184, 166, 0.4);
+    text-shadow: 0 1px 2px rgba(0,0,0,0.2);
     transition: all 0.2s ease;
   }
   .btn-teal-cta:hover {
