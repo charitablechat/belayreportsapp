@@ -94,7 +94,21 @@ export function useDashboardFilters(
     key: K,
     value: DashboardFilterState[K]
   ) => {
+    if (key === 'viewMode') {
+      persistViewMode(value as ViewMode);
+    }
     setFilters(prev => ({ ...prev, [key]: value, page: key !== 'page' ? 1 : (value as number) }));
+  }, []);
+
+  // Cross-device hydration: pull the remote-stored choice once on mount and
+  // apply it if it differs from local. Best-effort, silent on failure.
+  useEffect(() => {
+    let cancelled = false;
+    void fetchRemoteViewMode().then((remote) => {
+      if (cancelled || !remote) return;
+      setFilters(prev => (prev.viewMode === remote ? prev : { ...prev, viewMode: remote }));
+    });
+    return () => { cancelled = true; };
   }, []);
 
   const toggleQuickFilter = useCallback((key: keyof DashboardFilterState['quickFilters']) => {
