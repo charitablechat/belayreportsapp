@@ -143,11 +143,10 @@ export function AuthenticatedHeader() {
   // existing top/right offsets on browsers that don't support WCO.
   return (
     <div
-      className="fixed z-50 rounded-full bg-white/10 dark:bg-black/20 backdrop-blur-[12px] border border-white/10 transition-transform duration-300 ease-in-out hover:scale-105"
+      className="fixed z-50 rounded-full glass-header transition-transform duration-300 ease-in-out hover:scale-105"
       style={{
         top: 'max(0.75rem, env(titlebar-area-y, 0.75rem))',
         right: 'max(0.75rem, calc(100vw - env(titlebar-area-x, 100vw) - env(titlebar-area-width, 100vw) + 0.75rem))',
-        boxShadow: '0 4px 24px -4px rgba(0,0,0,0.12), 0 1px 4px -1px rgba(0,0,0,0.08), 0 0 0 1px rgba(255,255,255,0.05) inset',
       }}
       role="navigation"
       aria-label="User menu"

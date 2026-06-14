@@ -29,7 +29,7 @@ export function DashboardSearchBar({ value, onChange }: DashboardSearchBarProps)
         placeholder="Search by name, location, or assignee..."
         value={local}
         onChange={(e) => setLocal(e.target.value)}
-        className="pl-9 pr-9"
+        className="pl-9 pr-9 glass-input"
       />
       {local && (
         <Button
