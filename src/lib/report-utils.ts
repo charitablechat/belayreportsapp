@@ -37,6 +37,12 @@ export function getReportDate(report: ReportLike, type: string): string {
     const d = report.assessment_date;
     return typeof d === 'string' ? d : '';
   }
+  if (type === 'jcf') {
+    const d = (report as Row).date_of_work;
+    if (typeof d === 'string' && d) return d;
+    const c = report.created_at;
+    return typeof c === 'string' ? c : '';
+  }
   const trainingStart = report.training?.start_date;
   if (typeof trainingStart === 'string' && trainingStart) return trainingStart;
   if (typeof report.start_date === 'string' && report.start_date) return report.start_date;
