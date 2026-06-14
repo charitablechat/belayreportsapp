@@ -2262,13 +2262,15 @@ export default function Dashboard() {
               const baseInspections = reportSection === "recent" ? sortByMostRecent(inspections).slice(0, 9) : inspections;
               const baseTrainings = reportSection === "recent" ? sortByMostRecent(trainings).slice(0, 9) : trainings;
               const baseDailyAssessments = reportSection === "recent" ? sortByMostRecent(dailyAssessments).slice(0, 9) : dailyAssessments;
+              const baseJcfs = reportSection === "recent" ? sortByMostRecent(jcfs).slice(0, 9) : jcfs;
 
               const dashboardInspections = activeReportTab === 'invoiced' ? inspections : baseInspections;
               const dashboardTrainings = activeReportTab === 'invoiced' ? trainings : baseTrainings;
               const dashboardDailyAssessments = activeReportTab === 'invoiced' ? dailyAssessments : baseDailyAssessments;
+              const dashboardJcfs = activeReportTab === 'invoiced' ? jcfs : baseJcfs;
 
               const invoicedCount = isSuperAdmin && invoicedReportIds.size > 0
-                ? [...inspections, ...trainings, ...dailyAssessments].filter(r => invoicedReportIds.has(r.id)).length
+                ? [...inspections, ...trainings, ...dailyAssessments, ...jcfs].filter(r => invoicedReportIds.has(r.id)).length
                 : 0;
 
               return (
@@ -2276,15 +2278,19 @@ export default function Dashboard() {
                   inspections={dashboardInspections}
                   trainings={dashboardTrainings}
                   dailyAssessments={dashboardDailyAssessments}
+                  jcfs={dashboardJcfs}
                   allInspections={inspections}
                   allTrainings={trainings}
                   allDailyAssessments={dailyAssessments}
+                  allJcfs={jcfs}
                   totalInspections={inspectionsValidated ? inspections.length : undefined}
                   totalTrainings={trainingsValidated ? trainings.length : undefined}
                   totalDailyAssessments={dailyValidated ? dailyAssessments.length : undefined}
+                  totalJcfs={jcfsValidated ? jcfs.length : undefined}
                   inspectionsValidated={inspectionsValidated}
                   trainingsValidated={trainingsValidated}
                   dailyValidated={dailyValidated}
+                  jcfsValidated={jcfsValidated}
                   invoicedCount={invoicedCount}
                   activeReportTab={activeReportTab}
                   setActiveReportTab={setActiveReportTab}
