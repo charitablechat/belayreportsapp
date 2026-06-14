@@ -175,7 +175,7 @@ function readOfflineWithTimeout(
 const DRIFT_REPORT_THROTTLE_MS = 5 * 60 * 1000;
 const lastDriftReportAt = new Map<string, number>();
 function maybeReportDashboardDrift(
-  table: 'inspections' | 'trainings' | 'daily_assessments',
+  table: 'inspections' | 'trainings' | 'daily_assessments' | 'jcf_reports',
   offlineCount: number,
   networkCount: number,
   offlineReadCompleted: boolean,
