@@ -56,7 +56,7 @@ export function getReportAgeState(createdAt: string | null | undefined, status: 
 
 interface ReportCardProps {
   report: any;
-  type: 'inspection' | 'training' | 'daily';
+  type: 'inspection' | 'training' | 'daily' | 'jcf';
   onDelete: (report: any) => void;
   onClick: (report: any) => void;
   getStatusBadge?: (report: any) => React.ReactNode;
@@ -64,7 +64,7 @@ interface ReportCardProps {
   isAdmin?: boolean;
   isInvoiced?: boolean;
   invoicedMeta?: { invoiced_at: string; invoiced_by: string | null };
-  onToggleInvoiced?: (report: any, type: 'inspection' | 'training' | 'daily') => void;
+  onToggleInvoiced?: (report: any, type: 'inspection' | 'training' | 'daily' | 'jcf') => void;
   profilesById?: ReadonlyMap<string, { first_name: string | null; last_name: string | null; avatar_url: string | null }>;
 }
 
@@ -73,6 +73,7 @@ export function ReportCard({ report, type, onDelete, onClick, getStatusBadge, co
   const { sparkles, triggerSparkles, handleMouseMove } = useClickAndHoverSparkles();
   const isInspection = type === 'inspection';
   const isDaily = type === 'daily';
+  const isJcf = type === 'jcf';
 
   // Pending-photo state on the per-card sync badge so a green "Synced ✓"
   // never appears while photos are still uploading. Reads from the shared
@@ -86,17 +87,20 @@ export function ReportCard({ report, type, onDelete, onClick, getStatusBadge, co
   const getReportDate = () => {
     if (isInspection) return report.inspection_date;
     if (isDaily) return report.assessment_date;
+    if (isJcf) return report.date_of_work || report.created_at;
     return report.training?.start_date || report.start_date;
   };
 
   const getReportOrganization = () => {
     if (isInspection) return report.organization;
     if (isDaily) return report.organization;
+    if (isJcf) return report.organization || report.client_name;
     return report.training?.organization || report.organization;
   };
 
   const getReportLocation = () => {
     if (isInspection) return report.location;
+    if (isJcf) return report.location || report.address;
     return null;
   };
 
@@ -151,6 +155,7 @@ export function ReportCard({ report, type, onDelete, onClick, getStatusBadge, co
   const getReportStatus = () => {
     if (isInspection) return report.status;
     if (isDaily) return report.status;
+    if (isJcf) return report.status;
     return report.training?.status || report.status;
   };
 

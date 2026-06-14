@@ -5,6 +5,7 @@ import {
   HardHat,
   ClipboardCheck,
   GraduationCap,
+  Briefcase,
   MoreVertical,
   Trash2,
   Download,
@@ -40,7 +41,7 @@ const INVOICED_TINT =
   "bg-teal-100 hover:bg-teal-100/80 dark:bg-teal-950/40 dark:hover:bg-teal-950/60";
 const INVOICED_ACCENT = "bg-teal-500 dark:bg-teal-400";
 
-type ReportType = "inspection" | "training" | "daily";
+type ReportType = "inspection" | "training" | "daily" | "jcf";
 
 interface ReportListViewProps {
   reports: any[];
@@ -66,6 +67,7 @@ interface ReportListViewProps {
 function getTypeIcon(type: ReportType) {
   if (type === "training") return GraduationCap;
   if (type === "daily") return ClipboardCheck;
+  if (type === "jcf") return Briefcase;
   return HardHat;
 }
 

@@ -1,6 +1,6 @@
 import { ReactNode } from "react";
 import { cn } from "@/lib/utils";
-import { FileText, ClipboardList, GraduationCap, LucideIcon } from "lucide-react";
+import { FileText, ClipboardList, GraduationCap, Briefcase, LucideIcon } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { motion } from "framer-motion";
 
@@ -117,6 +117,20 @@ export function DailyAssessmentsEmptyState({ onAction }: { onAction: () => void 
       description="Begin your daily assessment routine to ensure safety and compliance."
       action={{
         label: "New Assessment",
+        onClick: onAction,
+      }}
+    />
+  );
+}
+
+export function JCFsEmptyState({ onAction }: { onAction: () => void }) {
+  return (
+    <EmptyState
+      icon={Briefcase}
+      title="No job completion forms"
+      description="Create a JCF to document completed work and hand-off details."
+      action={{
+        label: "New JCF",
         onClick: onAction,
       }}
     />

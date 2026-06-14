@@ -47,7 +47,7 @@ import { SyncPulse } from "@/components/pwa/SyncPulse";
 import { useConflicts } from "@/hooks/useConflicts";
 import { usePWA } from "@/hooks/usePWA";
 import { usePullToRefresh } from "@/hooks/usePullToRefresh";
-import { getOfflineInspections, deleteOfflineInspection, queueOperation, queueTrainingOperation, queueAssessmentOperation, saveInspectionOffline, getOfflineTrainings, saveTrainingOffline, deleteOfflineTraining, getOfflineDailyAssessments, saveDailyAssessmentOffline, deleteOfflineDailyAssessment, getOfflineInspection, getOfflineTraining, getOfflineDailyAssessment, clearRelatedDataOffline, clearTrainingDataOffline, clearAssessmentDataOffline, type DbRow } from "@/lib/offline-storage";
+import { getOfflineInspections, deleteOfflineInspection, queueOperation, queueTrainingOperation, queueAssessmentOperation, queueJCFOperation, saveInspectionOffline, getOfflineTrainings, saveTrainingOffline, deleteOfflineTraining, getOfflineDailyAssessments, saveDailyAssessmentOffline, deleteOfflineDailyAssessment, getOfflineInspection, getOfflineTraining, getOfflineDailyAssessment, getOfflineJCFs, getOfflineJCF, saveJCFOffline, deleteOfflineJCF, clearRelatedDataOffline, clearTrainingDataOffline, clearAssessmentDataOffline, type DbRow } from "@/lib/offline-storage";
 import type { PostgrestError } from "@supabase/supabase-js";
 import type { RealtimePostgresChangesPayload } from "@supabase/supabase-js";
 import type { CachedUser } from "@/lib/cached-auth";
@@ -220,20 +220,22 @@ export default function Dashboard() {
   const [inspections, setInspections] = useState<DbRow[]>(() => readDashboardCache('dashboard-cache-inspections'));
   const [trainings, setTrainings] = useState<DbRow[]>(() => readDashboardCache('dashboard-cache-trainings'));
   const [dailyAssessments, setDailyAssessments] = useState<DbRow[]>(() => readDashboardCache('dashboard-cache-daily'));
+  const [jcfs, setJcfs] = useState<DbRow[]>(() => readDashboardCache('dashboard-cache-jcfs'));
   const [loading, setLoading] = useState(true);
   // Track whether we've received at least one definitive result per category
   // Per-dataset validation: tracks whether each dataset has received a definitive result
   const [inspectionsValidated, setInspectionsValidated] = useState(false);
   const [trainingsValidated, setTrainingsValidated] = useState(false);
   const [dailyValidated, setDailyValidated] = useState(false);
-  const dataValidated = inspectionsValidated && trainingsValidated && dailyValidated;
+  const [jcfsValidated, setJcfsValidated] = useState(false);
+  const dataValidated = inspectionsValidated && trainingsValidated && dailyValidated && jcfsValidated;
 
   // Build a unified inspector_id → profile map so cards can resolve names
   // even when locally-saved IDB rows lost the `inspector` / `trainer` join.
   const profilesById = useProfileMap(
     useMemo(
-      () => [...inspections, ...trainings, ...dailyAssessments],
-      [inspections, trainings, dailyAssessments],
+      () => [...inspections, ...trainings, ...dailyAssessments, ...jcfs],
+      [inspections, trainings, dailyAssessments, jcfs],
     ),
   );
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
