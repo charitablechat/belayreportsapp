@@ -995,25 +995,17 @@ export const useAutoSync = () => {
       // surface a soft "stats stale" warning rather than synthesizing the
       // pending list from rw_backup_* snapshots (which can include synced
       // rows after a successful sync).
-      const [insp, train, assess] = await Promise.all([
+      const [insp, train, assess, jcf] = await Promise.all([
         getUnsyncedInspections(user.id, { allowLedgerFallback: false }),
         getUnsyncedTrainings(user.id, { allowLedgerFallback: false }),
         getUnsyncedDailyAssessments(user.id, { allowLedgerFallback: false }),
+        getUnsyncedJCFs(user.id, { allowLedgerFallback: false }),
       ]);
 
-      const anyFailed = isIdbReadFailure(insp) || isIdbReadFailure(train) || isIdbReadFailure(assess);
+      const anyFailed = isIdbReadFailure(insp) || isIdbReadFailure(train) || isIdbReadFailure(assess) || isIdbReadFailure(jcf);
       if (anyFailed) {
-        const failure = [insp, train, assess].find(isIdbReadFailure) as { error: string } | undefined;
-        // S40 (Fix C): The counts read failing is independent of the sync
-        // pipeline succeeding. Word the message so the user understands the
-        // sync itself is fine — this is a stats-refresh hiccup. Avoid surfacing
-        // raw error tokens (idb_read_timeout, circuit_breaker_open) — they
-        // read as catastrophic and aren't actionable. The Sync Terminal still
-        // lights amber via the syncError truthy check, which is correct: the
-        // numbers shown may be stale until the next successful read.
+        const failure = [insp, train, assess, jcf].find(isIdbReadFailure) as { error: string } | undefined;
         console.warn('[AutoSync] IDB counts read failed — preserving last-known counts', failure?.error);
-        // S42 (Fix F): mark severity 'soft' — sync pipeline is fine, this is a stats-read
-        // hiccup. The Sync Terminal styles soft errors in amber rather than fatal red.
         setState(prev => ({
           ...prev,
           syncError: 'Stats refresh delayed — pending counts may be out of date',
@@ -1025,7 +1017,8 @@ export const useAutoSync = () => {
       const inspections = (insp as DbRow[]).filter(r => !isTombstoned('inspections', r.id));
       const trainings = (train as DbRow[]).filter(r => !isTombstoned('trainings', r.id));
       const assessments = (assess as DbRow[]).filter(r => !isTombstoned('daily_assessments', r.id));
-      const total = inspections.length + trainings.length + assessments.length;
+      const jcfs = (jcf as DbRow[]).filter(r => !isTombstoned('jcf_reports', r.id));
+      const total = inspections.length + trainings.length + assessments.length + jcfs.length;
 
       setState(prev => ({
         ...prev,
@@ -1033,6 +1026,7 @@ export const useAutoSync = () => {
         unsyncedInspections: inspections,
         unsyncedTrainings: trainings,
         unsyncedAssessments: assessments,
+        unsyncedJCFs: jcfs,
         syncError: null,
         syncErrorSeverity: null,
       }));
