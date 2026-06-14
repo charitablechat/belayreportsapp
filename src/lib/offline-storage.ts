@@ -66,10 +66,11 @@ type ReportSaveOptions = {
   dispatchSyncEvent?: boolean;
 };
 
-const TOMBSTONED_TABLE_FOR_REPORT_TYPE: Record<'inspection' | 'training' | 'daily_assessment', TombstonedTable> = {
+const TOMBSTONED_TABLE_FOR_REPORT_TYPE: Record<'inspection' | 'training' | 'daily_assessment' | 'jcf', TombstonedTable> = {
   inspection: 'inspections',
   training: 'trainings',
   daily_assessment: 'daily_assessments',
+  jcf: 'jcf_reports',
 };
 
 function shortRecordId(id: unknown): string {
