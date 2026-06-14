@@ -639,20 +639,23 @@ export const useAutoSync = () => {
           if (signal.aborted) throw new DOMException('aborted', 'AbortError');
           await yieldToUI();
 
-          // Run inspections / trainings / assessments concurrently — they touch independent tables
-          const [inspSettled, trainSettled, assessSettled] = await Promise.allSettled([
+          // Run inspections / trainings / assessments / JCFs concurrently — they touch independent tables
+          const [inspSettled, trainSettled, assessSettled, jcfSettled] = await Promise.allSettled([
             syncAllInspectionsAtomic(validatedUser, signal),
             syncAllTrainingsAtomic(validatedUser, signal),
             syncAllDailyAssessmentsAtomic(validatedUser, signal),
+            syncAllJCFsAtomic(validatedUser, signal),
           ]);
           const inspResult = inspSettled.status === 'fulfilled' ? inspSettled.value : (console.error('[AutoSync] Inspections sync failed:', inspSettled.reason), null);
           const trainResult = trainSettled.status === 'fulfilled' ? trainSettled.value : (console.error('[AutoSync] Trainings sync failed:', trainSettled.reason), null);
           const assessResult = assessSettled.status === 'fulfilled' ? assessSettled.value : (console.error('[AutoSync] Assessments sync failed:', assessSettled.reason), null);
+          const jcfResult = jcfSettled.status === 'fulfilled' ? jcfSettled.value : (console.error('[AutoSync] JCFs sync failed:', jcfSettled.reason), null);
           if (signal.aborted) throw new DOMException('aborted', 'AbortError');
           await yieldToUI();
           // Photos depend on real UUIDs assigned by the report syncs above
           const photoResult = await syncPhotos(signal).catch(e => { console.error('[AutoSync] Photos sync failed:', e); return null; });
-          return [inspResult, trainResult, assessResult, photoResult];
+          return [inspResult, trainResult, assessResult, jcfResult, photoResult];
+
         },
         dynamicTimeout,
         activeSyncAbortRef.current?.signal
