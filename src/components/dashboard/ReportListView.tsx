@@ -32,13 +32,13 @@ import { cn } from "@/lib/utils";
 import { getReportAgeState, type ReportAgeState } from "./ReportCard";
 
 const ROW_TINT_CLASSES: Record<ReportAgeState, string> = {
-  critical: "bg-red-100 hover:bg-red-100/80 dark:bg-red-950/40 dark:hover:bg-red-950/60",
-  warning: "bg-yellow-50 hover:bg-yellow-100/80 dark:bg-yellow-950/30 dark:hover:bg-yellow-950/50",
-  completed: "bg-sky-200/70 hover:bg-sky-200 dark:bg-sky-900/40 dark:hover:bg-sky-900/60",
-  default: "bg-card hover:bg-accent/30",
+  critical: "bg-red-100 hover:bg-red-100/80 dark:bg-white/[0.05] dark:hover:bg-white/[0.10]",
+  warning: "bg-yellow-50 hover:bg-yellow-100/80 dark:bg-white/[0.05] dark:hover:bg-white/[0.10]",
+  completed: "bg-sky-200/70 hover:bg-sky-200 dark:bg-white/[0.05] dark:hover:bg-white/[0.10]",
+  default: "bg-card hover:bg-accent/30 dark:bg-white/[0.05] dark:hover:bg-white/[0.10]",
 };
 const INVOICED_TINT =
-  "bg-teal-100 hover:bg-teal-100/80 dark:bg-teal-950/40 dark:hover:bg-teal-950/60";
+  "bg-teal-100 hover:bg-teal-100/80 dark:bg-white/[0.05] dark:hover:bg-white/[0.10]";
 const INVOICED_ACCENT = "bg-teal-500 dark:bg-teal-400";
 
 type ReportType = "inspection" | "training" | "daily" | "jcf";
@@ -89,7 +89,7 @@ function getStatusPillClasses(status: string | undefined): string {
       return "bg-amber-50 text-amber-700 ring-1 ring-inset ring-amber-200 dark:bg-amber-950/40 dark:text-amber-300 dark:ring-amber-900";
     case "draft":
     default:
-      return "bg-slate-100 text-slate-700 ring-1 ring-inset ring-slate-200 dark:bg-slate-800/60 dark:text-slate-300 dark:ring-slate-700";
+      return "bg-slate-100 text-slate-700 ring-1 ring-inset ring-slate-200 dark:bg-white/[0.14] dark:text-white dark:ring-white/25";
   }
 }
 
@@ -177,21 +177,25 @@ function ReportRow({
         }
       }}
       className={cn(
-        "group relative flex items-center gap-3 overflow-hidden rounded-xl border border-border transition-colors cursor-pointer",
+        "group relative flex items-center gap-3 overflow-hidden rounded-lg border border-border dark:border-b dark:border-b-white/[0.07] transition-colors cursor-pointer",
         isAdmin && isInvoiced ? INVOICED_TINT : ROW_TINT_CLASSES[getReportAgeState(createdAt, status ?? "")],
-        compact ? "py-2 pr-2" : "py-3 pr-3",
+        "py-3 px-4",
       )}
     >
       {/* 3px accent bar */}
       <span
         aria-hidden
-        className={cn("absolute left-0 top-0 h-full w-[3px]", isAdmin && isInvoiced ? INVOICED_ACCENT : baseAccent)}
+        className={cn(
+          "absolute left-0 top-0 h-full w-[3px]",
+          isAdmin && isInvoiced ? INVOICED_ACCENT : baseAccent,
+          !(isAdmin && isInvoiced) && "dark:bg-[#14B8A6]"
+        )}
       />
 
       {/* Icon tile */}
       <div
         className={cn(
-          "ml-3 flex shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary",
+          "flex shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary",
           compact ? "h-9 w-9" : "h-10 w-10",
         )}
       >
@@ -221,7 +225,7 @@ function ReportRow({
             {initials}
           </AvatarFallback>
         </Avatar>
-        <span className="truncate text-xs text-muted-foreground">{firstName}</span>
+        <span className="truncate text-xs text-muted-foreground dark:text-white/[0.62]">{firstName}</span>
       </div>
 
       {/* Status pill */}
@@ -313,7 +317,7 @@ function ReportRow({
         const isSubmitted = status === "completed" && submittedAt && !isNaN(submittedAt.getTime());
         const displayDate = isSubmitted ? submittedAt : parsed;
         return (
-          <div className="hidden md:block shrink-0 text-xs text-muted-foreground tabular-nums w-[92px] text-right">
+          <div className="hidden md:block shrink-0 text-xs text-muted-foreground dark:text-white/[0.62] tabular-nums w-[92px] text-right">
             {displayDate ? format(displayDate, "MMM d, yyyy") : "—"}
           </div>
         );
