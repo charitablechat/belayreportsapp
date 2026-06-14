@@ -198,7 +198,7 @@ export default function Auth() {
         <img
           src={signinBg.url}
           alt=""
-          className="w-full h-full object-cover"
+          className="w-full h-full object-cover object-[35%_center]"
         />
       </div>
 
