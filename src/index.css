@@ -1015,3 +1015,10 @@ html, body {
   background: linear-gradient(to right, hsl(var(--background) / 0), hsl(var(--background)));
   opacity: 0.9;
 }
+
+/* Deep dark scrollbar polish — only applied in dark mode so light pages stay default. */
+.dark ::-webkit-scrollbar { width: 6px; height: 6px; }
+.dark ::-webkit-scrollbar-track { background: rgba(255,255,255,0.03); }
+.dark ::-webkit-scrollbar-thumb { background: rgba(20,184,166,0.35); border-radius: 3px; }
+.dark ::-webkit-scrollbar-thumb:hover { background: rgba(20,184,166,0.55); }
+.dark { scrollbar-color: rgba(20,184,166,0.4) rgba(255,255,255,0.03); scrollbar-width: thin; }
