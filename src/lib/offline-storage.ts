@@ -1629,10 +1629,11 @@ function emergencyLocalStorageFallback(operationName: string, data: unknown): bo
   const id = rec.id;
   if (!id || typeof id !== 'string') return false;
 
-  let reportType: 'inspection' | 'training' | 'daily_assessment' | null = null;
+  let reportType: 'inspection' | 'training' | 'daily_assessment' | 'jcf' | null = null;
   const opLower = operationName.toLowerCase();
   if (opLower.includes('inspection')) reportType = 'inspection';
   else if (opLower.includes('training')) reportType = 'training';
+  else if (opLower.includes('jcf')) reportType = 'jcf';
   else if (opLower.includes('assessment') || opLower.includes('daily')) reportType = 'daily_assessment';
 
   if (!reportType) return false;
