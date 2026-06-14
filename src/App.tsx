@@ -268,8 +268,15 @@ const router = createBrowserRouter([
       { path: "/training/:id", element: <RequireAuth><TrainingForm /></RequireAuth> },
       { path: "/daily-assessment/new", element: <RequireAuth><NewDailyAssessment /></RequireAuth> },
       { path: "/daily-assessment/:id", element: <RequireAuth><DailyAssessmentForm /></RequireAuth> },
-      { path: "/jcf/new", element: <RequireAuth><NewJCF /></RequireAuth> },
-      { path: "/jcf/:id", element: <RequireAuth><JCFForm /></RequireAuth> },
+      // JCF is gated to the Lovable preview environment only; production
+      // builds intentionally exclude these routes while the underlying
+      // codebase, offline storage, and database schema remain intact.
+      ...(isLovablePreview()
+        ? [
+            { path: "/jcf/new", element: <RequireAuth><NewJCF /></RequireAuth> },
+            { path: "/jcf/:id", element: <RequireAuth><JCFForm /></RequireAuth> },
+          ]
+        : []),
 
       { path: "/install", element: <Install /> },
       { path: "/capabilities", element: <Capabilities /> },
