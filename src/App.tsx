@@ -20,6 +20,8 @@ import TrainingForm from "./pages/TrainingForm";
 import NewTraining from "./pages/NewTraining";
 import NewDailyAssessment from "./pages/NewDailyAssessment";
 import DailyAssessmentForm from "./pages/DailyAssessmentForm";
+import NewJCF from "./pages/NewJCF";
+
 
 // Lazy-loaded non-critical routes for code splitting
 const Install = lazy(() => import("./pages/Install"));
@@ -263,6 +265,9 @@ const router = createBrowserRouter([
       { path: "/training/:id", element: <RequireAuth><TrainingForm /></RequireAuth> },
       { path: "/daily-assessment/new", element: <RequireAuth><NewDailyAssessment /></RequireAuth> },
       { path: "/daily-assessment/:id", element: <RequireAuth><DailyAssessmentForm /></RequireAuth> },
+      { path: "/jcf/new", element: <RequireAuth><NewJCF /></RequireAuth> },
+      { path: "/jcf/:id", element: <RequireAuth><JCFForm /></RequireAuth> },
+
       { path: "/install", element: <Install /> },
       { path: "/capabilities", element: <Capabilities /> },
       { path: "/profile", element: <RequireAuth><Profile /></RequireAuth> },
