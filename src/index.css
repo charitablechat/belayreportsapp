@@ -348,6 +348,24 @@ All colors MUST be HSL.
     @apply backdrop-blur-md bg-white/10 dark:bg-slate-900/40 border border-white/20 shadow-lg rounded-lg;
   }
 
+  /* Premium glassmorphism surfaces used across the dashboard.
+     Cosmetic only — pair with existing layout classes. */
+  .glass-surface {
+    @apply backdrop-blur-md bg-white/40 dark:bg-slate-900/30 border border-white/40 dark:border-white/[0.06] shadow-[0_8px_30px_-12px_rgba(15,23,42,0.15)] rounded-xl;
+  }
+
+  .glass-panel {
+    @apply backdrop-blur-xl bg-white/55 dark:bg-slate-900/40 border border-white/50 dark:border-white/[0.08] shadow-[0_20px_50px_-20px_rgba(15,23,42,0.25)] rounded-2xl;
+  }
+
+  .glass-report-card {
+    @apply backdrop-blur-md bg-white/55 dark:bg-slate-900/35 border border-white/40 dark:border-white/[0.06] shadow-[0_6px_24px_-12px_rgba(15,23,42,0.18)];
+  }
+
+  .glass-stat-button {
+    @apply backdrop-blur-sm bg-white/40 dark:bg-slate-900/30 border border-white/40 dark:border-white/[0.06] shadow-sm;
+  }
+
   /*
    * Required-field completion gate — shared red pulse used by all three
    * report forms (Inspection, Training, Daily Assessment). Subtle by design:
