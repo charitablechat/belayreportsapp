@@ -1097,12 +1097,13 @@ export const useAutoSync = () => {
         lastCountsRunRef.current = Date.now();
         return emptySnapshot;
       }
-      const [insp, train, assess] = await Promise.all([
+      const [insp, train, assess, jcf] = await Promise.all([
         getUnsyncedInspections(user.id, { allowLedgerFallback: false }),
         getUnsyncedTrainings(user.id, { allowLedgerFallback: false }),
         getUnsyncedDailyAssessments(user.id, { allowLedgerFallback: false }),
+        getUnsyncedJCFs(user.id, { allowLedgerFallback: false }),
       ]);
-      if (isIdbReadFailure(insp) || isIdbReadFailure(train) || isIdbReadFailure(assess)) {
+      if (isIdbReadFailure(insp) || isIdbReadFailure(train) || isIdbReadFailure(assess) || isIdbReadFailure(jcf)) {
         // Don't blank state on read failure — leave whatever the user
         // was looking at; the next successful tick will reconcile.
         console.warn('[AutoSync] refreshSyncStateFromStorage: IDB read failed, leaving state untouched');
@@ -1111,12 +1112,14 @@ export const useAutoSync = () => {
       const inspections = insp as DbRow[];
       const trainings = train as DbRow[];
       const assessments = assess as DbRow[];
-      const total = inspections.length + trainings.length + assessments.length;
+      const jcfs = jcf as DbRow[];
+      const total = inspections.length + trainings.length + assessments.length + jcfs.length;
       const snapshot: SyncStateSnapshot = {
         unsyncedCount: total,
         unsyncedInspections: inspections,
         unsyncedTrainings: trainings,
         unsyncedAssessments: assessments,
+        unsyncedJCFs: jcfs,
       };
       setState(prev => ({
         ...prev,
