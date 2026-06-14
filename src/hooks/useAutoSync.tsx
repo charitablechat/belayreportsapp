@@ -143,6 +143,7 @@ export interface AutoSyncState {
   unsyncedInspections: DbRow[];
   unsyncedTrainings: DbRow[];
   unsyncedAssessments: DbRow[];
+  unsyncedJCFs: DbRow[];
   // S11: surfaces IDB read failures so the badge keeps last-known counts
   // and the user gets a real error instead of a silent 0.
   syncError: string | null;
@@ -153,7 +154,7 @@ export interface AutoSyncState {
 }
 
 export type SyncStateSnapshot = Pick<AutoSyncState,
-  'unsyncedCount' | 'unsyncedInspections' | 'unsyncedTrainings' | 'unsyncedAssessments'
+  'unsyncedCount' | 'unsyncedInspections' | 'unsyncedTrainings' | 'unsyncedAssessments' | 'unsyncedJCFs'
 >;
 
 /**
