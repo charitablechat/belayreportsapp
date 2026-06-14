@@ -194,7 +194,7 @@ export default function Auth() {
   return (
     <div className="relative min-h-screen flex flex-col items-center justify-center gap-6 md:gap-10 p-2 md:p-4">
       {/* Background */}
-      <div className="absolute inset-0 z-0">
+      <div className="absolute inset-2 md:inset-6 z-0 bg-gray-200/60 dark:bg-gray-800/60 rounded-2xl overflow-hidden shadow-lg">
         <img
           src={signinBg.url}
           alt=""
