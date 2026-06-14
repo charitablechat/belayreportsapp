@@ -65,6 +65,7 @@ const CRITICAL_STORES = [
   'daily_assessment_equipment_checks',
   'daily_assessment_structure_checks',
   'daily_assessment_environment_checks',
+  'jcf_reports',
   'photos',
 ] as const;
 
