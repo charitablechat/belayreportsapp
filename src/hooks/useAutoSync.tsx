@@ -177,6 +177,7 @@ export const useAutoSync = () => {
     unsyncedInspections: [],
     unsyncedTrainings: [],
     unsyncedAssessments: [],
+    unsyncedJCFs: [],
     syncError: null,
     syncErrorSeverity: null,
   });
