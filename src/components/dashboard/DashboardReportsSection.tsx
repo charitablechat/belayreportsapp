@@ -613,10 +613,12 @@ function DashboardReportsSectionImpl({
               <FileText className="w-4 h-4 hidden sm:inline" />
               Daily ({totalDailyAssessments !== undefined ? totalDailyAssessments : '…'})
             </TabsTrigger>
+            {JCF_UI_ENABLED && (
             <TabsTrigger value="jcf" className="flex items-center gap-2">
               <Briefcase className="w-4 h-4 hidden sm:inline" />
               JCF ({totalJcfs !== undefined ? totalJcfs : '…'})
             </TabsTrigger>
+            )}
             {isSuperAdmin && (
               <TabsTrigger value="invoiced" className="flex items-center gap-2">
                 <Receipt className="w-4 h-4 hidden sm:inline" />
