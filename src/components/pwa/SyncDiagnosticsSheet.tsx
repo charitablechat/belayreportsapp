@@ -1062,6 +1062,7 @@ const SECTIONS_BY_TYPE: Record<EmptyLocalConflictEntry['reportType'], ChildSecti
     { table: 'daily_assessment_structure_checks', column: 'assessment_id' },
     { table: 'daily_assessment_environment_checks', column: 'assessment_id' },
   ],
+  jcf: [],
 };
 
 // inspection_systems -> 'systems', training_delivery_approaches -> 'delivery_approaches', etc.
