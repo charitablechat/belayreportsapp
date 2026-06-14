@@ -551,6 +551,7 @@ export default function Dashboard() {
       setInspectionsValidated(true);
       setTrainingsValidated(true);
       setDailyValidated(true);
+      setJcfsValidated(true);
     } finally {
       refreshInFlightRef.current = false;
       // If a refresh was queued while we were busy, trigger it now
