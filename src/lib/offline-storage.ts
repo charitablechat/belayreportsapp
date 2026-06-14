@@ -6523,7 +6523,7 @@ export function isNotQuarantined<T extends Record<string, unknown>>(record: T): 
   return !record._remote_deleted_at;
 }
 
-export type QuarantineTable = 'inspections' | 'trainings' | 'daily_assessments';
+export type QuarantineTable = 'inspections' | 'trainings' | 'daily_assessments' | 'jcf_reports';
 
 export interface QuarantinedRecord {
   table: QuarantineTable;
