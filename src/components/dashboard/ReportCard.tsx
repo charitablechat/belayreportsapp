@@ -171,10 +171,10 @@ export function ReportCard({ report, type, onDelete, onClick, getStatusBadge, co
   const ageState = getReportAgeState(report.created_at, getReportStatus());
 
   const ageStateClasses: Record<ReportAgeState, string> = {
-    critical: 'border-l-4 border-l-destructive bg-red-200 dark:bg-red-900/40',
-    warning: 'border-l-4 border-l-amber-500 bg-yellow-50 dark:bg-yellow-950/30',
-    completed: 'border-l-4 border-l-sky-500 bg-sky-50 dark:bg-sky-950/30',
-    default: 'border-l-4 border-l-muted-foreground/30',
+    critical: 'glass-report-card border-l-4 border-l-destructive/70 bg-red-500/[0.06] dark:bg-red-500/[0.08]',
+    warning: 'glass-report-card border-l-4 border-l-amber-500/70 bg-amber-400/[0.06] dark:bg-amber-400/[0.08]',
+    completed: 'glass-report-card border-l-4 border-l-sky-500/70 bg-sky-400/[0.05] dark:bg-sky-400/[0.07]',
+    default: 'glass-report-card border-l-4 border-l-muted-foreground/25',
   };
 
   const getLastActivity = () => {
