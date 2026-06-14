@@ -331,6 +331,13 @@ All colors MUST be HSL.
     @apply bg-background text-foreground;
   }
 
+  /* Deep dark gradient as a full-viewport canvas behind the app. */
+  .dark body {
+    background: linear-gradient(135deg, #0D3D3D 0%, #0A2E2E 40%, #071E2A 100%);
+    background-attachment: fixed;
+    min-height: 100vh;
+  }
+
   /* Global text wrapping safety net for mobile/tablet */
   td, th, label, p, span, li, dd, dt {
     overflow-wrap: anywhere;
