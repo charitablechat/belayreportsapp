@@ -4,7 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
-import { FileText, GraduationCap, ChevronDown, ChevronRight, X, Filter, Minimize2, Maximize2, Search, Receipt } from "lucide-react";
+import { FileText, GraduationCap, Briefcase, ChevronDown, ChevronRight, X, Filter, Minimize2, Maximize2, Search, Receipt } from "lucide-react";
 import { ReportCard } from "@/components/dashboard/ReportCard";
 import { ReportCardSkeleton } from "@/components/dashboard/ReportCardSkeleton";
 import { ReportListView } from "@/components/dashboard/ReportListView";
@@ -16,7 +16,7 @@ import { ViewModeToggle } from "@/components/dashboard/ViewModeToggle";
 import { DashboardPagination } from "@/components/dashboard/DashboardPagination";
 import { DashboardStatsBar } from "@/components/dashboard/DashboardStatsBar";
 import { useDashboardFilters } from "@/hooks/useDashboardFilters";
-import { EmptyState as GenericEmptyState, InspectionsEmptyState, TrainingsEmptyState, DailyAssessmentsEmptyState } from "@/components/EmptyState";
+import { EmptyState as GenericEmptyState, InspectionsEmptyState, TrainingsEmptyState, DailyAssessmentsEmptyState, JCFsEmptyState } from "@/components/EmptyState";
 import { triggerHaptic } from "@/lib/haptics";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { getAssigneeName } from "@/lib/report-utils";
@@ -97,7 +97,7 @@ function editDistance1(a: string, b: string): boolean {
   return true;
 }
 
-type DashboardReportType = 'inspection' | 'training' | 'daily';
+type DashboardReportType = 'inspection' | 'training' | 'daily' | 'jcf';
 
 function normalizeInvoicedReport(report: any, type: DashboardReportType) {
   return {
@@ -108,15 +108,17 @@ function normalizeInvoicedReport(report: any, type: DashboardReportType) {
         ? report.inspection_date || report.created_at || ''
         : type === 'training'
           ? report.training?.start_date || report.start_date || report.created_at || ''
-          : report.assessment_date || report.created_at || '',
-    location: report.location || report.site || '',
+          : type === 'jcf'
+            ? report.date_of_work || report.created_at || ''
+            : report.assessment_date || report.created_at || '',
+    location: report.location || report.site || report.address || '',
     inspector: type === 'training' ? (report.trainer || report.inspector) : report.inspector,
   };
 }
 
 function resolveDashboardReportType(report: any, fallback: DashboardReportType): DashboardReportType {
   const reportType = report?.__reportType;
-  return reportType === 'inspection' || reportType === 'training' || reportType === 'daily'
+  return reportType === 'inspection' || reportType === 'training' || reportType === 'daily' || reportType === 'jcf'
     ? reportType
     : fallback;
 }
@@ -125,16 +127,20 @@ interface DashboardReportsSectionProps {
   inspections: any[];
   trainings: any[];
   dailyAssessments: any[];
+  jcfs: any[];
   allInspections?: any[];
   allTrainings?: any[];
   allDailyAssessments?: any[];
+  allJcfs?: any[];
   totalInspections?: number;
   totalTrainings?: number;
   totalDailyAssessments?: number;
+  totalJcfs?: number;
   dataValidated?: boolean;
   inspectionsValidated?: boolean;
   trainingsValidated?: boolean;
   dailyValidated?: boolean;
+  jcfsValidated?: boolean;
   activeReportTab: string;
   setActiveReportTab: (tab: string) => void;
   loading: boolean;
@@ -159,16 +165,20 @@ function DashboardReportsSectionImpl({
   inspections,
   trainings,
   dailyAssessments,
+  jcfs,
   allInspections,
   allTrainings,
   allDailyAssessments,
+  allJcfs,
   totalInspections,
   totalTrainings,
   totalDailyAssessments,
+  totalJcfs,
   dataValidated,
   inspectionsValidated,
   trainingsValidated,
   dailyValidated,
+  jcfsValidated,
   activeReportTab,
   setActiveReportTab,
   loading,
@@ -206,16 +216,21 @@ function DashboardReportsSectionImpl({
     for (const r of dailyAssessments) {
       if (invoicedReportIds.has(r.id)) all.push({ report: normalizeInvoicedReport(r, 'daily'), type: 'daily' });
     }
+    for (const r of jcfs) {
+      if (invoicedReportIds.has(r.id)) all.push({ report: normalizeInvoicedReport(r, 'jcf'), type: 'jcf' });
+    }
     return all;
-  }, [isSuperAdmin, invoicedReportIds, inspections, trainings, dailyAssessments]);
+  }, [isSuperAdmin, invoicedReportIds, inspections, trainings, dailyAssessments, jcfs]);
 
   const currentReports = activeReportTab === 'inspections' ? inspections
     : activeReportTab === 'training' ? trainings
+    : activeReportTab === 'jcf' ? jcfs
     : activeReportTab === 'invoiced' ? invoicedReports.map(r => r.report)
     : dailyAssessments;
 
   const currentType = (activeReportTab === 'inspections' ? 'inspection'
     : activeReportTab === 'training' ? 'training'
+    : activeReportTab === 'jcf' ? 'jcf'
     : activeReportTab === 'invoiced' ? 'inspection'
     : 'daily') as DashboardReportType;
 
