@@ -1441,6 +1441,305 @@ export type Database = {
         }
         Relationships: []
       }
+      jcf_photos: {
+        Row: {
+          caption: string | null
+          created_at: string
+          deleted_at: string | null
+          display_order: number | null
+          id: string
+          jcf_id: string
+          photo_section: string | null
+          photo_url: string
+          retention_until: string | null
+        }
+        Insert: {
+          caption?: string | null
+          created_at?: string
+          deleted_at?: string | null
+          display_order?: number | null
+          id?: string
+          jcf_id: string
+          photo_section?: string | null
+          photo_url: string
+          retention_until?: string | null
+        }
+        Update: {
+          caption?: string | null
+          created_at?: string
+          deleted_at?: string | null
+          display_order?: number | null
+          id?: string
+          jcf_id?: string
+          photo_section?: string | null
+          photo_url?: string
+          retention_until?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "jcf_photos_jcf_id_fkey"
+            columns: ["jcf_id"]
+            isOneToOne: false
+            referencedRelation: "jcf_reports"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      jcf_reports: {
+        Row: {
+          active_duration_seconds: number | null
+          additional_work_performed: string | null
+          additional_work_this_year: string | null
+          address: string | null
+          app_version_at_completion: string | null
+          attestation_ip: string | null
+          attestation_signed_at: string | null
+          attestation_signer_id: string | null
+          attestation_signer_name: string | null
+          attestation_text: string | null
+          attestation_user_agent: string | null
+          client_idempotency_key: string | null
+          client_name: string | null
+          completion_locked: boolean
+          contact_info: string | null
+          contract_number: string | null
+          contracted_work: string | null
+          course_type_high: boolean | null
+          course_type_indoor: boolean | null
+          course_type_low: boolean | null
+          course_type_other: boolean | null
+          course_type_other_text: string | null
+          course_type_poletype: boolean | null
+          course_type_tower: boolean | null
+          course_type_zip: boolean | null
+          created_at: string
+          date_of_work: string | null
+          deleted_at: string | null
+          deleted_by: string | null
+          emergency_number: string | null
+          equipment_left_with_client: string | null
+          fall_protection_alt_access: boolean | null
+          fall_protection_cable_grab: boolean | null
+          fall_protection_harness: boolean | null
+          fall_protection_lift_basket: boolean | null
+          fall_protection_other: boolean | null
+          fall_protection_other_text: string | null
+          field_timestamps: Json
+          hospital_info: string | null
+          hours_to_complete: number | null
+          id: string
+          inspector_id: string | null
+          invoice_number: string | null
+          items_to_monitor: string | null
+          jcf_notes: string | null
+          job_status: string | null
+          last_modified_by: string | null
+          last_opened_at: string | null
+          last_sync_source: string | null
+          latest_report_generated_at: string | null
+          latest_report_html: string | null
+          latitude: number | null
+          location: string
+          longitude: number | null
+          manual_present: boolean | null
+          num_inspectors: number | null
+          organization: string
+          organization_id: string | null
+          report_version: number | null
+          retention_until: string | null
+          staff_names: string | null
+          started_at: string | null
+          status: string
+          synced_at: string | null
+          time_and_materials: string | null
+          training_status: string | null
+          updated_at: string
+          user_cleared_at: string | null
+          work_needed_next_year: string | null
+          work_needed_to_complete: string | null
+        }
+        Insert: {
+          active_duration_seconds?: number | null
+          additional_work_performed?: string | null
+          additional_work_this_year?: string | null
+          address?: string | null
+          app_version_at_completion?: string | null
+          attestation_ip?: string | null
+          attestation_signed_at?: string | null
+          attestation_signer_id?: string | null
+          attestation_signer_name?: string | null
+          attestation_text?: string | null
+          attestation_user_agent?: string | null
+          client_idempotency_key?: string | null
+          client_name?: string | null
+          completion_locked?: boolean
+          contact_info?: string | null
+          contract_number?: string | null
+          contracted_work?: string | null
+          course_type_high?: boolean | null
+          course_type_indoor?: boolean | null
+          course_type_low?: boolean | null
+          course_type_other?: boolean | null
+          course_type_other_text?: string | null
+          course_type_poletype?: boolean | null
+          course_type_tower?: boolean | null
+          course_type_zip?: boolean | null
+          created_at?: string
+          date_of_work?: string | null
+          deleted_at?: string | null
+          deleted_by?: string | null
+          emergency_number?: string | null
+          equipment_left_with_client?: string | null
+          fall_protection_alt_access?: boolean | null
+          fall_protection_cable_grab?: boolean | null
+          fall_protection_harness?: boolean | null
+          fall_protection_lift_basket?: boolean | null
+          fall_protection_other?: boolean | null
+          fall_protection_other_text?: string | null
+          field_timestamps?: Json
+          hospital_info?: string | null
+          hours_to_complete?: number | null
+          id?: string
+          inspector_id?: string | null
+          invoice_number?: string | null
+          items_to_monitor?: string | null
+          jcf_notes?: string | null
+          job_status?: string | null
+          last_modified_by?: string | null
+          last_opened_at?: string | null
+          last_sync_source?: string | null
+          latest_report_generated_at?: string | null
+          latest_report_html?: string | null
+          latitude?: number | null
+          location?: string
+          longitude?: number | null
+          manual_present?: boolean | null
+          num_inspectors?: number | null
+          organization?: string
+          organization_id?: string | null
+          report_version?: number | null
+          retention_until?: string | null
+          staff_names?: string | null
+          started_at?: string | null
+          status?: string
+          synced_at?: string | null
+          time_and_materials?: string | null
+          training_status?: string | null
+          updated_at?: string
+          user_cleared_at?: string | null
+          work_needed_next_year?: string | null
+          work_needed_to_complete?: string | null
+        }
+        Update: {
+          active_duration_seconds?: number | null
+          additional_work_performed?: string | null
+          additional_work_this_year?: string | null
+          address?: string | null
+          app_version_at_completion?: string | null
+          attestation_ip?: string | null
+          attestation_signed_at?: string | null
+          attestation_signer_id?: string | null
+          attestation_signer_name?: string | null
+          attestation_text?: string | null
+          attestation_user_agent?: string | null
+          client_idempotency_key?: string | null
+          client_name?: string | null
+          completion_locked?: boolean
+          contact_info?: string | null
+          contract_number?: string | null
+          contracted_work?: string | null
+          course_type_high?: boolean | null
+          course_type_indoor?: boolean | null
+          course_type_low?: boolean | null
+          course_type_other?: boolean | null
+          course_type_other_text?: string | null
+          course_type_poletype?: boolean | null
+          course_type_tower?: boolean | null
+          course_type_zip?: boolean | null
+          created_at?: string
+          date_of_work?: string | null
+          deleted_at?: string | null
+          deleted_by?: string | null
+          emergency_number?: string | null
+          equipment_left_with_client?: string | null
+          fall_protection_alt_access?: boolean | null
+          fall_protection_cable_grab?: boolean | null
+          fall_protection_harness?: boolean | null
+          fall_protection_lift_basket?: boolean | null
+          fall_protection_other?: boolean | null
+          fall_protection_other_text?: string | null
+          field_timestamps?: Json
+          hospital_info?: string | null
+          hours_to_complete?: number | null
+          id?: string
+          inspector_id?: string | null
+          invoice_number?: string | null
+          items_to_monitor?: string | null
+          jcf_notes?: string | null
+          job_status?: string | null
+          last_modified_by?: string | null
+          last_opened_at?: string | null
+          last_sync_source?: string | null
+          latest_report_generated_at?: string | null
+          latest_report_html?: string | null
+          latitude?: number | null
+          location?: string
+          longitude?: number | null
+          manual_present?: boolean | null
+          num_inspectors?: number | null
+          organization?: string
+          organization_id?: string | null
+          report_version?: number | null
+          retention_until?: string | null
+          staff_names?: string | null
+          started_at?: string | null
+          status?: string
+          synced_at?: string | null
+          time_and_materials?: string | null
+          training_status?: string | null
+          updated_at?: string
+          user_cleared_at?: string | null
+          work_needed_next_year?: string | null
+          work_needed_to_complete?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "jcf_reports_inspector_id_fkey"
+            columns: ["inspector_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "jcf_reports_inspector_id_fkey"
+            columns: ["inspector_id"]
+            isOneToOne: false
+            referencedRelation: "profiles_public"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "jcf_reports_last_modified_by_fkey"
+            columns: ["last_modified_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "jcf_reports_last_modified_by_fkey"
+            columns: ["last_modified_by"]
+            isOneToOne: false
+            referencedRelation: "profiles_public"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "jcf_reports_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       migration_audit: {
         Row: {
           backup_table_name: string | null
@@ -2517,6 +2816,7 @@ export type Database = {
         Returns: {
           daily_assessments_deleted: number
           inspections_deleted: number
+          jcf_reports_deleted: number
           trainings_deleted: number
         }[]
       }
