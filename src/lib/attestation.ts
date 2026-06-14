@@ -58,13 +58,15 @@ if (APP_VERSION === 'unknown' && typeof console !== 'undefined') {
   );
 }
 
-export type ReportKind = 'inspection' | 'training' | 'daily_assessment';
+export type ReportKind = 'inspection' | 'training' | 'daily_assessment' | 'jcf';
 
 const KIND_LABELS: Record<ReportKind, string> = {
   inspection: 'inspection',
   training: 'training',
   daily_assessment: 'daily assessment',
+  jcf: 'job completion form',
 };
+
 
 export interface AttestationContext {
   kind: ReportKind;

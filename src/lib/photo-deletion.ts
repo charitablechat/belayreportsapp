@@ -99,7 +99,7 @@ export interface DeletePhotoArgs {
    * bottom gallery keeps the photo after refresh.
    */
   itemIdScope?: string | null;
-  tableName?: "inspection_photos" | "training_photos" | "daily_assessment_photos";
+  tableName?: "inspection_photos" | "training_photos" | "daily_assessment_photos" | "jcf_photos";
   foreignKeyColumn?: string;
 }
 

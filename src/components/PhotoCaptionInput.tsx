@@ -8,7 +8,7 @@ import { cn } from "@/lib/utils";
 interface PhotoCaptionInputProps {
   photoId: string;
   initialCaption: string | null;
-  tableName: "inspection_photos" | "training_photos" | "daily_assessment_photos";
+  tableName: "inspection_photos" | "training_photos" | "daily_assessment_photos" | "jcf_photos";
   disabled?: boolean;
   className?: string;
   /** When provided, saves caption locally (IndexedDB) instead of to Supabase */

@@ -17,7 +17,7 @@ import { validateFile, isDuplicateInsertError } from "@/components/photo-capture
 
 import { toast } from "sonner";
 
-type PhotoTableName = "inspection_photos" | "training_photos" | "daily_assessment_photos";
+type PhotoTableName = "inspection_photos" | "training_photos" | "daily_assessment_photos" | "jcf_photos";
 
 interface PhotoCaptureProps {
   inspectionId: string;
