@@ -279,6 +279,7 @@ function DashboardReportsSectionImpl({
   const statsData = useMemo(() => {
     const fullData = activeReportTab === 'inspections' ? (allInspections ?? inspections)
       : activeReportTab === 'training' ? (allTrainings ?? trainings)
+      : activeReportTab === 'jcf' ? (allJcfs ?? jcfs)
       // Fix 3: invoiced tab pulls from the full invoiced source, not the
       // already-filtered/sliced currentReports. Otherwise the TOTAL card
       // can disagree with the "Invoiced (N)" tab label, especially while
@@ -298,7 +299,7 @@ function DashboardReportsSectionImpl({
       return age > 3; // matches tierOf: >3 days = warning, >5 = critical
     }).length;
     return { total, drafts, overdue, completed };
-  }, [activeReportTab, allInspections, allTrainings, allDailyAssessments, inspections, trainings, dailyAssessments, invoicedReports]);
+  }, [activeReportTab, allInspections, allTrainings, allDailyAssessments, allJcfs, inspections, trainings, dailyAssessments, jcfs, invoicedReports]);
 
   // Handle stats bar filter clicks
   const handleStatsFilter = (filter: 'all' | 'drafts' | 'overdue' | 'completed') => {
@@ -332,16 +333,19 @@ function DashboardReportsSectionImpl({
     const searchInspections = allInspections ?? inspections;
     const searchTrainings = allTrainings ?? trainings;
     const searchDaily = allDailyAssessments ?? dailyAssessments;
+    const searchJcfs = allJcfs ?? jcfs;
     const filteredInspections = searchInspections.filter(r => textMatchesReport(r, q, 'inspection'));
     const filteredTrainings = searchTrainings.filter(r => textMatchesReport(r, q, 'training'));
     const filteredDaily = searchDaily.filter(r => textMatchesReport(r, q, 'daily'));
+    const filteredJcfs = searchJcfs.filter(r => textMatchesReport(r, q, 'jcf'));
     return {
       inspections: filteredInspections,
       trainings: filteredTrainings,
       daily: filteredDaily,
-      total: filteredInspections.length + filteredTrainings.length + filteredDaily.length,
+      jcfs: filteredJcfs,
+      total: filteredInspections.length + filteredTrainings.length + filteredDaily.length + filteredJcfs.length,
     };
-  }, [isSearchActive, filters.search, inspections, trainings, dailyAssessments, allInspections, allTrainings, allDailyAssessments]);
+  }, [isSearchActive, filters.search, inspections, trainings, dailyAssessments, jcfs, allInspections, allTrainings, allDailyAssessments, allJcfs]);
 
   // Reset filters when switching tabs to avoid stale filter state (Issue 1)
   useEffect(() => {
@@ -378,6 +382,7 @@ function DashboardReportsSectionImpl({
     const resolvedType = type || resolveDashboardReportType(report, currentType);
     if (resolvedType === 'inspection') navigate(`/inspection/${report.id}`);
     else if (resolvedType === 'training') navigate(`/training/${report.id}`);
+    else if (resolvedType === 'jcf') navigate(`/jcf/${report.id}`);
     else navigate(`/daily-assessment/${report.id}`);
   };
 
@@ -401,10 +406,12 @@ function DashboardReportsSectionImpl({
   const EmptyState = activeReportTab === 'inspections' ? InspectionsEmptyState
     : activeReportTab === 'training' ? TrainingsEmptyState
     : activeReportTab === 'daily' ? DailyAssessmentsEmptyState
+    : activeReportTab === 'jcf' ? JCFsEmptyState
     : InvoicedEmptyState;
 
   const newPath = activeReportTab === 'inspections' ? '/inspection/new'
     : activeReportTab === 'training' ? '/training/new'
+    : activeReportTab === 'jcf' ? '/jcf/new'
     : '/daily-assessment/new';
 
   return (
