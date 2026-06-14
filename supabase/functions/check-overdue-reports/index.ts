@@ -146,6 +146,17 @@ serve(async (req) => {
       });
     }
 
+    for (const r of jcfs.data || []) {
+      overdueReports.push({
+        reportType: 'jcf',
+        reportId: r.id,
+        createdAt: r.created_at,
+        daysOverdue: Math.floor((now - new Date(r.created_at).getTime()) / (1000 * 60 * 60 * 24)),
+        organization: r.organization || 'Unknown',
+        owner: inspectorNameMap.get(r.inspector_id) || r.inspector_id,
+      });
+    }
+
     console.log(`Found ${overdueReports.length} overdue reports`);
 
     if (overdueReports.length === 0) {
