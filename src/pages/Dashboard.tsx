@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button";
 import { GradientButton } from "@/components/ui/gradient-button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Plus, LogOut, FileText, GraduationCap, ArrowRight, Download, Settings, Trash2, MoreVertical, Bell, Cloud, User, Loader2, Check, RefreshCw, MessageCircle, Shield, CloudOff, ChevronDown, ChevronRight, Filter, X } from "lucide-react";
+import { Plus, LogOut, FileText, GraduationCap, ArrowRight, Download, Settings, Trash2, MoreVertical, Bell, Cloud, User, Loader2, Check, RefreshCw, MessageCircle, Shield, CloudOff, ChevronDown, ChevronRight, Filter, X, Briefcase } from "lucide-react";
 import { DashboardSearchBar } from "@/components/dashboard/DashboardSearchBar";
 import { DashboardFilters } from "@/components/dashboard/DashboardFilters";
 import { DashboardQuickFilters } from "@/components/dashboard/DashboardQuickFilters";
@@ -175,7 +175,7 @@ function readOfflineWithTimeout(
 const DRIFT_REPORT_THROTTLE_MS = 5 * 60 * 1000;
 const lastDriftReportAt = new Map<string, number>();
 function maybeReportDashboardDrift(
-  table: 'inspections' | 'trainings' | 'daily_assessments',
+  table: 'inspections' | 'trainings' | 'daily_assessments' | 'jcf_reports',
   offlineCount: number,
   networkCount: number,
   offlineReadCompleted: boolean,
@@ -284,6 +284,9 @@ export default function Dashboard() {
   );
   const hasPaintedDailyAssessmentsRef = React.useRef(
     readDashboardCache('dashboard-cache-daily').length > 0,
+  );
+  const hasPaintedJCFsRef = React.useRef(
+    readDashboardCache('dashboard-cache-jcfs').length > 0,
   );
 
   // Build unique inspector list from report data
@@ -516,6 +519,7 @@ export default function Dashboard() {
         loadInspections(userId, superAdminStatus, sessionValid),
         loadTrainingReports(userId, superAdminStatus, sessionValid),
         loadDailyAssessments(userId, superAdminStatus, sessionValid),
+        loadJCFs(userId, superAdminStatus, sessionValid),
       ]);
 
       // Fix 1: Always flip per-dataset validation true once the load function
@@ -526,6 +530,7 @@ export default function Dashboard() {
       setInspectionsValidated(true);
       setTrainingsValidated(true);
       setDailyValidated(true);
+      setJcfsValidated(true);
       void results; // (kept for future telemetry if needed)
 
       // Track network failures for stale-data banner
@@ -546,6 +551,7 @@ export default function Dashboard() {
       setInspectionsValidated(true);
       setTrainingsValidated(true);
       setDailyValidated(true);
+      setJcfsValidated(true);
     } finally {
       refreshInFlightRef.current = false;
       // If a refresh was queued while we were busy, trigger it now
@@ -857,6 +863,21 @@ export default function Dashboard() {
           return;
         }
         setDailyAssessments((prev) => mergeRow(prev, row));
+      })
+      .on('postgres_changes', baseConfig('jcf_reports'), (payload: RealtimePostgresChangesPayload<DbRow>) => {
+        setJcfsValidated(prev => prev ? prev : true);
+        if (payload.eventType === 'DELETE') {
+          const id = payload.old?.id;
+          if (id) setJcfs((prev) => removeRow(prev, id));
+          return;
+        }
+        const row = payload.new;
+        if (!row?.id) return;
+        if (row.deleted_at) {
+          setJcfs((prev) => removeRow(prev, row.id));
+          return;
+        }
+        setJcfs((prev) => mergeRow(prev, row));
       })
       // Realtime health check. If the channel errors or times out we log it
       // and trigger a one-shot refetch so the dashboard counts don't silently
@@ -1546,6 +1567,171 @@ export default function Dashboard() {
     }
   };
 
+  const loadJCFs = async (cachedUserId?: string, cachedIsSuperAdmin?: boolean, sessionValid: boolean = true): Promise<{ networkSuccess: boolean; definitive: boolean }> => {
+    try {
+      const userId = cachedUserId || (await getUserWithCache())?.id;
+      const isSuperAdmin = cachedIsSuperAdmin ?? await getSuperAdminStatusWithCache();
+
+      const offlinePromise = getOfflineJCFs(userId, isSuperAdmin).catch(() => []);
+
+      let supabasePromise: Promise<DbRow[] | null> = Promise.resolve([]);
+      if (navigator.onLine && sessionValid) {
+        supabasePromise = withNetworkTimeout(
+          fetchAllPaginated<DbRow>(
+            'jcf_reports',
+            (from, to) =>
+              supabase
+                .from("jcf_reports")
+                .select(`
+                  id, inspector_id, organization, location, date_of_work,
+                  status, created_at, updated_at, synced_at,
+                  latest_report_generated_at, report_version, deleted_at,
+                  inspector:profiles!jcf_reports_inspector_id_profiles_fkey(first_name, last_name, avatar_url)
+                `)
+                .is('deleted_at', null)
+                .order("date_of_work", { ascending: false })
+                .range(from, to)
+          ).catch(err => {
+            console.error('[Dashboard] Supabase JCFs fetch error:', err);
+            return null;
+          }),
+          15000,
+          null
+        );
+      }
+
+      const offlineResult = await readOfflineWithTimeout(offlinePromise, 4000);
+      const offlineReadCompleted = offlineResult.kind === 'data';
+      const offlineData = offlineResult.kind === 'data' ? offlineResult.rows : [];
+      if (offlineData.length > 0 && !hasPaintedJCFsRef.current) {
+        applyRowsIfChanged(setJcfs, offlineData);
+        writeDashboardCache('dashboard-cache-jcfs', offlineData);
+        if (import.meta.env.DEV) {
+          console.log('[Dashboard] Stale-while-revalidate JCFs from cache:', offlineData.length);
+        }
+      }
+
+      if (navigator.onLine && sessionValid) {
+        const networkData = await supabasePromise;
+        if (networkData && networkData.length > 0) {
+          maybeReportDashboardDrift('jcf_reports', offlineData.length, networkData.length, offlineReadCompleted);
+          applyRowsIfChanged(setJcfs, networkData);
+          hasPaintedJCFsRef.current = true;
+          writeDashboardCache('dashboard-cache-jcfs', networkData);
+
+          reconcileServerDeletions({
+            table: 'jcf_reports',
+            localRows: offlineData,
+            serverRows: networkData,
+            userId,
+            isSuperAdmin,
+          }).catch(err => console.warn('[Dashboard] JCFs reconcile failed:', err));
+
+          const nowJ = new Date().toISOString();
+          Promise.all(networkData.map(async (jcf) => {
+            const localRecord = await getOfflineJCF(jcf.id);
+            if (shouldPreserveLocalRecord(localRecord, jcf)) {
+              const serverSyncedAt = jcf.synced_at ? new Date(jcf.synced_at).getTime() : 0;
+              const localUpdatedAt = localRecord?.updated_at ? new Date(localRecord.updated_at).getTime() : 0;
+              if (serverSyncedAt < localUpdatedAt) {
+                console.log('[Dashboard] Preserving unsynced local JCF:', jcf.id);
+                return;
+              }
+              console.log('[Dashboard] Server synced_at >= local updated_at, allowing overwrite:', jcf.id);
+            }
+            const preservedSyncedAtJ = localRecord?.synced_at || jcf.synced_at || nowJ;
+            const localUpdJ = localRecord?.updated_at ? new Date(localRecord.updated_at).getTime() : 0;
+            const serverUpdJ = jcf.updated_at ? new Date(jcf.updated_at).getTime() : 0;
+            const preservedUpdatedAtJ = localUpdJ > serverUpdJ ? localRecord.updated_at : jcf.updated_at;
+            return saveJCFOffline(
+              { ...jcf, updated_at: preservedUpdatedAtJ, synced_at: preservedSyncedAtJ },
+              { markDirty: false, explicitUserSave: false, dispatchSyncEvent: false },
+            );
+          }))
+            .then(async () => {
+              try {
+                const ORPHAN_CLEANUP_COOLDOWN = 3600000;
+                const lastCleanupKey = 'lastOrphanCleanup_jcfs';
+                const lastCleanup = parseInt(localStorage.getItem(lastCleanupKey) || '0');
+                if (Date.now() - lastCleanup < ORPHAN_CLEANUP_COOLDOWN) {
+                  if (import.meta.env.DEV) console.log('[Dashboard] JCF orphan cleanup on cooldown -- skipping');
+                } else {
+                  let serverIds: Set<string>;
+                  try {
+                    const idQuery = supabase.from('jcf_reports').select('id').is('deleted_at', null);
+                    if (!isSuperAdmin) idQuery.eq('inspector_id', userId);
+                    const { data: idRows, error: idErr } = await idQuery;
+                    if (idErr) throw idErr;
+                    serverIds = new Set((idRows || []).map((r: { id: string }) => r.id));
+                  } catch (e) {
+                    console.warn('[Dashboard] JCF orphan id-fetch failed -- skipping cleanup', e);
+                    return;
+                  }
+                  const localJcfs = await getOfflineJCFs(userId);
+                  const nonTempLocals = localJcfs.filter(l => !l.id.startsWith('temp-'));
+
+                  if (serverIds.size === 0 && nonTempLocals.length > 0) {
+                    console.warn('[Dashboard] Server returned 0 JCF ids but local has records -- skipping orphan cleanup');
+                  } else if (serverIds.size < nonTempLocals.length * 0.5 && nonTempLocals.length > 5) {
+                    console.warn('[Dashboard] Server returned far fewer JCFs than local -- skipping orphan cleanup', {
+                      server: serverIds.size,
+                      local: nonTempLocals.length,
+                    });
+                  } else if (isSyncInProgress()) {
+                    console.log('[Dashboard] Sync in progress -- skipping JCF orphan cleanup');
+                  } else {
+                    for (const local of localJcfs) {
+                      if (!serverIds.has(local.id) && !local.id.startsWith('temp-')) {
+                        const updatedAt = local.updated_at ? new Date(local.updated_at).getTime() : 0;
+                        const createdAt = local.created_at ? new Date(local.created_at).getTime() : 0;
+                        const recencyTs = Math.max(updatedAt, createdAt);
+                        const isRecentlyModified = (Date.now() - recencyTs) < 60000;
+                        const isRecentlyCreated = (Date.now() - createdAt) < 300000;
+                        if (isRecentlyModified || isRecentlyCreated) {
+                          console.log('[Dashboard] Skipping orphan cleanup for recent JCF:', local.id);
+                          continue;
+                        }
+                        try {
+                          const orphanLog = JSON.parse(localStorage.getItem('deletedOrphans') || '[]');
+                          orphanLog.push({ ...local, deletedAt: new Date().toISOString(), type: 'jcf_report' });
+                          if (orphanLog.length > 20) orphanLog.shift();
+                          localStorage.setItem('deletedOrphans', JSON.stringify(orphanLog));
+                        } catch {}
+                        if (import.meta.env.DEV) console.log('[Dashboard] Removing orphaned local JCF:', local.id);
+                        await deleteOfflineJCF(local.id);
+                      }
+                    }
+                    localStorage.setItem(lastCleanupKey, String(Date.now()));
+                  }
+                }
+              } catch (cleanupErr) {
+                console.warn('[Dashboard] JCF orphan cleanup failed:', cleanupErr);
+              }
+            })
+            .catch(err => console.error('[Dashboard] Error batch saving JCFs:', err));
+
+          if (import.meta.env.DEV) {
+            console.log('[Dashboard] Loaded JCFs from Supabase:', networkData.length);
+          }
+          return { networkSuccess: true, definitive: true };
+        } else if (networkData !== null && sessionValid) {
+          applyRowsIfChanged(setJcfs, []);
+          hasPaintedJCFsRef.current = true;
+          writeDashboardCache('dashboard-cache-jcfs', []);
+          return { networkSuccess: true, definitive: true };
+        } else if (networkData === null && offlineData.length > 0) {
+          applyRowsIfChanged(setJcfs, offlineData);
+          return { networkSuccess: false, definitive: true };
+        }
+        return { networkSuccess: false, definitive: offlineData.length > 0 };
+      }
+      return { networkSuccess: false, definitive: true };
+    } catch (error) {
+      console.error("Error loading JCFs:", error);
+      return { networkSuccess: false, definitive: false };
+    }
+  };
+
   // Sign-out is now handled globally by AuthenticatedHeader
 
   const handleDeleteClick = (e: React.MouseEvent, inspection: DbRow) => {
@@ -1621,9 +1807,37 @@ export default function Dashboard() {
       } else if (reportToDelete) {
         // Determine if it's a training or daily assessment
         const isTraining = 'start_date' in reportToDelete;
-        const isDailyAssessment = 'assessment_date' in reportToDelete && !('start_date' in reportToDelete);
+        const isJCF = 'date_of_work' in reportToDelete;
+        const isDailyAssessment = 'assessment_date' in reportToDelete && !('start_date' in reportToDelete) && !isJCF;
 
-        if (isDailyAssessment) {
+        if (isJCF) {
+          await deleteOfflineJCF(reportToDelete.id);
+
+          if (navigator.onLine) {
+            const { data, error } = await supabase.rpc('soft_delete_record', {
+              p_table_name: 'jcf_reports',
+              p_record_id: reportToDelete.id,
+              p_deleted_by: userId,
+              p_retention_days: 60,
+            });
+
+            if (error) throw error;
+            if (data === false) throw new Error('JCF not found or already deleted.');
+
+            triggerHaptic('success');
+            toast.success("Job Completion Form moved to trash. It will be permanently deleted in 60 days.");
+
+            if (import.meta.env.DEV) {
+              console.log('[Dashboard] JCF soft-deleted:', reportToDelete.id);
+            }
+          } else {
+            await queueJCFOperation('update', reportToDelete.id, { ...reportToDelete, ...softDeleteData });
+            triggerHaptic('success');
+            toast.success("JCF will be deleted when you're back online.");
+          }
+
+          setJcfs(prev => prev.filter(j => j.id !== reportToDelete.id));
+        } else if (isDailyAssessment) {
           // Soft delete daily assessment
           const { deleteOfflineDailyAssessment } = await import('@/lib/offline-storage');
           await deleteOfflineDailyAssessment(reportToDelete.id);
@@ -1908,7 +2122,7 @@ export default function Dashboard() {
                 </p>
               </div>
 
-              <div className="grid md:grid-cols-3 gap-6 max-w-6xl mx-auto">
+              <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-6 max-w-6xl mx-auto">
                 {/* INSPECTION CARD - FUNCTIONAL */}
                 <Card 
                   className="relative overflow-visible hover:shadow-2xl transition-all duration-300 border-2 hover:border-blue-500 cursor-pointer group"
@@ -1987,6 +2201,32 @@ export default function Dashboard() {
                   </CardContent>
                   
                 </Card>
+
+                {/* JOB COMPLETION FORM CARD */}
+                <Card
+                  className="relative overflow-visible hover:shadow-2xl transition-all duration-300 border-2 hover:border-orange-500 cursor-pointer group"
+                  onClick={() => {
+                    triggerHaptic('light');
+                    navigate("/jcf/new");
+                  }}
+                >
+                  <div className="absolute inset-0 bg-gradient-to-br from-orange-50/30 to-transparent opacity-50 rounded-lg" />
+                  <CardHeader className="relative z-10 text-center pb-4">
+                    <div className="w-16 h-16 mx-auto mb-4 rounded-full bg-orange-100 flex items-center justify-center group-hover:scale-110 transition-transform">
+                      <Briefcase className="w-8 h-8 text-orange-600" />
+                    </div>
+                    <CardTitle className="text-2xl mb-2">Job Completion Form</CardTitle>
+                    <CardDescription className="text-base">
+                      Document job completion details and sign-off
+                    </CardDescription>
+                  </CardHeader>
+                  <CardContent className="relative z-10 text-center pb-6">
+                    <GradientButton className="w-full group-hover:scale-105 transition-transform">
+                      Start JCF
+                      <ArrowRight className="w-4 h-4 ml-2" />
+                    </GradientButton>
+                  </CardContent>
+                </Card>
               </div>
             </div>
           </div>
@@ -2022,13 +2262,15 @@ export default function Dashboard() {
               const baseInspections = reportSection === "recent" ? sortByMostRecent(inspections).slice(0, 9) : inspections;
               const baseTrainings = reportSection === "recent" ? sortByMostRecent(trainings).slice(0, 9) : trainings;
               const baseDailyAssessments = reportSection === "recent" ? sortByMostRecent(dailyAssessments).slice(0, 9) : dailyAssessments;
+              const baseJcfs = reportSection === "recent" ? sortByMostRecent(jcfs).slice(0, 9) : jcfs;
 
               const dashboardInspections = activeReportTab === 'invoiced' ? inspections : baseInspections;
               const dashboardTrainings = activeReportTab === 'invoiced' ? trainings : baseTrainings;
               const dashboardDailyAssessments = activeReportTab === 'invoiced' ? dailyAssessments : baseDailyAssessments;
+              const dashboardJcfs = activeReportTab === 'invoiced' ? jcfs : baseJcfs;
 
               const invoicedCount = isSuperAdmin && invoicedReportIds.size > 0
-                ? [...inspections, ...trainings, ...dailyAssessments].filter(r => invoicedReportIds.has(r.id)).length
+                ? [...inspections, ...trainings, ...dailyAssessments, ...jcfs].filter(r => invoicedReportIds.has(r.id)).length
                 : 0;
 
               return (
@@ -2036,15 +2278,19 @@ export default function Dashboard() {
                   inspections={dashboardInspections}
                   trainings={dashboardTrainings}
                   dailyAssessments={dashboardDailyAssessments}
+                  jcfs={dashboardJcfs}
                   allInspections={inspections}
                   allTrainings={trainings}
                   allDailyAssessments={dailyAssessments}
+                  allJcfs={jcfs}
                   totalInspections={inspectionsValidated ? inspections.length : undefined}
                   totalTrainings={trainingsValidated ? trainings.length : undefined}
                   totalDailyAssessments={dailyValidated ? dailyAssessments.length : undefined}
+                  totalJcfs={jcfsValidated ? jcfs.length : undefined}
                   inspectionsValidated={inspectionsValidated}
                   trainingsValidated={trainingsValidated}
                   dailyValidated={dailyValidated}
+                  jcfsValidated={jcfsValidated}
                   invoicedCount={invoicedCount}
                   activeReportTab={activeReportTab}
                   setActiveReportTab={setActiveReportTab}
