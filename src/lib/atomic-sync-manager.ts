@@ -4070,3 +4070,153 @@ export async function refetchAssessmentPackage(assessmentId: string): Promise<vo
     console.warn('[Atomic Sync] refetchAssessmentPackage failed (non-fatal):', e);
   }
 }
+
+// ============================================================================
+// JCF (Job Completion Form) sync — single-table report (no related children).
+// jcf_photos sync runs through the shared `syncPhotos` path.
+// ============================================================================
+
+export async function syncJCFAtomic(
+  jcfId: string,
+  preValidatedUser?: CachedUser,
+  signal?: AbortSignal,
+): Promise<AtomicSyncItemResult> {
+  if (signal?.aborted) return { success: false, skipped: true, reason: 'aborted' };
+  if (isTombstoned('jcf_reports', jcfId)) {
+    return { success: false, skipped: true, reason: 'tombstoned' };
+  }
+  try {
+    const jcf = await getOfflineJCF(jcfId);
+    if (!jcf) return { success: false, skipped: true, reason: 'not_found' };
+
+    const t0UpdatedAtMs = jcf.updated_at ? Date.parse(jcf.updated_at) : NaN;
+
+    // Temp-ID → UUID swap
+    let idMapping: { oldId: string; newId: string } | null = null;
+    if (jcf.id.startsWith('temp-')) {
+      const newId = crypto.randomUUID();
+      idMapping = { oldId: jcf.id, newId };
+      jcf.id = newId;
+      jcfId = newId;
+    }
+
+    const user = preValidatedUser || await ensureValidSession();
+    if (!user) throw new Error('No valid session for JCF sync');
+
+    if (jcf.inspector_id !== user.id) {
+      if (!jcf.synced_at) {
+        jcf.inspector_id = user.id;
+        await saveJCFOffline(jcf);
+      } else {
+        return { success: false, skipped: true, reason: 'ownership_mismatch' };
+      }
+    }
+
+    // Remote-deleted check (skip for unsynced new records)
+    const isNew = !jcf.synced_at;
+    const recordStatus = isNew ? null : await checkRemoteRecordStatus('jcf_reports', jcfId);
+    if (recordStatus?.record_exists && recordStatus?.is_deleted) {
+      const remoteDeletedAt = recordStatus.deleted_at ?? new Date().toISOString();
+      const result = await handleRemoteDeleted(
+        'jcf_reports',
+        jcfId,
+        jcf,
+        remoteDeletedAt,
+        async () => { await deleteOfflineJCF(jcfId); },
+      );
+      return {
+        success: false,
+        skipped: true,
+        reason: 'remote_deleted',
+        message: result.quarantined
+          ? 'This JCF was deleted by an administrator while you had unsynced changes.'
+          : 'This JCF was deleted by an administrator. Local copy has been cleaned up.',
+      };
+    }
+
+    // Strip transient/local fields before upsert
+    const { dirty: _dirty, child_count_hint: _hint, _remote_deleted_at: _rd, _quarantine_reason: _qr, ...upsertPayload } = jcf as Record<string, unknown> & {
+      dirty?: unknown; child_count_hint?: unknown; _remote_deleted_at?: unknown; _quarantine_reason?: unknown;
+    };
+
+    const { data: upserted, error } = await supabase
+      .from('jcf_reports' as never)
+      .upsert(upsertPayload as never, { onConflict: 'id' })
+      .select('updated_at')
+      .single();
+    if (error) throw error;
+
+    const serverTimestamp = (upserted as { updated_at?: string } | null)?.updated_at
+      || new Date().toISOString();
+
+    await safePostSyncSave(
+      jcfId,
+      jcf,
+      t0UpdatedAtMs,
+      serverTimestamp,
+      { synced_at: serverTimestamp, updated_at: serverTimestamp } as Partial<typeof jcf>,
+      getOfflineJCF,
+      (record, opts) => saveJCFOffline(record as Record<string, unknown> & { id?: string }, opts),
+    );
+
+    if (idMapping) {
+      try { await deleteOfflineJCF(idMapping.oldId); } catch { /* best-effort */ }
+    }
+
+    return { success: true };
+  } catch (e: unknown) {
+    const message = e instanceof Error ? e.message : String(e);
+    console.error('[Atomic Sync] JCF sync failed:', jcfId, message);
+    throw e;
+  }
+}
+
+export async function syncAllJCFsAtomic(
+  preValidatedUser?: CachedUser,
+  signal?: AbortSignal,
+): Promise<{ total: number; success: number; failed: number; remaining?: number; errors: Array<{ id: string; error: string }> }> {
+  if (!(await assertRealSessionForSync('jcfs'))) {
+    return { total: 0, success: 0, failed: 0, errors: [] };
+  }
+  let user: CachedUser | null = preValidatedUser || null;
+  if (!user) {
+    try {
+      user = await ensureValidSession();
+    } catch {
+      return { total: 0, success: 0, failed: 0, errors: [] };
+    }
+  }
+  if (!user) return { total: 0, success: 0, failed: 0, errors: [] };
+
+  let unsynced: Array<{ id: string; [k: string]: unknown }>;
+  try {
+    const result = await getUnsyncedJCFs(user.id);
+    const { isIdbReadFailure } = await import('./offline-storage');
+    if (isIdbReadFailure(result)) {
+      return { total: -1, success: 0, failed: 0, errors: [{ id: 'idb_read_failure', error: result.error }] };
+    }
+    unsynced = result as Array<{ id: string; [k: string]: unknown }>;
+  } catch (e) {
+    return { total: -1, success: 0, failed: 0, errors: [{ id: 'idb_read_failure', error: String(e) }] };
+  }
+  if (unsynced.length === 0) return { total: 0, success: 0, failed: 0, errors: [] };
+
+  const batch = unsynced.slice(0, 5);
+  const remaining = unsynced.length - batch.length;
+  let success = 0;
+  let failed = 0;
+  const errors: Array<{ id: string; error: string }> = [];
+
+  for (const jcf of batch) {
+    if (signal?.aborted) break;
+    try {
+      const r = await syncJCFAtomic(jcf.id, user as CachedUser, signal);
+      if (r?.success) success++;
+      else if (!r?.skipped) failed++;
+    } catch (e) {
+      failed++;
+      errors.push({ id: jcf.id, error: e instanceof Error ? e.message : String(e) });
+    }
+  }
+  return { total: batch.length, success, failed, remaining, errors };
+}
