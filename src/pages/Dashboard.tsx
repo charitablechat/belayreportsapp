@@ -1567,6 +1567,171 @@ export default function Dashboard() {
     }
   };
 
+  const loadJCFs = async (cachedUserId?: string, cachedIsSuperAdmin?: boolean, sessionValid: boolean = true): Promise<{ networkSuccess: boolean; definitive: boolean }> => {
+    try {
+      const userId = cachedUserId || (await getUserWithCache())?.id;
+      const isSuperAdmin = cachedIsSuperAdmin ?? await getSuperAdminStatusWithCache();
+
+      const offlinePromise = getOfflineJCFs(userId, isSuperAdmin).catch(() => []);
+
+      let supabasePromise: Promise<DbRow[] | null> = Promise.resolve([]);
+      if (navigator.onLine && sessionValid) {
+        supabasePromise = withNetworkTimeout(
+          fetchAllPaginated<DbRow>(
+            'jcf_reports',
+            (from, to) =>
+              supabase
+                .from("jcf_reports")
+                .select(`
+                  id, inspector_id, organization, location, date_of_work,
+                  status, created_at, updated_at, synced_at,
+                  latest_report_generated_at, report_version, deleted_at,
+                  inspector:profiles!jcf_reports_inspector_id_profiles_fkey(first_name, last_name, avatar_url)
+                `)
+                .is('deleted_at', null)
+                .order("date_of_work", { ascending: false })
+                .range(from, to)
+          ).catch(err => {
+            console.error('[Dashboard] Supabase JCFs fetch error:', err);
+            return null;
+          }),
+          15000,
+          null
+        );
+      }
+
+      const offlineResult = await readOfflineWithTimeout(offlinePromise, 4000);
+      const offlineReadCompleted = offlineResult.kind === 'data';
+      const offlineData = offlineResult.kind === 'data' ? offlineResult.rows : [];
+      if (offlineData.length > 0 && !hasPaintedJCFsRef.current) {
+        applyRowsIfChanged(setJcfs, offlineData);
+        writeDashboardCache('dashboard-cache-jcfs', offlineData);
+        if (import.meta.env.DEV) {
+          console.log('[Dashboard] Stale-while-revalidate JCFs from cache:', offlineData.length);
+        }
+      }
+
+      if (navigator.onLine && sessionValid) {
+        const networkData = await supabasePromise;
+        if (networkData && networkData.length > 0) {
+          maybeReportDashboardDrift('jcf_reports', offlineData.length, networkData.length, offlineReadCompleted);
+          applyRowsIfChanged(setJcfs, networkData);
+          hasPaintedJCFsRef.current = true;
+          writeDashboardCache('dashboard-cache-jcfs', networkData);
+
+          reconcileServerDeletions({
+            table: 'jcf_reports',
+            localRows: offlineData,
+            serverRows: networkData,
+            userId,
+            isSuperAdmin,
+          }).catch(err => console.warn('[Dashboard] JCFs reconcile failed:', err));
+
+          const nowJ = new Date().toISOString();
+          Promise.all(networkData.map(async (jcf) => {
+            const localRecord = await getOfflineJCF(jcf.id);
+            if (shouldPreserveLocalRecord(localRecord, jcf)) {
+              const serverSyncedAt = jcf.synced_at ? new Date(jcf.synced_at).getTime() : 0;
+              const localUpdatedAt = localRecord?.updated_at ? new Date(localRecord.updated_at).getTime() : 0;
+              if (serverSyncedAt < localUpdatedAt) {
+                console.log('[Dashboard] Preserving unsynced local JCF:', jcf.id);
+                return;
+              }
+              console.log('[Dashboard] Server synced_at >= local updated_at, allowing overwrite:', jcf.id);
+            }
+            const preservedSyncedAtJ = localRecord?.synced_at || jcf.synced_at || nowJ;
+            const localUpdJ = localRecord?.updated_at ? new Date(localRecord.updated_at).getTime() : 0;
+            const serverUpdJ = jcf.updated_at ? new Date(jcf.updated_at).getTime() : 0;
+            const preservedUpdatedAtJ = localUpdJ > serverUpdJ ? localRecord.updated_at : jcf.updated_at;
+            return saveJCFOffline(
+              { ...jcf, updated_at: preservedUpdatedAtJ, synced_at: preservedSyncedAtJ },
+              { markDirty: false, explicitUserSave: false, dispatchSyncEvent: false },
+            );
+          }))
+            .then(async () => {
+              try {
+                const ORPHAN_CLEANUP_COOLDOWN = 3600000;
+                const lastCleanupKey = 'lastOrphanCleanup_jcfs';
+                const lastCleanup = parseInt(localStorage.getItem(lastCleanupKey) || '0');
+                if (Date.now() - lastCleanup < ORPHAN_CLEANUP_COOLDOWN) {
+                  if (import.meta.env.DEV) console.log('[Dashboard] JCF orphan cleanup on cooldown -- skipping');
+                } else {
+                  let serverIds: Set<string>;
+                  try {
+                    const idQuery = supabase.from('jcf_reports').select('id').is('deleted_at', null);
+                    if (!isSuperAdmin) idQuery.eq('inspector_id', userId);
+                    const { data: idRows, error: idErr } = await idQuery;
+                    if (idErr) throw idErr;
+                    serverIds = new Set((idRows || []).map((r: { id: string }) => r.id));
+                  } catch (e) {
+                    console.warn('[Dashboard] JCF orphan id-fetch failed -- skipping cleanup', e);
+                    return;
+                  }
+                  const localJcfs = await getOfflineJCFs(userId);
+                  const nonTempLocals = localJcfs.filter(l => !l.id.startsWith('temp-'));
+
+                  if (serverIds.size === 0 && nonTempLocals.length > 0) {
+                    console.warn('[Dashboard] Server returned 0 JCF ids but local has records -- skipping orphan cleanup');
+                  } else if (serverIds.size < nonTempLocals.length * 0.5 && nonTempLocals.length > 5) {
+                    console.warn('[Dashboard] Server returned far fewer JCFs than local -- skipping orphan cleanup', {
+                      server: serverIds.size,
+                      local: nonTempLocals.length,
+                    });
+                  } else if (isSyncInProgress()) {
+                    console.log('[Dashboard] Sync in progress -- skipping JCF orphan cleanup');
+                  } else {
+                    for (const local of localJcfs) {
+                      if (!serverIds.has(local.id) && !local.id.startsWith('temp-')) {
+                        const updatedAt = local.updated_at ? new Date(local.updated_at).getTime() : 0;
+                        const createdAt = local.created_at ? new Date(local.created_at).getTime() : 0;
+                        const recencyTs = Math.max(updatedAt, createdAt);
+                        const isRecentlyModified = (Date.now() - recencyTs) < 60000;
+                        const isRecentlyCreated = (Date.now() - createdAt) < 300000;
+                        if (isRecentlyModified || isRecentlyCreated) {
+                          console.log('[Dashboard] Skipping orphan cleanup for recent JCF:', local.id);
+                          continue;
+                        }
+                        try {
+                          const orphanLog = JSON.parse(localStorage.getItem('deletedOrphans') || '[]');
+                          orphanLog.push({ ...local, deletedAt: new Date().toISOString(), type: 'jcf_report' });
+                          if (orphanLog.length > 20) orphanLog.shift();
+                          localStorage.setItem('deletedOrphans', JSON.stringify(orphanLog));
+                        } catch {}
+                        if (import.meta.env.DEV) console.log('[Dashboard] Removing orphaned local JCF:', local.id);
+                        await deleteOfflineJCF(local.id);
+                      }
+                    }
+                    localStorage.setItem(lastCleanupKey, String(Date.now()));
+                  }
+                }
+              } catch (cleanupErr) {
+                console.warn('[Dashboard] JCF orphan cleanup failed:', cleanupErr);
+              }
+            })
+            .catch(err => console.error('[Dashboard] Error batch saving JCFs:', err));
+
+          if (import.meta.env.DEV) {
+            console.log('[Dashboard] Loaded JCFs from Supabase:', networkData.length);
+          }
+          return { networkSuccess: true, definitive: true };
+        } else if (networkData !== null && sessionValid) {
+          applyRowsIfChanged(setJcfs, []);
+          hasPaintedJCFsRef.current = true;
+          writeDashboardCache('dashboard-cache-jcfs', []);
+          return { networkSuccess: true, definitive: true };
+        } else if (networkData === null && offlineData.length > 0) {
+          applyRowsIfChanged(setJcfs, offlineData);
+          return { networkSuccess: false, definitive: true };
+        }
+        return { networkSuccess: false, definitive: offlineData.length > 0 };
+      }
+      return { networkSuccess: false, definitive: true };
+    } catch (error) {
+      console.error("Error loading JCFs:", error);
+      return { networkSuccess: false, definitive: false };
+    }
+  };
+
   // Sign-out is now handled globally by AuthenticatedHeader
 
   const handleDeleteClick = (e: React.MouseEvent, inspection: DbRow) => {
