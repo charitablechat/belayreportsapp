@@ -166,56 +166,57 @@ All colors MUST be HSL.
   }
 
   .dark {
-    /* BelayReports palette — dark mode (Primary Dark canvas) */
-    --background: 180 64% 10%;          /* deeper #0D3D3D variant */
-    --foreground: 171 56% 95%;          /* #EAF9F7 */
+    /* BelayReports — Deep Dark Glassmorphism canvas.
+       Gradient: #0D3D3D -> #0A2E2E -> #071E2A */
+    --background: 180 64% 14%;          /* #0D3D3D */
+    --foreground: 0 0% 100%;            /* #FFFFFF */
 
-    --card: 180 48% 14%;
-    --card-foreground: 171 56% 95%;
+    --card: 180 64% 14%;
+    --card-foreground: 0 0% 100%;
 
-    --popover: 180 48% 14%;
-    --popover-foreground: 171 56% 95%;
+    --popover: 180 64% 14%;
+    --popover-foreground: 0 0% 100%;
 
-    --primary: 173 80% 45%;             /* slightly brighter teal on dark */
-    --primary-foreground: 180 64% 10%;
-    --primary-hover: 173 83% 38%;
-    --primary-dark: 180 64% 14%;
+    --primary: 173 80% 40%;             /* #14B8A6 */
+    --primary-foreground: 0 0% 100%;
+    --primary-hover: 173 83% 34%;       /* #0F9D8D */
+    --primary-dark: 180 64% 14%;        /* #0D3D3D */
     --primary-dark-hover: 180 48% 19%;
 
-    --secondary: 220 11% 31%;
-    --secondary-foreground: 171 56% 95%;
+    --secondary: 0 0% 100% / 0.1;
+    --secondary-foreground: 0 0% 100%;
 
     --muted: 180 48% 19%;
-    --muted-foreground: 205 53% 80%;
-    --text-muted: 217 7% 65%;
+    --muted-foreground: 0 0% 100% / 0.7;
+    --text-muted: 0 0% 100% / 0.5;
 
-    --accent: 14 60% 55%;
+    --accent: 173 80% 40%;
     --accent-foreground: 0 0% 100%;
-    --accent-blue: 205 53% 69%;
+    --accent-blue: 205 53% 69%;         /* #85B8DB */
     --card-highlight: 180 48% 19%;
 
-    --destructive: 0 63% 50%;
+    --destructive: 0 84% 60%;           /* #EF4444 */
     --destructive-foreground: 0 0% 100%;
 
-    --border: 187 36% 22%;              /* Border Teal */
-    --border-accent: 187 36% 30%;
-    --input: 180 48% 19%;
-    --ring: 173 80% 45%;
+    --border: 173 80% 40% / 0.18;       /* Teal hairline */
+    --border-accent: 173 80% 40% / 0.28;
+    --input: 0 0% 100% / 0.12;
+    --ring: 173 80% 40%;
 
-    --success: 173 80% 45%;
+    --success: 160 84% 39%;             /* #10B981 */
     --success-foreground: 0 0% 100%;
 
-    --warning: 14 60% 55%;
+    --warning: 38 92% 50%;              /* #F59E0B */
     --warning-foreground: 0 0% 100%;
 
-    --sidebar-background: 180 64% 10%;
-    --sidebar-foreground: 171 56% 95%;
-    --sidebar-primary: 173 80% 45%;
-    --sidebar-primary-foreground: 180 64% 10%;
+    --sidebar-background: 180 64% 14%;
+    --sidebar-foreground: 0 0% 100%;
+    --sidebar-primary: 173 80% 40%;
+    --sidebar-primary-foreground: 0 0% 100%;
     --sidebar-accent: 180 48% 19%;
-    --sidebar-accent-foreground: 171 56% 95%;
-    --sidebar-border: 187 36% 22%;
-    --sidebar-ring: 173 80% 45%;
+    --sidebar-accent-foreground: 0 0% 100%;
+    --sidebar-border: 173 80% 40% / 0.18;
+    --sidebar-ring: 173 80% 40%;
   }
 
   @property --pos-x {
