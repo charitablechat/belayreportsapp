@@ -1807,9 +1807,37 @@ export default function Dashboard() {
       } else if (reportToDelete) {
         // Determine if it's a training or daily assessment
         const isTraining = 'start_date' in reportToDelete;
-        const isDailyAssessment = 'assessment_date' in reportToDelete && !('start_date' in reportToDelete);
+        const isJCF = 'date_of_work' in reportToDelete;
+        const isDailyAssessment = 'assessment_date' in reportToDelete && !('start_date' in reportToDelete) && !isJCF;
 
-        if (isDailyAssessment) {
+        if (isJCF) {
+          await deleteOfflineJCF(reportToDelete.id);
+
+          if (navigator.onLine) {
+            const { data, error } = await supabase.rpc('soft_delete_record', {
+              p_table_name: 'jcf_reports',
+              p_record_id: reportToDelete.id,
+              p_deleted_by: userId,
+              p_retention_days: 60,
+            });
+
+            if (error) throw error;
+            if (data === false) throw new Error('JCF not found or already deleted.');
+
+            triggerHaptic('success');
+            toast.success("Job Completion Form moved to trash. It will be permanently deleted in 60 days.");
+
+            if (import.meta.env.DEV) {
+              console.log('[Dashboard] JCF soft-deleted:', reportToDelete.id);
+            }
+          } else {
+            await queueJCFOperation('update', reportToDelete.id, { ...reportToDelete, ...softDeleteData });
+            triggerHaptic('success');
+            toast.success("JCF will be deleted when you're back online.");
+          }
+
+          setJcfs(prev => prev.filter(j => j.id !== reportToDelete.id));
+        } else if (isDailyAssessment) {
           // Soft delete daily assessment
           const { deleteOfflineDailyAssessment } = await import('@/lib/offline-storage');
           await deleteOfflineDailyAssessment(reportToDelete.id);
