@@ -813,7 +813,7 @@ async function checkRemoteRecordStatus(
  * `{ quarantined: false }` when we performed the legacy hard-delete.
  */
 async function handleRemoteDeleted(
-  table: 'inspections' | 'trainings' | 'daily_assessments',
+  table: 'inspections' | 'trainings' | 'daily_assessments' | 'jcf_reports',
   recordId: string,
   localRecord: { synced_at?: string | null; updated_at?: string | null; organization?: string | null } | null,
   remoteDeletedAt: string,
