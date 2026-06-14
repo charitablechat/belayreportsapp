@@ -866,8 +866,7 @@ export default function JCFForm() {
       <CompletionLockDialog
         open={showCompletionLockDialog}
         onOpenChange={setShowCompletionLockDialog}
-        reportType="jcf" as any
-        onUnlock={async () => {
+        onConfirm={async () => {
           await persist(
             { ...jcf, completion_locked: false, status: "draft" },
             { immediate: true },
@@ -876,6 +875,7 @@ export default function JCFForm() {
           toast.success("JCF unlocked");
         }}
       />
+
 
       {reportHtml && (
         <HtmlReportViewer
