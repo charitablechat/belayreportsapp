@@ -774,7 +774,7 @@ interface RecordStatus {
  * @returns RecordStatus or null if record doesn't exist or error occurred
  */
 async function checkRemoteRecordStatus(
-  tableName: 'inspections' | 'trainings' | 'daily_assessments',
+  tableName: 'inspections' | 'trainings' | 'daily_assessments' | 'jcf_reports',
   recordId: string
 ): Promise<RecordStatus | null> {
   try {
