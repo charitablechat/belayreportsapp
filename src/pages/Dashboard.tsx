@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button";
 import { GradientButton } from "@/components/ui/gradient-button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Plus, LogOut, FileText, GraduationCap, ArrowRight, Download, Settings, Trash2, MoreVertical, Bell, Cloud, User, Loader2, Check, RefreshCw, MessageCircle, Shield, CloudOff, ChevronDown, ChevronRight, Filter, X } from "lucide-react";
+import { Plus, LogOut, FileText, GraduationCap, ArrowRight, Download, Settings, Trash2, MoreVertical, Bell, Cloud, User, Loader2, Check, RefreshCw, MessageCircle, Shield, CloudOff, ChevronDown, ChevronRight, Filter, X, Briefcase } from "lucide-react";
 import { DashboardSearchBar } from "@/components/dashboard/DashboardSearchBar";
 import { DashboardFilters } from "@/components/dashboard/DashboardFilters";
 import { DashboardQuickFilters } from "@/components/dashboard/DashboardQuickFilters";
