@@ -21,6 +21,8 @@ import NewTraining from "./pages/NewTraining";
 import NewDailyAssessment from "./pages/NewDailyAssessment";
 import DailyAssessmentForm from "./pages/DailyAssessmentForm";
 import NewJCF from "./pages/NewJCF";
+import JCFForm from "./pages/JCFForm";
+
 
 
 // Lazy-loaded non-critical routes for code splitting
