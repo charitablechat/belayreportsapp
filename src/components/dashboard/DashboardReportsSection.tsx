@@ -20,6 +20,11 @@ import { EmptyState as GenericEmptyState, InspectionsEmptyState, TrainingsEmptyS
 import { triggerHaptic } from "@/lib/haptics";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { getAssigneeName } from "@/lib/report-utils";
+import { isLovablePreview } from "@/lib/environment";
+
+// JCF UI is gated to the Lovable preview environment. Underlying state,
+// search, and data flows remain wired up so logic stays intact across builds.
+const JCF_UI_ENABLED = isLovablePreview();
 
 /**
  * Normalize a string for fuzzy matching: lowercase, remove diacritics,
