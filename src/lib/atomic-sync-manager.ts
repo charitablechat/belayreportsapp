@@ -433,6 +433,7 @@ const TABLE_FOR_SAFE_POST_SYNC: Record<string, TombstonedTable> = {
   getOfflineInspection: 'inspections',
   getOfflineTraining: 'trainings',
   getOfflineDailyAssessment: 'daily_assessments',
+  getOfflineJCF: 'jcf_reports',
 };
 
 /**
