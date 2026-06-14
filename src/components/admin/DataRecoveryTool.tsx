@@ -413,7 +413,7 @@ export function LocalSnapshotsPanel({ allowDelete = true }: SnapshotsPanelProps)
       setHighlightedId(reportId);
       setTimeout(() => setHighlightedId(null), 8600);
       const photoPart = photoCount ? ` with ${photoCount} photo${photoCount > 1 ? 's' : ''}` : '';
-      toast.success(`Imported ${reportType.replace('_', ' ')} backup${photoPart}`, {
+      toast.success(`Imported ${reportType.replace(/_/g, ' ')} backup${photoPart}`, {
         description: `Report ${reportId.substring(0, 8)}… restored to local + cloud storage.`,
       });
     } catch (err) {
@@ -621,7 +621,7 @@ export function LocalSnapshotsPanel({ allowDelete = true }: SnapshotsPanelProps)
     if (!searchQuery) return true;
     const q = searchQuery.toLowerCase();
     return (s.organization || '').toLowerCase().includes(q)
-        || s.reportType.replace('_', ' ').toLowerCase().includes(q)
+        || s.reportType.replace(/_/g, ' ').toLowerCase().includes(q)
         || s.device.toLowerCase().includes(q)
         || s.reportId.toLowerCase().includes(q);
   });
@@ -687,7 +687,7 @@ export function LocalSnapshotsPanel({ allowDelete = true }: SnapshotsPanelProps)
                   {filteredSnapshots.map((s) => (
                     <div key={s.key} className={`rounded-lg border border-white/10 bg-white/5 dark:bg-white/[0.02] p-3 space-y-2.5 min-w-0 overflow-hidden font-mono ${s.reportId === highlightedId ? 'import-flash' : ''}`}>
                       <div className="flex items-center justify-between gap-2 flex-wrap">
-                        <Badge variant="outline" className="text-xs">{s.reportType.replace('_', ' ')}</Badge>
+                        <Badge variant="outline" className="text-xs">{s.reportType.replace(/_/g, ' ')}</Badge>
                         {renderStatusBadge(getStatusFor(s), { className: "text-xs" })}
                       </div>
                       <div className="space-y-1.5 min-w-0">
@@ -772,7 +772,7 @@ export function LocalSnapshotsPanel({ allowDelete = true }: SnapshotsPanelProps)
                       {filteredSnapshots.map((s) => (
                         <TableRow key={s.key} className={s.reportId === highlightedId ? 'import-flash' : ''}>
                           <TableCell>
-                            <Badge variant="outline">{s.reportType.replace('_', ' ')}</Badge>
+                            <Badge variant="outline">{s.reportType.replace(/_/g, ' ')}</Badge>
                           </TableCell>
                           <TableCell className="font-medium">{s.organization || "N/A"}</TableCell>
                           <TableCell>{s.device}</TableCell>
@@ -1146,7 +1146,7 @@ export function CloudSnapshotsPanel({ allowDelete = true }: CloudSnapshotsPanelP
     const q = searchQuery.toLowerCase();
     return (s.facility || '').toLowerCase().includes(q)
         || (s.user_name || '').toLowerCase().includes(q)
-        || (s.report_type || '').replace('_', ' ').toLowerCase().includes(q)
+        || (s.report_type || '').replace(/_/g, ' ').toLowerCase().includes(q)
         || (s.device || '').toLowerCase().includes(q)
         || (s.report_id || '').toLowerCase().includes(q);
   });
@@ -1225,7 +1225,7 @@ export function CloudSnapshotsPanel({ allowDelete = true }: CloudSnapshotsPanelP
               {filteredSnapshots.map((s) => (
                 <div key={s.id} className="rounded-lg border border-white/10 bg-white/5 dark:bg-white/[0.02] p-3 space-y-2.5 min-w-0 overflow-hidden font-mono">
                   <div className="flex items-center justify-between gap-2 flex-wrap">
-                    <Badge variant="outline" className="text-xs">{(s.report_type || '').replace('_', ' ')}</Badge>
+                    <Badge variant="outline" className="text-xs">{(s.report_type || '').replace(/_/g, ' ')}</Badge>
                     {renderCloudStatusBadge(getStatusFor(s), { className: "text-xs" })}
                   </div>
 
@@ -1308,7 +1308,7 @@ export function CloudSnapshotsPanel({ allowDelete = true }: CloudSnapshotsPanelP
                   {filteredSnapshots.map((s) => (
                     <TableRow key={s.id} className="border-white/5 hover:bg-white/[0.03]">
                       <TableCell className="py-2.5 px-3">
-                        <Badge variant="outline" className="text-xs font-mono">{(s.report_type || '').replace('_', ' ')}</Badge>
+                        <Badge variant="outline" className="text-xs font-mono">{(s.report_type || '').replace(/_/g, ' ')}</Badge>
                       </TableCell>
                       <TableCell className="py-2.5 px-3 text-xs font-mono max-w-[180px] truncate" title={s.facility}>{s.facility || 'N/A'}</TableCell>
                       <TableCell className="py-2.5 px-3 text-xs font-mono">{s.user_name || 'Unknown'}</TableCell>
@@ -1582,7 +1582,7 @@ function AllUserSnapshotsPanel() {
     const q = searchQuery.toLowerCase();
     return (s.facility || '').toLowerCase().includes(q)
         || (s.user_name || '').toLowerCase().includes(q)
-        || (s.report_type || '').replace('_', ' ').toLowerCase().includes(q)
+        || (s.report_type || '').replace(/_/g, ' ').toLowerCase().includes(q)
         || (s.device || '').toLowerCase().includes(q)
         || (s.report_id || '').toLowerCase().includes(q);
   });
@@ -1654,7 +1654,7 @@ function AllUserSnapshotsPanel() {
                       {items.map((s) => (
                         <div key={s.id} className="px-4 py-3 flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-4">
                           <div className="flex items-center gap-2 flex-1 min-w-0">
-                            <Badge variant="outline" className="text-xs shrink-0">{(s.report_type || '').replace('_', ' ')}</Badge>
+                            <Badge variant="outline" className="text-xs shrink-0">{(s.report_type || '').replace(/_/g, ' ')}</Badge>
                             <span className="text-xs text-muted-foreground truncate" title={s.facility}>{s.facility || 'N/A'}</span>
                             <span className="text-xs text-muted-foreground truncate">{s.device}</span>
                             <Badge variant={s.synced ? "default" : "destructive"} className="text-xs shrink-0">
@@ -1920,7 +1920,7 @@ function AdminEditHistoryPanel() {
               const filtered = snapshots.filter(s => {
                 if (!searchQuery) return true;
                 const q = searchQuery.toLowerCase();
-                return (s.report_type || '').replace('_', ' ').toLowerCase().includes(q)
+                return (s.report_type || '').replace(/_/g, ' ').toLowerCase().includes(q)
                     || (s.owner_name || '').toLowerCase().includes(q)
                     || (s.editor_name || '').toLowerCase().includes(q)
                     || (s.report_id || '').toLowerCase().includes(q);
@@ -1933,7 +1933,7 @@ function AdminEditHistoryPanel() {
               return filtered.map((s) => (
               <div key={s.id} className="rounded-lg border border-white/10 px-4 py-3 flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-4">
                 <div className="flex items-center gap-2 flex-1 min-w-0 flex-wrap">
-                  <Badge variant="outline" className="text-xs shrink-0">{(s.report_type || '').replace('_', ' ')}</Badge>
+                  <Badge variant="outline" className="text-xs shrink-0">{(s.report_type || '').replace(/_/g, ' ')}</Badge>
                   <span className="text-xs text-muted-foreground truncate">Owner: {s.owner_name}</span>
                   <span className="text-xs text-muted-foreground truncate">Edited by: {s.editor_name}</span>
                   <span className="text-xs text-muted-foreground shrink-0">{formatDate(s.created_at)}</span>

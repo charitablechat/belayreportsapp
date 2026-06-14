@@ -102,7 +102,7 @@ export function VersionHistoryPanel({
             VERSION HISTORY
           </SheetTitle>
           <SheetDescription className="font-mono text-muted-foreground text-xs">
-            {versions.length} immutable snapshots • {reportType.replace('_', ' ')}
+            {versions.length} immutable snapshots • {reportType.replace(/_/g, ' ')}
           </SheetDescription>
         </SheetHeader>
 

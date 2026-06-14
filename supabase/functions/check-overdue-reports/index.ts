@@ -210,7 +210,7 @@ serve(async (req) => {
 
     const title = `${overdueReports.length} Overdue Report${overdueReports.length > 1 ? 's' : ''} Detected`;
     const bodyLines = overdueReports.slice(0, 5).map(r =>
-      `• ${r.reportType.replace('_', ' ')} by ${r.owner} (${r.daysOverdue}d overdue)`
+      `• ${r.reportType.replace(/_/g, ' ')} by ${r.owner} (${r.daysOverdue}d overdue)`
     );
     const body = bodyLines.join('\n') + (overdueReports.length > 5 ? `\n...and ${overdueReports.length - 5} more` : '');
 
@@ -287,7 +287,7 @@ serve(async (req) => {
 
           const reportRows = overdueReports.map(r => `
             <tr>
-              <td style="padding: 8px 12px; border-bottom: 1px solid #e5e7eb;">${r.reportType.replace('_', ' ').replace(/\b\w/g, c => c.toUpperCase())}</td>
+              <td style="padding: 8px 12px; border-bottom: 1px solid #e5e7eb;">${r.reportType.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase())}</td>
               <td style="padding: 8px 12px; border-bottom: 1px solid #e5e7eb;">${r.owner}</td>
               <td style="padding: 8px 12px; border-bottom: 1px solid #e5e7eb;">${r.organization}</td>
               <td style="padding: 8px 12px; border-bottom: 1px solid #e5e7eb; color: #dc2626; font-weight: 600;">${r.daysOverdue} days</td>
