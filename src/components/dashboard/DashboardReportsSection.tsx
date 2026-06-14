@@ -20,6 +20,11 @@ import { EmptyState as GenericEmptyState, InspectionsEmptyState, TrainingsEmptyS
 import { triggerHaptic } from "@/lib/haptics";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { getAssigneeName } from "@/lib/report-utils";
+import { isLovablePreview } from "@/lib/environment";
+
+// JCF UI is gated to the Lovable preview environment. Underlying state,
+// search, and data flows remain wired up so logic stays intact across builds.
+const JCF_UI_ENABLED = isLovablePreview();
 
 /**
  * Normalize a string for fuzzy matching: lowercase, remove diacritics,
@@ -578,7 +583,7 @@ function DashboardReportsSectionImpl({
             />
           )}
 
-          {crossTabResults && crossTabResults.jcfs.length > 0 && (
+          {JCF_UI_ENABLED && crossTabResults && crossTabResults.jcfs.length > 0 && (
             <CrossTabSection
               label="JCFs"
               icon={<Briefcase className="w-4 h-4" />}
@@ -608,10 +613,12 @@ function DashboardReportsSectionImpl({
               <FileText className="w-4 h-4 hidden sm:inline" />
               Daily ({totalDailyAssessments !== undefined ? totalDailyAssessments : '…'})
             </TabsTrigger>
+            {JCF_UI_ENABLED && (
             <TabsTrigger value="jcf" className="flex items-center gap-2">
               <Briefcase className="w-4 h-4 hidden sm:inline" />
               JCF ({totalJcfs !== undefined ? totalJcfs : '…'})
             </TabsTrigger>
+            )}
             {isSuperAdmin && (
               <TabsTrigger value="invoiced" className="flex items-center gap-2">
                 <Receipt className="w-4 h-4 hidden sm:inline" />
@@ -621,7 +628,7 @@ function DashboardReportsSectionImpl({
           </TabsList>
 
           {/* Content for all tabs - rendered by the same logic */}
-          {['inspections', 'training', 'daily', 'jcf', ...(isSuperAdmin ? ['invoiced'] : [])].map((tab) => (
+          {['inspections', 'training', 'daily', ...(JCF_UI_ENABLED ? ['jcf'] : []), ...(isSuperAdmin ? ['invoiced'] : [])].map((tab) => (
             <TabsContent key={tab} value={tab}>
               {loading ? (
                 <div className="grid gap-4">

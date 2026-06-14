@@ -53,6 +53,7 @@ import type { RealtimePostgresChangesPayload } from "@supabase/supabase-js";
 import type { CachedUser } from "@/lib/cached-auth";
 import { shouldPreserveLocalRecord } from "@/lib/local-data-guards";
 import { reconcileServerDeletions } from "@/lib/reconcile-server-deletions";
+import { isLovablePreview } from "@/lib/environment";
 import { ContactDeveloperSheet } from "@/components/ContactDeveloperSheet";
 import { onSyncComplete, isSyncInProgress, consumePendingDashboardRefresh, consumeDashboardStaleTimestamp } from "@/lib/sync-events";
 import { E2E_INSPECTION_MARKER_COLUMNS, E2E_MARKER_PREFIX, filterOutE2EFixtures } from "@/lib/e2e-fixture-filter";
@@ -2202,7 +2203,10 @@ export default function Dashboard() {
                   
                 </Card>
 
-                {/* JOB COMPLETION FORM CARD */}
+                {/* JOB COMPLETION FORM CARD — Lovable preview only.
+                    Hidden in production builds while underlying data,
+                    routes, and sync logic remain intact. */}
+                {isLovablePreview() && (
                 <Card
                   className="relative overflow-visible hover:shadow-2xl transition-all duration-300 border-2 hover:border-orange-500 cursor-pointer group"
                   onClick={() => {
@@ -2227,6 +2231,7 @@ export default function Dashboard() {
                     </GradientButton>
                   </CardContent>
                 </Card>
+                )}
               </div>
             </div>
           </div>
