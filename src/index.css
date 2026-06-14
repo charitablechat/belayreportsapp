@@ -370,39 +370,41 @@ All colors MUST be HSL.
      Light mode keeps the earlier light-teal glass; dark mode uses the
      BelayReports spec: rgba(255,255,255,0.07) on a teal hairline. */
   .glass-surface {
-    @apply backdrop-blur-xl bg-white/55 dark:bg-white/[0.10]
-           border border-white/50 dark:border-[rgba(20,184,166,0.28)]
-           shadow-[0_10px_40px_-12px_hsl(var(--primary-dark)/0.25)]
+    @apply backdrop-blur-xl bg-white/70 dark:bg-white/[0.10]
+           border border-white/90 dark:border-[rgba(20,184,166,0.28)]
+           shadow-[0_8px_32px_rgba(13,61,61,0.12)]
            dark:shadow-[0_8px_32px_rgba(0,0,0,0.35)] rounded-xl;
   }
 
   .glass-panel {
-    @apply backdrop-blur-xl bg-white/60 dark:bg-white/[0.09]
-           border border-white/55 dark:border-[rgba(20,184,166,0.28)]
-           shadow-[0_20px_60px_-20px_hsl(var(--primary-dark)/0.35)]
+    @apply backdrop-blur-xl bg-white/[0.82] dark:bg-white/[0.09]
+           border border-white/95 dark:border-[rgba(20,184,166,0.28)]
+           shadow-[0_8px_40px_rgba(13,61,61,0.12)]
            dark:shadow-[0_8px_32px_rgba(0,0,0,0.35)] rounded-2xl;
   }
 
-  /* Stronger teal hairline for the three report-type cards. */
+  /* Stronger card opacity for the four report-type cards. */
   .glass-panel-strong {
-    @apply backdrop-blur-xl bg-white/60 dark:bg-white/[0.13]
-           border border-white/55 dark:border-[rgba(20,184,166,0.28)]
-           shadow-[0_20px_60px_-20px_hsl(var(--primary-dark)/0.35)]
+    @apply backdrop-blur-xl bg-white/[0.78] dark:bg-white/[0.13]
+           border border-white/90 dark:border-[rgba(20,184,166,0.28)]
+           shadow-[0_8px_32px_rgba(13,61,61,0.14)]
            dark:shadow-[0_8px_32px_rgba(0,0,0,0.35)] rounded-2xl;
   }
 
   .glass-report-card {
-    @apply backdrop-blur-xl bg-white/55 dark:bg-white/[0.10]
-           border border-white/50 dark:border-[rgba(20,184,166,0.28)]
-           shadow-[0_10px_30px_-12px_hsl(var(--primary-dark)/0.25)]
+    @apply backdrop-blur-xl bg-white/60 dark:bg-white/[0.10]
+           border border-white/[0.85] dark:border-[rgba(20,184,166,0.28)]
+           shadow-[0_4px_16px_rgba(13,61,61,0.10)]
            dark:shadow-[0_8px_32px_rgba(0,0,0,0.35)]
+           hover:bg-white/[0.85] hover:shadow-[0_6px_20px_rgba(13,61,61,0.14)]
            dark:hover:bg-white/[0.15] dark:hover:border-[rgba(20,184,166,0.40)]
            dark:hover:-translate-y-px transition-all duration-200;
   }
 
   .glass-stat-button {
-    @apply backdrop-blur-md bg-white/50 dark:bg-white/[0.10]
-           border border-white/55 dark:border-[rgba(20,184,166,0.28)] shadow-sm
+    @apply backdrop-blur-md bg-white/70 dark:bg-white/[0.10]
+           border border-white/90 dark:border-[rgba(20,184,166,0.28)]
+           shadow-[0_4px_12px_rgba(13,61,61,0.08)]
            dark:shadow-[0_8px_32px_rgba(0,0,0,0.35)];
   }
 
@@ -424,11 +426,12 @@ All colors MUST be HSL.
 
   /* Frosted top-bar header. */
   .glass-header {
-    @apply backdrop-blur-2xl bg-white/55 dark:bg-[rgba(8,30,46,0.90)]
-           border-b border-white/55 dark:border-[rgba(20,184,166,0.20)]
-           shadow-[0_8px_24px_-12px_hsl(var(--primary-dark)/0.25)]
+    @apply backdrop-blur-2xl bg-white/[0.72] dark:bg-[rgba(8,30,46,0.90)]
+           border-b border-[rgba(20,184,166,0.20)] dark:border-[rgba(20,184,166,0.20)]
+           shadow-[0_2px_16px_rgba(13,61,61,0.12)]
            dark:shadow-[0_2px_16px_rgba(0,0,0,0.4)];
   }
+
 
   /* Subtle 1px top-edge highlight that makes glass feel lit from above. */
   .glass-card-glow {
