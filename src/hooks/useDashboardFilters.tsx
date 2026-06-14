@@ -2,6 +2,7 @@ import { useMemo, useState, useCallback, useEffect, useRef } from "react";
 import { differenceInDays, isWithinInterval, startOfWeek, endOfWeek, startOfMonth, endOfMonth, endOfDay, parseISO } from "date-fns";
 import { getReportDate, getAssigneeName } from "@/lib/report-utils";
 import { getReportAgeState, type ReportAgeState } from "@/components/dashboard/ReportCard";
+import { loadInitialViewMode, persistViewMode, fetchRemoteViewMode } from "@/lib/dashboard-view-mode";
 
 export type SortOption = 'priority' | 'completed' | 'date-asc' | 'date-desc' | 'title-az' | 'assignee';
 export type GroupOption = 'none' | 'status' | 'date' | 'assignee' | 'region';
