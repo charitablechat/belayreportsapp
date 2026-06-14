@@ -2178,16 +2178,16 @@ export default function Dashboard() {
 
                 {/* DAILY COURSE ASSESSMENT CARD - FUNCTIONAL */}
                 <Card 
-                  className="relative overflow-visible hover:shadow-2xl transition-all duration-300 border-2 hover:border-purple-500 cursor-pointer group"
+                  className="relative overflow-visible glass-panel hover:shadow-2xl transition-all duration-300 hover:-translate-y-0.5 hover:border-violet-400/60 cursor-pointer group"
                   onClick={() => {
                     triggerHaptic('light');
                     navigate("/daily-assessment/new");
                   }}
                 >
-                  <div className="absolute inset-0 bg-gradient-to-br from-indigo-50/30 to-transparent opacity-50 rounded-lg" />
+                  <div className="absolute inset-0 bg-gradient-to-br from-violet-400/10 via-transparent to-transparent rounded-2xl pointer-events-none" />
                   <CardHeader className="relative z-10 text-center pb-4">
-                    <div className="w-16 h-16 mx-auto mb-4 rounded-full bg-purple-100 flex items-center justify-center group-hover:scale-110 transition-transform">
-                      <FileText className="w-8 h-8 text-purple-600" />
+                    <div className="w-16 h-16 mx-auto mb-4 rounded-full bg-violet-500/15 backdrop-blur-sm ring-1 ring-violet-400/30 flex items-center justify-center group-hover:scale-110 transition-transform">
+                      <FileText className="w-8 h-8 text-violet-600 dark:text-violet-400" />
                     </div>
                     <CardTitle className="text-2xl mb-2">Daily Course Assessment</CardTitle>
                     <CardDescription className="text-base">
