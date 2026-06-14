@@ -50,7 +50,7 @@ import {
 
 import { isPhotoTraceEnabled, photoTrace } from "@/lib/photo-trace";
 import { deletePhotoEverywhere, isPhotoTombstoned } from "@/lib/photo-deletion";
-type PhotoTableName = "inspection_photos" | "training_photos" | "daily_assessment_photos";
+type PhotoTableName = "inspection_photos" | "training_photos" | "daily_assessment_photos" | "jcf_photos";
 
 interface PhotoGalleryProps {
   inspectionId: string;
