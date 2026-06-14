@@ -166,56 +166,57 @@ All colors MUST be HSL.
   }
 
   .dark {
-    /* BelayReports palette — dark mode (Primary Dark canvas) */
-    --background: 180 64% 10%;          /* deeper #0D3D3D variant */
-    --foreground: 171 56% 95%;          /* #EAF9F7 */
+    /* BelayReports — Deep Dark Glassmorphism canvas.
+       Gradient: #0D3D3D -> #0A2E2E -> #071E2A */
+    --background: 180 64% 14%;          /* #0D3D3D */
+    --foreground: 0 0% 100%;            /* #FFFFFF */
 
-    --card: 180 48% 14%;
-    --card-foreground: 171 56% 95%;
+    --card: 180 64% 14%;
+    --card-foreground: 0 0% 100%;
 
-    --popover: 180 48% 14%;
-    --popover-foreground: 171 56% 95%;
+    --popover: 180 64% 14%;
+    --popover-foreground: 0 0% 100%;
 
-    --primary: 173 80% 45%;             /* slightly brighter teal on dark */
-    --primary-foreground: 180 64% 10%;
-    --primary-hover: 173 83% 38%;
-    --primary-dark: 180 64% 14%;
+    --primary: 173 80% 40%;             /* #14B8A6 */
+    --primary-foreground: 0 0% 100%;
+    --primary-hover: 173 83% 34%;       /* #0F9D8D */
+    --primary-dark: 180 64% 14%;        /* #0D3D3D */
     --primary-dark-hover: 180 48% 19%;
 
-    --secondary: 220 11% 31%;
-    --secondary-foreground: 171 56% 95%;
+    --secondary: 0 0% 100% / 0.1;
+    --secondary-foreground: 0 0% 100%;
 
     --muted: 180 48% 19%;
-    --muted-foreground: 205 53% 80%;
-    --text-muted: 217 7% 65%;
+    --muted-foreground: 0 0% 100% / 0.7;
+    --text-muted: 0 0% 100% / 0.5;
 
-    --accent: 14 60% 55%;
+    --accent: 173 80% 40%;
     --accent-foreground: 0 0% 100%;
-    --accent-blue: 205 53% 69%;
+    --accent-blue: 205 53% 69%;         /* #85B8DB */
     --card-highlight: 180 48% 19%;
 
-    --destructive: 0 63% 50%;
+    --destructive: 0 84% 60%;           /* #EF4444 */
     --destructive-foreground: 0 0% 100%;
 
-    --border: 187 36% 22%;              /* Border Teal */
-    --border-accent: 187 36% 30%;
-    --input: 180 48% 19%;
-    --ring: 173 80% 45%;
+    --border: 173 80% 40% / 0.18;       /* Teal hairline */
+    --border-accent: 173 80% 40% / 0.28;
+    --input: 0 0% 100% / 0.12;
+    --ring: 173 80% 40%;
 
-    --success: 173 80% 45%;
+    --success: 160 84% 39%;             /* #10B981 */
     --success-foreground: 0 0% 100%;
 
-    --warning: 14 60% 55%;
+    --warning: 38 92% 50%;              /* #F59E0B */
     --warning-foreground: 0 0% 100%;
 
-    --sidebar-background: 180 64% 10%;
-    --sidebar-foreground: 171 56% 95%;
-    --sidebar-primary: 173 80% 45%;
-    --sidebar-primary-foreground: 180 64% 10%;
+    --sidebar-background: 180 64% 14%;
+    --sidebar-foreground: 0 0% 100%;
+    --sidebar-primary: 173 80% 40%;
+    --sidebar-primary-foreground: 0 0% 100%;
     --sidebar-accent: 180 48% 19%;
-    --sidebar-accent-foreground: 171 56% 95%;
-    --sidebar-border: 187 36% 22%;
-    --sidebar-ring: 173 80% 45%;
+    --sidebar-accent-foreground: 0 0% 100%;
+    --sidebar-border: 173 80% 40% / 0.18;
+    --sidebar-ring: 173 80% 40%;
   }
 
   @property --pos-x {
@@ -330,6 +331,13 @@ All colors MUST be HSL.
     @apply bg-background text-foreground;
   }
 
+  /* Deep dark gradient as a full-viewport canvas behind the app. */
+  .dark body {
+    background: linear-gradient(135deg, #0D3D3D 0%, #0A2E2E 40%, #071E2A 100%);
+    background-attachment: fixed;
+    min-height: 100vh;
+  }
+
   /* Global text wrapping safety net for mobile/tablet */
   td, th, label, p, span, li, dd, dt {
     overflow-wrap: anywhere;
@@ -358,50 +366,68 @@ All colors MUST be HSL.
     @apply backdrop-blur-md bg-white/40 dark:bg-[hsl(var(--primary-dark))]/40 border border-white/50 dark:border-white/10 shadow-lg rounded-lg;
   }
 
-  /* Premium frosted-glass surfaces for the BelayReports teal aurora canvas.
-     Translucent, blurred, lifted — tuned to read cleanly on the light teal
-     canvas in light mode and on deep teal in dark mode. */
+  /* Frosted-glass surface system — Deep Dark Glassmorphism.
+     Light mode keeps the earlier light-teal glass; dark mode uses the
+     BelayReports spec: rgba(255,255,255,0.07) on a teal hairline. */
   .glass-surface {
-    @apply backdrop-blur-xl bg-white/55 dark:bg-[hsl(var(--primary-dark))]/45
-           border border-white/50 dark:border-white/[0.08]
-           shadow-[0_10px_40px_-12px_hsl(var(--primary-dark)/0.25)] rounded-xl;
+    @apply backdrop-blur-xl bg-white/55 dark:bg-white/[0.07]
+           border border-white/50 dark:border-[rgba(20,184,166,0.18)]
+           shadow-[0_10px_40px_-12px_hsl(var(--primary-dark)/0.25)]
+           dark:shadow-[0_8px_32px_rgba(0,0,0,0.35)] rounded-xl;
   }
 
   .glass-panel {
-    @apply backdrop-blur-xl bg-white/60 dark:bg-[hsl(var(--primary-dark))]/50
-           border border-white/55 dark:border-white/[0.10]
-           shadow-[0_20px_60px_-20px_hsl(var(--primary-dark)/0.35)] rounded-2xl;
+    @apply backdrop-blur-xl bg-white/60 dark:bg-white/[0.07]
+           border border-white/55 dark:border-[rgba(20,184,166,0.18)]
+           shadow-[0_20px_60px_-20px_hsl(var(--primary-dark)/0.35)]
+           dark:shadow-[0_8px_32px_rgba(0,0,0,0.35)] rounded-2xl;
+  }
+
+  /* Stronger teal hairline for the three report-type cards. */
+  .glass-panel-strong {
+    @apply backdrop-blur-xl bg-white/60 dark:bg-white/[0.07]
+           border border-white/55 dark:border-[rgba(20,184,166,0.28)]
+           shadow-[0_20px_60px_-20px_hsl(var(--primary-dark)/0.35)]
+           dark:shadow-[0_8px_32px_rgba(0,0,0,0.35)] rounded-2xl;
   }
 
   .glass-report-card {
-    @apply backdrop-blur-xl bg-white/55 dark:bg-[hsl(var(--primary-dark))]/45
-           border border-white/50 dark:border-white/[0.08]
-           shadow-[0_10px_30px_-12px_hsl(var(--primary-dark)/0.25)];
+    @apply backdrop-blur-xl bg-white/55 dark:bg-white/[0.07]
+           border border-white/50 dark:border-[rgba(20,184,166,0.18)]
+           shadow-[0_10px_30px_-12px_hsl(var(--primary-dark)/0.25)]
+           dark:shadow-[0_8px_32px_rgba(0,0,0,0.35)]
+           dark:hover:bg-white/[0.11] dark:hover:border-[rgba(20,184,166,0.35)]
+           dark:hover:-translate-y-px transition-all duration-200;
   }
 
   .glass-stat-button {
-    @apply backdrop-blur-md bg-white/50 dark:bg-[hsl(var(--primary-dark))]/40
-           border border-white/55 dark:border-white/[0.08] shadow-sm;
+    @apply backdrop-blur-md bg-white/50 dark:bg-white/[0.07]
+           border border-white/55 dark:border-[rgba(20,184,166,0.18)] shadow-sm
+           dark:shadow-[0_8px_32px_rgba(0,0,0,0.35)];
   }
 
-  /* Frosted input — for search bars, selects, textareas inside glass panels. */
+  /* Frosted input — search bars, selects, textareas inside glass panels. */
   .glass-input {
-    @apply backdrop-blur-md bg-white/55 dark:bg-[hsl(var(--primary-dark))]/40
-           border border-white/55 dark:border-white/[0.10]
-           focus:border-primary/60 focus-visible:ring-primary/40;
+    @apply backdrop-blur-md bg-white/55 dark:bg-white/[0.06]
+           border border-white/55 dark:border-white/[0.12]
+           text-foreground dark:text-white/80
+           placeholder:text-muted-foreground dark:placeholder:text-white/35
+           focus:border-primary/60 focus-visible:ring-primary/40
+           dark:focus:bg-white/[0.09] dark:focus:border-primary/50;
   }
 
-  /* Frosted chip — for Badges and small pills. */
+  /* Frosted chip — Badges and small pills. */
   .glass-chip {
-    @apply backdrop-blur-md bg-white/55 dark:bg-[hsl(var(--primary-dark))]/40
-           border border-white/55 dark:border-white/[0.10];
+    @apply backdrop-blur-md bg-white/55 dark:bg-white/[0.10]
+           border border-white/55 dark:border-white/[0.15];
   }
 
-  /* Frosted header bar. */
+  /* Frosted top-bar header. */
   .glass-header {
-    @apply backdrop-blur-2xl bg-white/55 dark:bg-[hsl(var(--primary-dark))]/45
-           border border-white/55 dark:border-white/[0.10]
-           shadow-[0_8px_24px_-12px_hsl(var(--primary-dark)/0.25)];
+    @apply backdrop-blur-2xl bg-white/55 dark:bg-[rgba(13,61,61,0.75)]
+           border-b border-white/55 dark:border-[rgba(20,184,166,0.20)]
+           shadow-[0_8px_24px_-12px_hsl(var(--primary-dark)/0.25)]
+           dark:shadow-[0_2px_16px_rgba(0,0,0,0.4)];
   }
 
   /* Subtle 1px top-edge highlight that makes glass feel lit from above. */
@@ -410,11 +436,17 @@ All colors MUST be HSL.
       0 10px 30px -12px hsl(var(--primary-dark) / 0.25),
       inset 0 1px 0 0 hsl(0 0% 100% / 0.55);
   }
+  .dark .glass-card-glow {
+    box-shadow:
+      0 8px 32px rgba(0, 0, 0, 0.35),
+      inset 0 1px 0 0 rgba(255, 255, 255, 0.08);
+  }
 
   /* Safari fallback — drop to solid card fill when backdrop-filter is absent. */
   @supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
-    .glass-card, .glass-surface, .glass-panel, .glass-report-card,
-    .glass-stat-button, .glass-input, .glass-chip, .glass-header {
+    .glass-card, .glass-surface, .glass-panel, .glass-panel-strong,
+    .glass-report-card, .glass-stat-button, .glass-input, .glass-chip,
+    .glass-header {
       background-color: hsl(var(--card));
     }
   }
@@ -438,12 +470,11 @@ All colors MUST be HSL.
     will-change: background-position;
   }
   .dark .dashboard-canvas {
-    background-color: hsl(var(--primary-dark));
-    background-image:
-      radial-gradient(ellipse 80% 60% at 18% 22%, hsl(173 80% 35% / 0.35), transparent 60%),
-      radial-gradient(ellipse 70% 60% at 82% 28%, hsl(187 36% 30% / 0.45), transparent 65%),
-      radial-gradient(ellipse 90% 70% at 50% 100%, hsl(180 64% 10% / 0.85), transparent 70%),
-      linear-gradient(180deg, hsl(180 64% 12%) 0%, hsl(180 48% 17%) 60%, hsl(180 64% 10%) 100%);
+    background-color: #0D3D3D;
+    background-image: linear-gradient(135deg, #0D3D3D 0%, #0A2E2E 40%, #071E2A 100%);
+    background-size: 100% 100%;
+    background-position: 0 0;
+    animation: none;
   }
   .dashboard-canvas::after {
     content: "";
@@ -451,6 +482,22 @@ All colors MUST be HSL.
     inset: 0;
     background: linear-gradient(180deg, hsl(var(--primary-dark) / 0.05) 0%, transparent 40%, hsl(var(--primary-dark) / 0.12) 100%);
     pointer-events: none;
+  }
+  .dark .dashboard-canvas::after { display: none; }
+
+  /* Primary teal CTA — used for Start Inspection / Training / Daily buttons. */
+  .btn-teal-cta {
+    background: linear-gradient(135deg, #14B8A6 0%, #0F9D8D 100%);
+    color: #FFFFFF;
+    font-weight: 600;
+    border: none;
+    border-radius: 10px;
+    box-shadow: 0 4px 16px rgba(20, 184, 166, 0.4);
+    transition: all 0.2s ease;
+  }
+  .btn-teal-cta:hover {
+    box-shadow: 0 6px 24px rgba(20, 184, 166, 0.55);
+    transform: translateY(-1px);
   }
   @keyframes dashboard-canvas-drift {
     0%   { background-position: 0% 0%, 100% 0%, 50% 100%, 0% 0%; }
@@ -968,3 +1015,10 @@ html, body {
   background: linear-gradient(to right, hsl(var(--background) / 0), hsl(var(--background)));
   opacity: 0.9;
 }
+
+/* Deep dark scrollbar polish — only applied in dark mode so light pages stay default. */
+.dark ::-webkit-scrollbar { width: 6px; height: 6px; }
+.dark ::-webkit-scrollbar-track { background: rgba(255,255,255,0.03); }
+.dark ::-webkit-scrollbar-thumb { background: rgba(20,184,166,0.35); border-radius: 3px; }
+.dark ::-webkit-scrollbar-thumb:hover { background: rgba(20,184,166,0.55); }
+.dark { scrollbar-color: rgba(20,184,166,0.4) rgba(255,255,255,0.03); scrollbar-width: thin; }
