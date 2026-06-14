@@ -315,7 +315,12 @@ async function ledgerFallbackRows<T extends { id: string }>(
 ): Promise<T[]> {
   try {
     const { listUnsyncedDbRowsFromLedger } = await import('./local-backup-ledger');
-    const rows = listUnsyncedDbRowsFromLedger(reportType, userId) as unknown as T[];
+    // JCFs are not mirrored to the localStorage backup ledger — skip rather than crash.
+    if (reportType === 'jcf') return [];
+    const rows = listUnsyncedDbRowsFromLedger(
+      reportType as 'inspection' | 'training' | 'daily_assessment',
+      userId,
+    ) as unknown as T[];
     console.warn('[Atomic Sync] Mode 11B catch-block ledger fallback active', {
       context,
       reportType,
