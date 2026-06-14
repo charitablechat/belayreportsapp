@@ -370,39 +370,41 @@ All colors MUST be HSL.
      Light mode keeps the earlier light-teal glass; dark mode uses the
      BelayReports spec: rgba(255,255,255,0.07) on a teal hairline. */
   .glass-surface {
-    @apply backdrop-blur-xl bg-white/55 dark:bg-white/[0.10]
-           border border-white/50 dark:border-[rgba(20,184,166,0.28)]
-           shadow-[0_10px_40px_-12px_hsl(var(--primary-dark)/0.25)]
+    @apply backdrop-blur-xl bg-white/70 dark:bg-white/[0.10]
+           border border-white/90 dark:border-[rgba(20,184,166,0.28)]
+           shadow-[0_8px_32px_rgba(13,61,61,0.12)]
            dark:shadow-[0_8px_32px_rgba(0,0,0,0.35)] rounded-xl;
   }
 
   .glass-panel {
-    @apply backdrop-blur-xl bg-white/60 dark:bg-white/[0.09]
-           border border-white/55 dark:border-[rgba(20,184,166,0.28)]
-           shadow-[0_20px_60px_-20px_hsl(var(--primary-dark)/0.35)]
+    @apply backdrop-blur-xl bg-white/[0.82] dark:bg-white/[0.09]
+           border border-white/95 dark:border-[rgba(20,184,166,0.28)]
+           shadow-[0_8px_40px_rgba(13,61,61,0.12)]
            dark:shadow-[0_8px_32px_rgba(0,0,0,0.35)] rounded-2xl;
   }
 
-  /* Stronger teal hairline for the three report-type cards. */
+  /* Stronger card opacity for the four report-type cards. */
   .glass-panel-strong {
-    @apply backdrop-blur-xl bg-white/60 dark:bg-white/[0.13]
-           border border-white/55 dark:border-[rgba(20,184,166,0.28)]
-           shadow-[0_20px_60px_-20px_hsl(var(--primary-dark)/0.35)]
+    @apply backdrop-blur-xl bg-white/[0.78] dark:bg-white/[0.13]
+           border border-white/90 dark:border-[rgba(20,184,166,0.28)]
+           shadow-[0_8px_32px_rgba(13,61,61,0.14)]
            dark:shadow-[0_8px_32px_rgba(0,0,0,0.35)] rounded-2xl;
   }
 
   .glass-report-card {
-    @apply backdrop-blur-xl bg-white/55 dark:bg-white/[0.10]
-           border border-white/50 dark:border-[rgba(20,184,166,0.28)]
-           shadow-[0_10px_30px_-12px_hsl(var(--primary-dark)/0.25)]
+    @apply backdrop-blur-xl bg-white/60 dark:bg-white/[0.10]
+           border border-white/[0.85] dark:border-[rgba(20,184,166,0.28)]
+           shadow-[0_4px_16px_rgba(13,61,61,0.10)]
            dark:shadow-[0_8px_32px_rgba(0,0,0,0.35)]
+           hover:bg-white/[0.85] hover:shadow-[0_6px_20px_rgba(13,61,61,0.14)]
            dark:hover:bg-white/[0.15] dark:hover:border-[rgba(20,184,166,0.40)]
            dark:hover:-translate-y-px transition-all duration-200;
   }
 
   .glass-stat-button {
-    @apply backdrop-blur-md bg-white/50 dark:bg-white/[0.10]
-           border border-white/55 dark:border-[rgba(20,184,166,0.28)] shadow-sm
+    @apply backdrop-blur-md bg-white/70 dark:bg-white/[0.10]
+           border border-white/90 dark:border-[rgba(20,184,166,0.28)]
+           shadow-[0_4px_12px_rgba(13,61,61,0.08)]
            dark:shadow-[0_8px_32px_rgba(0,0,0,0.35)];
   }
 
@@ -424,11 +426,12 @@ All colors MUST be HSL.
 
   /* Frosted top-bar header. */
   .glass-header {
-    @apply backdrop-blur-2xl bg-white/55 dark:bg-[rgba(8,30,46,0.90)]
-           border-b border-white/55 dark:border-[rgba(20,184,166,0.20)]
-           shadow-[0_8px_24px_-12px_hsl(var(--primary-dark)/0.25)]
+    @apply backdrop-blur-2xl bg-white/[0.72] dark:bg-[rgba(8,30,46,0.90)]
+           border-b border-[rgba(20,184,166,0.20)] dark:border-[rgba(20,184,166,0.20)]
+           shadow-[0_2px_16px_rgba(13,61,61,0.12)]
            dark:shadow-[0_2px_16px_rgba(0,0,0,0.4)];
   }
+
 
   /* Subtle 1px top-edge highlight that makes glass feel lit from above. */
   .glass-card-glow {
@@ -451,55 +454,47 @@ All colors MUST be HSL.
     }
   }
 
-  /* BelayReports Teal Aurora canvas — fixed full-viewport background with a
-     slow, compositor-only animated gradient mesh. Respects prefers-reduced-motion. */
+  /* BelayReports light-mode canvas — rich teal-to-neutral gradient that gives
+     the page cinematic depth while staying fully light and readable. */
   .dashboard-canvas {
     position: fixed;
     inset: 0;
     z-index: 0;
     overflow: hidden;
-    background-color: hsl(var(--background));
-    background-image:
-      radial-gradient(ellipse 80% 60% at 18% 22%, hsl(173 80% 70% / 0.28), transparent 60%),
-      radial-gradient(ellipse 70% 60% at 82% 28%, hsl(205 53% 75% / 0.30), transparent 65%),
-      radial-gradient(ellipse 90% 70% at 50% 100%, hsl(171 56% 90% / 0.55), transparent 70%),
-      linear-gradient(180deg, hsl(220 14% 97%) 0%, hsl(171 40% 95%) 60%, hsl(220 14% 96%) 100%);
-    background-size: 200% 200%, 200% 200%, 200% 200%, 100% 100%;
-    background-position: 0% 0%, 100% 0%, 50% 100%, 0% 0%;
-    animation: dashboard-canvas-drift 60s ease-in-out infinite alternate;
-    will-change: background-position;
+    background: linear-gradient(160deg, #0D3D3D 0%, #14B8A6 28%, #7DD8CC 52%, #E0F5F2 72%, #F3F4F6 100%);
+    background-attachment: fixed;
+    min-height: 100vh;
   }
   .dark .dashboard-canvas {
-    background-color: #0A2828;
-    background-image: linear-gradient(135deg, #0A2828 0%, #081E2E 55%, #060F1A 100%);
-    background-size: 100% 100%;
-    background-position: 0 0;
+    background: linear-gradient(135deg, #0A2828 0%, #081E2E 55%, #060F1A 100%);
+    background-attachment: fixed;
     animation: none;
   }
   .dashboard-canvas::after {
     content: "";
     position: absolute;
     inset: 0;
-    background: linear-gradient(180deg, hsl(var(--primary-dark) / 0.05) 0%, transparent 40%, hsl(var(--primary-dark) / 0.12) 100%);
+    background: linear-gradient(180deg, transparent 0%, transparent 60%, rgba(243,244,246,0.18) 100%);
     pointer-events: none;
   }
   .dark .dashboard-canvas::after { display: none; }
 
-  /* Primary teal CTA — used for Start Inspection / Training / Daily buttons. */
+  /* Primary teal CTA — uses teal → deep-teal gradient per BelayReports spec. */
   .btn-teal-cta {
-    background: linear-gradient(135deg, #14B8A6 0%, #0F9D8D 100%);
+    background: linear-gradient(135deg, #14B8A6 0%, #0D3D3D 100%);
     color: #FFFFFF;
     font-weight: 600;
     border: none;
     border-radius: 10px;
-    box-shadow: 0 4px 16px rgba(20, 184, 166, 0.4);
+    box-shadow: 0 4px 14px rgba(20, 184, 166, 0.38);
     text-shadow: 0 1px 2px rgba(0,0,0,0.2);
     transition: all 0.2s ease;
   }
   .btn-teal-cta:hover {
-    box-shadow: 0 6px 24px rgba(20, 184, 166, 0.55);
+    box-shadow: 0 6px 22px rgba(20, 184, 166, 0.52);
     transform: translateY(-1px);
   }
+
   @keyframes dashboard-canvas-drift {
     0%   { background-position: 0% 0%, 100% 0%, 50% 100%, 0% 0%; }
     100% { background-position: 20% 15%, 80% 25%, 55% 90%, 0% 0%; }
