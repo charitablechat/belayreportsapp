@@ -279,6 +279,22 @@ interface InspectionDB extends DBSchema {
     value: DbRow;
     indexes: { 'by-training': string };
   };
+  jcf_reports: {
+    key: string;
+    value: DbRow;
+    indexes: { 'by-status': string; 'by-synced': string };
+  };
+  jcf_operations: {
+    key: number;
+    value: {
+      id?: number;
+      type: 'create' | 'update' | 'delete';
+      jcfId: string;
+      data: Record<string, unknown>;
+      timestamp: number;
+      retries: number;
+    };
+  };
   report_backups: {
     key: string;
     value: {
