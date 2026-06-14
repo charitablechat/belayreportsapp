@@ -1,66 +1,53 @@
-## Glassmorphism Dashboard & Report Cards Redesign
+## Dashboard & Reports Background Refresh — Deep Navy Editorial
 
-### Objective
-Elevate the dashboard and report cards to a premium, professional aesthetic using a consistent Glassmorphism design language — translucent surfaces, soft blurs, subtle gradients, and a neutral refined palette. All changes are purely cosmetic; zero data or functional logic is touched.
+A focused, purely cosmetic pass on the dashboard's background and card surface treatment. Zero data, sync, or business logic touched.
 
-### Scope
-- **Dashboard page container** (`src/pages/Dashboard.tsx`)
-- **Report cards** (`src/components/dashboard/ReportCard.tsx`)
-- **Stats bar** (`src/components/dashboard/DashboardStatsBar.tsx`)
-- **Foyer action cards** (within Dashboard.tsx)
-- **Supporting design tokens** (`src/index.css`)
-- **Card primitive** (`src/components/ui/card.tsx`) — optional glass variant
+### Direction
+- **Canvas:** Deep navy editorial palette — `#0f172a → #1e293b → #334155` with `#94a3b8` accent.
+- **Motion:** A slow, large-radius animated gradient mesh (60s loop, CSS-only, GPU-friendly).
+- **Surfaces:** Deep glassmorphism — translucent frosted panels with soft edge glow and diffuse shadows.
 
-### Out of Scope
-- Form pages (Inspection, Training, Daily, JCF)
-- Dialogs, sheets, and modals
-- Non-dashboard routes
+### Scope (4 files, cosmetic only)
 
-### Design Direction
-- **Surface treatment**: `backdrop-blur-md` (≈12px) with `bg-white/[0.03–0.08]` in light mode, `bg-slate-900/[0.25–0.40]` in dark mode.
-- **Borders**: ultra-subtle `border-white/10` (light) / `border-white/[0.06]` (dark) instead of solid `border-foreground`.
-- **Shadows**: soft diffuse shadows (`shadow-lg shadow-black/5`) for depth without heaviness.
-- **Age-state cards**: replace solid `bg-red-200`, `bg-yellow-50`, `bg-sky-50` with tinted glass — e.g., `bg-red-500/[0.03]` + `border-l-destructive/50`.
-- **Background layer**: replace the random texture image with a fixed, subtle animated mesh gradient (CSS-only, low CPU cost) behind the glass layers.
+1. **`src/index.css`** — Add the new background system:
+   - `.dashboard-canvas` — fixed full-viewport layer with three radial gradients (navy → slate) animating across a 60s loop. Uses `transform: translate3d` for compositor-only animation; respects `prefers-reduced-motion`.
+   - Refine `.glass-panel`, `.glass-surface`, `.glass-report-card` for the darker canvas: increase backdrop-blur to `xl` (20px), lower surface opacity (`bg-white/[0.04]` light / `bg-slate-900/40` dark), add inner highlight border `border-white/[0.08]`, soft diffuse shadow `shadow-[0_8px_32px_rgba(2,6,23,0.35)]`.
+   - Add `.glass-card-glow` utility for the subtle 1px top edge highlight that makes glass feel lit.
 
-### Implementation Steps
+2. **`src/pages/Dashboard.tsx`** — Background swap only:
+   - Replace the `getSessionBackground()` random photo texture with the new `.dashboard-canvas` layer.
+   - Keep `background-manager.ts` and all 10 background assets in place (no deletion) so we can revert instantly if desired.
+   - Tighten foreground text colors to maintain AA contrast on the darker canvas where needed (headings, muted captions).
 
-#### 1. Design Tokens & Utilities (`src/index.css`)
-- Add `.glass-dashboard` utility: `backdrop-blur-md bg-white/[0.03] dark:bg-slate-900/30 border border-white/10 dark:border-white/[0.06] shadow-lg shadow-black/5`.
-- Add `.glass-card` override variant for report cards with tinted edge states.
-- Add a subtle `.dashboard-bg-gradient` keyframe animation for the page background (neutral slate/indigo tones, very low saturation).
+3. **`src/components/dashboard/ReportCard.tsx`** — Tint refinement only:
+   - Keep the existing age-state border-left accents.
+   - Soften age-state background tints for the darker canvas (current `bg-red-500/[0.06]` etc. read too pale on navy — bump to `/[0.10]` and warm the hue slightly).
+   - Add `.glass-card-glow` to the card root.
 
-#### 2. Dashboard Container (`src/pages/Dashboard.tsx`)
-- Replace the outer container’s solid `bg-background` with the new gradient background layer.
-- Wrap the `<main>` content area in a glass surface if needed for readability.
-- Update the **Reports Section** wrapper: remove `border-2 border-foreground rounded-lg p-4` and apply `.glass-dashboard` with generous padding.
-- Update **Foyer cards** (Inspection, Training, Daily, JCF): replace solid color accents with glass surfaces + subtle icon halo. Keep existing layout and navigation.
+4. **`src/components/dashboard/DashboardStatsBar.tsx`** — Active-state polish:
+   - Slightly increase active-state ring/glow so selected filter pops on the darker canvas.
 
-#### 3. Report Cards (`src/components/dashboard/ReportCard.tsx`)
-- Replace `ageStateClasses` solid backgrounds with glass tints:
-  - `critical`: `bg-red-500/[0.03] border-l-4 border-l-destructive/60`
-  - `warning`: `bg-amber-500/[0.03] border-l-4 border-l-amber-500/60`
-  - `completed`: `bg-sky-500/[0.03] border-l-4 border-l-sky-500/60`
-  - `default`: `bg-white/[0.02] border-l-4 border-l-muted-foreground/20`
-- Add `backdrop-blur-md` to the card base class.
-- Keep all interaction logic (hover lift, click, sparkles, haptics, badges, dropdown) untouched.
-- Ensure the `COMPLETED` and `INVOICED` watermarks remain visually legible over the new translucent backgrounds.
+### Out of Scope (intentionally untouched)
+- Report output / PDF / HTML viewer styling — reports remain Georgia serif, white paper aesthetic per the Minimal Brutalist memory.
+- Form pages (Inspection, Training, Daily, JCF).
+- Auth, sync, RLS, edge functions, schema.
+- Dialogs, sheets, modals.
+- The Foyer action cards (Inspection / Training / Daily) — already glass; will inherit canvas improvements automatically.
 
-#### 4. Stats Bar (`src/components/dashboard/DashboardStatsBar.tsx`)
-- Replace `bg-card` / `bg-primary/10` stat buttons with glass variants.
-- Active state: slightly elevated opacity + ring, no solid color block.
-- Storage pressure bar: keep existing logic, optionally soften the background to a glass tint.
+### Light/Dark Mode
+The deep navy canvas is the default in both modes (it's a brand backdrop, not theme-dependent — like a magazine cover stock). Card glass auto-adapts via existing `dark:` variants. Text on the canvas uses the existing `--foreground` token, which already reads cleanly on this navy.
 
-#### 5. Shadcn Card Primitive (`src/components/ui/card.tsx`)
-- **Decision needed**: either introduce an optional `glass` prop/variant, or leave the primitive untouched and apply glass classes via `className` overrides in dashboard components. *Plan recommends the latter* (no primitive changes) to avoid side-effects across the app.
+### Reversibility
+- Background swap is a single class change in `Dashboard.tsx` — revertable in one edit.
+- All new CSS lives in additive utilities; no existing classes are deleted.
+- `background-manager.ts` and the 10 photo backgrounds stay on disk for instant rollback.
 
-### Visual QA Checklist
-- [ ] Dashboard renders cleanly in both light and dark modes.
-- [ ] Report cards remain legible with all age states.
-- [ ] `COMPLETED` / `INVOICED` watermarks are still clearly visible.
-- [ ] Hover/active states on cards feel responsive.
-- [ ] No layout shifts or broken spacing.
-- [ ] Mobile viewport: glass readability holds, no performance degradation.
+### Verification
+- Visual QA via preview screenshot after implementation (light + dark, with and without `prefers-reduced-motion`).
+- Confirm AA contrast for stat numbers, captions, and inspector names against the new canvas.
+- Confirm `COMPLETED` and `INVOICED` watermarks remain legible on the new card tints.
 
-### Estimated Effort
-Small — focused CSS/className changes across 4 files with no logic modifications.
+### Technical Details
+- Animated gradient uses `background-position` shifts on a single fixed pseudo-element to avoid layout thrash. No JS, no Canvas, no SVG filters.
+- `backdrop-filter: blur(20px)` is already widely supported; existing Safari fallback (solid bg) continues to work.
+- No new dependencies, no asset additions, no bundle-size impact beyond ~40 lines of CSS.
