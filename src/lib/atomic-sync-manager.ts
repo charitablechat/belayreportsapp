@@ -307,7 +307,7 @@ export const __test_only__ATOMIC_SYNC_FETCH_OUTER_TIMEOUT_GRACE_MS = ATOMIC_SYNC
 // The ledger is system-of-record (every IDB write mirrored via
 // `saveReportSnapshot`, unsynced snapshots explicitly never evicted), so
 // returning ledger rows is strictly more useful than `unsynced = []`.
-type LedgerReportType = 'inspection' | 'training' | 'daily_assessment';
+type LedgerReportType = 'inspection' | 'training' | 'daily_assessment' | 'jcf';
 async function ledgerFallbackRows<T extends { id: string }>(
   reportType: LedgerReportType,
   userId: string | undefined,
