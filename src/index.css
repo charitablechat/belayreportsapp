@@ -334,7 +334,7 @@ All colors MUST be HSL.
   /* Deep dark gradient as a full-viewport canvas behind the app.
      Strong light-to-dark sweep for visible glassmorphism depth. */
   .dark body {
-    background: linear-gradient(145deg, #2D8A8A 0%, #1A4A4A 14%, #0D3D3D 32%, #081E2E 58%, #071E2A 78%, #060F1A 100%);
+    background: linear-gradient(315deg, #2D8A8A 0%, #1A4A4A 14%, #0D3D3D 32%, #081E2E 58%, #071E2A 78%, #060F1A 100%);
     background-attachment: fixed;
     min-height: 100vh;
   }
@@ -467,7 +467,7 @@ All colors MUST be HSL.
     min-height: 100vh;
   }
   .dark .dashboard-canvas {
-    background: linear-gradient(145deg, #2D8A8A 0%, #1A4A4A 14%, #0D3D3D 32%, #081E2E 58%, #071E2A 78%, #060F1A 100%);
+    background: linear-gradient(315deg, #2D8A8A 0%, #1A4A4A 14%, #0D3D3D 32%, #081E2E 58%, #071E2A 78%, #060F1A 100%);
     background-attachment: fixed;
     animation: none;
   }
@@ -476,8 +476,8 @@ All colors MUST be HSL.
     position: absolute;
     inset: 0;
     background:
-      radial-gradient(ellipse 90% 70% at 5% 5%, rgba(255, 255, 255, 0.22) 0%, transparent 50%),
-      radial-gradient(ellipse 80% 60% at 20% 25%, rgba(20, 184, 166, 0.10) 0%, transparent 55%),
+      radial-gradient(ellipse 90% 70% at 95% 5%, rgba(255, 255, 255, 0.22) 0%, transparent 50%),
+      radial-gradient(ellipse 80% 60% at 80% 25%, rgba(20, 184, 166, 0.10) 0%, transparent 55%),
       radial-gradient(ellipse 70% 50% at 85% 80%, rgba(13, 61, 61, 0.12) 0%, transparent 55%);
     pointer-events: none;
     animation: dark-canvas-drift 20s ease-in-out infinite alternate;
