@@ -2115,7 +2115,7 @@ export default function Dashboard() {
               <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-6 max-w-6xl mx-auto">
                 {/* INSPECTION CARD - FUNCTIONAL */}
                 <Card 
-                  className="relative overflow-visible glass-panel hover:shadow-2xl transition-all duration-300 hover:-translate-y-0.5 hover:border-blue-400/60 cursor-pointer group"
+                  className="relative overflow-visible glass-panel-strong hover:shadow-2xl transition-all duration-300 hover:-translate-y-0.5 hover:border-blue-400/60 cursor-pointer group"
                   onClick={() => {
                     triggerHaptic('light'); // Haptic feedback when starting new inspection
                     navigate("/inspection/new");
@@ -2141,7 +2141,7 @@ export default function Dashboard() {
 
                 {/* TRAINING CARD - FUNCTIONAL */}
                 <Card 
-                  className="relative overflow-visible glass-panel hover:shadow-2xl transition-all duration-300 hover:-translate-y-0.5 hover:border-emerald-400/60 cursor-pointer group"
+                  className="relative overflow-visible glass-panel-strong hover:shadow-2xl transition-all duration-300 hover:-translate-y-0.5 hover:border-emerald-400/60 cursor-pointer group"
                   onClick={() => {
                     triggerHaptic('light');
                     navigate("/training/new");
@@ -2167,7 +2167,7 @@ export default function Dashboard() {
 
                 {/* DAILY COURSE ASSESSMENT CARD - FUNCTIONAL */}
                 <Card 
-                  className="relative overflow-visible glass-panel hover:shadow-2xl transition-all duration-300 hover:-translate-y-0.5 hover:border-violet-400/60 cursor-pointer group"
+                  className="relative overflow-visible glass-panel-strong hover:shadow-2xl transition-all duration-300 hover:-translate-y-0.5 hover:border-violet-400/60 cursor-pointer group"
                   onClick={() => {
                     triggerHaptic('light');
                     navigate("/daily-assessment/new");
@@ -2197,7 +2197,7 @@ export default function Dashboard() {
                     routes, and sync logic remain intact. */}
                 {isLovablePreview() && (
                 <Card
-                  className="relative overflow-visible glass-panel hover:shadow-2xl transition-all duration-300 hover:-translate-y-0.5 hover:border-orange-400/60 cursor-pointer group"
+                  className="relative overflow-visible glass-panel-strong hover:shadow-2xl transition-all duration-300 hover:-translate-y-0.5 hover:border-orange-400/60 cursor-pointer group"
                   onClick={() => {
                     triggerHaptic('light');
                     navigate("/jcf/new");

@@ -14,10 +14,10 @@ interface DashboardStatsBarProps {
 }
 
 const stats = [
-  { key: 'all' as const, label: 'Total', icon: FileText, colorClass: 'text-primary' },
-  { key: 'drafts' as const, label: 'Drafts', icon: Clock, colorClass: 'text-amber-600 dark:text-amber-400' },
-  { key: 'overdue' as const, label: 'Overdue', icon: AlertTriangle, colorClass: 'text-destructive' },
-  { key: 'completed' as const, label: 'Complete', icon: CheckCircle2, colorClass: 'text-green-600 dark:text-green-400' },
+  { key: 'all' as const, label: 'Total', icon: FileText, colorClass: 'text-primary', borderLeftColorClass: 'border-l-primary' },
+  { key: 'drafts' as const, label: 'Drafts', icon: Clock, colorClass: 'text-amber-600 dark:text-amber-400', borderLeftColorClass: 'border-l-amber-500 dark:border-l-amber-400' },
+  { key: 'overdue' as const, label: 'Overdue', icon: AlertTriangle, colorClass: 'text-destructive', borderLeftColorClass: 'border-l-destructive' },
+  { key: 'completed' as const, label: 'Complete', icon: CheckCircle2, colorClass: 'text-green-600 dark:text-green-400', borderLeftColorClass: 'border-l-green-500 dark:border-l-green-400' },
 ];
 
 export function DashboardStatsBar({ total, drafts, overdue, completed, onFilterClick, activeFilter, dataValidated = true }: DashboardStatsBarProps) {
@@ -28,31 +28,32 @@ export function DashboardStatsBar({ total, drafts, overdue, completed, onFilterC
   return (
     <div className="space-y-1 mb-4">
       <div className="grid grid-cols-4 gap-2">
-        {stats.map(({ key, label, icon: Icon, colorClass }) => {
+        {stats.map(({ key, label, icon: Icon, colorClass, borderLeftColorClass }) => {
           const isActive = activeFilter === key;
           return (
             <button
               key={key}
               onClick={() => onFilterClick?.(key)}
-              className={cn(
-                "flex flex-col items-center gap-1 rounded-xl p-2.5 transition-all text-center",
-                "hover:-translate-y-0.5 hover:shadow-md",
-                isActive
-                  ? "backdrop-blur-md bg-primary/20 border border-primary/60 ring-2 ring-primary/40 shadow-[0_4px_20px_-4px_hsl(var(--primary)/0.45)]"
-                  : "glass-stat-button hover:bg-white/70 dark:hover:bg-[hsl(var(--primary-dark))]/55"
-              )}
+            className={cn(
+              "flex flex-col items-center gap-1 rounded-xl p-2.5 transition-all text-center border-l-4",
+              borderLeftColorClass,
+              "hover:-translate-y-0.5 hover:shadow-md",
+              isActive
+                ? "backdrop-blur-md bg-primary/20 border border-primary/60 ring-2 ring-primary/40 shadow-[0_4px_20px_-4px_hsl(var(--primary)/0.45)]"
+                : "glass-stat-button dark:hover:bg-white/[0.15]"
+            )}
             >
               <div className="flex items-center gap-1.5">
                 <Icon className={cn("w-3.5 h-3.5", colorClass)} />
                 {showSkeleton ? (
                   <span className="inline-block w-5 h-5 rounded bg-muted animate-pulse" />
                 ) : (
-                  <span className={cn("text-lg font-bold tabular-nums leading-none", colorClass)}>
+                  <span className="text-lg font-bold tabular-nums leading-none text-white">
                     {values[key]}
                   </span>
                 )}
               </div>
-              <span className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider">
+              <span className="text-[11px] font-medium text-white/70 uppercase tracking-[0.08em]">
                 {label}
               </span>
             </button>
