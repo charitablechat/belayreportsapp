@@ -53,6 +53,7 @@ import type { RealtimePostgresChangesPayload } from "@supabase/supabase-js";
 import type { CachedUser } from "@/lib/cached-auth";
 import { shouldPreserveLocalRecord } from "@/lib/local-data-guards";
 import { reconcileServerDeletions } from "@/lib/reconcile-server-deletions";
+import { isLovablePreview } from "@/lib/environment";
 import { ContactDeveloperSheet } from "@/components/ContactDeveloperSheet";
 import { onSyncComplete, isSyncInProgress, consumePendingDashboardRefresh, consumeDashboardStaleTimestamp } from "@/lib/sync-events";
 import { E2E_INSPECTION_MARKER_COLUMNS, E2E_MARKER_PREFIX, filterOutE2EFixtures } from "@/lib/e2e-fixture-filter";
