@@ -2238,7 +2238,7 @@ export default function Dashboard() {
         </section>
 
         {/* Reports Section */}
-        <section className="border-2 border-foreground rounded-lg p-4">
+        <section className="glass-panel p-4 md:p-6">
           {/* Brutalist loading bar */}
           {loading && (
             <div className="w-full h-[2px] bg-foreground mb-4 animate-pulse" />
