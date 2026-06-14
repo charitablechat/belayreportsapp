@@ -54,7 +54,7 @@ export type DbRow = { [key: string]: any } & {
 // from the actual openDB() call below. Kept in sync with public/db-config.js
 // (the Service Worker reads from there).
 export const IDB_DB_NAME = 'rope-works-inspections';
-export const IDB_DB_VERSION = 20;
+export const IDB_DB_VERSION = 21;
 
 type ReportSaveOptions = {
   childCountHint?: number;
