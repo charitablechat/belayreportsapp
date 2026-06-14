@@ -333,7 +333,7 @@ All colors MUST be HSL.
 
   /* Deep dark gradient as a full-viewport canvas behind the app. */
   .dark body {
-    background: linear-gradient(135deg, #0A2828 0%, #081E2E 55%, #060F1A 100%);
+    background: linear-gradient(135deg, #0A2828 0%, #0D3D3D 22%, #081E2E 48%, #071E2A 72%, #060F1A 100%);
     background-attachment: fixed;
     min-height: 100vh;
   }
