@@ -1986,6 +1986,7 @@ export type Database = {
           acct_number: string | null
           avatar_url: string | null
           created_at: string | null
+          dashboard_view_mode: string | null
           first_name: string | null
           id: string
           is_active: boolean
@@ -1996,6 +1997,7 @@ export type Database = {
           acct_number?: string | null
           avatar_url?: string | null
           created_at?: string | null
+          dashboard_view_mode?: string | null
           first_name?: string | null
           id: string
           is_active?: boolean
@@ -2006,6 +2008,7 @@ export type Database = {
           acct_number?: string | null
           avatar_url?: string | null
           created_at?: string | null
+          dashboard_view_mode?: string | null
           first_name?: string | null
           id?: string
           is_active?: boolean

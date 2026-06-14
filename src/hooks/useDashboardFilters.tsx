@@ -2,6 +2,7 @@ import { useMemo, useState, useCallback, useEffect, useRef } from "react";
 import { differenceInDays, isWithinInterval, startOfWeek, endOfWeek, startOfMonth, endOfMonth, endOfDay, parseISO } from "date-fns";
 import { getReportDate, getAssigneeName } from "@/lib/report-utils";
 import { getReportAgeState, type ReportAgeState } from "@/components/dashboard/ReportCard";
+import { loadInitialViewMode, persistViewMode, fetchRemoteViewMode } from "@/lib/dashboard-view-mode";
 
 export type SortOption = 'priority' | 'completed' | 'date-asc' | 'date-desc' | 'title-az' | 'assignee';
 export type GroupOption = 'none' | 'status' | 'date' | 'assignee' | 'region';
@@ -82,7 +83,7 @@ export function useDashboardFilters(
     quickFilters: { myCards: false, dueThisWeek: false, draftsOnly: false, needsAttention: false },
     sortBy: 'priority',
     groupBy: 'none',
-    viewMode: 'list',
+    viewMode: loadInitialViewMode(),
     page: 1,
   });
 
@@ -93,7 +94,21 @@ export function useDashboardFilters(
     key: K,
     value: DashboardFilterState[K]
   ) => {
+    if (key === 'viewMode') {
+      persistViewMode(value as ViewMode);
+    }
     setFilters(prev => ({ ...prev, [key]: value, page: key !== 'page' ? 1 : (value as number) }));
+  }, []);
+
+  // Cross-device hydration: pull the remote-stored choice once on mount and
+  // apply it if it differs from local. Best-effort, silent on failure.
+  useEffect(() => {
+    let cancelled = false;
+    void fetchRemoteViewMode().then((remote) => {
+      if (cancelled || !remote) return;
+      setFilters(prev => (prev.viewMode === remote ? prev : { ...prev, viewMode: remote }));
+    });
+    return () => { cancelled = true; };
   }, []);
 
   const toggleQuickFilter = useCallback((key: keyof DashboardFilterState['quickFilters']) => {
