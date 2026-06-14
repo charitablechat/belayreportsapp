@@ -3191,6 +3191,8 @@ export async function getDB() {
           { storeName: 'autocomplete_history', indexes: ['by-field-type', 'by-synced'] },
           { storeName: 'equipment_type_cache', indexes: ['by-category'] },
           { storeName: 'dead_letter_soft_deletes' },
+          { storeName: 'jcf_reports', indexes: ['by-status', 'by-synced'] },
+          { storeName: 'jcf_operations' },
         ];
         const fp = await migrationSafety.validateSchemaFingerprint(
           db as unknown as IDBPDatabase,
