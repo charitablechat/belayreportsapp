@@ -6,7 +6,7 @@ import { corsHeaders } from "../_shared/cors.ts";
 const OVERDUE_THRESHOLD_DAYS = 5;
 
 interface OverdueReport {
-  reportType: 'inspection' | 'training' | 'daily_assessment';
+  reportType: 'inspection' | 'training' | 'daily_assessment' | 'jcf';
   reportId: string;
   createdAt: string;
   daysOverdue: number;
@@ -57,8 +57,8 @@ serve(async (req) => {
     cutoffDate.setDate(cutoffDate.getDate() - OVERDUE_THRESHOLD_DAYS);
     const cutoffISO = cutoffDate.toISOString();
 
-    // Query all 3 report tables for overdue drafts in parallel
-    const [inspections, trainings, dailyAssessments] = await Promise.all([
+    // Query all 4 report tables for overdue drafts in parallel
+    const [inspections, trainings, dailyAssessments, jcfs] = await Promise.all([
       supabaseAdmin
         .from('inspections')
         .select('id, created_at, organization, location, inspector_id, organization_id')
@@ -77,15 +77,22 @@ serve(async (req) => {
         .eq('status', 'draft')
         .is('deleted_at', null)
         .lt('created_at', cutoffISO),
+      supabaseAdmin
+        .from('jcf_reports')
+        .select('id, created_at, organization, location, inspector_id, organization_id')
+        .eq('status', 'draft')
+        .is('deleted_at', null)
+        .lt('created_at', cutoffISO),
     ]);
 
     if (inspections.error) console.error('Error fetching inspections:', inspections.error);
     if (trainings.error) console.error('Error fetching trainings:', trainings.error);
     if (dailyAssessments.error) console.error('Error fetching daily assessments:', dailyAssessments.error);
+    if (jcfs.error) console.error('Error fetching jcf reports:', jcfs.error);
 
     // Collect all inspector IDs to batch-fetch names
     const allInspectorIds = new Set<string>();
-    for (const r of [...(inspections.data || []), ...(trainings.data || []), ...(dailyAssessments.data || [])]) {
+    for (const r of [...(inspections.data || []), ...(trainings.data || []), ...(dailyAssessments.data || []), ...(jcfs.data || [])]) {
       if (r.inspector_id) allInspectorIds.add(r.inspector_id);
     }
 
