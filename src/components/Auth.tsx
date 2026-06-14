@@ -204,7 +204,7 @@ export default function Auth() {
 
       <Card className="relative z-10 w-full max-w-md shadow-2xl backdrop-blur-2xl bg-white/30 dark:bg-black/40 border border-white/50 dark:border-white/20 ring-1 ring-white/30 shadow-[0_8px_32px_rgba(0,0,0,0.3)] mx-2">
         <CardHeader className="space-y-4 text-center">
-          <div className="mx-auto w-96 h-48 flex items-center justify-center bg-gray-100/70 dark:bg-gray-800/70 rounded-lg">
+          <div className="mx-auto w-96 h-48 flex items-center justify-center bg-white/70 dark:bg-white/70 rounded-lg">
             <img src={belayReportsLogo} alt="Belay Reports Logo" width={384} height={186} className="w-full h-full object-contain" fetchPriority="high" />
           </div>
           <CardDescription>
