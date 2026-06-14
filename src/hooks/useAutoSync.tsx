@@ -1,12 +1,12 @@
 import { useEffect, useCallback, useRef, useState } from 'react';
 import { supabase } from '@/integrations/supabase/client';
-import { syncAllInspectionsAtomic, syncAllTrainingsAtomic, syncAllDailyAssessmentsAtomic, noteBatchOutcome, refetchInspectionPackage, refetchTrainingPackage, refetchAssessmentPackage } from '@/lib/atomic-sync-manager';
+import { syncAllInspectionsAtomic, syncAllTrainingsAtomic, syncAllDailyAssessmentsAtomic, syncAllJCFsAtomic, noteBatchOutcome, refetchInspectionPackage, refetchTrainingPackage, refetchAssessmentPackage } from '@/lib/atomic-sync-manager';
 import { flushAdminEditQueue } from '@/lib/admin-edit-snapshot-queue';
 import { logError } from '@/lib/log-error';
 import { syncPhotos } from '@/lib/sync-manager';
 import { ingestRemoteRecordOffline } from '@/lib/offline-storage';
 import { shouldPreserveLocalRecord } from '@/lib/local-data-guards';
-import { getUnsyncedInspections, getUnsyncedTrainings, getUnsyncedDailyAssessments, isIdbReadFailure, getCircuitBreakerStatus, resetCircuitBreaker, pruneOldSyncedPhotoBlobs, getQueuedOperations, removeQueuedOperation, getQueuedTrainingOperations, removeQueuedTrainingOperation, getQueuedAssessmentOperations, removeQueuedAssessmentOperation, withIDBTimeout, evictStuckTempPhotos, maybeRunQuarantineGc, subscribeToLayerBreakerClose, type DbRow } from '@/lib/offline-storage';
+import { getUnsyncedInspections, getUnsyncedTrainings, getUnsyncedDailyAssessments, getUnsyncedJCFs, isIdbReadFailure, getCircuitBreakerStatus, resetCircuitBreaker, pruneOldSyncedPhotoBlobs, getQueuedOperations, removeQueuedOperation, getQueuedTrainingOperations, removeQueuedTrainingOperation, getQueuedAssessmentOperations, removeQueuedAssessmentOperation, withIDBTimeout, evictStuckTempPhotos, maybeRunQuarantineGc, subscribeToLayerBreakerClose, type DbRow } from '@/lib/offline-storage';
 // Audit M2: static-import the autosync drain modules so the cycle isn't gated
 // on a Vite-emitted lazy chunk that can fail to fetch on a flaky-Wi-Fi iPad.
 // Each was previously `await import(...)` on the post-sync hot path; the
@@ -143,6 +143,7 @@ export interface AutoSyncState {
   unsyncedInspections: DbRow[];
   unsyncedTrainings: DbRow[];
   unsyncedAssessments: DbRow[];
+  unsyncedJCFs: DbRow[];
   // S11: surfaces IDB read failures so the badge keeps last-known counts
   // and the user gets a real error instead of a silent 0.
   syncError: string | null;
@@ -153,7 +154,7 @@ export interface AutoSyncState {
 }
 
 export type SyncStateSnapshot = Pick<AutoSyncState,
-  'unsyncedCount' | 'unsyncedInspections' | 'unsyncedTrainings' | 'unsyncedAssessments'
+  'unsyncedCount' | 'unsyncedInspections' | 'unsyncedTrainings' | 'unsyncedAssessments' | 'unsyncedJCFs'
 >;
 
 /**
@@ -176,6 +177,7 @@ export const useAutoSync = () => {
     unsyncedInspections: [],
     unsyncedTrainings: [],
     unsyncedAssessments: [],
+    unsyncedJCFs: [],
     syncError: null,
     syncErrorSeverity: null,
   });
@@ -993,25 +995,17 @@ export const useAutoSync = () => {
       // surface a soft "stats stale" warning rather than synthesizing the
       // pending list from rw_backup_* snapshots (which can include synced
       // rows after a successful sync).
-      const [insp, train, assess] = await Promise.all([
+      const [insp, train, assess, jcf] = await Promise.all([
         getUnsyncedInspections(user.id, { allowLedgerFallback: false }),
         getUnsyncedTrainings(user.id, { allowLedgerFallback: false }),
         getUnsyncedDailyAssessments(user.id, { allowLedgerFallback: false }),
+        getUnsyncedJCFs(user.id, { allowLedgerFallback: false }),
       ]);
 
-      const anyFailed = isIdbReadFailure(insp) || isIdbReadFailure(train) || isIdbReadFailure(assess);
+      const anyFailed = isIdbReadFailure(insp) || isIdbReadFailure(train) || isIdbReadFailure(assess) || isIdbReadFailure(jcf);
       if (anyFailed) {
-        const failure = [insp, train, assess].find(isIdbReadFailure) as { error: string } | undefined;
-        // S40 (Fix C): The counts read failing is independent of the sync
-        // pipeline succeeding. Word the message so the user understands the
-        // sync itself is fine — this is a stats-refresh hiccup. Avoid surfacing
-        // raw error tokens (idb_read_timeout, circuit_breaker_open) — they
-        // read as catastrophic and aren't actionable. The Sync Terminal still
-        // lights amber via the syncError truthy check, which is correct: the
-        // numbers shown may be stale until the next successful read.
+        const failure = [insp, train, assess, jcf].find(isIdbReadFailure) as { error: string } | undefined;
         console.warn('[AutoSync] IDB counts read failed — preserving last-known counts', failure?.error);
-        // S42 (Fix F): mark severity 'soft' — sync pipeline is fine, this is a stats-read
-        // hiccup. The Sync Terminal styles soft errors in amber rather than fatal red.
         setState(prev => ({
           ...prev,
           syncError: 'Stats refresh delayed — pending counts may be out of date',
@@ -1023,7 +1017,8 @@ export const useAutoSync = () => {
       const inspections = (insp as DbRow[]).filter(r => !isTombstoned('inspections', r.id));
       const trainings = (train as DbRow[]).filter(r => !isTombstoned('trainings', r.id));
       const assessments = (assess as DbRow[]).filter(r => !isTombstoned('daily_assessments', r.id));
-      const total = inspections.length + trainings.length + assessments.length;
+      const jcfs = (jcf as DbRow[]).filter(r => !isTombstoned('jcf_reports', r.id));
+      const total = inspections.length + trainings.length + assessments.length + jcfs.length;
 
       setState(prev => ({
         ...prev,
@@ -1031,6 +1026,7 @@ export const useAutoSync = () => {
         unsyncedInspections: inspections,
         unsyncedTrainings: trainings,
         unsyncedAssessments: assessments,
+        unsyncedJCFs: jcfs,
         syncError: null,
         syncErrorSeverity: null,
       }));
@@ -1085,6 +1081,7 @@ export const useAutoSync = () => {
           unsyncedInspections: [],
           unsyncedTrainings: [],
           unsyncedAssessments: [],
+          unsyncedJCFs: [],
         };
         setState(prev => ({
           ...prev,
@@ -1094,12 +1091,13 @@ export const useAutoSync = () => {
         lastCountsRunRef.current = Date.now();
         return emptySnapshot;
       }
-      const [insp, train, assess] = await Promise.all([
+      const [insp, train, assess, jcf] = await Promise.all([
         getUnsyncedInspections(user.id, { allowLedgerFallback: false }),
         getUnsyncedTrainings(user.id, { allowLedgerFallback: false }),
         getUnsyncedDailyAssessments(user.id, { allowLedgerFallback: false }),
+        getUnsyncedJCFs(user.id, { allowLedgerFallback: false }),
       ]);
-      if (isIdbReadFailure(insp) || isIdbReadFailure(train) || isIdbReadFailure(assess)) {
+      if (isIdbReadFailure(insp) || isIdbReadFailure(train) || isIdbReadFailure(assess) || isIdbReadFailure(jcf)) {
         // Don't blank state on read failure — leave whatever the user
         // was looking at; the next successful tick will reconcile.
         console.warn('[AutoSync] refreshSyncStateFromStorage: IDB read failed, leaving state untouched');
@@ -1108,12 +1106,14 @@ export const useAutoSync = () => {
       const inspections = insp as DbRow[];
       const trainings = train as DbRow[];
       const assessments = assess as DbRow[];
-      const total = inspections.length + trainings.length + assessments.length;
+      const jcfs = jcf as DbRow[];
+      const total = inspections.length + trainings.length + assessments.length + jcfs.length;
       const snapshot: SyncStateSnapshot = {
         unsyncedCount: total,
         unsyncedInspections: inspections,
         unsyncedTrainings: trainings,
         unsyncedAssessments: assessments,
+        unsyncedJCFs: jcfs,
       };
       setState(prev => ({
         ...prev,

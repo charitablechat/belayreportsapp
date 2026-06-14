@@ -54,7 +54,7 @@ export type DbRow = { [key: string]: any } & {
 // from the actual openDB() call below. Kept in sync with public/db-config.js
 // (the Service Worker reads from there).
 export const IDB_DB_NAME = 'rope-works-inspections';
-export const IDB_DB_VERSION = 20;
+export const IDB_DB_VERSION = 21;
 
 type ReportSaveOptions = {
   childCountHint?: number;
@@ -66,10 +66,11 @@ type ReportSaveOptions = {
   dispatchSyncEvent?: boolean;
 };
 
-const TOMBSTONED_TABLE_FOR_REPORT_TYPE: Record<'inspection' | 'training' | 'daily_assessment', TombstonedTable> = {
+const TOMBSTONED_TABLE_FOR_REPORT_TYPE: Record<'inspection' | 'training' | 'daily_assessment' | 'jcf', TombstonedTable> = {
   inspection: 'inspections',
   training: 'trainings',
   daily_assessment: 'daily_assessments',
+  jcf: 'jcf_reports',
 };
 
 function shortRecordId(id: unknown): string {
@@ -278,6 +279,22 @@ interface InspectionDB extends DBSchema {
     value: DbRow;
     indexes: { 'by-training': string };
   };
+  jcf_reports: {
+    key: string;
+    value: DbRow;
+    indexes: { 'by-status': string; 'by-synced': string };
+  };
+  jcf_operations: {
+    key: number;
+    value: {
+      id?: number;
+      type: 'create' | 'update' | 'delete';
+      jcfId: string;
+      data: Record<string, unknown>;
+      timestamp: number;
+      retries: number;
+    };
+  };
   report_backups: {
     key: string;
     value: {
@@ -477,6 +494,7 @@ export type BreakerStoreKey =
   | 'inspections'
   | 'trainings'
   | 'daily_assessments'
+  | 'jcf_reports'
   | 'photos'
   | 'global';
 
@@ -1612,10 +1630,11 @@ function emergencyLocalStorageFallback(operationName: string, data: unknown): bo
   const id = rec.id;
   if (!id || typeof id !== 'string') return false;
 
-  let reportType: 'inspection' | 'training' | 'daily_assessment' | null = null;
+  let reportType: 'inspection' | 'training' | 'daily_assessment' | 'jcf' | null = null;
   const opLower = operationName.toLowerCase();
   if (opLower.includes('inspection')) reportType = 'inspection';
   else if (opLower.includes('training')) reportType = 'training';
+  else if (opLower.includes('jcf')) reportType = 'jcf';
   else if (opLower.includes('assessment') || opLower.includes('daily')) reportType = 'daily_assessment';
 
   if (!reportType) return false;
@@ -1821,7 +1840,7 @@ function makeIdbReadFailure(context: string, error: unknown): IdbReadFailure {
  * can still detect the empty-ledger / failed-fallback path via the
  * `idbError` log line.
  */
-type LedgerReportType = 'inspection' | 'training' | 'daily_assessment';
+type LedgerReportType = 'inspection' | 'training' | 'daily_assessment' | 'jcf';
 type WedgeLedgerFallbackOptions = { allowLedgerFallback?: boolean };
 async function withWedgeLedgerFallback<T extends { id?: string }>(
   reader: () => Promise<T[] | IdbReadFailure>,
@@ -1836,7 +1855,13 @@ async function withWedgeLedgerFallback<T extends { id?: string }>(
 
   try {
     const { listUnsyncedDbRowsFromLedger } = await import('./local-backup-ledger');
-    const ledgerRows = listUnsyncedDbRowsFromLedger(reportType, userId) as unknown as T[];
+    // JCF is not supported by the local-backup-ledger (no rw_backup_jcf_*
+    // snapshots are written). Skip the fallback rather than crash.
+    if (reportType === 'jcf') return result;
+    const ledgerRows = listUnsyncedDbRowsFromLedger(
+      reportType as 'inspection' | 'training' | 'daily_assessment',
+      userId,
+    ) as unknown as T[];
     console.warn('[Offline Storage] Mode 11A ledger fallback active', {
       context,
       reportType,
@@ -3024,6 +3049,21 @@ export async function getDB() {
               console.warn('[Offline Storage] v19 autocomplete_history.synced coercion failed:', err);
             }
           }
+          // === NEW in v21: jcf_reports + jcf_operations stores ===
+          if (!db.objectStoreNames.contains('jcf_reports')) {
+            const store = db.createObjectStore('jcf_reports', { keyPath: 'id' });
+            store.createIndex('by-status', 'status');
+            store.createIndex('by-synced', 'synced_at');
+            if (import.meta.env.DEV) {
+              console.log('[Offline Storage] Created jcf_reports store (v21 upgrade)');
+            }
+          }
+          if (!db.objectStoreNames.contains('jcf_operations')) {
+            db.createObjectStore('jcf_operations', { autoIncrement: true });
+            if (import.meta.env.DEV) {
+              console.log('[Offline Storage] Created jcf_operations store (v21 upgrade)');
+            }
+          }
         },
       });
     };
@@ -3151,6 +3191,8 @@ export async function getDB() {
           { storeName: 'autocomplete_history', indexes: ['by-field-type', 'by-synced'] },
           { storeName: 'equipment_type_cache', indexes: ['by-category'] },
           { storeName: 'dead_letter_soft_deletes' },
+          { storeName: 'jcf_reports', indexes: ['by-status', 'by-synced'] },
+          { storeName: 'jcf_operations' },
         ];
         const fp = await migrationSafety.validateSchemaFingerprint(
           db as unknown as IDBPDatabase,
@@ -5378,7 +5420,7 @@ export async function saveTrainingOffline(
  * ingest must not crash the autosync hook on a transient IDB failure.
  */
 export async function ingestRemoteRecordOffline(
-  table: 'inspections' | 'trainings' | 'daily_assessments',
+  table: 'inspections' | 'trainings' | 'daily_assessments' | 'jcf_reports',
   record: Record<string, unknown> & { id?: string; updated_at?: string | null },
 ): Promise<SaveResult> {
   if (isTombstoned(table, record.id)) {
@@ -5402,6 +5444,7 @@ export async function ingestRemoteRecordOffline(
           inspections: 'inspection',
           trainings: 'training',
           daily_assessments: 'daily assessment',
+          jcf_reports: 'jcf',
         };
         console.log(`[Offline Storage] Ingested remote ${labels[table]}:`, record.id);
       }
@@ -5623,6 +5666,158 @@ export async function incrementTrainingOperationRetry(id: number | undefined | n
     'incrementTrainingOperationRetry'
   );
 }
+
+// ============================================================================
+// JCF (Job Completion Form) functions — mirror the training surface area.
+// JCFs are a single-table report (no related child tables); jcf_photos live in
+// the shared `photos` store with `tableName: 'jcf_photos'`.
+// ============================================================================
+
+/**
+ * Save a JCF to IndexedDB.
+ * Throws `IdbSaveError` on hard failure — callers MUST handle rejection.
+ */
+export async function saveJCFOffline(
+  jcf: Record<string, unknown> & { id?: string; child_count_hint?: number; dirty?: boolean },
+  opts?: ReportSaveOptions,
+): Promise<SaveResult> {
+  if (opts?.explicitUserSave !== false && jcf.id) clearTombstone('jcf_reports', String(jcf.id));
+  const result = await withIndexedDBSaveBoundary(
+    async () => {
+      const db = await getDB();
+      if (opts?.childCountHint != null && opts.childCountHint >= 0) {
+        jcf.child_count_hint = opts.childCountHint;
+      }
+      if (opts?.markDirty === false) jcf.dirty = false;
+      else jcf.dirty = true;
+      if (opts?.explicitUserSave !== false && jcf.id) clearTombstone('jcf_reports', String(jcf.id));
+      await db.put('jcf_reports', jcf as never);
+      if (import.meta.env.DEV) {
+        console.log('[Offline Storage] Saved jcf:', jcf.id);
+      }
+    },
+    'saveJCFOffline',
+    jcf,
+  );
+  if (opts?.dispatchSyncEvent !== false) dispatchSyncRecordsUpdated();
+  return result;
+}
+
+export async function getOfflineJCFs(userId?: string, isSuperAdmin?: boolean) {
+  return withIndexedDBErrorBoundary(
+    async () => {
+      const db = await getDB();
+      const all = await db.getAll('jcf_reports');
+      const active = all.filter(j => !j.deleted_at && isNotQuarantined(j));
+      if (isSuperAdmin) return active;
+      if (userId) return active.filter(j => j.inspector_id === userId);
+      return active;
+    },
+    [],
+    'getOfflineJCFs',
+  );
+}
+
+export async function getOfflineJCF(id: string) {
+  return withIndexedDBErrorBoundary(
+    async () => {
+      const db = await getDB();
+      return await db.get('jcf_reports', id);
+    },
+    null,
+    'getOfflineJCF',
+    { store: 'jcf_reports', criticalRead: true },
+  );
+}
+
+export async function deleteOfflineJCF(id: string) {
+  return withIndexedDBErrorBoundary(
+    async () => {
+      const db = await getDB();
+      try {
+        const record = await db.get('jcf_reports', id);
+        if (record) {
+          await createReportBackup('jcf', id, record);
+        }
+      } catch (backupErr) {
+        console.warn('[Offline Storage] Pre-delete backup failed for jcf:', backupErr);
+      }
+      await db.delete('jcf_reports', id);
+    },
+    undefined,
+    'deleteOfflineJCF',
+  );
+}
+
+export async function getUnsyncedJCFs(userId?: string, options?: WedgeLedgerFallbackOptions) {
+  return withWedgeLedgerFallback(
+    () => withIndexedDBReadBoundary(
+      async () => {
+        const db = await getDB();
+        const all = await db.getAll('jcf_reports', undefined, UNSYNCED_SCAN_CAP);
+        void maybeReportUnsyncedScanOverflow(db, 'jcf_reports', all.length, 'getUnsyncedJCFs');
+        const ownedCandidates = all.filter(isNotQuarantined).filter(record => {
+          if (!userId) return true;
+          if (record.inspector_id === userId) return true;
+          if (record.id?.startsWith('temp-')) return true;
+          return false;
+        })
+          .filter(record => !isSessionQuarantined(record.id));
+        const candidates = filterTombstonedRows('jcf_reports', ownedCandidates, 'getUnsyncedJCFs/idb');
+
+        const unsynced = candidates.filter(record => {
+          if ((record as { dirty?: unknown }).dirty === true) return true;
+          if (!record.synced_at) return true;
+          if (record.updated_at) {
+            const updatedMs = new Date(record.updated_at).getTime();
+            const syncedMs = new Date(record.synced_at).getTime();
+            return isUpdatedAheadOfSync(updatedMs, syncedMs);
+          }
+          return false;
+        });
+
+        syncLog.log('[Offline Storage] Unsynced jcfs:', {
+          total: unsynced.length,
+          userId: userId ? userId.substring(0, 8) + '...' : 'all',
+        });
+        return unsynced;
+      },
+      'getUnsyncedJCFs',
+      // The ledger does not store JCFs; suppress that fallback path entirely.
+      { tier: 'batch', store: 'jcf_reports' },
+    ),
+    'jcf',
+    userId,
+    'getUnsyncedJCFs',
+    { ...(options ?? {}), allowLedgerFallback: false },
+  );
+}
+
+export async function queueJCFOperation(
+  type: 'create' | 'update' | 'delete',
+  jcfId: string,
+  data: Record<string, unknown>,
+) {
+  return withIndexedDBErrorBoundary(
+    async () => {
+      const db = await getDB();
+      await db.add('jcf_operations', {
+        type,
+        jcfId,
+        data,
+        timestamp: Date.now(),
+        retries: 0,
+      });
+      if (import.meta.env.DEV) {
+        console.log('[Offline Storage] Queued jcf operation:', { type, jcfId });
+      }
+    },
+    undefined,
+    'queueJCFOperation',
+  );
+}
+
+
 
 type TrainingDataType = 'delivery_approaches' | 'operating_systems' | 'immediate_attention' | 'verifiable_items' | 'systems_in_place' | 'summary';
 type TrainingStoreNames = 'training_delivery_approaches' | 'training_operating_systems' | 'training_immediate_attention' | 'training_verifiable_items' | 'training_systems_in_place' | 'training_summary';
@@ -6328,7 +6523,7 @@ export function isNotQuarantined<T extends Record<string, unknown>>(record: T): 
   return !record._remote_deleted_at;
 }
 
-export type QuarantineTable = 'inspections' | 'trainings' | 'daily_assessments';
+export type QuarantineTable = 'inspections' | 'trainings' | 'daily_assessments' | 'jcf_reports';
 
 export interface QuarantinedRecord {
   table: QuarantineTable;
@@ -6489,6 +6684,8 @@ export async function restoreQuarantinedAsNew(
           { name: 'daily_assessment_environment_checks', fk: 'assessment_id', index: 'by-assessment' },
           { name: 'daily_assessment_photos', fk: 'assessment_id', index: 'by-assessment' },
         ],
+        // JCFs have no IDB child stores; jcf_photos lives in the shared `photos` store.
+        jcf_reports: [],
       };
 
       // Write the new parent.
