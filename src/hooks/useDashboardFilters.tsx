@@ -83,7 +83,7 @@ export function useDashboardFilters(
     quickFilters: { myCards: false, dueThisWeek: false, draftsOnly: false, needsAttention: false },
     sortBy: 'priority',
     groupBy: 'none',
-    viewMode: 'list',
+    viewMode: loadInitialViewMode(),
     page: 1,
   });
 
