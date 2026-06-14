@@ -864,6 +864,21 @@ export default function Dashboard() {
         }
         setDailyAssessments((prev) => mergeRow(prev, row));
       })
+      .on('postgres_changes', baseConfig('jcf_reports'), (payload: RealtimePostgresChangesPayload<DbRow>) => {
+        setJcfsValidated(prev => prev ? prev : true);
+        if (payload.eventType === 'DELETE') {
+          const id = payload.old?.id;
+          if (id) setJcfs((prev) => removeRow(prev, id));
+          return;
+        }
+        const row = payload.new;
+        if (!row?.id) return;
+        if (row.deleted_at) {
+          setJcfs((prev) => removeRow(prev, row.id));
+          return;
+        }
+        setJcfs((prev) => mergeRow(prev, row));
+      })
       // Realtime health check. If the channel errors or times out we log it
       // and trigger a one-shot refetch so the dashboard counts don't silently
       // drift from server reality. Pre-PR-D this was the only fallback when
