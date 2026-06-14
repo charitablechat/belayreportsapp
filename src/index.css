@@ -466,9 +466,19 @@ All colors MUST be HSL.
     min-height: 100vh;
   }
   .dark .dashboard-canvas {
-    background: linear-gradient(135deg, #0A2828 0%, #081E2E 55%, #060F1A 100%);
+    background: linear-gradient(135deg, #0A2828 0%, #0D3D3D 22%, #081E2E 48%, #071E2A 72%, #060F1A 100%);
     background-attachment: fixed;
     animation: none;
+  }
+  .dark .dashboard-canvas::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    background:
+      radial-gradient(ellipse 80% 60% at 15% 20%, rgba(20, 184, 166, 0.08) 0%, transparent 60%),
+      radial-gradient(ellipse 70% 50% at 85% 80%, rgba(13, 61, 61, 0.12) 0%, transparent 55%);
+    pointer-events: none;
+    animation: dark-canvas-drift 20s ease-in-out infinite alternate;
   }
   .dashboard-canvas::after {
     content: "";
@@ -478,6 +488,11 @@ All colors MUST be HSL.
     pointer-events: none;
   }
   .dark .dashboard-canvas::after { display: none; }
+
+  @keyframes dark-canvas-drift {
+    0%   { opacity: 0.6; transform: scale(1); }
+    100% { opacity: 1; transform: scale(1.08); }
+  }
 
   /* Primary teal CTA — uses teal → deep-teal gradient per BelayReports spec. */
   .btn-teal-cta {
