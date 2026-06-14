@@ -436,7 +436,7 @@ export const useAutoSync = () => {
           // The rendered Pending Reports list must be derived from IndexedDB
           // truth, not from stale rw_backup_* snapshots that may carry
           // already-synced rows.
-          const [inspRes, trainRes, assessRes] = await Promise.all([
+          const [inspRes, trainRes, assessRes, jcfRes] = await Promise.all([
             withIDBTimeout(
               'refreshUnsyncedInspections',
               'heavy',
@@ -455,13 +455,20 @@ export const useAutoSync = () => {
               () => getUnsyncedDailyAssessments(freshUser.id, { allowLedgerFallback: false }),
               [] as DbRow[]
             ),
+            withIDBTimeout(
+              'refreshUnsyncedJCFs',
+              'heavy',
+              () => getUnsyncedJCFs(freshUser.id, { allowLedgerFallback: false }),
+              [] as DbRow[]
+            ),
           ]);
 
-          const anyTimedOut = inspRes.timedOut || trainRes.timedOut || assessRes.timedOut;
+          const anyTimedOut = inspRes.timedOut || trainRes.timedOut || assessRes.timedOut || jcfRes.timedOut;
           const anyFailed =
             isIdbReadFailure(inspRes.data) ||
             isIdbReadFailure(trainRes.data) ||
-            isIdbReadFailure(assessRes.data);
+            isIdbReadFailure(assessRes.data) ||
+            isIdbReadFailure(jcfRes.data);
 
           if (anyTimedOut || anyFailed) {
             console.warn(
@@ -482,11 +489,13 @@ export const useAutoSync = () => {
             inspections: inspRes.data as DbRow[],
             trainings: trainRes.data as DbRow[],
             assessments: assessRes.data as DbRow[],
+            jcfs: jcfRes.data as DbRow[],
           };
           liveUnsyncedCount =
             freshCounts.inspections.length +
             freshCounts.trainings.length +
-            freshCounts.assessments.length;
+            freshCounts.assessments.length +
+            freshCounts.jcfs.length;
           if (liveUnsyncedCount !== unsyncedCountRef.current) {
             unsyncedCountRef.current = liveUnsyncedCount;
             setState(prev => ({
@@ -495,8 +504,10 @@ export const useAutoSync = () => {
               unsyncedInspections: freshCounts.inspections,
               unsyncedTrainings: freshCounts.trainings,
               unsyncedAssessments: freshCounts.assessments,
+              unsyncedJCFs: freshCounts.jcfs,
             }));
           }
+
         }
       } catch (refreshErr) {
         console.warn('[AutoSync] Pre-sync count refresh failed (non-blocking):', refreshErr);
@@ -628,20 +639,23 @@ export const useAutoSync = () => {
           if (signal.aborted) throw new DOMException('aborted', 'AbortError');
           await yieldToUI();
 
-          // Run inspections / trainings / assessments concurrently — they touch independent tables
-          const [inspSettled, trainSettled, assessSettled] = await Promise.allSettled([
+          // Run inspections / trainings / assessments / JCFs concurrently — they touch independent tables
+          const [inspSettled, trainSettled, assessSettled, jcfSettled] = await Promise.allSettled([
             syncAllInspectionsAtomic(validatedUser, signal),
             syncAllTrainingsAtomic(validatedUser, signal),
             syncAllDailyAssessmentsAtomic(validatedUser, signal),
+            syncAllJCFsAtomic(validatedUser, signal),
           ]);
           const inspResult = inspSettled.status === 'fulfilled' ? inspSettled.value : (console.error('[AutoSync] Inspections sync failed:', inspSettled.reason), null);
           const trainResult = trainSettled.status === 'fulfilled' ? trainSettled.value : (console.error('[AutoSync] Trainings sync failed:', trainSettled.reason), null);
           const assessResult = assessSettled.status === 'fulfilled' ? assessSettled.value : (console.error('[AutoSync] Assessments sync failed:', assessSettled.reason), null);
+          const jcfResult = jcfSettled.status === 'fulfilled' ? jcfSettled.value : (console.error('[AutoSync] JCFs sync failed:', jcfSettled.reason), null);
           if (signal.aborted) throw new DOMException('aborted', 'AbortError');
           await yieldToUI();
           // Photos depend on real UUIDs assigned by the report syncs above
           const photoResult = await syncPhotos(signal).catch(e => { console.error('[AutoSync] Photos sync failed:', e); return null; });
-          return [inspResult, trainResult, assessResult, photoResult];
+          return [inspResult, trainResult, assessResult, jcfResult, photoResult];
+
         },
         dynamicTimeout,
         activeSyncAbortRef.current?.signal
@@ -680,8 +694,8 @@ export const useAutoSync = () => {
 
         // S43 (Fix G): silent-failure detector. Increment when a cycle moves
         // nothing despite work pending; reset on any progress.
-        const totalReportRemaining = results.slice(0, 3).reduce((sum, r) => sum + (r?.remaining || 0), 0);
-        const photoRemaining = results[3]?.remaining || 0;
+        const totalReportRemaining = results.slice(0, 4).reduce((sum, r) => sum + (r?.remaining || 0), 0);
+        const photoRemaining = results[4]?.remaining || 0;
         const hadPendingWork = totalReportRemaining + photoRemaining > 0 || unsyncedCountRef.current > 0;
         if (!allFetchesFailed && totalSynced === 0 && totalFailed === 0 && hadPendingWork) {
           zeroProgressStreakRef.current += 1;
@@ -724,7 +738,7 @@ export const useAutoSync = () => {
 
           // S34: Tally photo changes from this cycle. The photo result is the
           // 4th entry returned by the parallel pipeline above.
-          const photoResult = results[3];
+          const photoResult = results[4];
           photoChangeCount += Math.max(0, photoResult?.changed || 0);
 
           // Only broadcast when something photo-related actually moved this cycle.
@@ -778,7 +792,7 @@ export const useAutoSync = () => {
           // Toast shape depends on whether anything failed in this cycle.
           // F3: photo result has no success/failed counts — inspect remaining/error
           // so a green "synced" toast never fires while photos still pending.
-          const photoResultForToast = results[3] as { remaining?: number; error?: string } | null;
+          const photoResultForToast = results[4] as { remaining?: number; error?: string } | null;
           const photosStillPending =
             (photoResultForToast?.remaining ?? 0) > 0 || !!photoResultForToast?.error;
 
@@ -856,7 +870,7 @@ export const useAutoSync = () => {
           // bounded-parallel pipeline inside syncPhotos(); we should NOT re-trigger
           // the heavy report cycle just because photos are still uploading. Compute
           // report-only remaining (results[0..2]) for the accelerated-resync gate.
-          const reportResults = results.slice(0, 3);
+          const reportResults = results.slice(0, 4);
           const reportRemaining = reportResults.reduce((sum, r) => sum + (r?.remaining || 0), 0);
           const reportFailed = reportResults.reduce((sum, r) => sum + (r?.failed || 0), 0);
 
@@ -880,7 +894,7 @@ export const useAutoSync = () => {
           } else {
             // S7: Reports are clean. If photos are still draining, schedule a
             // photo-only cycle so we don't wait for the next periodic tick.
-            const photoRemaining = results[3]?.remaining || 0;
+            const photoRemaining = results[4]?.remaining || 0;
             if (photoRemaining > 0) {
                               syncLog.log(`[AutoSync] ${photoRemaining} photos remaining - scheduling photo-only drain`);
               lastSyncAttemptRef.current = Date.now() - MIN_SYNC_INTERVAL;
