@@ -2208,16 +2208,16 @@ export default function Dashboard() {
                     routes, and sync logic remain intact. */}
                 {isLovablePreview() && (
                 <Card
-                  className="relative overflow-visible hover:shadow-2xl transition-all duration-300 border-2 hover:border-orange-500 cursor-pointer group"
+                  className="relative overflow-visible glass-panel hover:shadow-2xl transition-all duration-300 hover:-translate-y-0.5 hover:border-orange-400/60 cursor-pointer group"
                   onClick={() => {
                     triggerHaptic('light');
                     navigate("/jcf/new");
                   }}
                 >
-                  <div className="absolute inset-0 bg-gradient-to-br from-orange-50/30 to-transparent opacity-50 rounded-lg" />
+                  <div className="absolute inset-0 bg-gradient-to-br from-orange-400/10 via-transparent to-transparent rounded-2xl pointer-events-none" />
                   <CardHeader className="relative z-10 text-center pb-4">
-                    <div className="w-16 h-16 mx-auto mb-4 rounded-full bg-orange-100 flex items-center justify-center group-hover:scale-110 transition-transform">
-                      <Briefcase className="w-8 h-8 text-orange-600" />
+                    <div className="w-16 h-16 mx-auto mb-4 rounded-full bg-orange-500/15 backdrop-blur-sm ring-1 ring-orange-400/30 flex items-center justify-center group-hover:scale-110 transition-transform">
+                      <Briefcase className="w-8 h-8 text-orange-600 dark:text-orange-400" />
                     </div>
                     <CardTitle className="text-2xl mb-2">Job Completion Form</CardTitle>
                     <CardDescription className="text-base">
