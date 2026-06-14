@@ -436,7 +436,7 @@ export const useAutoSync = () => {
           // The rendered Pending Reports list must be derived from IndexedDB
           // truth, not from stale rw_backup_* snapshots that may carry
           // already-synced rows.
-          const [inspRes, trainRes, assessRes] = await Promise.all([
+          const [inspRes, trainRes, assessRes, jcfRes] = await Promise.all([
             withIDBTimeout(
               'refreshUnsyncedInspections',
               'heavy',
@@ -455,13 +455,20 @@ export const useAutoSync = () => {
               () => getUnsyncedDailyAssessments(freshUser.id, { allowLedgerFallback: false }),
               [] as DbRow[]
             ),
+            withIDBTimeout(
+              'refreshUnsyncedJCFs',
+              'heavy',
+              () => getUnsyncedJCFs(freshUser.id, { allowLedgerFallback: false }),
+              [] as DbRow[]
+            ),
           ]);
 
-          const anyTimedOut = inspRes.timedOut || trainRes.timedOut || assessRes.timedOut;
+          const anyTimedOut = inspRes.timedOut || trainRes.timedOut || assessRes.timedOut || jcfRes.timedOut;
           const anyFailed =
             isIdbReadFailure(inspRes.data) ||
             isIdbReadFailure(trainRes.data) ||
-            isIdbReadFailure(assessRes.data);
+            isIdbReadFailure(assessRes.data) ||
+            isIdbReadFailure(jcfRes.data);
 
           if (anyTimedOut || anyFailed) {
             console.warn(
@@ -482,11 +489,13 @@ export const useAutoSync = () => {
             inspections: inspRes.data as DbRow[],
             trainings: trainRes.data as DbRow[],
             assessments: assessRes.data as DbRow[],
+            jcfs: jcfRes.data as DbRow[],
           };
           liveUnsyncedCount =
             freshCounts.inspections.length +
             freshCounts.trainings.length +
-            freshCounts.assessments.length;
+            freshCounts.assessments.length +
+            freshCounts.jcfs.length;
           if (liveUnsyncedCount !== unsyncedCountRef.current) {
             unsyncedCountRef.current = liveUnsyncedCount;
             setState(prev => ({
@@ -495,8 +504,10 @@ export const useAutoSync = () => {
               unsyncedInspections: freshCounts.inspections,
               unsyncedTrainings: freshCounts.trainings,
               unsyncedAssessments: freshCounts.assessments,
+              unsyncedJCFs: freshCounts.jcfs,
             }));
           }
+
         }
       } catch (refreshErr) {
         console.warn('[AutoSync] Pre-sync count refresh failed (non-blocking):', refreshErr);
