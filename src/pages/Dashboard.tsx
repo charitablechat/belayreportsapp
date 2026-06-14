@@ -2201,6 +2201,32 @@ export default function Dashboard() {
                   </CardContent>
                   
                 </Card>
+
+                {/* JOB COMPLETION FORM CARD */}
+                <Card
+                  className="relative overflow-visible hover:shadow-2xl transition-all duration-300 border-2 hover:border-orange-500 cursor-pointer group"
+                  onClick={() => {
+                    triggerHaptic('light');
+                    navigate("/jcf/new");
+                  }}
+                >
+                  <div className="absolute inset-0 bg-gradient-to-br from-orange-50/30 to-transparent opacity-50 rounded-lg" />
+                  <CardHeader className="relative z-10 text-center pb-4">
+                    <div className="w-16 h-16 mx-auto mb-4 rounded-full bg-orange-100 flex items-center justify-center group-hover:scale-110 transition-transform">
+                      <Briefcase className="w-8 h-8 text-orange-600" />
+                    </div>
+                    <CardTitle className="text-2xl mb-2">Job Completion Form</CardTitle>
+                    <CardDescription className="text-base">
+                      Document job completion details and sign-off
+                    </CardDescription>
+                  </CardHeader>
+                  <CardContent className="relative z-10 text-center pb-6">
+                    <GradientButton className="w-full group-hover:scale-105 transition-transform">
+                      Start JCF
+                      <ArrowRight className="w-4 h-4 ml-2" />
+                    </GradientButton>
+                  </CardContent>
+                </Card>
               </div>
             </div>
           </div>
