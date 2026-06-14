@@ -2126,16 +2126,16 @@ export default function Dashboard() {
               <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-6 max-w-6xl mx-auto">
                 {/* INSPECTION CARD - FUNCTIONAL */}
                 <Card 
-                  className="relative overflow-visible hover:shadow-2xl transition-all duration-300 border-2 hover:border-blue-500 cursor-pointer group"
+                  className="relative overflow-visible glass-panel hover:shadow-2xl transition-all duration-300 hover:-translate-y-0.5 hover:border-blue-400/60 cursor-pointer group"
                   onClick={() => {
                     triggerHaptic('light'); // Haptic feedback when starting new inspection
                     navigate("/inspection/new");
                   }}
                 >
-                  <div className="absolute inset-0 bg-gradient-to-br from-blue-50/30 to-transparent opacity-50 rounded-lg" />
+                  <div className="absolute inset-0 bg-gradient-to-br from-blue-400/10 via-transparent to-transparent rounded-2xl pointer-events-none" />
                   <CardHeader className="relative z-10 text-center pb-4">
-                    <div className="w-16 h-16 mx-auto mb-4 rounded-full bg-blue-100 flex items-center justify-center group-hover:scale-110 transition-transform">
-                      <FileText className="w-8 h-8 text-blue-600" />
+                    <div className="w-16 h-16 mx-auto mb-4 rounded-full bg-blue-500/15 backdrop-blur-sm ring-1 ring-blue-400/30 flex items-center justify-center group-hover:scale-110 transition-transform">
+                      <FileText className="w-8 h-8 text-blue-600 dark:text-blue-400" />
                     </div>
                     <CardTitle className="text-2xl mb-2">Inspection Report</CardTitle>
                     <CardDescription className="text-base">
@@ -2152,16 +2152,16 @@ export default function Dashboard() {
 
                 {/* TRAINING CARD - FUNCTIONAL */}
                 <Card 
-                  className="relative overflow-visible hover:shadow-2xl transition-all duration-300 border-2 hover:border-green-500 cursor-pointer group"
+                  className="relative overflow-visible glass-panel hover:shadow-2xl transition-all duration-300 hover:-translate-y-0.5 hover:border-emerald-400/60 cursor-pointer group"
                   onClick={() => {
                     triggerHaptic('light');
                     navigate("/training/new");
                   }}
                 >
-                  <div className="absolute inset-0 bg-gradient-to-br from-sky-50/30 to-transparent opacity-50 rounded-lg" />
+                  <div className="absolute inset-0 bg-gradient-to-br from-emerald-400/10 via-transparent to-transparent rounded-2xl pointer-events-none" />
                   <CardHeader className="relative z-10 text-center pb-4">
-                    <div className="w-16 h-16 mx-auto mb-4 rounded-full bg-green-100 flex items-center justify-center group-hover:scale-110 transition-transform">
-                      <GraduationCap className="w-8 h-8 text-green-600" />
+                    <div className="w-16 h-16 mx-auto mb-4 rounded-full bg-emerald-500/15 backdrop-blur-sm ring-1 ring-emerald-400/30 flex items-center justify-center group-hover:scale-110 transition-transform">
+                      <GraduationCap className="w-8 h-8 text-emerald-600 dark:text-emerald-400" />
                     </div>
                     <CardTitle className="text-2xl mb-2">Training Report</CardTitle>
                     <CardDescription className="text-base">
@@ -2178,16 +2178,16 @@ export default function Dashboard() {
 
                 {/* DAILY COURSE ASSESSMENT CARD - FUNCTIONAL */}
                 <Card 
-                  className="relative overflow-visible hover:shadow-2xl transition-all duration-300 border-2 hover:border-purple-500 cursor-pointer group"
+                  className="relative overflow-visible glass-panel hover:shadow-2xl transition-all duration-300 hover:-translate-y-0.5 hover:border-violet-400/60 cursor-pointer group"
                   onClick={() => {
                     triggerHaptic('light');
                     navigate("/daily-assessment/new");
                   }}
                 >
-                  <div className="absolute inset-0 bg-gradient-to-br from-indigo-50/30 to-transparent opacity-50 rounded-lg" />
+                  <div className="absolute inset-0 bg-gradient-to-br from-violet-400/10 via-transparent to-transparent rounded-2xl pointer-events-none" />
                   <CardHeader className="relative z-10 text-center pb-4">
-                    <div className="w-16 h-16 mx-auto mb-4 rounded-full bg-purple-100 flex items-center justify-center group-hover:scale-110 transition-transform">
-                      <FileText className="w-8 h-8 text-purple-600" />
+                    <div className="w-16 h-16 mx-auto mb-4 rounded-full bg-violet-500/15 backdrop-blur-sm ring-1 ring-violet-400/30 flex items-center justify-center group-hover:scale-110 transition-transform">
+                      <FileText className="w-8 h-8 text-violet-600 dark:text-violet-400" />
                     </div>
                     <CardTitle className="text-2xl mb-2">Daily Course Assessment</CardTitle>
                     <CardDescription className="text-base">
@@ -2208,16 +2208,16 @@ export default function Dashboard() {
                     routes, and sync logic remain intact. */}
                 {isLovablePreview() && (
                 <Card
-                  className="relative overflow-visible hover:shadow-2xl transition-all duration-300 border-2 hover:border-orange-500 cursor-pointer group"
+                  className="relative overflow-visible glass-panel hover:shadow-2xl transition-all duration-300 hover:-translate-y-0.5 hover:border-orange-400/60 cursor-pointer group"
                   onClick={() => {
                     triggerHaptic('light');
                     navigate("/jcf/new");
                   }}
                 >
-                  <div className="absolute inset-0 bg-gradient-to-br from-orange-50/30 to-transparent opacity-50 rounded-lg" />
+                  <div className="absolute inset-0 bg-gradient-to-br from-orange-400/10 via-transparent to-transparent rounded-2xl pointer-events-none" />
                   <CardHeader className="relative z-10 text-center pb-4">
-                    <div className="w-16 h-16 mx-auto mb-4 rounded-full bg-orange-100 flex items-center justify-center group-hover:scale-110 transition-transform">
-                      <Briefcase className="w-8 h-8 text-orange-600" />
+                    <div className="w-16 h-16 mx-auto mb-4 rounded-full bg-orange-500/15 backdrop-blur-sm ring-1 ring-orange-400/30 flex items-center justify-center group-hover:scale-110 transition-transform">
+                      <Briefcase className="w-8 h-8 text-orange-600 dark:text-orange-400" />
                     </div>
                     <CardTitle className="text-2xl mb-2">Job Completion Form</CardTitle>
                     <CardDescription className="text-base">
@@ -2238,7 +2238,7 @@ export default function Dashboard() {
         </section>
 
         {/* Reports Section */}
-        <section className="border-2 border-foreground rounded-lg p-4">
+        <section className="glass-panel p-4 md:p-6">
           {/* Brutalist loading bar */}
           {loading && (
             <div className="w-full h-[2px] bg-foreground mb-4 animate-pulse" />
