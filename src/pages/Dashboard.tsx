@@ -2014,7 +2014,7 @@ export default function Dashboard() {
           <div className="flex items-center justify-between gap-4 mb-3">
             <div className="flex items-center gap-2 md:gap-3">
               <img src={belayReportsLogo} alt="Belay Reports" className="h-12 md:h-[4.5rem] w-auto object-contain cursor-pointer hover:opacity-80 transition-opacity bg-white/80 dark:bg-white/90 rounded-md p-1" onClick={() => navigate('/dashboard')} />
-              <img src={acctLogo} alt="ACCT Accredited Vendor" className="h-8 md:h-12 w-auto object-contain" />
+              <img src={acctLogo} alt="ACCT Accredited Vendor" className="h-12 md:h-[4.5rem] w-auto object-contain" />
             </div>
             
             <div className="flex items-center gap-2 mr-14">
