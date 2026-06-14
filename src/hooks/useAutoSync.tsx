@@ -694,8 +694,8 @@ export const useAutoSync = () => {
 
         // S43 (Fix G): silent-failure detector. Increment when a cycle moves
         // nothing despite work pending; reset on any progress.
-        const totalReportRemaining = results.slice(0, 3).reduce((sum, r) => sum + (r?.remaining || 0), 0);
-        const photoRemaining = results[3]?.remaining || 0;
+        const totalReportRemaining = results.slice(0, 4).reduce((sum, r) => sum + (r?.remaining || 0), 0);
+        const photoRemaining = results[4]?.remaining || 0;
         const hadPendingWork = totalReportRemaining + photoRemaining > 0 || unsyncedCountRef.current > 0;
         if (!allFetchesFailed && totalSynced === 0 && totalFailed === 0 && hadPendingWork) {
           zeroProgressStreakRef.current += 1;
@@ -738,7 +738,7 @@ export const useAutoSync = () => {
 
           // S34: Tally photo changes from this cycle. The photo result is the
           // 4th entry returned by the parallel pipeline above.
-          const photoResult = results[3];
+          const photoResult = results[4];
           photoChangeCount += Math.max(0, photoResult?.changed || 0);
 
           // Only broadcast when something photo-related actually moved this cycle.
@@ -792,7 +792,7 @@ export const useAutoSync = () => {
           // Toast shape depends on whether anything failed in this cycle.
           // F3: photo result has no success/failed counts — inspect remaining/error
           // so a green "synced" toast never fires while photos still pending.
-          const photoResultForToast = results[3] as { remaining?: number; error?: string } | null;
+          const photoResultForToast = results[4] as { remaining?: number; error?: string } | null;
           const photosStillPending =
             (photoResultForToast?.remaining ?? 0) > 0 || !!photoResultForToast?.error;
 
@@ -870,7 +870,7 @@ export const useAutoSync = () => {
           // bounded-parallel pipeline inside syncPhotos(); we should NOT re-trigger
           // the heavy report cycle just because photos are still uploading. Compute
           // report-only remaining (results[0..2]) for the accelerated-resync gate.
-          const reportResults = results.slice(0, 3);
+          const reportResults = results.slice(0, 4);
           const reportRemaining = reportResults.reduce((sum, r) => sum + (r?.remaining || 0), 0);
           const reportFailed = reportResults.reduce((sum, r) => sum + (r?.failed || 0), 0);
 
@@ -894,7 +894,7 @@ export const useAutoSync = () => {
           } else {
             // S7: Reports are clean. If photos are still draining, schedule a
             // photo-only cycle so we don't wait for the next periodic tick.
-            const photoRemaining = results[3]?.remaining || 0;
+            const photoRemaining = results[4]?.remaining || 0;
             if (photoRemaining > 0) {
                               syncLog.log(`[AutoSync] ${photoRemaining} photos remaining - scheduling photo-only drain`);
               lastSyncAttemptRef.current = Date.now() - MIN_SYNC_INTERVAL;
