@@ -494,6 +494,7 @@ export type BreakerStoreKey =
   | 'inspections'
   | 'trainings'
   | 'daily_assessments'
+  | 'jcf_reports'
   | 'photos'
   | 'global';
 
