@@ -21,7 +21,7 @@ const BACKUP_PREFIX = 'rw_backup_';
 const SCHEMA_VERSION = 1;
 const MAX_STORAGE_BYTES = 4 * 1024 * 1024; // 4MB budget
 
-export type ReportType = 'inspection' | 'training' | 'daily_assessment' | 'jcf';
+export type ReportType = 'inspection' | 'training' | 'daily_assessment';
 
 export interface PhotoMetadataEntry {
   id: string;
