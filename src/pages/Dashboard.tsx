@@ -519,6 +519,7 @@ export default function Dashboard() {
         loadInspections(userId, superAdminStatus, sessionValid),
         loadTrainingReports(userId, superAdminStatus, sessionValid),
         loadDailyAssessments(userId, superAdminStatus, sessionValid),
+        loadJCFs(userId, superAdminStatus, sessionValid),
       ]);
 
       // Fix 1: Always flip per-dataset validation true once the load function
@@ -529,6 +530,7 @@ export default function Dashboard() {
       setInspectionsValidated(true);
       setTrainingsValidated(true);
       setDailyValidated(true);
+      setJcfsValidated(true);
       void results; // (kept for future telemetry if needed)
 
       // Track network failures for stale-data banner
