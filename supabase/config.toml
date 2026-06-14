@@ -2,3 +2,9 @@ project_id = "kvoargudwekpiigopczl"
 
 [functions.admin-bootstrap-superadmin]
 verify_jwt = false
+
+[functions.generate-jcf-html]
+verify_jwt = true
+
+[functions.generate-jcf-pdf]
+verify_jwt = true

@@ -23,7 +23,7 @@
    recipientEmail: string;
    recipientName?: string;
    message?: string;
-   reportType: 'inspection' | 'training' | 'daily_assessment';
+   reportType: 'inspection' | 'training' | 'daily_assessment' | 'jcf';
    title: string;
    organization?: string;
    date?: string;
@@ -41,6 +41,7 @@
      case 'inspection': return 'Inspection';
      case 'training': return 'Training';
      case 'daily_assessment': return 'Daily Assessment';
+     case 'jcf': return 'Job Completion Form';
      default: return 'Report';
    }
  }

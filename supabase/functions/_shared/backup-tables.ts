@@ -45,6 +45,8 @@ export const BACKUP_TABLES = [
   "daily_assessment_operating_systems",
   "daily_assessment_structure_checks",
   "daily_assessment_photos",
+  "jcf_reports",
+  "jcf_photos",
   "audit_logs",
 ] as const;
 
