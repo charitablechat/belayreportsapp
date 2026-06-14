@@ -823,7 +823,7 @@ interface CrossTabSectionProps {
   label: string;
   icon: React.ReactNode;
   reports: any[];
-  type: 'inspection' | 'training' | 'daily';
+  type: 'inspection' | 'training' | 'daily' | 'jcf';
   compact: boolean;
   viewMode: 'grid' | 'list' | 'split';
   onDelete: (report: any) => void;
