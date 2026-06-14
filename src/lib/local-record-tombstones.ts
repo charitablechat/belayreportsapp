@@ -29,7 +29,7 @@
 
 import { safeRemoveItem, safeSetItem } from './safe-local-storage';
 
-export type TombstonedTable = 'inspections' | 'trainings' | 'daily_assessments';
+export type TombstonedTable = 'inspections' | 'trainings' | 'daily_assessments' | 'jcf_reports';
 
 const STORAGE_KEY = 'rw_local_record_tombstones_v1';
 const TTL_MS = 60 * 24 * 60 * 60 * 1000; // 60 days
