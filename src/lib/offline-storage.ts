@@ -5667,6 +5667,158 @@ export async function incrementTrainingOperationRetry(id: number | undefined | n
   );
 }
 
+// ============================================================================
+// JCF (Job Completion Form) functions — mirror the training surface area.
+// JCFs are a single-table report (no related child tables); jcf_photos live in
+// the shared `photos` store with `tableName: 'jcf_photos'`.
+// ============================================================================
+
+/**
+ * Save a JCF to IndexedDB.
+ * Throws `IdbSaveError` on hard failure — callers MUST handle rejection.
+ */
+export async function saveJCFOffline(
+  jcf: Record<string, unknown> & { id?: string; child_count_hint?: number; dirty?: boolean },
+  opts?: ReportSaveOptions,
+): Promise<SaveResult> {
+  if (opts?.explicitUserSave !== false && jcf.id) clearTombstone('jcf_reports', String(jcf.id));
+  const result = await withIndexedDBSaveBoundary(
+    async () => {
+      const db = await getDB();
+      if (opts?.childCountHint != null && opts.childCountHint >= 0) {
+        jcf.child_count_hint = opts.childCountHint;
+      }
+      if (opts?.markDirty === false) jcf.dirty = false;
+      else jcf.dirty = true;
+      if (opts?.explicitUserSave !== false && jcf.id) clearTombstone('jcf_reports', String(jcf.id));
+      await db.put('jcf_reports', jcf as never);
+      if (import.meta.env.DEV) {
+        console.log('[Offline Storage] Saved jcf:', jcf.id);
+      }
+    },
+    'saveJCFOffline',
+    jcf,
+  );
+  if (opts?.dispatchSyncEvent !== false) dispatchSyncRecordsUpdated();
+  return result;
+}
+
+export async function getOfflineJCFs(userId?: string, isSuperAdmin?: boolean) {
+  return withIndexedDBErrorBoundary(
+    async () => {
+      const db = await getDB();
+      const all = await db.getAll('jcf_reports');
+      const active = all.filter(j => !j.deleted_at && isNotQuarantined(j));
+      if (isSuperAdmin) return active;
+      if (userId) return active.filter(j => j.inspector_id === userId);
+      return active;
+    },
+    [],
+    'getOfflineJCFs',
+  );
+}
+
+export async function getOfflineJCF(id: string) {
+  return withIndexedDBErrorBoundary(
+    async () => {
+      const db = await getDB();
+      return await db.get('jcf_reports', id);
+    },
+    null,
+    'getOfflineJCF',
+    { store: 'jcf_reports', criticalRead: true },
+  );
+}
+
+export async function deleteOfflineJCF(id: string) {
+  return withIndexedDBErrorBoundary(
+    async () => {
+      const db = await getDB();
+      try {
+        const record = await db.get('jcf_reports', id);
+        if (record) {
+          await createReportBackup('jcf', id, record);
+        }
+      } catch (backupErr) {
+        console.warn('[Offline Storage] Pre-delete backup failed for jcf:', backupErr);
+      }
+      await db.delete('jcf_reports', id);
+    },
+    undefined,
+    'deleteOfflineJCF',
+  );
+}
+
+export async function getUnsyncedJCFs(userId?: string, options?: WedgeLedgerFallbackOptions) {
+  return withWedgeLedgerFallback(
+    () => withIndexedDBReadBoundary(
+      async () => {
+        const db = await getDB();
+        const all = await db.getAll('jcf_reports', undefined, UNSYNCED_SCAN_CAP);
+        void maybeReportUnsyncedScanOverflow(db, 'jcf_reports', all.length, 'getUnsyncedJCFs');
+        const ownedCandidates = all.filter(isNotQuarantined).filter(record => {
+          if (!userId) return true;
+          if (record.inspector_id === userId) return true;
+          if (record.id?.startsWith('temp-')) return true;
+          return false;
+        })
+          .filter(record => !isSessionQuarantined(record.id));
+        const candidates = filterTombstonedRows('jcf_reports', ownedCandidates, 'getUnsyncedJCFs/idb');
+
+        const unsynced = candidates.filter(record => {
+          if ((record as { dirty?: unknown }).dirty === true) return true;
+          if (!record.synced_at) return true;
+          if (record.updated_at) {
+            const updatedMs = new Date(record.updated_at).getTime();
+            const syncedMs = new Date(record.synced_at).getTime();
+            return isUpdatedAheadOfSync(updatedMs, syncedMs);
+          }
+          return false;
+        });
+
+        syncLog.log('[Offline Storage] Unsynced jcfs:', {
+          total: unsynced.length,
+          userId: userId ? userId.substring(0, 8) + '...' : 'all',
+        });
+        return unsynced;
+      },
+      'getUnsyncedJCFs',
+      // The ledger does not store JCFs; suppress that fallback path entirely.
+      { tier: 'batch', store: 'jcf_reports' },
+    ),
+    'jcf',
+    userId,
+    'getUnsyncedJCFs',
+    { ...(options ?? {}), allowLedgerFallback: false },
+  );
+}
+
+export async function queueJCFOperation(
+  type: 'create' | 'update' | 'delete',
+  jcfId: string,
+  data: Record<string, unknown>,
+) {
+  return withIndexedDBErrorBoundary(
+    async () => {
+      const db = await getDB();
+      await db.add('jcf_operations', {
+        type,
+        jcfId,
+        data,
+        timestamp: Date.now(),
+        retries: 0,
+      });
+      if (import.meta.env.DEV) {
+        console.log('[Offline Storage] Queued jcf operation:', { type, jcfId });
+      }
+    },
+    undefined,
+    'queueJCFOperation',
+  );
+}
+
+
+
 type TrainingDataType = 'delivery_approaches' | 'operating_systems' | 'immediate_attention' | 'verifiable_items' | 'systems_in_place' | 'summary';
 type TrainingStoreNames = 'training_delivery_approaches' | 'training_operating_systems' | 'training_immediate_attention' | 'training_verifiable_items' | 'training_systems_in_place' | 'training_summary';
 
