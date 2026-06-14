@@ -5402,7 +5402,7 @@ export async function saveTrainingOffline(
  * ingest must not crash the autosync hook on a transient IDB failure.
  */
 export async function ingestRemoteRecordOffline(
-  table: 'inspections' | 'trainings' | 'daily_assessments',
+  table: 'inspections' | 'trainings' | 'daily_assessments' | 'jcf_reports',
   record: Record<string, unknown> & { id?: string; updated_at?: string | null },
 ): Promise<SaveResult> {
   if (isTombstoned(table, record.id)) {
@@ -5426,6 +5426,7 @@ export async function ingestRemoteRecordOffline(
           inspections: 'inspection',
           trainings: 'training',
           daily_assessments: 'daily assessment',
+          jcf_reports: 'jcf',
         };
         console.log(`[Offline Storage] Ingested remote ${labels[table]}:`, record.id);
       }
