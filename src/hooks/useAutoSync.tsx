@@ -1087,6 +1087,7 @@ export const useAutoSync = () => {
           unsyncedInspections: [],
           unsyncedTrainings: [],
           unsyncedAssessments: [],
+          unsyncedJCFs: [],
         };
         setState(prev => ({
           ...prev,
