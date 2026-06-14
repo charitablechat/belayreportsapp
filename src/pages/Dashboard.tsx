@@ -2152,16 +2152,16 @@ export default function Dashboard() {
 
                 {/* TRAINING CARD - FUNCTIONAL */}
                 <Card 
-                  className="relative overflow-visible hover:shadow-2xl transition-all duration-300 border-2 hover:border-green-500 cursor-pointer group"
+                  className="relative overflow-visible glass-panel hover:shadow-2xl transition-all duration-300 hover:-translate-y-0.5 hover:border-emerald-400/60 cursor-pointer group"
                   onClick={() => {
                     triggerHaptic('light');
                     navigate("/training/new");
                   }}
                 >
-                  <div className="absolute inset-0 bg-gradient-to-br from-sky-50/30 to-transparent opacity-50 rounded-lg" />
+                  <div className="absolute inset-0 bg-gradient-to-br from-emerald-400/10 via-transparent to-transparent rounded-2xl pointer-events-none" />
                   <CardHeader className="relative z-10 text-center pb-4">
-                    <div className="w-16 h-16 mx-auto mb-4 rounded-full bg-green-100 flex items-center justify-center group-hover:scale-110 transition-transform">
-                      <GraduationCap className="w-8 h-8 text-green-600" />
+                    <div className="w-16 h-16 mx-auto mb-4 rounded-full bg-emerald-500/15 backdrop-blur-sm ring-1 ring-emerald-400/30 flex items-center justify-center group-hover:scale-110 transition-transform">
+                      <GraduationCap className="w-8 h-8 text-emerald-600 dark:text-emerald-400" />
                     </div>
                     <CardTitle className="text-2xl mb-2">Training Report</CardTitle>
                     <CardDescription className="text-base">
