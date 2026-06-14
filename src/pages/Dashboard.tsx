@@ -2203,7 +2203,10 @@ export default function Dashboard() {
                   
                 </Card>
 
-                {/* JOB COMPLETION FORM CARD */}
+                {/* JOB COMPLETION FORM CARD — Lovable preview only.
+                    Hidden in production builds while underlying data,
+                    routes, and sync logic remain intact. */}
+                {isLovablePreview() && (
                 <Card
                   className="relative overflow-visible hover:shadow-2xl transition-all duration-300 border-2 hover:border-orange-500 cursor-pointer group"
                   onClick={() => {
@@ -2228,6 +2231,7 @@ export default function Dashboard() {
                     </GradientButton>
                   </CardContent>
                 </Card>
+                )}
               </div>
             </div>
           </div>
