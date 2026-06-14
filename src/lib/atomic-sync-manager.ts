@@ -832,7 +832,7 @@ async function handleRemoteDeleted(
     const ok = await quarantineRecord(table, recordId, remoteDeletedAt, 'remote_soft_delete');
     if (ok) {
       emitRemoteDeletedConflict({
-        table,
+        table: table as 'inspections' | 'trainings' | 'daily_assessments',
         recordId,
         remoteDeletedAt,
         organizationLabel: localRecord?.organization ?? null,
