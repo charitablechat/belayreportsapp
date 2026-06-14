@@ -2126,16 +2126,16 @@ export default function Dashboard() {
               <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-6 max-w-6xl mx-auto">
                 {/* INSPECTION CARD - FUNCTIONAL */}
                 <Card 
-                  className="relative overflow-visible hover:shadow-2xl transition-all duration-300 border-2 hover:border-blue-500 cursor-pointer group"
+                  className="relative overflow-visible glass-panel hover:shadow-2xl transition-all duration-300 hover:-translate-y-0.5 hover:border-blue-400/60 cursor-pointer group"
                   onClick={() => {
                     triggerHaptic('light'); // Haptic feedback when starting new inspection
                     navigate("/inspection/new");
                   }}
                 >
-                  <div className="absolute inset-0 bg-gradient-to-br from-blue-50/30 to-transparent opacity-50 rounded-lg" />
+                  <div className="absolute inset-0 bg-gradient-to-br from-blue-400/10 via-transparent to-transparent rounded-2xl pointer-events-none" />
                   <CardHeader className="relative z-10 text-center pb-4">
-                    <div className="w-16 h-16 mx-auto mb-4 rounded-full bg-blue-100 flex items-center justify-center group-hover:scale-110 transition-transform">
-                      <FileText className="w-8 h-8 text-blue-600" />
+                    <div className="w-16 h-16 mx-auto mb-4 rounded-full bg-blue-500/15 backdrop-blur-sm ring-1 ring-blue-400/30 flex items-center justify-center group-hover:scale-110 transition-transform">
+                      <FileText className="w-8 h-8 text-blue-600 dark:text-blue-400" />
                     </div>
                     <CardTitle className="text-2xl mb-2">Inspection Report</CardTitle>
                     <CardDescription className="text-base">
