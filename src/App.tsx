@@ -8,6 +8,7 @@ import { trackNavigation, getNavigationDepth, decrementNavigation, isOverlayActi
 import Index from "./pages/Index";
 import { AppErrorBoundary } from "@/components/AppErrorBoundary";
 import { createGuestSession } from "@/lib/guest-session";
+import { isLovablePreview } from "@/lib/environment";
 
 // Keep offline-critical routes in the app shell. If a user launches the
 // installed app offline on /dashboard or a report URL, lazy chunk fetches can
