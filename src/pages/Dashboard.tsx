@@ -285,6 +285,9 @@ export default function Dashboard() {
   const hasPaintedDailyAssessmentsRef = React.useRef(
     readDashboardCache('dashboard-cache-daily').length > 0,
   );
+  const hasPaintedJCFsRef = React.useRef(
+    readDashboardCache('dashboard-cache-jcfs').length > 0,
+  );
 
   // Build unique inspector list from report data
   const uniqueInspectors = useMemo(() => {
