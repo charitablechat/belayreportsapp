@@ -6684,6 +6684,8 @@ export async function restoreQuarantinedAsNew(
           { name: 'daily_assessment_environment_checks', fk: 'assessment_id', index: 'by-assessment' },
           { name: 'daily_assessment_photos', fk: 'assessment_id', index: 'by-assessment' },
         ],
+        // JCFs have no IDB child stores; jcf_photos lives in the shared `photos` store.
+        jcf_reports: [],
       };
 
       // Write the new parent.
