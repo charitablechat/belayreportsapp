@@ -194,43 +194,42 @@ serve(async (req) => {
       }
     };
 
-    // Fetch logo and convert to base64
-    let logoBase64 = '';
-    try {
-      // L4 / PDF logos: derive base URL from env (project-ref rotation safety)
-      const _supabaseUrl = Deno.env.get('SUPABASE_URL') ?? 'https://ssgzcgvygnsrqalisshx.supabase.co';
-      const logoResponse = await fetch(`${_supabaseUrl}/storage/v1/object/public/pdf-templates/belay-reports-logo.png`);
-      if (logoResponse.ok) {
-        const logoBlob = await logoResponse.arrayBuffer();
-        const logoArray = new Uint8Array(logoBlob);
-        const binary = logoArray.reduce((acc, byte) => acc + String.fromCharCode(byte), '');
-        logoBase64 = btoa(binary);
-      }
-    } catch (error) {
-      console.error('Failed to load logo:', error);
-    }
+    // Fetch both logos via shared helper
+    const logos = await getLogoBase64();
+    const belayReportsLogoBase64 = logos.belayReports;
+    const acctLogoBase64 = logos.acct;
 
-    // Header - only on first page
+    // Header bar
     doc.setFillColor(30, 64, 175);
     doc.rect(0, 0, pageWidth, 35, 'F');
-    
-    // Add logo if available
-    if (logoBase64) {
+
+    // LEFT: Belay Reports logo
+    if (belayReportsLogoBase64 && !belayReportsLogoBase64.includes('iVBORw0KGgoAAAANSUhEUgAAAAE')) {
       try {
-        doc.addImage(`data:image/png;base64,${logoBase64}`, 'PNG', margin, 8, 20, 20);
-      } catch (error) {
-        console.error('Failed to add logo to PDF:', error);
+        doc.addImage(belayReportsLogoBase64, 'PNG', margin, 7, 30, 20);
+      } catch (e) {
+        console.error('Failed to add Belay Reports logo:', e);
       }
     }
-    
+
+    // RIGHT: ACCT logo
+    if (acctLogoBase64 && !acctLogoBase64.includes('iVBORw0KGgoAAAANSUhEUgAAAAE')) {
+      try {
+        doc.addImage(acctLogoBase64, 'PNG', pageWidth - margin - 30, 7, 30, 20);
+      } catch (e) {
+        console.error('Failed to add ACCT logo:', e);
+      }
+    }
+
+    // Centered title text
     doc.setTextColor(255, 255, 255);
-    doc.setFontSize(24);
+    doc.setFontSize(18);
     doc.setFont('helvetica', 'bold');
-    doc.text('BELAY REPORTS INC.', pageWidth / 2, 15, { align: 'center' });
-    doc.setFontSize(16);
+    doc.text('BELAY REPORTS INC.', pageWidth / 2, 16, { align: 'center' });
+    doc.setFontSize(11);
     doc.setFont('helvetica', 'normal');
-    doc.text('Challenge Course Inspection Report', pageWidth / 2, 25, { align: 'center' });
-    
+    doc.text('Challenge Course Inspection Report', pageWidth / 2, 26, { align: 'center' });
+
     yPos = 45;
     doc.setTextColor(0, 0, 0);
 
