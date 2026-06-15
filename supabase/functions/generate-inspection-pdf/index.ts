@@ -3,7 +3,7 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { jsPDF } from "https://esm.sh/jspdf@2.5.2";
 import "https://esm.sh/jspdf-autotable@3.8.2";
 import { checkRateLimit, createRateLimitResponse } from "../_shared/rate-limiter.ts";
-
+import { getLogoBase64 } from "../_shared/report-layout.ts";
 import { corsHeaders } from "../_shared/cors.ts";
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
