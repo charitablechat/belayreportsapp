@@ -72,6 +72,11 @@ const Unsubscribe = () => {
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-background p-4">
+      <SEO
+        title="Email Preferences — Belay Reports"
+        description="Manage your Belay Reports email subscription preferences or unsubscribe from notification emails."
+        path="/unsubscribe"
+      />
       <Card className="w-full max-w-md">
         <CardHeader className="text-center">
           <h1 className="flex items-center justify-center gap-2 text-xl font-semibold leading-none tracking-tight">
