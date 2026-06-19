@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import Auth from "@/components/Auth";
+import { SEO } from "@/components/SEO";
 import {
   hasPendingOfflineAuth,
   readSyntheticSession,
@@ -223,7 +224,16 @@ const Index = () => {
   }
 
   if (session) return null;
-  return <Auth />;
+  return (
+    <>
+      <SEO
+        title="Sign In — Belay Reports"
+        description="Sign in to Belay Reports to create and manage digital inspection reports for aerial adventure programs, offline-capable in the field."
+        path="/"
+      />
+      <Auth />
+    </>
+  );
 };
 
 export default Index;

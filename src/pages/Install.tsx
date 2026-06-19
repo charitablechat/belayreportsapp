@@ -1,4 +1,5 @@
 import { useNavigate } from 'react-router-dom';
+import { SEO } from "@/components/SEO";
 import { goBack } from '@/lib/navigation';
 import { Download, Smartphone, Zap, Wifi, Save, RefreshCw, ArrowLeft } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -19,6 +20,11 @@ export default function Install() {
 
   return (
     <div className="min-h-screen bg-gradient-to-b from-background to-muted/20">
+      <SEO
+        title="Install Belay Reports — Offline-Ready Field App"
+        description="Install Belay Reports on iOS, Android, or desktop for offline inspection capture, automatic sync, and faster field reporting."
+        path="/install"
+      />
       {/* Header */}
       <header className="border-b border-white/20 bg-white/10 dark:bg-black/20 backdrop-blur-[12px] shadow-md shadow-black/5">
         <div className="container mx-auto px-4 py-4">

@@ -1,4 +1,5 @@
 import { motion } from "framer-motion";
+import { SEO } from "@/components/SEO";
 import { GradientButton } from "@/components/ui/gradient-button";
 import { useNavigate } from "react-router-dom";
 import belayReportsLogoAsset from "@/assets/belay-reports-wide.gif.asset.json";
@@ -11,6 +12,11 @@ export default function AuroraLanding() {
 
   return (
     <div className="relative min-h-screen">
+      <SEO
+        title="Welcome to Belay Reports — Rope Course Inspections"
+        description="Professional rope course and aerial adventure inspections powered by an offline-first digital reporting platform built by working inspectors."
+        path="/welcome"
+      />
       <div className="absolute inset-0 z-0">
         <video
           src={authVideo}

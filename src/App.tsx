@@ -300,9 +300,13 @@ const router = createBrowserRouter([
   },
 ]);
 
+import { HelmetProvider } from "react-helmet-async";
+
 const App = () => (
   <AppErrorBoundary>
-    <RouterProvider router={router} />
+    <HelmetProvider>
+      <RouterProvider router={router} />
+    </HelmetProvider>
   </AppErrorBoundary>
 );
 
