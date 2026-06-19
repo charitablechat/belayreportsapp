@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { SEO } from "@/components/SEO";
 import { useNavigate } from 'react-router-dom';
 import { goBack } from '@/lib/navigation';
 import { Button } from '@/components/ui/button';
