@@ -198,8 +198,13 @@ export default function Auth() {
         <img
           src={signinBg.url}
           alt=""
+          width={1920}
+          height={1280}
+          fetchPriority="high"
+          decoding="async"
           className="w-full h-full object-cover object-center"
         />
+
       </div>
 
       <Card className="relative z-10 w-full max-w-md shadow-2xl backdrop-blur-2xl bg-white/30 dark:bg-black/40 border border-white/50 dark:border-white/20 ring-1 ring-white/30 shadow-[0_8px_32px_rgba(0,0,0,0.3)] mx-2">
