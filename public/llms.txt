@@ -1,0 +1,12 @@
+# Belay Reports
+
+> Professional digital inspection platform for aerial adventure programs — secure, offline-capable field inspection reports for rope courses, zip lines, and challenge courses.
+
+Belay Reports is an ACCT-accredited digital inspection platform used by professional inspectors to document rope course, zip line, and aerial adventure equipment inspections, training sessions, and daily operational assessments. The app is offline-first and installs as a Progressive Web App on iOS, Android, and desktop.
+
+## Pages
+
+- [Home](/): Overview of the Belay Reports inspection platform.
+- [Welcome](/welcome): Marketing landing page introducing professional rope course inspections.
+- [Capabilities](/capabilities): Device and browser capability detection for the PWA.
+- [Install](/install): How to install Belay Reports as a Progressive Web App on iOS, Android, and desktop.

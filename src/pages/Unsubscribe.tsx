@@ -73,10 +73,10 @@ const Unsubscribe = () => {
     <div className="min-h-screen flex items-center justify-center bg-background p-4">
       <Card className="w-full max-w-md">
         <CardHeader className="text-center">
-          <CardTitle className="flex items-center justify-center gap-2 text-xl">
+          <h1 className="flex items-center justify-center gap-2 text-xl font-semibold leading-none tracking-tight">
             <MailX className="h-6 w-6 text-muted-foreground" />
             Email Preferences
-          </CardTitle>
+          </h1>
         </CardHeader>
         <CardContent className="text-center space-y-4">
           {status === "loading" && (

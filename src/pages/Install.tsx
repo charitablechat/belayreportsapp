@@ -56,7 +56,7 @@ export default function Install() {
                 <div className="inline-flex h-12 w-12 items-center justify-center rounded-full bg-primary/10 mb-4">
                   <Download className="h-6 w-6 text-primary" />
                 </div>
-                <h3 className="text-xl font-semibold mb-2">App Already Installed!</h3>
+                <h2 className="text-xl font-semibold mb-2">App Already Installed!</h2>
                 <p className="text-muted-foreground mb-4">
                   You're all set. The app is installed on your device.
                 </p>
@@ -72,7 +72,7 @@ export default function Install() {
               <div className="text-center">
                 {isInstallable ? (
                   <>
-                    <h3 className="text-2xl font-semibold mb-4">Ready to Install</h3>
+                    <h2 className="text-2xl font-semibold mb-4">Ready to Install</h2>
                     <p className="mb-6 text-primary-foreground/90">
                       Click the button below to install the app on your device
                     </p>
@@ -88,7 +88,7 @@ export default function Install() {
                   </>
                 ) : (
                   <>
-                    <h3 className="text-2xl font-semibold mb-4">Manual Installation</h3>
+                    <h2 className="text-2xl font-semibold mb-4">Manual Installation</h2>
                     <p className="text-primary-foreground/90">
                       Follow the instructions below for your device
                     </p>

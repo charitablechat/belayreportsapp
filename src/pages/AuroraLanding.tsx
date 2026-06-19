@@ -37,9 +37,9 @@ export default function AuroraLanding() {
             <img src={acctLogo} alt="ACCT Accredited Vendor" className="h-16 w-auto object-contain" />
           </div>
           
-          <div className="text-4xl md:text-7xl font-bold text-primary dark:text-white text-center">
+          <h1 className="text-4xl md:text-7xl font-bold text-primary dark:text-white text-center">
             Professional Rope Course Inspections
-          </div>
+          </h1>
           
           <div className="font-light text-lg md:text-2xl text-muted-foreground dark:text-neutral-200 py-4 text-center max-w-2xl">
             Comprehensive inspection reports for rope courses, zip lines, and aerial adventure equipment
