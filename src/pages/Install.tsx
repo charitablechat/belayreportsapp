@@ -1,4 +1,5 @@
 import { useNavigate } from 'react-router-dom';
+import { SEO } from "@/components/SEO";
 import { goBack } from '@/lib/navigation';
 import { Download, Smartphone, Zap, Wifi, Save, RefreshCw, ArrowLeft } from 'lucide-react';
 import { Button } from '@/components/ui/button';
