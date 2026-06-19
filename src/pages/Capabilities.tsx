@@ -187,6 +187,11 @@ export default function Capabilities() {
 
   return (
     <div className="min-h-screen bg-background">
+      <SEO
+        title="Device Capabilities — Belay Reports"
+        description="Check whether your device supports Belay Reports' offline storage, camera, sensors, and PWA features before heading into the field."
+        path="/capabilities"
+      />
       <header className="border-b border-white/20 bg-white/10 dark:bg-black/20 backdrop-blur-[12px] shadow-md shadow-black/5 sticky top-0 z-10">
         <div className="container mx-auto px-4 py-4 flex items-center justify-between">
           <div className="flex items-center gap-3">
