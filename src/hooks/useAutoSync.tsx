@@ -6,7 +6,7 @@ import { logError } from '@/lib/log-error';
 import { syncPhotos } from '@/lib/sync-manager';
 import { ingestRemoteRecordOffline } from '@/lib/offline-storage';
 import { shouldPreserveLocalRecord } from '@/lib/local-data-guards';
-import { getUnsyncedInspections, getUnsyncedTrainings, getUnsyncedDailyAssessments, getUnsyncedJCFs, isIdbReadFailure, getCircuitBreakerStatus, resetCircuitBreaker, pruneOldSyncedPhotoBlobs, getQueuedOperations, removeQueuedOperation, getQueuedTrainingOperations, removeQueuedTrainingOperation, getQueuedAssessmentOperations, removeQueuedAssessmentOperation, withIDBTimeout, evictStuckTempPhotos, maybeRunQuarantineGc, subscribeToLayerBreakerClose, type DbRow } from '@/lib/offline-storage';
+import { getUnsyncedInspections, getUnsyncedTrainings, getUnsyncedDailyAssessments, getUnsyncedJCFs, isIdbReadFailure, getCircuitBreakerStatus, resetCircuitBreaker, pruneOldSyncedPhotoBlobs, getQueuedOperations, removeQueuedOperation, getQueuedTrainingOperations, removeQueuedTrainingOperation, getQueuedAssessmentOperations, removeQueuedAssessmentOperation, withIDBTimeout, evictStuckTempPhotos, subscribeToLayerBreakerClose, type DbRow } from '@/lib/offline-storage';
 // Audit M2: static-import the autosync drain modules so the cycle isn't gated
 // on a Vite-emitted lazy chunk that can fail to fetch on a flaky-Wi-Fi iPad.
 // Each was previously `await import(...)` on the post-sync hot path; the
@@ -961,14 +961,6 @@ export const useAutoSync = () => {
       scanForStuckPhotos().catch(() => {
         /* beacon must never break sync */
       });
-      // M6: Periodic GC for unresolved quarantined records (>30d).
-      // Cycle-throttled + rate-limited inside the helper. Fire-and-forget.
-      // Audit M2: `maybeRunQuarantineGc` is now a static import (file head).
-      try {
-        maybeRunQuarantineGc();
-      } catch {
-        /* gc failure must never break sync */
-      }
     }
   }, [queryClient, isMobileDevice, isIOSDevice]);
   
