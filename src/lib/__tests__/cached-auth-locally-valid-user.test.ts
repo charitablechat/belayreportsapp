@@ -49,7 +49,9 @@ vi.mock("@/lib/offline-auth", () => ({
 
 import { getLocallyValidCachedUser } from "../cached-auth";
 
-const PROJECT_REF = "ssgzcgvygnsrqalisshx"; // matches default in cached-auth.ts
+const PROJECT_REF =
+  (import.meta.env.VITE_SUPABASE_PROJECT_ID as string | undefined) ||
+  "ssgzcgvygnsrqalisshx";
 const SESSION_KEY = `sb-${PROJECT_REF}-auth-token`;
 
 /**
