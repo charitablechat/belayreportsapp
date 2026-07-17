@@ -3,6 +3,8 @@ import { Buffer } from "node:buffer";
 import mammoth from "npm:mammoth@1.8.0";
 import WordExtractor from "npm:word-extractor@1.0.4";
 import pdfParse from "npm:pdf-parse@1.1.1";
+import { createClient } from "npm:@supabase/supabase-js@2";
+
 
 import { corsHeaders } from "../_shared/cors.ts";
 /** Strip Markdown syntax and return clean text */
