@@ -9,8 +9,39 @@ Deno.serve(async (req) => {
   try {
     const supabaseUrl = Deno.env.get('SUPABASE_URL')!
     const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
-    
+    const anonKey = Deno.env.get('SUPABASE_ANON_KEY')!
+
+    // Require a valid JWT and admin-or-above role. Matches the pattern in
+    // migrate-orphaned-photos so this bulk migration endpoint cannot be
+    // invoked by unauthenticated callers.
+    const authHeader = req.headers.get('Authorization')
+    if (!authHeader?.startsWith('Bearer ')) {
+      return new Response(JSON.stringify({ error: 'Unauthorized' }), {
+        status: 401,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      })
+    }
+    const userClient = createClient(supabaseUrl, anonKey, {
+      global: { headers: { Authorization: authHeader } },
+    })
+    const token = authHeader.replace('Bearer ', '')
+    const { data: claimsData, error: claimsError } = await userClient.auth.getClaims(token)
+    if (claimsError || !claimsData?.claims) {
+      return new Response(JSON.stringify({ error: 'Unauthorized' }), {
+        status: 401,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      })
+    }
+    const { data: isAdmin } = await userClient.rpc('is_admin_or_above')
+    if (!isAdmin) {
+      return new Response(JSON.stringify({ error: 'Admin required' }), {
+        status: 403,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      })
+    }
+
     const supabase = createClient(supabaseUrl, supabaseServiceKey)
+
 
     console.log('[Migrate Field History] Starting migration...')
 
