@@ -3,16 +3,15 @@ import 'fake-indexeddb/auto';
 import { IDBFactory } from 'fake-indexeddb';
 
 /**
- * M6 — Quarantine GC + setter integration coverage.
+ * Quarantine setter + C9 fixture-suppression coverage.
  *
  * Exercises:
- *   1. `quarantineRecord` actually stamps `_remote_deleted_at` on the IDB
- *      row (the setter contract relied on by getUnsynced* filters).
+ *   1. `quarantineRecord` stamps `_remote_deleted_at` on the IDB row
+ *      (the setter contract relied on by getUnsynced* filters).
  *   2. `getQuarantinedRecords` surfaces the quarantined row.
- *   3. `gcQuarantinedRecords` hard-deletes rows older than the TTL but
- *      preserves rows still inside the resolution window.
- *   4. `getUnsyncedInspections` continues to skip the quarantined row
- *      between quarantine and GC (regression guard for the C9 filter).
+ *   3. `getUnsyncedInspections` continues to skip the quarantined row
+ *      (regression guard for the C9 filter).
+ *   4. `[E2E DEVIN]`-marked fixtures are suppressed and purged from IDB.
  */
 
 beforeEach(async () => {
