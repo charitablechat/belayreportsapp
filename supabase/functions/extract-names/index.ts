@@ -1,5 +1,7 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2.39.3";
 import { checkRateLimit, getClientIP, createRateLimitResponse } from "../_shared/rate-limiter.ts";
+
 
 // Rate limit: 10 requests per minute per IP
 import { corsHeaders } from "../_shared/cors.ts";
@@ -14,9 +16,32 @@ serve(async (req) => {
   }
 
   try {
-    // Check rate limit
+    // Require authenticated session before performing paid AI calls
+    const authHeader = req.headers.get("Authorization");
+    if (!authHeader?.startsWith("Bearer ")) {
+      return new Response(JSON.stringify({ error: "Unauthorized" }), {
+        status: 401,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+    const authClient = createClient(
+      Deno.env.get("SUPABASE_URL")!,
+      Deno.env.get("SUPABASE_ANON_KEY")!,
+    );
+    const { data: userData, error: userErr } = await authClient.auth.getUser(
+      authHeader.replace("Bearer ", ""),
+    );
+    if (userErr || !userData?.user) {
+      return new Response(JSON.stringify({ error: "Unauthorized" }), {
+        status: 401,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
+    // Check rate limit (per-user)
     const clientIP = getClientIP(req);
-    const rateLimitResult = checkRateLimit(`extract-names:${clientIP}`, RATE_LIMIT_CONFIG);
+    const rateLimitResult = checkRateLimit(`extract-names:${userData.user.id}:${clientIP}`, RATE_LIMIT_CONFIG);
+
     
     if (!rateLimitResult.allowed) {
       console.warn(`Rate limit exceeded for IP: ${clientIP}`);

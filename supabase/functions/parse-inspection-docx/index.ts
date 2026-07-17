@@ -3,6 +3,8 @@ import { Buffer } from "node:buffer";
 import mammoth from "npm:mammoth@1.8.0";
 import WordExtractor from "npm:word-extractor@1.0.4";
 import pdfParse from "npm:pdf-parse@1.1.1";
+import { createClient } from "npm:@supabase/supabase-js@2";
+
 
 import { corsHeaders } from "../_shared/cors.ts";
 /** Strip Markdown syntax and return clean text */
@@ -29,10 +31,33 @@ serve(async (req) => {
   }
 
   try {
+    // Require authenticated session before performing paid AI calls
+    const authHeader = req.headers.get("Authorization");
+    if (!authHeader?.startsWith("Bearer ")) {
+      return new Response(JSON.stringify({ error: "Unauthorized" }), {
+        status: 401,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+    const authClient = createClient(
+      Deno.env.get("SUPABASE_URL")!,
+      Deno.env.get("SUPABASE_ANON_KEY")!,
+    );
+    const { data: userData, error: userErr } = await authClient.auth.getUser(
+      authHeader.replace("Bearer ", ""),
+    );
+    if (userErr || !userData?.user) {
+      return new Response(JSON.stringify({ error: "Unauthorized" }), {
+        status: 401,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
     const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
     if (!LOVABLE_API_KEY) {
       throw new Error("LOVABLE_API_KEY is not configured");
     }
+
 
     const contentType = req.headers.get("content-type") || "";
     let fileBuffer: ArrayBuffer | null = null;
