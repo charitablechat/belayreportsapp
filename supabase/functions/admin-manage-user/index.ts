@@ -545,9 +545,21 @@ Deno.serve(async (req) => {
       case 'grant_admin': {
         const { userId } = payload as { userId: string };
 
+        // Only true super admins can mint new admins — matches the
+        // "Only super admins can insert user roles" DB policy which the
+        // service-role client would otherwise bypass.
+        const { data: isTrueSuperAdmin, error: superErr } = await supabase.rpc('is_super_admin');
+        if (superErr || !isTrueSuperAdmin) {
+          return new Response(
+            JSON.stringify({ success: false, error: 'Granting admin requires super admin privileges' }),
+            { status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+          );
+        }
+
         if (userId === user.id) {
           throw new Error('Cannot grant admin to yourself');
         }
+
 
         const { data: existingRole } = await supabaseAdmin
           .from('user_roles')
