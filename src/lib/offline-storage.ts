@@ -6582,6 +6582,18 @@ export async function getQuarantinedRecords(
         const all = await db.getAll(t);
         for (const r of all as Record<string, unknown>[]) {
           if (r._remote_deleted_at) {
+            // A stranded Playwright e2e fixture ([E2E DEVIN] ...) must never surface
+            // the remote-deleted conflict dialog. These are test residue with no real
+            // server row; purge them from IDB so they stop re-triggering on every
+            // login, and skip adding them to the returned conflict list.
+            if (isE2EFixtureRecord(r, ['organization', 'location', 'site'])) {
+              try {
+                await discardQuarantinedRecord(t, String(r.id));
+              } catch {
+                // Best-effort cleanup — if discard fails we still skip surfacing it.
+              }
+              continue;
+            }
             out.push({
               table: t,
               id: String(r.id),
