@@ -202,3 +202,63 @@ describe('M6 — maybeRunQuarantineGc cycle throttling', () => {
     expect(after.find(r => r.id === 'insp-cycle')).toBeDefined();
   });
 });
+
+describe('C9 — e2e fixture quarantine suppression', () => {
+  it('suppresses [E2E DEVIN]-marked quarantined records and removes them from IDB', async () => {
+    const {
+      saveInspectionOffline,
+      quarantineRecord,
+      getQuarantinedRecords,
+      getDB,
+    } = await import('../offline-storage');
+
+    await saveInspectionOffline({
+      id: 'insp-e2e-fixture',
+      organization: '[E2E DEVIN] 1700000000000',
+      location: 'Test Location',
+      site: 'Test Site',
+      synced_at: null,
+      updated_at: new Date().toISOString(),
+    });
+    await saveInspectionOffline({
+      id: 'insp-real-conflict',
+      organization: 'Acme',
+      location: 'Main Gym',
+      site: 'Site A',
+      synced_at: null,
+      updated_at: new Date().toISOString(),
+    });
+
+    await quarantineRecord('inspections', 'insp-e2e-fixture', new Date().toISOString());
+    await quarantineRecord('inspections', 'insp-real-conflict', new Date().toISOString());
+
+    const list = await getQuarantinedRecords();
+    expect(list.find(r => r.id === 'insp-e2e-fixture')).toBeUndefined();
+    expect(list.find(r => r.id === 'insp-real-conflict')).toBeDefined();
+
+    const db = await getDB();
+    const e2eRow = await db.get('inspections', 'insp-e2e-fixture');
+    expect(e2eRow).toBeUndefined();
+  });
+
+  it('returns an unmarked quarantined record unchanged', async () => {
+    const {
+      saveInspectionOffline,
+      quarantineRecord,
+      getQuarantinedRecords,
+    } = await import('../offline-storage');
+
+    await saveInspectionOffline({
+      id: 'insp-real-only',
+      organization: 'Real Org',
+      location: 'Real Location',
+      site: 'Real Site',
+      synced_at: null,
+      updated_at: new Date().toISOString(),
+    });
+    await quarantineRecord('inspections', 'insp-real-only', new Date().toISOString());
+
+    const list = await getQuarantinedRecords();
+    expect(list.find(r => r.id === 'insp-real-only')).toBeDefined();
+  });
+});
