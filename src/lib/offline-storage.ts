@@ -31,6 +31,7 @@ import { isQuarantined as isSessionQuarantined, jitteredPhotoBackoffMs } from '.
 import { syncLog } from './sync-logger';
 import { addTombstone, clearTombstone, isTombstoned, type TombstonedTable } from './local-record-tombstones';
 import { normalizeResultFieldsOnRows } from './inspection-result-normalizer';
+import { isE2EFixtureRecord } from '@/lib/e2e-fixture-filter';
 
 /** Opaque DB row — fields vary across tables and are read/written structurally.
  *  Uses an `any` index signature so callers can structurally read/write
