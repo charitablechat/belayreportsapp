@@ -31,6 +31,7 @@ import { isQuarantined as isSessionQuarantined, jitteredPhotoBackoffMs } from '.
 import { syncLog } from './sync-logger';
 import { addTombstone, clearTombstone, isTombstoned, type TombstonedTable } from './local-record-tombstones';
 import { normalizeResultFieldsOnRows } from './inspection-result-normalizer';
+import { isE2EFixtureRecord } from '@/lib/e2e-fixture-filter';
 
 /** Opaque DB row — fields vary across tables and are read/written structurally.
  *  Uses an `any` index signature so callers can structurally read/write
@@ -6581,6 +6582,18 @@ export async function getQuarantinedRecords(
         const all = await db.getAll(t);
         for (const r of all as Record<string, unknown>[]) {
           if (r._remote_deleted_at) {
+            // A stranded Playwright e2e fixture ([E2E DEVIN] ...) must never surface
+            // the remote-deleted conflict dialog. These are test residue with no real
+            // server row; purge them from IDB so they stop re-triggering on every
+            // login, and skip adding them to the returned conflict list.
+            if (isE2EFixtureRecord(r, ['organization', 'location', 'site'])) {
+              try {
+                await discardQuarantinedRecord(t, String(r.id));
+              } catch {
+                // Best-effort cleanup — if discard fails we still skip surfacing it.
+              }
+              continue;
+            }
             out.push({
               table: t,
               id: String(r.id),
