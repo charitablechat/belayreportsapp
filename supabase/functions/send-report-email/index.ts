@@ -3,6 +3,7 @@
  import { createClient } from "https://esm.sh/@supabase/supabase-js@2.78.0";
  import DOMPurify from "npm:isomorphic-dompurify@2.16.0";
  import { checkRateLimit, getClientIP, createRateLimitResponse } from "../_shared/rate-limiter.ts";
+ import { escapeHtml } from "../_shared/report-layout.ts";
  
  const resend = new Resend(Deno.env.get("RESEND_API_KEY"));
  
@@ -68,8 +69,8 @@
  
    const messageSection = message ? `
      <div style="background-color: #f8f9fa; border-left: 4px solid #1a365d; padding: 16px; margin: 24px 0; font-family: Arial, sans-serif;">
-       <p style="margin: 0 0 8px 0; font-weight: bold; color: #1a365d;">Message from ${senderName || 'Sender'}:</p>
-       <p style="margin: 0; color: #374151; white-space: pre-wrap;">${message}</p>
+       <p style="margin: 0 0 8px 0; font-weight: bold; color: #1a365d;">Message from ${escapeHtml(senderName || 'Sender')}:</p>
+       <p style="margin: 0; color: #374151; white-space: pre-wrap;">${escapeHtml(message)}</p>
      </div>
    ` : '';
  

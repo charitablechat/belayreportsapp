@@ -11,6 +11,7 @@ import {
   buildAttestationBlock,
   buildVersionFooter,
   fetchPostCompletionEdits,
+  escapeHtml,
 } from "../_shared/report-layout.ts";
 
 // Deduplicate checklist items by item_key (keeps first occurrence)
@@ -237,7 +238,7 @@ serve(async (req) => {
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>${(assessment.organization || 'Daily Assessment').replace(/\s+/g, '_')}</title>
+  <title>${escapeHtml((assessment.organization || 'Daily Assessment').replace(/\s+/g, '_'))}</title>
   <style>
      /* Clean professional document style */
     
@@ -910,15 +911,15 @@ serve(async (req) => {
           </div>
           <div class="info-item">
             <div class="info-label">Site</div>
-            <div class="info-value">${assessment.site || 'N/A'}</div>
+            <div class="info-value">${escapeHtml(assessment.site || 'N/A')}</div>
           </div>
           <div class="info-item">
             <div class="info-label">Organization</div>
-            <div class="info-value">${assessment.organization || 'N/A'}</div>
+            <div class="info-value">${escapeHtml(assessment.organization || 'N/A')}</div>
           </div>
           <div class="info-item">
             <div class="info-label">Trainer/Facilitator of Record</div>
-            <div class="info-value">${assessment.trainer_of_record || 'N/A'}</div>
+            <div class="info-value">${escapeHtml(assessment.trainer_of_record || 'N/A')}</div>
           </div>
         </div>
       </div>

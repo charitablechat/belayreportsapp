@@ -7,6 +7,7 @@ import {
   buildAttestationBlock,
   buildVersionFooter,
   fetchPostCompletionEdits,
+  escapeHtml,
 } from "../_shared/report-layout.ts";
 
 // arrayBufferToBase64 removed — photos now use signed URLs instead of base64
@@ -488,7 +489,7 @@ serve(async (req) => {
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>${(inspection.organization || 'Inspection_Report').replace(/\s+/g, '_')}</title>
+  <title>${escapeHtml((inspection.organization || 'Inspection_Report').replace(/\s+/g, '_'))}</title>
   <style>
     @page {
       size: letter;
@@ -1755,15 +1756,15 @@ serve(async (req) => {
       <div class="info-grid">
         <div class="info-cell">
           <span class="info-label">Organization:</span>
-          <span class="info-value">${inspection.organization}</span>
+          <span class="info-value">${escapeHtml(inspection.organization)}</span>
         </div>
         <div class="info-cell">
           <span class="info-label">Location:</span>
-          <span class="info-value">${inspection.location}</span>
+          <span class="info-value">${escapeHtml(inspection.location)}</span>
         </div>
         <div class="info-cell">
           <span class="info-label">Onsite Contact:</span>
-          <span class="info-value">${inspection.onsite_contact || "N/A"}</span>
+          <span class="info-value">${escapeHtml(inspection.onsite_contact || "N/A")}</span>
         </div>
         <div class="info-cell">
           <span class="info-label">ACCT Course Number:</span>
@@ -1984,7 +1985,7 @@ serve(async (req) => {
           ${systems
             .map((sys) => {
               if (sys.is_divider) {
-                return `<tr><td colspan="5" style="text-align:center; font-weight:bold; padding:10px; background:#dbeafe; font-size:11pt;">${sys.divider_text || ''}</td></tr>`;
+                return `<tr><td colspan="5" style="text-align:center; font-weight:bold; padding:10px; background:#dbeafe; font-size:11pt;">${escapeHtml(sys.divider_text || '')}</td></tr>`;
               }
               const resultData = formatResultCheckbox(sys.result);
               const formattedComments = formatCommentsAsBullets(sys.comments);
@@ -2298,7 +2299,7 @@ serve(async (req) => {
                 ${categoryEquipment
                   .map((eq) => {
                     if (eq.is_divider) {
-                      return `<tr><td colspan="6" style="text-align:center; font-weight:bold; padding:10px; background:#dbeafe; font-size:11pt;">${eq.divider_text || ''}</td></tr>`;
+                      return `<tr><td colspan="6" style="text-align:center; font-weight:bold; padding:10px; background:#dbeafe; font-size:11pt;">${escapeHtml(eq.divider_text || '')}</td></tr>`;
                     }
                     const resultData = formatResultCheckbox(eq.result);
                     const formattedComments = formatCommentsAsBullets(eq.comments);
@@ -2433,7 +2434,7 @@ serve(async (req) => {
               ${categoryEquipment
                 .map((eq) => {
                   if (eq.is_divider) {
-                    return `<tr><td colspan="6" style="text-align:center; font-weight:bold; padding:10px; background:#dbeafe; font-size:11pt;">${eq.divider_text || ''}</td></tr>`;
+                    return `<tr><td colspan="6" style="text-align:center; font-weight:bold; padding:10px; background:#dbeafe; font-size:11pt;">${escapeHtml(eq.divider_text || '')}</td></tr>`;
                   }
                   const resultData = formatResultCheckbox(eq.result);
                   const formattedComments = formatCommentsAsBullets(eq.comments);

@@ -147,7 +147,7 @@ function formatStamp(iso: string | null | undefined): string {
 /**
  * Escape HTML to prevent injection in user-provided strings.
  */
-function escapeHtml(s: string | null | undefined): string {
+export function escapeHtml(s: string | null | undefined): string {
   if (!s) return '';
   return String(s)
     .replace(/&/g, '&amp;')

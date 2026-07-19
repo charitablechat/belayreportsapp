@@ -100,6 +100,23 @@ Deno.serve(async (req) => {
       );
     }
 
+    // ── Privilege-escalation gate: only super_admins may assign the 'admin'
+    // (or 'super_admin') role via create/update. Plain admins can still
+    // create/update inspector/trainer users.
+    if (
+      (action === 'create' || action === 'update') &&
+      ((payload as any).role === 'admin' || (payload as any).role === 'super_admin')
+    ) {
+      const { data: callerIsSuperAdmin, error: superCheckErr } = await supabase.rpc('is_super_admin');
+      if (superCheckErr || !callerIsSuperAdmin) {
+        return new Response(
+          JSON.stringify({ success: false, error: 'Forbidden: only super_admins can assign the admin role' }),
+          { status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
+    }
+
+
     console.log(`Admin action: ${action} by user ${user.id}`);
 
     // ── M12: Audit log helper — record every admin action via create_audit_log RPC ──

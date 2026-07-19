@@ -10,6 +10,7 @@ import {
   buildAttestationBlock,
   buildVersionFooter,
   fetchPostCompletionEdits,
+  escapeHtml,
 } from "../_shared/report-layout.ts";
 
 function deduplicateHtmlContent(html: string | null): string {
@@ -195,7 +196,7 @@ serve(async (req) => {
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>${(content.facilityInfo.organization || 'Training_Report').replace(/\s+/g, '_')}</title>
+  <title>${escapeHtml((content.facilityInfo.organization || 'Training_Report').replace(/\s+/g, '_'))}</title>
   <style>
     /* 
      * FIX: Content Clipping Prevention
@@ -916,22 +917,22 @@ serve(async (req) => {
         <div class="info-grid">
           <div class="info-item">
             <div class="info-label">Organization</div>
-            <div class="info-value">${content.facilityInfo.organization}</div>
+            <div class="info-value">${escapeHtml(content.facilityInfo.organization)}</div>
           </div>
           <div class="info-item">
             <div class="info-label">Training Dates</div>
-            <div class="info-value">${content.facilityInfo.startDate} - ${content.facilityInfo.endDate}</div>
+            <div class="info-value">${escapeHtml(content.facilityInfo.startDate)} - ${escapeHtml(content.facilityInfo.endDate)}</div>
           </div>
           <div class="info-item">
             <div class="info-label">Trainer of Record</div>
-            <div class="info-value">${content.facilityInfo.trainerOfRecord}</div>
+            <div class="info-value">${escapeHtml(content.facilityInfo.trainerOfRecord)}</div>
           </div>
           <div class="info-item" style="grid-column: 1 / -1;">
             <div class="info-label">Trainee Names</div>
             <div class="info-value">
               ${content.facilityInfo.traineeNamesList.length > 0 
                 ? `<ul class="trainee-names-list">
-                    ${content.facilityInfo.traineeNamesList.map(name => `<li>${name}</li>`).join('')}
+                    ${content.facilityInfo.traineeNamesList.map(name => `<li>${escapeHtml(name)}</li>`).join('')}
                    </ul>`
                 : content.facilityInfo.traineeNames}
             </div>
@@ -1077,7 +1078,7 @@ serve(async (req) => {
           ${content.summary.personSubmitting ? `
           <div class="info-item">
             <div class="info-label">Person Submitting</div>
-            <div class="info-value">${content.summary.personSubmitting}</div>
+            <div class="info-value">${escapeHtml(content.summary.personSubmitting)}</div>
           </div>
           ` : ''}
           ${content.summary.submissionDate ? `
