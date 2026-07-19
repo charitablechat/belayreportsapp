@@ -238,7 +238,7 @@ serve(async (req) => {
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>${(assessment.organization || 'Daily Assessment').replace(/\s+/g, '_')}</title>
+  <title>${escapeHtml((assessment.organization || 'Daily Assessment').replace(/\s+/g, '_'))}</title>
   <style>
      /* Clean professional document style */
     
