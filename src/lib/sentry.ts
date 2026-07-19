@@ -23,7 +23,7 @@
  */
 
 const DSN =
-  "https://0432eff5c29b88a4c841c4560f7f3072@o4511277693927424.ingest.us.sentry.io/4511277721190400";
+  "https://e839405231ef3110e1a17fb5673d0156@o4511277693927424.ingest.us.sentry.io/4511762308399104";
 
 let initialized = false;
 let sentryModule: typeof import("@sentry/react") | null = null;
@@ -31,7 +31,7 @@ let sentryModule: typeof import("@sentry/react") | null = null;
 function deriveEnvironment(): string {
   if (typeof window === "undefined") return "ssr";
   const host = window.location.hostname;
-  if (host === "rwreports.com" || host === "www.rwreports.com") return "production";
+  if (host === "belayreportsapp.com" || host === "www.belayreportsapp.com") return "production";
   if (host.endsWith("lovable.app")) return "preview";
   return "development";
 }
