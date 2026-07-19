@@ -1078,7 +1078,7 @@ serve(async (req) => {
           ${content.summary.personSubmitting ? `
           <div class="info-item">
             <div class="info-label">Person Submitting</div>
-            <div class="info-value">${content.summary.personSubmitting}</div>
+            <div class="info-value">${escapeHtml(content.summary.personSubmitting)}</div>
           </div>
           ` : ''}
           ${content.summary.submissionDate ? `
