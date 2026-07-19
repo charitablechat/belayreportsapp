@@ -1985,7 +1985,7 @@ serve(async (req) => {
           ${systems
             .map((sys) => {
               if (sys.is_divider) {
-                return `<tr><td colspan="5" style="text-align:center; font-weight:bold; padding:10px; background:#dbeafe; font-size:11pt;">${sys.divider_text || ''}</td></tr>`;
+                return `<tr><td colspan="5" style="text-align:center; font-weight:bold; padding:10px; background:#dbeafe; font-size:11pt;">${escapeHtml(sys.divider_text || '')}</td></tr>`;
               }
               const resultData = formatResultCheckbox(sys.result);
               const formattedComments = formatCommentsAsBullets(sys.comments);
