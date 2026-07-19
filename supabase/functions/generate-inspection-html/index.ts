@@ -7,6 +7,7 @@ import {
   buildAttestationBlock,
   buildVersionFooter,
   fetchPostCompletionEdits,
+  escapeHtml,
 } from "../_shared/report-layout.ts";
 
 // arrayBufferToBase64 removed — photos now use signed URLs instead of base64
