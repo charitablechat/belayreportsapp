@@ -711,7 +711,7 @@ export default function InspectionForm() {
       
       const details = [
         item.equipment_type,
-        item.production_year ? `Year: ${item.production_year}` : null,
+        item.production_year ? `Year: ${item.production_year === "0" ? "N/A" : item.production_year}` : null,
         item.quantity ? `Qty: ${item.quantity}` : null
       ].filter(Boolean).join(', ');
       

@@ -1,5 +1,18 @@
 import { z } from 'zod';
 
+// Ported from TAG: coerces inspector-entered "N/A"-like strings to the
+// "0" sentinel that report renderers already display as an N/A pill.
+// Empty strings become null so the field remains truly optional.
+const productionYearPreprocess = (val: unknown): unknown => {
+  if (typeof val !== 'string') return val;
+  const trimmed = val.trim();
+  if (trimmed === '') return null;
+  const upper = trimmed.toUpperCase();
+  if (upper === 'N/A' || upper === 'NA' || upper === 'N.A.' ||
+      upper === 'UNKNOWN' || upper === 'UNK') return '0';
+  return trimmed;
+};
+
 // Accept both standard UUIDs and temp-prefixed UUIDs used before sync
 const flexibleUUID = z.string().refine(
   (val) => {
@@ -47,7 +60,10 @@ export const ziplineSchema = z.object({
   inspection_id: flexibleUUID,
   zipline_name: z.string().optional().nullable(),
   cable_type: z.string().optional().nullable(),
-  cable_length: z.number().int().positive().optional().nullable(),
+  cable_length: z.preprocess(
+    (v) => (typeof v === 'number' && v <= 0 ? null : v),
+    z.number().int().positive().optional().nullable()
+  ),
   braking_system: z.string().optional().nullable(),
   ead_system: z.string().optional().nullable(),
   load_tension: z.number().int().optional().nullable(),
@@ -66,7 +82,10 @@ export const equipmentSchema = z.object({
   inspection_id: flexibleUUID,
   equipment_type: z.string().optional().nullable(),
   equipment_category: z.string().optional().nullable(),
-  production_year: z.string().regex(/^(0|\d{4}(-\d{4})?)$/, "Must be a valid year, year range, or N/A").optional().nullable(),
+  production_year: z.preprocess(
+    productionYearPreprocess,
+    z.string().regex(/^(0|\d{4}(-\d{4})?)$/, "Must be a valid year (YYYY), year range (YYYY-YYYY), or N/A").optional().nullable()
+  ),
   quantity: z.string().regex(/^\d+\+?$/, "Must be a number, optionally followed by +").optional().nullable(),
   result: z.enum(['pass', 'pass w/provisions', 'fail', 'na']).optional().nullable(),
   comments: z.string().max(2000).optional().nullable(),
