@@ -1756,15 +1756,15 @@ serve(async (req) => {
       <div class="info-grid">
         <div class="info-cell">
           <span class="info-label">Organization:</span>
-          <span class="info-value">${inspection.organization}</span>
+          <span class="info-value">${escapeHtml(inspection.organization)}</span>
         </div>
         <div class="info-cell">
           <span class="info-label">Location:</span>
-          <span class="info-value">${inspection.location}</span>
+          <span class="info-value">${escapeHtml(inspection.location)}</span>
         </div>
         <div class="info-cell">
           <span class="info-label">Onsite Contact:</span>
-          <span class="info-value">${inspection.onsite_contact || "N/A"}</span>
+          <span class="info-value">${escapeHtml(inspection.onsite_contact || "N/A")}</span>
         </div>
         <div class="info-cell">
           <span class="info-label">ACCT Course Number:</span>
