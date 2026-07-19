@@ -11,6 +11,7 @@ import {
   buildAttestationBlock,
   buildVersionFooter,
   fetchPostCompletionEdits,
+  escapeHtml,
 } from "../_shared/report-layout.ts";
 
 // Deduplicate checklist items by item_key (keeps first occurrence)
