@@ -489,7 +489,7 @@ serve(async (req) => {
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>${(inspection.organization || 'Inspection_Report').replace(/\s+/g, '_')}</title>
+  <title>${escapeHtml((inspection.organization || 'Inspection_Report').replace(/\s+/g, '_'))}</title>
   <style>
     @page {
       size: letter;
