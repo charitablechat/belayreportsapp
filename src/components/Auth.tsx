@@ -28,9 +28,16 @@ const getAuthErrorMessage = (error: any): string => {
   if (message.includes('invalid login credentials') || message.includes('invalid credentials')) {
     return 'Invalid email or password. Please check your credentials and try again.';
   }
+  if (message.includes('already registered') || message.includes('already been registered') || message.includes('user already exists')) {
+    return 'An account with this email already exists. Please sign in instead.';
+  }
+  if (message.includes('pwned') || message.includes('compromised') || message.includes('weak password')) {
+    return 'That password has appeared in a known data breach. Please choose a different one.';
+  }
   if (message.includes('email not confirmed')) {
     return 'Please check your email and confirm your account before signing in.';
   }
+
   if (message.includes('unable to validate email') || message.includes('invalid email')) {
     return 'Please enter a valid email address.';
   }
@@ -57,6 +64,9 @@ export default function Auth() {
   const navigate = useNavigate();
   const { isOnline } = usePWA();
   const [loading, setLoading] = useState(false);
+  const [mode, setMode] = useState<"signin" | "signup">("signin");
+  const [firstName, setFirstName] = useState("");
+  const [lastName, setLastName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
@@ -64,6 +74,8 @@ export default function Auth() {
   const [error, setError] = useState<string | null>(null);
   const [credentialsDamaged] = useState<boolean>(() => isCredentialsDamaged());
   const [lastKnown] = useState(() => getLastKnownAccount());
+  const isSignUp = mode === "signup" && !isForgotPassword;
+
 
   const handleGoToDashboard = () => {
     navigate("/dashboard");
@@ -88,6 +100,95 @@ export default function Auth() {
       duration: 7000,
     });
     navigate('/dashboard', { replace: true });
+  };
+
+  const handleGoogleSignIn = async () => {
+    setError(null);
+    triggerHaptic('medium');
+    setLoading(true);
+    try {
+      const { error } = await supabase.auth.signInWithOAuth({
+        provider: 'google',
+        options: { redirectTo: window.location.origin },
+      });
+      if (error) throw error;
+    } catch (err: any) {
+      console.error("Google sign-in error:", err);
+      const friendlyMessage = getAuthErrorMessage(err);
+      setError(friendlyMessage);
+      toast.error(friendlyMessage);
+      setLoading(false);
+    }
+  };
+
+  const handleSignUp = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setError(null);
+
+    if (!firstName.trim() || !lastName.trim()) {
+      setError("Please enter your first and last name.");
+      return;
+    }
+    if (!email || !password) {
+      setError("Please enter both email and password.");
+      return;
+    }
+    if (password.length < 6) {
+      setError("Password must be at least 6 characters long.");
+      return;
+    }
+
+    triggerHaptic('medium');
+    setLoading(true);
+
+    try {
+      const { data, error } = await Promise.race([
+        supabase.auth.signUp({
+          email,
+          password,
+          options: {
+            emailRedirectTo: window.location.origin,
+            data: {
+              first_name: firstName.trim(),
+              last_name: lastName.trim(),
+            },
+          },
+        }),
+        new Promise<never>((_, reject) =>
+          setTimeout(
+            () => reject(new Error('Sign-up timed out. Please try again in a moment.')),
+            SIGN_IN_TIMEOUT_MS
+          )
+        ),
+      ]);
+
+      if (error) throw error;
+
+      // Capture refresh token so this new account can also sign in offline.
+      if (data.session?.user?.email && data.session?.refresh_token) {
+        const { saveUserMapping } = await import('@/lib/offline-auth');
+        await saveUserMapping(
+          data.session.user.email,
+          data.session.user.id,
+          data.session.refresh_token
+        ).catch(() => {});
+      }
+
+      if (!data.session) {
+        toast.success("Account created! Check your email to confirm, then sign in.");
+        setMode("signin");
+        return;
+      }
+
+      toast.success("Welcome to Belay Reports! Your account is ready.");
+    } catch (err: any) {
+      console.error("Sign-up error:", err);
+      const friendlyMessage = getAuthErrorMessage(err);
+      setError(friendlyMessage);
+      toast.error(friendlyMessage);
+    } finally {
+      setLoading(false);
+    }
   };
 
   const handleAuth = async (e: React.FormEvent) => {
@@ -209,15 +310,18 @@ export default function Auth() {
 
       <Card className="relative z-10 w-full max-w-md shadow-2xl backdrop-blur-2xl bg-white/30 dark:bg-black/40 border border-white/50 dark:border-white/20 ring-1 ring-white/30 shadow-[0_8px_32px_rgba(0,0,0,0.3)] mx-2">
         <CardHeader className="space-y-4 text-center">
-          <h1 className="sr-only">{isForgotPassword ? "Reset Password" : "Sign In"}</h1>
+          <h1 className="sr-only">{isForgotPassword ? "Reset Password" : isSignUp ? "Create Account" : "Sign In"}</h1>
           <div className="mx-auto w-96 h-48 flex items-center justify-center bg-white/70 dark:bg-white/70 rounded-lg">
             <img src={belayReportsLogo} alt="Belay Reports Logo" width={384} height={186} className="w-full h-full object-contain" fetchPriority="high" />
           </div>
           <CardDescription>
-            {isForgotPassword 
-              ? "Reset your password" 
+            {isForgotPassword
+              ? "Reset your password"
+              : isSignUp
+              ? "Create your free account and start exploring"
               : "Sign in to continue"}
           </CardDescription>
+
         </CardHeader>
         <CardContent>
           {credentialsDamaged && (
@@ -276,7 +380,59 @@ export default function Auth() {
               Open my cached reports
             </Button>
           )}
-          <form onSubmit={isForgotPassword ? handleForgotPassword : handleAuth} className="space-y-4">
+          {isOnline && !isForgotPassword && (
+            <div className="mb-4">
+              <Button
+                type="button"
+                variant="outline"
+                className="w-full bg-white/80 hover:bg-white text-foreground"
+                onClick={handleGoogleSignIn}
+                disabled={loading}
+              >
+                Continue with Google
+              </Button>
+              <div className="relative my-4">
+                <div className="absolute inset-0 flex items-center">
+                  <span className="w-full border-t border-border" />
+                </div>
+                <div className="relative flex justify-center text-xs uppercase">
+                  <span className="bg-transparent px-2 text-muted-foreground">or</span>
+                </div>
+              </div>
+            </div>
+          )}
+          <form
+            onSubmit={isForgotPassword ? handleForgotPassword : isSignUp ? handleSignUp : handleAuth}
+            className="space-y-4"
+          >
+            {isSignUp && (
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-2">
+                  <Label htmlFor="firstName">First name</Label>
+                  <Input
+                    id="firstName"
+                    type="text"
+                    autoComplete="given-name"
+                    placeholder="Jane"
+                    value={firstName}
+                    onChange={(e) => setFirstName(e.target.value)}
+                    required
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="lastName">Last name</Label>
+                  <Input
+                    id="lastName"
+                    type="text"
+                    autoComplete="family-name"
+                    placeholder="Doe"
+                    value={lastName}
+                    onChange={(e) => setLastName(e.target.value)}
+                    required
+                  />
+                </div>
+              </div>
+            )}
             <div className="space-y-2">
               <Label htmlFor="email">Email</Label>
               <Input
@@ -295,7 +451,8 @@ export default function Auth() {
                   <Input
                     id="password"
                     type={showPassword ? "text" : "password"}
-                    placeholder="Enter your password"
+                    autoComplete={isSignUp ? "new-password" : "current-password"}
+                    placeholder={isSignUp ? "At least 6 characters" : "Enter your password"}
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}
                     className="pr-10"
@@ -318,26 +475,30 @@ export default function Auth() {
                   </button>
                 </div>
                 <PasswordStrengthMeter password={password} />
-                <div className="text-right">
-                  <button
-                    type="button"
-                    onClick={() => setIsForgotPassword(true)}
-                    className="text-sm text-primary hover:underline"
-                  >
-                    Forgot password?
-                  </button>
-                </div>
+                {!isSignUp && (
+                  <div className="text-right">
+                    <button
+                      type="button"
+                      onClick={() => setIsForgotPassword(true)}
+                      className="text-sm text-primary hover:underline"
+                    >
+                      Forgot password?
+                    </button>
+                  </div>
+                )}
               </div>
             )}
             <GradientButton
               type="submit"
               className="w-full"
-              disabled={loading || (!isOnline && isForgotPassword)}
+              disabled={loading || (!isOnline && (isForgotPassword || isSignUp))}
             >
-              {loading 
-                ? "Please wait..." 
-                : isForgotPassword 
-                ? "Send Reset Link" 
+              {loading
+                ? "Please wait..."
+                : isForgotPassword
+                ? "Send Reset Link"
+                : isSignUp
+                ? "Create Account"
                 : !isOnline
                 ? "Sign In Offline"
                 : "Sign In"}
@@ -352,11 +513,29 @@ export default function Auth() {
                 Back to sign in
               </Button>
             )}
-            <p className="text-xs text-center text-muted-foreground">
-              Contact your administrator if you need an account.
-            </p>
+            {!isForgotPassword && (
+              <p className="text-sm text-center text-muted-foreground">
+                {isSignUp ? "Already have an account?" : "New here?"}{" "}
+                <button
+                  type="button"
+                  onClick={() => {
+                    setError(null);
+                    setMode(isSignUp ? "signin" : "signup");
+                  }}
+                  className="text-primary hover:underline font-medium"
+                >
+                  {isSignUp ? "Sign in" : "Create a free account"}
+                </button>
+              </p>
+            )}
+            {isSignUp && !isOnline && (
+              <p className="text-xs text-center text-muted-foreground">
+                You need an internet connection to create an account.
+              </p>
+            )}
           </form>
         </CardContent>
+
       </Card>
     </div>
   );
