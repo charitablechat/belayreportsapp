@@ -95,6 +95,95 @@ export default function Auth() {
     navigate('/dashboard', { replace: true });
   };
 
+  const handleGoogleSignIn = async () => {
+    setError(null);
+    triggerHaptic('medium');
+    setLoading(true);
+    try {
+      const { error } = await supabase.auth.signInWithOAuth({
+        provider: 'google',
+        options: { redirectTo: window.location.origin },
+      });
+      if (error) throw error;
+    } catch (err: any) {
+      console.error("Google sign-in error:", err);
+      const friendlyMessage = getAuthErrorMessage(err);
+      setError(friendlyMessage);
+      toast.error(friendlyMessage);
+      setLoading(false);
+    }
+  };
+
+  const handleSignUp = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setError(null);
+
+    if (!firstName.trim() || !lastName.trim()) {
+      setError("Please enter your first and last name.");
+      return;
+    }
+    if (!email || !password) {
+      setError("Please enter both email and password.");
+      return;
+    }
+    if (password.length < 6) {
+      setError("Password must be at least 6 characters long.");
+      return;
+    }
+
+    triggerHaptic('medium');
+    setLoading(true);
+
+    try {
+      const { data, error } = await Promise.race([
+        supabase.auth.signUp({
+          email,
+          password,
+          options: {
+            emailRedirectTo: window.location.origin,
+            data: {
+              first_name: firstName.trim(),
+              last_name: lastName.trim(),
+            },
+          },
+        }),
+        new Promise<never>((_, reject) =>
+          setTimeout(
+            () => reject(new Error('Sign-up timed out. Please try again in a moment.')),
+            SIGN_IN_TIMEOUT_MS
+          )
+        ),
+      ]);
+
+      if (error) throw error;
+
+      // Capture refresh token so this new account can also sign in offline.
+      if (data.session?.user?.email && data.session?.refresh_token) {
+        const { saveUserMapping } = await import('@/lib/offline-auth');
+        await saveUserMapping(
+          data.session.user.email,
+          data.session.user.id,
+          data.session.refresh_token
+        ).catch(() => {});
+      }
+
+      if (!data.session) {
+        toast.success("Account created! Check your email to confirm, then sign in.");
+        setMode("signin");
+        return;
+      }
+
+      toast.success("Welcome to Belay Reports! Your account is ready.");
+    } catch (err: any) {
+      console.error("Sign-up error:", err);
+      const friendlyMessage = getAuthErrorMessage(err);
+      setError(friendlyMessage);
+      toast.error(friendlyMessage);
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const handleAuth = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
