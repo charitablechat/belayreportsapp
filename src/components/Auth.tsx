@@ -57,6 +57,9 @@ export default function Auth() {
   const navigate = useNavigate();
   const { isOnline } = usePWA();
   const [loading, setLoading] = useState(false);
+  const [mode, setMode] = useState<"signin" | "signup">("signin");
+  const [firstName, setFirstName] = useState("");
+  const [lastName, setLastName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
@@ -64,6 +67,8 @@ export default function Auth() {
   const [error, setError] = useState<string | null>(null);
   const [credentialsDamaged] = useState<boolean>(() => isCredentialsDamaged());
   const [lastKnown] = useState(() => getLastKnownAccount());
+  const isSignUp = mode === "signup" && !isForgotPassword;
+
 
   const handleGoToDashboard = () => {
     navigate("/dashboard");
