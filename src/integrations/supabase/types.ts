@@ -14,6 +14,51 @@ export type Database = {
   }
   public: {
     Tables: {
+      account_notify_recipients: {
+        Row: {
+          active: boolean
+          created_at: string
+          email: string
+          id: string
+          updated_at: string
+        }
+        Insert: {
+          active?: boolean
+          created_at?: string
+          email: string
+          id?: string
+          updated_at?: string
+        }
+        Update: {
+          active?: boolean
+          created_at?: string
+          email?: string
+          id?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      account_notify_state: {
+        Row: {
+          created_at: string
+          id: boolean
+          last_summary_sent_at: string | null
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          id?: boolean
+          last_summary_sent_at?: string | null
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          id?: boolean
+          last_summary_sent_at?: string | null
+          updated_at?: string
+        }
+        Relationships: []
+      }
       admin_edit_snapshots: {
         Row: {
           created_at: string
@@ -2949,6 +2994,10 @@ export type Database = {
           p_target_table_name: string
         }
         Returns: number
+      }
+      run_account_activity_notify: {
+        Args: { _mode: string; _payload?: Json }
+        Returns: undefined
       }
       run_retention_cleanup: { Args: never; Returns: Json }
       self_service_fill_missing_training_field: {
