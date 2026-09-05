@@ -380,7 +380,59 @@ export default function Auth() {
               Open my cached reports
             </Button>
           )}
-          <form onSubmit={isForgotPassword ? handleForgotPassword : handleAuth} className="space-y-4">
+          {isOnline && !isForgotPassword && (
+            <div className="mb-4">
+              <Button
+                type="button"
+                variant="outline"
+                className="w-full bg-white/80 hover:bg-white text-foreground"
+                onClick={handleGoogleSignIn}
+                disabled={loading}
+              >
+                Continue with Google
+              </Button>
+              <div className="relative my-4">
+                <div className="absolute inset-0 flex items-center">
+                  <span className="w-full border-t border-border" />
+                </div>
+                <div className="relative flex justify-center text-xs uppercase">
+                  <span className="bg-transparent px-2 text-muted-foreground">or</span>
+                </div>
+              </div>
+            </div>
+          )}
+          <form
+            onSubmit={isForgotPassword ? handleForgotPassword : isSignUp ? handleSignUp : handleAuth}
+            className="space-y-4"
+          >
+            {isSignUp && (
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-2">
+                  <Label htmlFor="firstName">First name</Label>
+                  <Input
+                    id="firstName"
+                    type="text"
+                    autoComplete="given-name"
+                    placeholder="Jane"
+                    value={firstName}
+                    onChange={(e) => setFirstName(e.target.value)}
+                    required
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="lastName">Last name</Label>
+                  <Input
+                    id="lastName"
+                    type="text"
+                    autoComplete="family-name"
+                    placeholder="Doe"
+                    value={lastName}
+                    onChange={(e) => setLastName(e.target.value)}
+                    required
+                  />
+                </div>
+              </div>
+            )}
             <div className="space-y-2">
               <Label htmlFor="email">Email</Label>
               <Input
@@ -399,7 +451,8 @@ export default function Auth() {
                   <Input
                     id="password"
                     type={showPassword ? "text" : "password"}
-                    placeholder="Enter your password"
+                    autoComplete={isSignUp ? "new-password" : "current-password"}
+                    placeholder={isSignUp ? "At least 6 characters" : "Enter your password"}
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}
                     className="pr-10"
@@ -422,26 +475,30 @@ export default function Auth() {
                   </button>
                 </div>
                 <PasswordStrengthMeter password={password} />
-                <div className="text-right">
-                  <button
-                    type="button"
-                    onClick={() => setIsForgotPassword(true)}
-                    className="text-sm text-primary hover:underline"
-                  >
-                    Forgot password?
-                  </button>
-                </div>
+                {!isSignUp && (
+                  <div className="text-right">
+                    <button
+                      type="button"
+                      onClick={() => setIsForgotPassword(true)}
+                      className="text-sm text-primary hover:underline"
+                    >
+                      Forgot password?
+                    </button>
+                  </div>
+                )}
               </div>
             )}
             <GradientButton
               type="submit"
               className="w-full"
-              disabled={loading || (!isOnline && isForgotPassword)}
+              disabled={loading || (!isOnline && (isForgotPassword || isSignUp))}
             >
-              {loading 
-                ? "Please wait..." 
-                : isForgotPassword 
-                ? "Send Reset Link" 
+              {loading
+                ? "Please wait..."
+                : isForgotPassword
+                ? "Send Reset Link"
+                : isSignUp
+                ? "Create Account"
                 : !isOnline
                 ? "Sign In Offline"
                 : "Sign In"}
@@ -456,11 +513,29 @@ export default function Auth() {
                 Back to sign in
               </Button>
             )}
-            <p className="text-xs text-center text-muted-foreground">
-              Contact your administrator if you need an account.
-            </p>
+            {!isForgotPassword && (
+              <p className="text-sm text-center text-muted-foreground">
+                {isSignUp ? "Already have an account?" : "New here?"}{" "}
+                <button
+                  type="button"
+                  onClick={() => {
+                    setError(null);
+                    setMode(isSignUp ? "signin" : "signup");
+                  }}
+                  className="text-primary hover:underline font-medium"
+                >
+                  {isSignUp ? "Sign in" : "Create a free account"}
+                </button>
+              </p>
+            )}
+            {isSignUp && !isOnline && (
+              <p className="text-xs text-center text-muted-foreground">
+                You need an internet connection to create an account.
+              </p>
+            )}
           </form>
         </CardContent>
+
       </Card>
     </div>
   );
