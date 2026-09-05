@@ -79,7 +79,7 @@ serve(async (req) => {
     const { data: secretRow, error: secretError } = await supabaseAdmin
       .from("webhook_config")
       .select("key_value")
-      .eq("key_name", "WEBHOOK_SECRET")
+      .eq("key_name", "ACCOUNT_NOTIFY_SECRET")
       .single();
 
     if (secretError || !secretRow?.key_value) {
