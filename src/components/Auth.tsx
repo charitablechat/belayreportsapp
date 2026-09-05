@@ -28,9 +28,16 @@ const getAuthErrorMessage = (error: any): string => {
   if (message.includes('invalid login credentials') || message.includes('invalid credentials')) {
     return 'Invalid email or password. Please check your credentials and try again.';
   }
+  if (message.includes('already registered') || message.includes('already been registered') || message.includes('user already exists')) {
+    return 'An account with this email already exists. Please sign in instead.';
+  }
+  if (message.includes('pwned') || message.includes('compromised') || message.includes('weak password')) {
+    return 'That password has appeared in a known data breach. Please choose a different one.';
+  }
   if (message.includes('email not confirmed')) {
     return 'Please check your email and confirm your account before signing in.';
   }
+
   if (message.includes('unable to validate email') || message.includes('invalid email')) {
     return 'Please enter a valid email address.';
   }
