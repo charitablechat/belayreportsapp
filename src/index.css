@@ -28,8 +28,8 @@ All colors MUST be HSL.
     --secondary-foreground: 0 0% 100%;
 
     --muted: 171 56% 95%;               /* #EAF9F7 BG Card Highlight */
-    --muted-foreground: 217 11% 34%;    /* #4D545F Text Secondary */
-    --text-muted: 217 7% 49%;           /* #747B85 Text Muted */
+    --muted-foreground: 217 15% 27%;    /* #3B424E Text Secondary — 10.2:1 on card */
+    --text-muted: 217 12% 36%;          /* #505A66 Text Muted — 7.4:1 on card */
 
     --accent: 14 47% 44%;               /* #A6533B Accent Orange */
     --accent-foreground: 0 0% 100%;
