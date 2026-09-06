@@ -52,6 +52,15 @@ All colors MUST be HSL.
 
     --radius: 0.5rem;
 
+    /* Readability tokens — typography legibility (cosmetic only) */
+    --body-font-weight: 450;
+    --body-line-height: 1.6;
+    --body-letter-spacing: 0.006em;
+    --heading-font-weight: 650;
+    --heading-line-height: 1.28;
+    --small-font-weight: 500;
+    --small-line-height: 1.5;
+
     --sidebar-background: 0 0% 100%;
     --sidebar-foreground: 240 4% 12%;
     --sidebar-primary: 180 64% 14%;
