@@ -190,7 +190,7 @@ serve(async (req) => {
     }
 
     const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
-    const RESEND_API_KEY = Deno.env.get("RESEND_API_KEY_1");
+    const RESEND_API_KEY = Deno.env.get("RESEND_API_KEY") ?? Deno.env.get("RESEND_API_KEY_1");
     if (!LOVABLE_API_KEY || !RESEND_API_KEY) {
       console.error("[notify-account-activity] Email credentials not configured");
       return json({ success: false, error: "Email not configured" }, 500);
