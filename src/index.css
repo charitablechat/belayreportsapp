@@ -338,6 +338,62 @@ All colors MUST be HSL.
 
   body {
     @apply bg-background text-foreground;
+    font-weight: var(--body-font-weight);
+    line-height: var(--body-line-height);
+    letter-spacing: var(--body-letter-spacing);
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    text-rendering: optimizeLegibility;
+  }
+
+  /* Headings: tighter leading, heavier weight for clear hierarchy. */
+  h1, h2, h3, h4, h5, h6 {
+    font-weight: var(--heading-font-weight);
+    line-height: var(--heading-line-height);
+    letter-spacing: -0.005em;
+  }
+
+  /* Secondary/caption text stays legible instead of thinning out. */
+  .text-xs, .text-\[11px\], .text-\[10px\], small, caption, figcaption {
+    font-weight: var(--small-font-weight);
+    line-height: var(--small-line-height);
+  }
+
+  /* Form text: labels and controls read at full strength. */
+  label {
+    font-weight: 600;
+    line-height: var(--small-line-height);
+    color: hsl(var(--foreground));
+  }
+
+  input, select, textarea, [role="combobox"] {
+    line-height: var(--small-line-height);
+    color: hsl(var(--foreground));
+  }
+
+  input::placeholder, textarea::placeholder {
+    color: hsl(var(--text-muted));
+    opacity: 1;
+  }
+
+  /* Table content in report/data views. */
+  td, th {
+    line-height: var(--small-line-height);
+  }
+  th {
+    font-weight: 650;
+    color: hsl(var(--foreground));
+  }
+
+  /* Legacy hardcoded grey utilities fall below 4.5:1 on glass surfaces;
+     re-map them onto the accessible palette without changing hues. */
+  .text-gray-400, .text-gray-500, .text-slate-400, .text-slate-500,
+  .text-muted-foreground\/70, .text-muted-foreground\/60, .text-muted-foreground\/50 {
+    color: hsl(var(--text-muted));
+  }
+  .dark .text-gray-400, .dark .text-gray-500,
+  .dark .text-slate-400, .dark .text-slate-500 {
+    color: hsl(var(--text-muted));
   }
 
   /* Deep dark gradient as a full-viewport canvas behind the app.
