@@ -10,3 +10,10 @@ verify_jwt = true
 
 [functions.generate-jcf-pdf]
 verify_jwt = true
+
+[functions.send-transactional-email]
+verify_jwt = true
+
+[functions.process-email-queue]
+verify_jwt = true
+
