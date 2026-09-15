@@ -96,17 +96,18 @@ Deno.serve(async (req) => {
     )
   }
 
-  // Defense in depth: verify_jwt=true already requires a valid JWT at the
-  // gateway layer. This adds an explicit role check so only service-role
-  // callers can trigger queue processing.
+  // Only the internal cron caller may trigger queue processing. The bearer
+  // token must be the project's actual service_role key — decoding JWT claims
+  // is NOT sufficient, since an unsigned payload claiming role=service_role
+  // can be forged by anyone.
   const token = authHeader.slice('Bearer '.length).trim()
-  const claims = parseJwtClaims(token)
-  if (claims?.role !== 'service_role') {
+  if (!timingSafeEqual(token, supabaseServiceKey)) {
     return new Response(
       JSON.stringify({ error: 'Forbidden' }),
       { status: 403, headers: { 'Content-Type': 'application/json' } }
     )
   }
+
 
   const supabase = createClient(supabaseUrl, supabaseServiceKey)
 
