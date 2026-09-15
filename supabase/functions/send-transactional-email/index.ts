@@ -25,9 +25,26 @@ function generateToken(): string {
     .join('')
 }
 
-// Auth note: this function uses verify_jwt = true in config.toml, so Supabase's
-// gateway validates the caller's JWT (anon or service_role) before the request
-// reaches this code. No in-function auth check is needed.
+// Constant-time string comparison so token checks don't leak length/prefix
+// information through response timing.
+function timingSafeEqual(a: string, b: string): boolean {
+  const encoder = new TextEncoder()
+  const aBytes = encoder.encode(a)
+  const bBytes = encoder.encode(b)
+  if (aBytes.length !== bBytes.length) return false
+  let diff = 0
+  for (let i = 0; i < aBytes.length; i++) {
+    diff |= aBytes[i] ^ bBytes[i]
+  }
+  return diff === 0
+}
+
+// Auth: this function is only ever invoked by trusted server-side callers
+// (other edge functions / scheduled jobs) using the service_role key. It is
+// also listed with verify_jwt = true in config.toml, but the explicit check
+// below is the real gate — a valid anon JWT must not be able to send branded
+// email to arbitrary recipients.
+
 
 Deno.serve(async (req) => {
   // Handle CORS preflight
@@ -48,6 +65,23 @@ Deno.serve(async (req) => {
       }
     )
   }
+
+  // Reject anything that isn't an internal service-role caller.
+  const authHeader = req.headers.get('Authorization')
+  const bearer = authHeader?.startsWith('Bearer ')
+    ? authHeader.slice('Bearer '.length).trim()
+    : ''
+  if (!bearer || !timingSafeEqual(bearer, supabaseServiceKey)) {
+    return new Response(
+      JSON.stringify({ error: 'Unauthorized' }),
+      {
+        status: 401,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      }
+    )
+  }
+
+
 
   // Parse request body
   let templateName: string
