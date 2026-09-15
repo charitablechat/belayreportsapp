@@ -66,6 +66,23 @@ Deno.serve(async (req) => {
     )
   }
 
+  // Reject anything that isn't an internal service-role caller.
+  const authHeader = req.headers.get('Authorization')
+  const bearer = authHeader?.startsWith('Bearer ')
+    ? authHeader.slice('Bearer '.length).trim()
+    : ''
+  if (!bearer || !timingSafeEqual(bearer, supabaseServiceKey)) {
+    return new Response(
+      JSON.stringify({ error: 'Unauthorized' }),
+      {
+        status: 401,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      }
+    )
+  }
+
+
+
   // Parse request body
   let templateName: string
   let recipientEmail: string
