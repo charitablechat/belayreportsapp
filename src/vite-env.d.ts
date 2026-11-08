@@ -11,3 +11,8 @@ interface ImportMetaEnv {
 interface ImportMeta {
   readonly env: ImportMetaEnv;
 }
+
+// Google tag (gtag.js) defined inline in index.html; absent if blocked.
+interface Window {
+  gtag?: (...args: unknown[]) => void;
+}

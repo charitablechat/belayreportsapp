@@ -164,6 +164,9 @@ export default function Auth() {
 
       if (error) throw error;
 
+      // Google Analytics: account created (fires whether or not email confirmation is required).
+      window.gtag?.('event', 'sign_up', { method: 'email' });
+
       // Capture refresh token so this new account can also sign in offline.
       if (data.session?.user?.email && data.session?.refresh_token) {
         const { saveUserMapping } = await import('@/lib/offline-auth');
