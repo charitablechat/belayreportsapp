@@ -1,12 +1,22 @@
 <!doctype html>
 <html lang="en">
   <head>
-    <!-- Google tag (Google Tag Manager container GTM-W74H2RPK) -->
+    <!-- Google tags: Tag Manager container GTM-W74H2RPK + Google Analytics G-H5J4M9VCG1
+         (shared dataLayer/gtag; cross-domain linker with belayreports.com) -->
     <script async src="https://www.googletagmanager.com/gtm.js?id=GTM-W74H2RPK"></script>
+    <script async src="https://www.googletagmanager.com/gtag/js?id=G-H5J4M9VCG1"></script>
     <script>
       window.dataLayer = window.dataLayer || [];
       function gtag(){dataLayer.push(arguments);}
       gtag('js', new Date());
+      gtag('config', 'G-H5J4M9VCG1', {
+        linker: { domains: ['belayreports.com', 'belayreportsapp.com'] }
+      });
+      // Count clicks on any link that goes to the app (GET STARTED / Explore the App)
+      document.addEventListener('click', function (e) {
+        var a = e.target.closest && e.target.closest('a[href*="belayreportsapp.com"]');
+        if (a) gtag('event', 'get_started_click', { link_text: (a.innerText || '').trim() });
+      });
     </script>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, interactive-widget=resizes-content" />
