@@ -93,7 +93,8 @@ Deno.serve(async (req) => {
 
     // ── C2: Role allowlist — block super_admin escalation ──
     const ALLOWED_ROLES = ['admin', 'inspector', 'trainer'] as const;
-    if ((payload as any).role !== undefined && !ALLOWED_ROLES.includes((payload as any).role)) {
+    const requestedRole = (payload as { role?: unknown }).role;
+    if (requestedRole !== undefined && !(ALLOWED_ROLES as readonly unknown[]).includes(requestedRole)) {
       return new Response(
         JSON.stringify({ success: false, error: 'Invalid role. Allowed: admin, inspector, trainer' }),
         { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
@@ -105,7 +106,7 @@ Deno.serve(async (req) => {
     // create/update inspector/trainer users.
     if (
       (action === 'create' || action === 'update') &&
-      ((payload as any).role === 'admin' || (payload as any).role === 'super_admin')
+      (requestedRole === 'admin' || requestedRole === 'super_admin')
     ) {
       const { data: callerIsSuperAdmin, error: superCheckErr } = await supabase.rpc('is_super_admin');
       if (superCheckErr || !callerIsSuperAdmin) {
