@@ -136,6 +136,7 @@
     "postcss": "^8.5.13",
     "tmp": "^0.2.7",
     "fast-uri": "^4.0.0",
-    "@babel/plugin-transform-modules-systemjs": "^7.29.7"
+    "@babel/plugin-transform-modules-systemjs": "^7.29.7",
+    "tinypool": "^2.1.2"
   }
 }

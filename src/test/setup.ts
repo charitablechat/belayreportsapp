@@ -79,3 +79,40 @@ Object.defineProperty(window, "matchMedia", {
     dispatchEvent: () => {},
   }),
 });
+
+// jsdom installs its own AbortController/AbortSignal on globalThis, but
+// `Request` stays Node's native (undici) class. React Router's data routers
+// (createMemoryRouter) build `new Request(url, { signal })` on every
+// navigation, and from Node 24 undici rejects a jsdom signal with
+// "RequestInit: Expected signal to be an instance of AbortSignal". The
+// rejection is unhandled, so vitest fails the whole run even though every
+// test passes. Node 22 did not enforce this; CI's runner image now ships 24.
+//
+// Wrap Request so a signal undici refuses is dropped instead of thrown on.
+// jsdom hides Node's own AbortSignal class, so an instanceof check cannot
+// tell the two apart; instead, retry without the signal only when undici
+// rejects that specific field. Nothing in the jsdom test env performs real
+// network I/O through these router requests, so losing the abort hook is
+// harmless, and every other construction error still throws.
+{
+  const NativeRequest = globalThis.Request;
+  if (typeof NativeRequest === "function") {
+    class JsdomSafeRequest extends NativeRequest {
+      constructor(input: RequestInfo | URL, init?: RequestInit) {
+        try {
+          super(input, init);
+        } catch (error) {
+          const signalRejected =
+            init?.signal != null &&
+            error instanceof TypeError &&
+            /signal/i.test(error.message);
+          if (!signalRejected) throw error;
+          const { signal: _rejectedSignal, ...rest } = init;
+          super(input, rest);
+        }
+      }
+    }
+
+    globalThis.Request = JsdomSafeRequest;
+  }
+}

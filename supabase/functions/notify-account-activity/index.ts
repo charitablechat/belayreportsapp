@@ -34,7 +34,11 @@ const fmt = (iso: string | null | undefined): string => {
   }
 };
 
-const providerOf = (user: any): string => {
+type AuthUserLike = {
+  app_metadata?: { providers?: string[]; provider?: string };
+} | null | undefined;
+
+const providerOf = (user: AuthUserLike): string => {
   const providers: string[] = user?.app_metadata?.providers
     ?? (user?.app_metadata?.provider ? [user.app_metadata.provider] : []);
   if (providers.includes("google")) return "Google sign-in";
