@@ -112,7 +112,7 @@ export default function Auth() {
         options: { redirectTo: window.location.origin },
       });
       if (error) throw error;
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error("Google sign-in error:", err);
       const friendlyMessage = getAuthErrorMessage(err);
       setError(friendlyMessage);
@@ -184,7 +184,7 @@ export default function Auth() {
       }
 
       toast.success("Welcome to Belay Reports! Your account is ready.");
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error("Sign-up error:", err);
       const friendlyMessage = getAuthErrorMessage(err);
       setError(friendlyMessage);
