@@ -115,7 +115,7 @@
          Belay Reports - Professional Inspection Services
        </p>
        <p style="margin: 0; font-family: Arial, sans-serif; font-size: 12px; color: #6b7280;">
-         ACCT Accredited Vendor
+         Member of ACCT International (membership is not an endorsement)
        </p>
      </div>
    </div>

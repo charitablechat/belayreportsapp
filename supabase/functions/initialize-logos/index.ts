@@ -19,7 +19,7 @@ serve(async (req) => {
     const storageBase = `${supabaseUrl}/storage/v1/object/public/pdf-templates`;
     const publicAssetUrls = [
       `${storageBase}/belay-reports-logo.png`,
-      `${storageBase}/acct-accredited-vendor.png`,
+      `${storageBase}/acct-international-member.png`,
     ];
 
     const results = [];

@@ -207,7 +207,7 @@ serve(async (req) => {
     };
 
     // Footer disclaimer text for daily assessment
-    const footerDisclaimerText = `Daily Course Assessment Documentation | ${assessment.site || 'N/A'}<br>Generated on ${generatedTimestamp}`;
+    const footerDisclaimerText = `Daily Course Assessment Documentation | ${assessment.site || 'N/A'}<br>Generated on ${generatedTimestamp}<br>Belay Reports, a member of ACCT International (membership is not an endorsement)`;
 
     // Helper wrappers using shared layout functions
     // HEADER: Both logos (Belay Reports LEFT, ACCT RIGHT on same line)

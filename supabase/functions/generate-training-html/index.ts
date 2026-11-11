@@ -161,7 +161,7 @@ serve(async (req) => {
     }
 
     // Footer disclaimer text for training reports
-    const footerDisclaimerText = `The information contained in this report has been documented by a Qualified Professional.<br>This report is effective for one year from the date of inspection. Issued by:<br>Belay Reports`;
+    const footerDisclaimerText = `The information contained in this report has been documented by a Qualified Professional.<br>This report is effective for one year from the date of inspection. Issued by:<br>Belay Reports, a member of ACCT International (membership is not an endorsement)`;
 
     // Helper wrappers using shared layout functions
     // HEADER: Both logos (Belay Reports LEFT, ACCT RIGHT on same line)

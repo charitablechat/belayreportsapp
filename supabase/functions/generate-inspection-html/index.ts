@@ -1716,7 +1716,7 @@ serve(async (req) => {
         <div class="header-title"></div>
       </div>
       <div class="header-right">
-        <img src="${acctLogo}" alt="ACCT Accredited Vendor" style="height: 45px; width: auto;">
+        <img src="${acctLogo}" alt="ACCT International Proud Member" style="height: 45px; width: auto;">
       </div>
     </div>
   </div>
@@ -1728,7 +1728,7 @@ serve(async (req) => {
       <div class="disclaimer">
         The information contained in this report has been documented by a Qualified Professional.<br>
         This report is effective for one year from the date of inspection. Issued by:<br>
-        Belay Reports
+        Belay Reports, a member of ACCT International (membership is not an endorsement)
       </div>
     </div>
   </div>
@@ -1746,7 +1746,7 @@ serve(async (req) => {
         <div class="header-title"></div>
       </div>
       <div class="header-right">
-        <img src="${acctLogo}" alt="ACCT Accredited Vendor">
+        <img src="${acctLogo}" alt="ACCT International Proud Member">
       </div>
     </div>
 
@@ -1827,7 +1827,7 @@ serve(async (req) => {
       <div class="disclaimer">
         The information contained in this report has been documented by a Qualified Professional.<br>
         This report is effective for one year from the date of inspection. Issued by:<br>
-        Belay Reports
+        Belay Reports, a member of ACCT International (membership is not an endorsement)
       </div>
     </div>
   </div>
@@ -1842,7 +1842,7 @@ serve(async (req) => {
         <div class="header-title"></div>
       </div>
       <div class="header-right">
-        <img src="${acctLogo}" alt="ACCT Accredited Vendor">
+        <img src="${acctLogo}" alt="ACCT International Proud Member">
       </div>
     </div>
 
@@ -1853,7 +1853,7 @@ serve(async (req) => {
         <li><strong>Periodic Internal Monitoring:</strong> A Periodic Internal Monitoring of the aerial activities on your site shall be conducted by qualified personnel.</li>
         <li><strong>Equipment Documentation:</strong> Proper identification, tracking, and documentation of ALL equipment used for operations shall be kept and available at your annual professional inspection.</li>
         <li><strong>Staff Training:</strong> Proper staff training should be provided for the operation of all aerial activities and equipment on your site.</li>
-        <li><strong>Operational Reviews:</strong> Operational Reviews shall be conducted once every five years by a qualified professional in accordance with ACCT Standards.</li>
+        <li><strong>Operational Reviews:</strong> Operational Reviews shall be conducted once every five years by a qualified professional in accordance with ACCT International Standards.</li>
       </ul>
 
       <h2 style="margin-top: 14px;">INSPECTION CATEGORIES</h2>
@@ -1886,7 +1886,7 @@ serve(async (req) => {
       <div class="disclaimer">
         The information contained in this report has been documented by a Qualified Professional.<br>
         This report is effective for one year from the date of inspection. Issued by:<br>
-        Belay Reports
+        Belay Reports, a member of ACCT International (membership is not an endorsement)
       </div>
     </div>
   </div>
@@ -1901,7 +1901,7 @@ serve(async (req) => {
         <div class="header-title"></div>
       </div>
       <div class="header-right">
-        <img src="${acctLogo}" alt="ACCT Accredited Vendor">
+        <img src="${acctLogo}" alt="ACCT International Proud Member">
       </div>
     </div>
 
@@ -1909,8 +1909,8 @@ serve(async (req) => {
       <h2 style="margin-top: 5px;">INSPECTION RESULTS KEY</h2>
       <p style="margin-bottom: 15px; font-size: 10pt; line-height: 1.6;">
         This represents the overall rating for each system based on the condition of the items inspected on the day of the inspection. 
-        Belay Reports inspects all challenge course and canopy/zip line tours to the standards set forth by the Association for Challenge Course Technology (ACCT). 
-        Any deviation from the ACCT standards in regards to the inspection criteria will be addressed in the comments section.
+        Belay Reports inspects all challenge course and canopy/zip line tours to the standards set forth by ACCT International (Association for Challenge Course Technology). 
+        Any deviation from the ACCT International standards in regards to the inspection criteria will be addressed in the comments section.
       </p>
 
       <div class="key-section" style="background: #f0f9ff; border-left: 4px solid #16a34a;">
@@ -1940,7 +1940,7 @@ serve(async (req) => {
       <div class="disclaimer">
         The information contained in this report has been documented by a Qualified Professional.<br>
         This report is effective for one year from the date of inspection. Issued by:<br>
-        Belay Reports
+        Belay Reports, a member of ACCT International (membership is not an endorsement)
       </div>
     </div>
   </div>
@@ -1959,7 +1959,7 @@ serve(async (req) => {
         <div class="header-title"></div>
       </div>
       <div class="header-right">
-        <img src="${acctLogo}" alt="ACCT Accredited Vendor">
+        <img src="${acctLogo}" alt="ACCT International Proud Member">
       </div>
     </div>
 
@@ -2072,7 +2072,7 @@ serve(async (req) => {
       <div class="disclaimer">
         The information contained in this report has been documented by a Qualified Professional.<br>
         This report is effective for one year from the date of inspection. Issued by:<br>
-        Belay Reports
+        Belay Reports, a member of ACCT International (membership is not an endorsement)
       </div>
     </div>
   </div>
@@ -2092,7 +2092,7 @@ serve(async (req) => {
         <div class="header-title"></div>
       </div>
       <div class="header-right">
-        <img src="${acctLogo}" alt="ACCT Accredited Vendor">
+        <img src="${acctLogo}" alt="ACCT International Proud Member">
       </div>
     </div>
 
@@ -2139,7 +2139,7 @@ serve(async (req) => {
       <div class="disclaimer">
         The information contained in this report has been documented by a Qualified Professional.<br>
         This report is effective for one year from the date of inspection. Issued by:<br>
-        Belay Reports
+        Belay Reports, a member of ACCT International (membership is not an endorsement)
       </div>
     </div>
   </div>
@@ -2160,7 +2160,7 @@ serve(async (req) => {
         <div class="header-title"></div>
       </div>
       <div class="header-right">
-        <img src="${acctLogo}" alt="ACCT Accredited Vendor">
+        <img src="${acctLogo}" alt="ACCT International Proud Member">
       </div>
     </div>
 
@@ -2227,7 +2227,7 @@ serve(async (req) => {
       <div class="disclaimer">
         The information contained in this report has been documented by a Qualified Professional.<br>
         This report is effective for one year from the date of inspection. Issued by:<br>
-        Belay Reports
+        Belay Reports, a member of ACCT International (membership is not an endorsement)
       </div>
     </div>
   </div>
@@ -2251,7 +2251,7 @@ serve(async (req) => {
         <div class="header-title"></div>
       </div>
       <div class="header-right">
-        <img src="${acctLogo}" alt="ACCT Accredited Vendor">
+        <img src="${acctLogo}" alt="ACCT International Proud Member">
       </div>
     </div>
 
@@ -2260,7 +2260,7 @@ serve(async (req) => {
       <div class="combined-section">
         <h2>EQUIPMENT INSPECTION</h2>
         <p style="margin-bottom: 12px; font-size: 10pt; line-height: 1.6;">
-          All equipment has been inspected in accordance with manufacturer specifications and ACCT standards.
+          All equipment has been inspected in accordance with manufacturer specifications and ACCT International standards.
         </p>
         
         ${["harnesses", "helmets", "lanyards", "connectors", "rope", "belay", "trolleys", "other"]
@@ -2327,9 +2327,9 @@ serve(async (req) => {
 
       <!-- Standards Section -->
       <div class="combined-section">
-        <h2>ACCT OPERATIONS STANDARDS</h2>
+        <h2>ACCT INTERNATIONAL OPERATIONS STANDARDS</h2>
         <p style="margin-bottom: 12px; font-size: 10pt; line-height: 1.6;">
-          Documentation verification as required by ACCT (Association for Challenge Course Technology) Standards. 
+          Documentation verification as required by ACCT International (Association for Challenge Course Technology) Standards. 
           The presence of documentation does not constitute review or approval of content.
         </p>
 
@@ -2368,7 +2368,7 @@ serve(async (req) => {
       <div class="disclaimer">
         The information contained in this report has been documented by a Qualified Professional.<br>
         This report is effective for one year from the date of inspection. Issued by:<br>
-        Belay Reports
+        Belay Reports, a member of ACCT International (membership is not an endorsement)
       </div>
     </div>
   </div>
@@ -2388,14 +2388,14 @@ serve(async (req) => {
         <div class="header-title"></div>
       </div>
       <div class="header-right">
-        <img src="${acctLogo}" alt="ACCT Accredited Vendor">
+        <img src="${acctLogo}" alt="ACCT International Proud Member">
       </div>
     </div>
 
     <div class="page-content">
       <h2>EQUIPMENT INSPECTION</h2>
       <p style="margin-bottom: 15px; font-size: 10pt; line-height: 1.6;">
-        All equipment has been inspected in accordance with manufacturer specifications and ACCT standards.
+        All equipment has been inspected in accordance with manufacturer specifications and ACCT International standards.
       </p>
       
       ${["harnesses", "helmets", "lanyards", "connectors", "rope", "belay", "trolleys", "other"]
@@ -2464,7 +2464,7 @@ serve(async (req) => {
       <div class="disclaimer">
         The information contained in this report has been documented by a Qualified Professional.<br>
         This report is effective for one year from the date of inspection. Issued by:<br>
-        Belay Reports
+        Belay Reports, a member of ACCT International (membership is not an endorsement)
       </div>
     </div>
   </div>
@@ -2485,14 +2485,14 @@ serve(async (req) => {
         <div class="header-title"></div>
       </div>
       <div class="header-right">
-        <img src="${acctLogo}" alt="ACCT Accredited Vendor">
+        <img src="${acctLogo}" alt="ACCT International Proud Member">
       </div>
     </div>
 
     <div class="page-content">
-      <h2>ACCT OPERATIONS STANDARDS</h2>
+      <h2>ACCT INTERNATIONAL OPERATIONS STANDARDS</h2>
       <p style="margin-bottom: 15px; font-size: 10pt; line-height: 1.6;">
-        Documentation verification as required by ACCT (Association for Challenge Course Technology) Standards. 
+        Documentation verification as required by ACCT International (Association for Challenge Course Technology) Standards. 
         The presence of documentation does not constitute review or approval of content.
       </p>
 
@@ -2530,7 +2530,7 @@ serve(async (req) => {
       <div class="disclaimer">
         The information contained in this report has been documented by a Qualified Professional.<br>
         This report is effective for one year from the date of inspection. Issued by:<br>
-        Belay Reports
+        Belay Reports, a member of ACCT International (membership is not an endorsement)
       </div>
     </div>
   </div>
@@ -2553,7 +2553,7 @@ serve(async (req) => {
         <div class="header-title"></div>
       </div>
       <div class="header-right">
-        <img src="${acctLogo}" alt="ACCT Accredited Vendor">
+        <img src="${acctLogo}" alt="ACCT International Proud Member">
       </div>
     </div>
 
@@ -2602,7 +2602,7 @@ serve(async (req) => {
       <div style="margin-bottom: 20px; padding: 12px 15px; background: #f0f9ff; border-left: 4px solid #0284c7;">
         <h3 style="font-size: 11pt; font-weight: bold; margin-bottom: 5px; color: #0284c7;">Next Scheduled Inspection</h3>
         <p style="font-size: 11pt; margin: 0; color: #1a1a1a;"><strong>${formatDate(summary.next_inspection_date)}</strong></p>
-        <p style="font-size: 9pt; margin-top: 5px; color: #666; font-style: italic;">Annual professional inspections are required to maintain ACCT compliance.</p>
+        <p style="font-size: 9pt; margin-top: 5px; color: #666; font-style: italic;">Annual professional inspections are required to maintain ACCT International compliance.</p>
       </div>
       `
           : ""
@@ -2615,7 +2615,7 @@ serve(async (req) => {
       <div class="disclaimer">
         The information contained in this report has been documented by a Qualified Professional.<br>
         This report is effective for one year from the date of inspection. Issued by:<br>
-        Belay Reports
+        Belay Reports, a member of ACCT International (membership is not an endorsement)
       </div>
     </div>
   </div>
@@ -2630,7 +2630,7 @@ serve(async (req) => {
         <div class="header-title"></div>
       </div>
       <div class="header-right">
-        <img src="${acctLogo}" alt="ACCT Accredited Vendor">
+        <img src="${acctLogo}" alt="ACCT International Proud Member">
       </div>
     </div>
 
@@ -2667,7 +2667,7 @@ serve(async (req) => {
           </tr>
           <tr>
             <td style="padding: 6px 8px; border: 1px solid #000; vertical-align: top;">Fails Inspection</td>
-            <td style="padding: 6px 8px; border: 1px solid #000; vertical-align: top;">Equipment fails inspection criteria outlined in current ACCT standards</td>
+            <td style="padding: 6px 8px; border: 1px solid #000; vertical-align: top;">Equipment fails inspection criteria outlined in current ACCT International standards</td>
           </tr>
           <tr>
             <td style="padding: 6px 8px; border: 1px solid #000; vertical-align: top;">Incomplete Documentation</td>
@@ -2693,7 +2693,7 @@ serve(async (req) => {
       <div class="disclaimer">
         The information contained in this report has been documented by a Qualified Professional.<br>
         This report is effective for one year from the date of inspection. Issued by:<br>
-        Belay Reports
+        Belay Reports, a member of ACCT International (membership is not an endorsement)
       </div>
     </div>
   </div>
@@ -2714,7 +2714,7 @@ serve(async (req) => {
         <div class="header-title"></div>
       </div>
       <div class="header-right">
-        <img src="${acctLogo}" alt="ACCT Accredited Vendor">
+        <img src="${acctLogo}" alt="ACCT International Proud Member">
       </div>
     </div>
 
@@ -2742,7 +2742,7 @@ serve(async (req) => {
       <div class="disclaimer">
         The information contained in this report has been documented by a Qualified Professional.<br>
         This report is effective for one year from the date of inspection. Issued by:<br>
-        Belay Reports
+        Belay Reports, a member of ACCT International (membership is not an endorsement)
       </div>
     </div>
   </div>

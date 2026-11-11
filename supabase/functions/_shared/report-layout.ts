@@ -101,7 +101,7 @@ export function createPageHeader(belayReportsLogo: string, acctLogo: string): st
             <img src="${belayReportsLogo}" alt="Belay Reports" class="header-logo-left">
           </td>
           <td class="header-cell-right">
-            <img src="${acctLogo}" alt="ACCT Accredited Vendor" class="header-logo-right">
+            <img src="${acctLogo}" alt="ACCT International Proud Member" class="header-logo-right">
           </td>
         </tr>
       </table>

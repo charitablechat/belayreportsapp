@@ -217,9 +217,9 @@ serve(async (req) => {
         <img src="${logos.belayReports}" alt="Belay Reports" style="max-height: 64px;">
         <div style="text-align:center; flex: 1;">
           <h1 style="font-family: Georgia, 'Times New Roman', serif; font-size: 22pt; color: #1B6DB5; margin: 0;">JOB COMPLETION FORM</h1>
-          <div style="font-family: Georgia, 'Times New Roman', serif; font-size: 11pt; color: #475569; margin-top: 4px;">Belay Reports, Inc. · ACCT Accredited Vendor</div>
+          <div style="font-family: Georgia, 'Times New Roman', serif; font-size: 11pt; color: #475569; margin-top: 4px;">Belay Reports, Inc. · Member of ACCT International (not an endorsement)</div>
         </div>
-        <img src="${logos.acct}" alt="ACCT Accredited Vendor" style="max-height: 64px;">
+        <img src="${logos.acct}" alt="ACCT International Proud Member" style="max-height: 64px;">
       </header>
     `;
 

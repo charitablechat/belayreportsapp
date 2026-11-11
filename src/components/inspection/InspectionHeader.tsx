@@ -297,7 +297,7 @@ export default function InspectionHeader({ inspection, userProfile, modifiedByPr
             <h3 className="font-semibold mb-2">Inspection Overview</h3>
             <p className="text-sm text-muted-foreground">
               This comprehensive inspection covers all challenge course elements, zip lines, and related safety equipment. 
-              The inspection follows ACCT (Association for Challenge Course Technology) standards and manufacturer guidelines. 
+              The inspection follows ACCT International (Association for Challenge Course Technology) standards and manufacturer guidelines. 
               All equipment must meet current safety standards and be properly maintained.
             </p>
           </div>

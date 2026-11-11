@@ -4,7 +4,7 @@ import { toast } from 'sonner';
 import { useRequireAdmin } from '@/hooks/useRequireAdmin';
 import belayReportsLogoAsset from "@/assets/belay-reports-wide.gif.asset.json";
 const belayReportsLogo = belayReportsLogoAsset.url;
-import acctLogo from '@/assets/acct-logo-final.png';
+import acctLogo from '@/assets/acct-international-member.png';
 
 const Base64Converter = () => {
   const { isAdmin, loading: adminLoading } = useRequireAdmin();

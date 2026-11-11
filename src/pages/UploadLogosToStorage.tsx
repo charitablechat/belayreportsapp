@@ -6,7 +6,7 @@ import { Upload, CheckCircle2 } from 'lucide-react';
 import { useRequireAdmin } from '@/hooks/useRequireAdmin';
 import belayReportsLogoAsset from "@/assets/belay-reports-wide.gif.asset.json";
 const belayReportsLogo = belayReportsLogoAsset.url;
-import acctLogo from '@/assets/acct-logo-final.png';
+import acctLogo from '@/assets/acct-international-member.png';
 
 export default function UploadLogosToStorage() {
   const { loading: adminLoading } = useRequireAdmin();
@@ -103,7 +103,7 @@ export default function UploadLogosToStorage() {
             <div className="flex items-center gap-2">
               <img src={acctLogo} alt="ACCT" className="w-24 h-24 object-contain border rounded" />
               <div>
-                <p className="font-semibold">ACCT Accredited Vendor Logo</p>
+                <p className="font-semibold">ACCT International Member Logo</p>
                 <p className="text-sm text-muted-foreground">acct-logo-embedded.png</p>
               </div>
             </div>

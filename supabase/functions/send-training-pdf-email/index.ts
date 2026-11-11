@@ -188,7 +188,7 @@ serve(async (req) => {
           <div class="footer">
             <p><strong>Belay Reports</strong></p>
             <p>Professional Rope Course Inspection & Training Services</p>
-            <p>ACCT Accredited Vendor</p>
+            <p>Member of ACCT International (membership is not an endorsement)</p>
             <p style="font-size: 11px; margin-top: 15px; color: #999;">
               This email was sent from an automated system. 
               If you believe you received this in error, please disregard.
