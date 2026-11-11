@@ -282,7 +282,7 @@ export default function AdminLogoManagement() {
 
             {/* ACCT Upload */}
             <div className="space-y-4">
-              <Label htmlFor="acct-upload">ACCT Accredited Vendor Logo</Label>
+              <Label htmlFor="acct-upload">ACCT International Member Logo</Label>
               <Input
                 id="acct-upload"
                 type="file"

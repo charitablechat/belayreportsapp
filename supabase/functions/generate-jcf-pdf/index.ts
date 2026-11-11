@@ -306,7 +306,7 @@ serve(async (req) => {
       doc.setFontSize(8);
       doc.setTextColor(100, 116, 139);
       doc.setFont("times", "normal");
-      doc.text("Belay Reports, Inc. · ACCT Accredited Vendor", pageWidth / 2, pageHeight - 12, { align: "center" });
+      doc.text("Belay Reports, Inc. · Member of ACCT International (not an endorsement)", pageWidth / 2, pageHeight - 12, { align: "center" });
       doc.text(`Page ${i} of ${totalPages}`, pageWidth - margin, pageHeight - 12, { align: "right" });
       if (inspectorProfile?.acct_number) {
         doc.text(`ACCT #: ${inspectorProfile.acct_number}`, margin, pageHeight - 12);

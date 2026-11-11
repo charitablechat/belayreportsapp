@@ -4,7 +4,7 @@ import { Button } from '@/components/ui/button';
 import { useRequireAdmin } from '@/hooks/useRequireAdmin';
 import belayReportsLogoAsset from "@/assets/belay-reports-wide.gif.asset.json";
 const belayReportsLogo = belayReportsLogoAsset.url;
-import acctLogo from '@/assets/acct-logo-final.png';
+import acctLogo from '@/assets/acct-international-member.png';
 
 const UploadLogos = () => {
   const { loading: adminLoading } = useRequireAdmin();
@@ -33,7 +33,7 @@ const UploadLogos = () => {
       // Upload ACCT logo
       const { error: acctError } = await supabase.storage
         .from('pdf-templates')
-        .upload('acct-accredited-vendor.png', acctBlob, {
+        .upload('acct-international-member.png', acctBlob, {
           contentType: 'image/png',
           upsert: true
         });
@@ -61,7 +61,7 @@ const UploadLogos = () => {
 
         <div>
           <img src={acctLogo} alt="ACCT Logo" className="max-w-md border mb-2" />
-          <p className="text-sm text-slate-600">ACCT Accredited Vendor Logo</p>
+          <p className="text-sm text-slate-600">ACCT International Member Logo</p>
         </div>
 
         <Button 

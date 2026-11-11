@@ -62,7 +62,7 @@ function StandardsTable({ standards, onUpdate, onImmediateSave }: StandardsTable
   return (
     <Card>
       <CardHeader>
-        <CardTitle>ACCT Operations Standards Criteria</CardTitle>
+        <CardTitle>ACCT International Operations Standards Criteria</CardTitle>
       </CardHeader>
       <CardContent>
         <div className="mb-4 text-sm text-muted-foreground">
@@ -166,7 +166,7 @@ function StandardsTable({ standards, onUpdate, onImmediateSave }: StandardsTable
 
         <div className="mt-6 text-xs text-muted-foreground border-t pt-4">
           <p className="mb-2">
-            <strong>Comments:</strong> A QCP is a Qualified Course Professional that meets the criteria outlined by the ACCT. 
+            <strong>Comments:</strong> A QCP is a Qualified Course Professional that meets the criteria outlined by ACCT International. 
             Operations & Emergency procedures must be written and specific to the site's local operations procedures.
           </p>
           <p>
