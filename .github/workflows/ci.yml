@@ -291,7 +291,27 @@ jobs:
         with:
           bun-version: latest
       - run: bun install --frozen-lockfile
-      - run: bunx playwright install --with-deps chromium
+      # Ubuntu's apt mirrors have been unreachable from GitHub runners (DNS
+      # failures resolving azure.archive.ubuntu.com used up the whole job three
+      # runs in a row on 2026-11-11), so `--with-deps` is off the happy path.
+      # The ubuntu-24.04 image already ships the libraries Chromium needs:
+      # install the browser only (cached per Playwright version), check it
+      # launches, and fall back to a time-boxed apt install only if it doesn't.
+      - id: playwright-version
+        run: echo "version=$(node -p "require('playwright/package.json').version")" >> "$GITHUB_OUTPUT"
+      - uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-chromium-ubuntu-24.04-${{ steps.playwright-version.outputs.version }}
+      - run: bunx playwright install chromium
+      - name: Check Chromium launches (install system deps only if it can't)
+        run: |
+          if node -e "require('playwright').chromium.launch().then((b) => b.close())"; then
+            echo "Chromium launches without extra system packages."
+          else
+            echo "Chromium could not launch; installing system dependencies via apt."
+            timeout 300 bunx playwright install-deps chromium
+          fi
       # Pass the explicit smoke directory so the auth-gated specs don't even
       # get loaded (and can't accidentally run if a future change weakens
       # their `test.skip` guards).
@@ -344,7 +364,27 @@ jobs:
         with:
           bun-version: latest
       - run: bun install --frozen-lockfile
-      - run: bunx playwright install --with-deps chromium
+      # Ubuntu's apt mirrors have been unreachable from GitHub runners (DNS
+      # failures resolving azure.archive.ubuntu.com used up the whole job three
+      # runs in a row on 2026-11-11), so `--with-deps` is off the happy path.
+      # The ubuntu-24.04 image already ships the libraries Chromium needs:
+      # install the browser only (cached per Playwright version), check it
+      # launches, and fall back to a time-boxed apt install only if it doesn't.
+      - id: playwright-version
+        run: echo "version=$(node -p "require('playwright/package.json').version")" >> "$GITHUB_OUTPUT"
+      - uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-chromium-ubuntu-24.04-${{ steps.playwright-version.outputs.version }}
+      - run: bunx playwright install chromium
+      - name: Check Chromium launches (install system deps only if it can't)
+        run: |
+          if node -e "require('playwright').chromium.launch().then((b) => b.close())"; then
+            echo "Chromium launches without extra system packages."
+          else
+            echo "Chromium could not launch; installing system dependencies via apt."
+            timeout 300 bunx playwright install-deps chromium
+          fi
       # E2E_TEST_EMAIL / E2E_TEST_PASSWORD must be set as GitHub Actions
       # repo secrets for the auth-gated specs to actually run; without them
       # those specs `test.skip` at runtime.
